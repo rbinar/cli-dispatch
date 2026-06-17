@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "claude-ds",
+  "description": "claude-ds — DeepSeek destekli Claude Code'u delege isci olarak calistirin",
+  "owner": { "name": "rbinar", "url": "https://github.com/rbinar" },
+  "metadata": { "version": "1.0.0" },
+  "plugins": [
+    {
+      "name": "claude-ds",
+      "description": "DeepSeek destekli Claude Code'u delege isci olarak kurun ve kullanin (skill + setup/run/status komutlari + tasinabilir wrapper)",
+      "version": "1.0.0",
+      "category": "development",
+      "keywords": ["deepseek", "delegation", "subagent", "worker"],
+      "source": "./plugins/claude-ds"
+    }
+  ]
+}

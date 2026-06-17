@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+CONFIG="${CLAUDE_DS_CONFIG:-$HOME/.config/claude-ds/config}"
+if [ -f "$CONFIG" ]; then
+  # shellcheck disable=SC1090
+  . "$CONFIG"
+fi
+if [ -z "${DEEPSEEK_API_KEY:-}" ]; then
+  echo "claude-ds: DEEPSEEK_API_KEY not set. Add it to $CONFIG (run /claude-ds:setup)." >&2
+  exit 1
+fi
+exec env \
+  ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic" \
+  ANTHROPIC_AUTH_TOKEN="$DEEPSEEK_API_KEY" \
+  ANTHROPIC_MODEL="${DS_MODEL:-deepseek-v4-pro}" \
+  ANTHROPIC_DEFAULT_OPUS_MODEL="${DS_MODEL:-deepseek-v4-pro}" \
+  ANTHROPIC_DEFAULT_SONNET_MODEL="${DS_MODEL:-deepseek-v4-pro}" \
+  ANTHROPIC_DEFAULT_HAIKU_MODEL="${DS_FLASH_MODEL:-deepseek-v4-flash}" \
+  CLAUDE_CODE_SUBAGENT_MODEL="${DS_FLASH_MODEL:-deepseek-v4-flash}" \
+  claude "$@"

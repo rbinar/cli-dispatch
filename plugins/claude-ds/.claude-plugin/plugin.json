@@ -1,0 +1,11 @@
+{
+  "name": "claude-ds",
+  "version": "1.0.0",
+  "description": "DeepSeek destekli Claude Code'u delege isci olarak calistirin — izole worktree'de tam-agentic gorevler, uretim modu, guvenli operasyon akisi.",
+  "author": { "name": "rbinar", "url": "https://github.com/rbinar" },
+  "homepage": "https://github.com/rbinar/claude-ds",
+  "repository": "https://github.com/rbinar/claude-ds",
+  "license": "MIT",
+  "category": "development",
+  "keywords": ["deepseek", "delegation", "worker", "claude-code"]
+}
