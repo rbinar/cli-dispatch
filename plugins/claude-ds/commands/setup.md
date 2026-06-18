@@ -1,14 +1,14 @@
 ---
-description: claude-ds wrapper'ini kur ve yapilandir
+description: Install and configure the claude-ds wrapper
 allowed-tools: Bash
 ---
 
-# claude-ds kurulum
+# claude-ds setup
 
-Aşağıdaki adımları uygula:
+Follow these steps:
 
-1. Wrapper'ı kur — işletim sistemine göre:
-   - **macOS / Linux / WSL / Git Bash** (bash mevcut):
+1. Install the wrapper — depending on the OS:
+   - **macOS / Linux / WSL / Git Bash** (bash available):
      ```bash
      bash "${CLAUDE_PLUGIN_ROOT}/scripts/install.sh"
      ```
@@ -16,20 +16,25 @@ Aşağıdaki adımları uygula:
      ```powershell
      powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/install.ps1"
      ```
-   İkisi de `~/.local/bin`'e wrapper'ı kurar (Windows'ta `claude-ds.ps1` + `claude-ds.cmd` shim) ve yoksa `~/.config/claude-ds/config` iskeletini oluşturur. OS'u tespit edip uygun olanı çalıştır.
+   Both install two wrappers into `~/.local/bin` — `claude-ds` (plain) + `claude-ds-stream`
+   (session-tracked) — and place the stream parser at `~/.local/share/claude-ds/ds-stream-parse.mjs`
+   (on Windows also `.ps1` + `.cmd` shims). If missing, they create the `~/.config/claude-ds/config`
+   skeleton. Detect the OS and run the right one.
 
-2. **API key'i kullanıcı kendisi eklemeli.** Install script'i, key hâlâ boşsa config'i
-   platformun varsayılan editöründe **otomatik açar** (macOS `open`, Linux `xdg-open`,
-   WSL `explorer.exe`, Windows `notepad`; `CLAUDE_DS_EDITOR` ile değiştirilebilir).
-   Açılmazsa kullanıcıdan DeepSeek API key'ini `~/.config/claude-ds/config` içindeki
-   `DEEPSEEK_API_KEY=""` satırına eklemesini iste.
-   **Sen (Claude) API key'i ASLA yazma/yapıştırma** — API key girişi yasaktır. Key'i sadece kullanıcı girer.
+   > Note: `claude-ds-stream` requires `node` for the parser (claude-code already runs in a node environment).
 
-3. `claude` CLI'ın kurulu olduğunu doğrula: `command -v claude`.
+2. **The user must add the API key themselves.** While the key is still empty, the install
+   script **auto-opens** the config in the platform's default editor (macOS `open`, Linux
+   `xdg-open`, WSL `explorer.exe`, Windows `notepad`; override with `CLAUDE_DS_EDITOR`).
+   If it doesn't open, ask the user to add their DeepSeek API key to the `DEEPSEEK_API_KEY=""`
+   line in `~/.config/claude-ds/config`.
+   **You (Claude) must NEVER write/paste the API key** — entering API keys is forbidden. Only the user enters the key.
 
-4. Kullanıcı key'i eklediğini doğruladıktan sonra, opsiyonel smoke test (background task olarak):
+3. Verify the `claude` CLI is installed: `command -v claude`.
+
+4. After the user confirms they added the key, run an optional smoke test (as a background task):
    ```bash
    claude-ds -p "Reply with exactly: OK"
    ```
 
-**Uyarı:** claude-ds'e verdiğin prompt/kod DeepSeek'e (harici servis) gönderilir. Bunu yalnızca kabul ediyorsan kullan.
+**Warning:** the prompt/code you send to claude-ds is forwarded to DeepSeek (an external service). Use it only if you accept that.

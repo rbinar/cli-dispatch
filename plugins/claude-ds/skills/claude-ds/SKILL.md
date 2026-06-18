@@ -7,59 +7,87 @@ description: |
   (generation vs full-agentic), running as a background task, isolating real-repo work
   in a git worktree, and review/verify/merge of the output. The built-in Agent/subagent
   tool canNOT use DeepSeek (model enum is Anthropic-only) — claude-ds is the only path.
-  Triggers: "claude-ds", "deepseek ile yap/calistir", "delege et claude-ds".
+  Triggers: "claude-ds", "delegate to claude-ds", "run with deepseek" (also Turkish:
+  "deepseek ile yap/çalıştır", "delege et claude-ds").
 user-invocable: true
 ---
 
-# claude-ds — DeepSeek delege işçisi
+# claude-ds — DeepSeek delegation worker
 
-`claude-ds`, `/claude-ds:setup` ile `~/.local/bin`'e kurulan taşınabilir bir wrapper'dır;
-Claude Code CLI'ı DeepSeek'in Anthropic-uyumlu API'siyle çalıştırır. PATH'te olduğu için
-**doğrudan `claude-ds`** ile çağrılır (eski `zsh -ic` fonksiyon hilesi gerekmez).
+`claude-ds` is a portable wrapper installed to `~/.local/bin` by `/claude-ds:setup`;
+it runs the Claude Code CLI against DeepSeek's Anthropic-compatible API. Since it's on
+PATH, call it **directly as `claude-ds`** (no old `zsh -ic` function trick needed).
 
-## Ne zaman / ne zaman değil
-- **Sadece kullanıcı açıkça isteyince.** Prompt/kod DeepSeek'e (harici servis) gider.
-- Yerleşik `Agent`/subagent tool'u DeepSeek'i **DESTEKLEMEZ** (`model` enum: sonnet/opus/haiku/fable).
-  DeepSeek'e iş vermenin tek yolu budur.
-- Konuşma bağlamı **paylaşılmaz** → prompt **kendine yeten** olmalı.
+## When / when not
+- **Only when the user explicitly asks.** The prompt/code goes to DeepSeek (an external service).
+- The built-in `Agent`/subagent tool does **NOT support** DeepSeek (`model` enum: sonnet/opus/haiku/fable).
+  This is the only way to hand work to DeepSeek.
+- Conversation context is **not shared** → the prompt must be **self-contained**.
 
-## Çalıştırma kuralları
-- **Her zaman background task** olarak çalıştır: Bash tool `run_in_background: true` (bloklamasın).
-- **Uzun prompt** için brief'i dosyaya yaz, `-p "$(cat <brieffile>)"` ile geçir.
-- **Windows:** kurulumdan sonra `claude-ds` yine doğrudan çağrılır (`.cmd` shim sayesinde); worktree helper'ın PowerShell varyantı `ds-worktree-run.ps1` symlink yerine junction kullanır. macOS/Linux/WSL'de `.sh` varyantları geçerli.
+## Two wrappers
+- **`claude-ds-stream`** (PREFERRED) — runs `claude` with stream-json, parses the output and
+  writes it to a **session directory**: live + observable + resumable.
+- **`claude-ds`** — plain env wrapper (`claude "$@"`). No parsing/session; use only for fast,
+  one-shot generation that doesn't need tracking.
 
-### Mod 1 — Üretim (dosya yazmaz; kod/metin/analiz üretir)
+Session directory: `${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions/<id>/`
+- `status.json` — compact rolling summary (**the only file to poll**: state, lastTool, toolCounts, finalResultPreview)
+- `progress.log` — terse human-readable stream (`▸ Edit foo.ts`, `✓/✗`, truncated text)
+- `transcript.jsonl` — raw stream-json (resume/audit; **NOT read while polling**)
+- `meta.json` — prompt preview, cwd, branch, model, start/end
+
+## Run rules
+- **Always run as a background task**: Bash tool `run_in_background: true` (don't block).
+- For a **long prompt**, write the brief to a file and pass it with `-p "$(cat <brieffile>)"`.
+- **Cost-conscious monitoring (MANDATORY):** track progress by reading only the small `status.json`
+  (`/claude-ds:watch <id>`). Don't read the raw `transcript.jsonl`; don't tail it repeatedly in a
+  tight loop; check once per orchestration step. When the task finishes you get re-invoked anyway.
+- **Windows:** after setup, `claude-ds` / `claude-ds-stream` are called directly (`.cmd` shim);
+  the parser `.mjs` is shared cross-platform. On macOS/Linux/WSL the `.sh` variants apply.
+
+### Mode 1 — Generation (writes no files; produces code/text/analysis)
 ```bash
-claude-ds -p "<kendine yeten prompt>"
+claude-ds-stream -p "<self-contained prompt>"
 ```
+The final text goes to stdout, progress goes to the session directory. Session id on stderr.
 
-### Mod 2 — Tam agentic (dosya yazar + bash çalıştırır)
+### Mode 2 — Full agentic (writes files + runs bash)
 ```bash
-cd <dizin> && claude-ds --dangerously-skip-permissions -p "$(cat /tmp/ds-brief.txt)"
+claude-ds-stream --cwd <dir> --dangerously-skip-permissions -p "$(cat /tmp/ds-brief.txt)"
 ```
-`--dangerously-skip-permissions` onaysız dosya/bash demektir → **mutlaka izole et**.
+`--dangerously-skip-permissions` means unapproved file/bash → **you MUST isolate it**.
 
-## Gerçek repo görevi için güvenli operasyon (ZORUNLU)
-Bundled yardımcıyı kullan:
+### Follow-up / resume (continue the same DeepSeek session)
+```bash
+claude-ds-stream --resume <session-id> -p "<follow-up>"
+```
+The transcript is appended to the same session; `status.json` is updated. See sessions: `/claude-ds:sessions`.
+
+## Safe operation for a real repo task (MANDATORY)
+Use the bundled helper:
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/ds-worktree-run.sh" <repo> <branch> <brief-file>
 ```
-Bu script: izole git worktree açar (origin/main), varsa `node_modules` symlink'ler,
-worktree içinde Mod 2 ile claude-ds çalıştırır ve diff'i **commit ETMEDEN** bırakır.
+This script: opens an isolated git worktree (origin/main), symlinks `node_modules` if present,
+runs **claude-ds-stream** in Mode 2 inside the worktree (session-tracked), and leaves the diff
+**UNCOMMITTED**. The session id is printed on stderr → watch it with `/claude-ds:watch <id>`.
 
-Sonra **reviewer SENSİN:**
-1. `git -C <worktree> status && git -C <worktree> diff` ile TÜM diff'i incele — yan etki var mı,
-   sadece hedef dosyalara mı dokunmuş kontrol et.
-2. tsc/build/test'i **sen** çalıştır (bağımsız doğrulama).
-3. Sorun yoksa git'i SEN yap: commit → push → PR → merge → ana checkout'ta `git pull origin main`.
-   Commit gövdesine "implementasyon claude-ds (DeepSeek) ile delege edildi" yaz (şeffaflık).
-4. Temizlik: `rm <worktree>/node_modules` → `git worktree remove <worktree> --force` → `git worktree prune`.
+Then **YOU are the reviewer:**
+1. Review the FULL diff with `git -C <worktree> status && git -C <worktree> diff` — check for
+   side effects, confirm only the target files were touched.
+2. Run tsc/build/test **yourself** (independent verification).
+3. If all good, YOU do the git: commit → push → PR → merge → `git pull origin main` on the main checkout.
+   Note in the commit body that "implementation was delegated to claude-ds (DeepSeek)" (transparency).
+4. Cleanup: `rm <worktree>/node_modules` → `git worktree remove <worktree> --force` → `git worktree prune`.
 
-## Rol
-claude-ds = işçi (üretim/uygulama), sen = orkestratör + reviewer + git/merge sahibi.
-Doğrulanmadan hiçbir çıktıyı güvene alma.
+## Role
+claude-ds = worker (generation/implementation), you = orchestrator + reviewer + git/merge owner.
+Don't trust any output until verified.
 
-## Komutlar
-- `/claude-ds:setup` — wrapper'ı kur + config iskeleti + smoke test.
-- `/claude-ds:run <görev>` — bir görevi claude-ds'e delege et (repo görevinde worktree izolasyonu).
-- `/claude-ds:status` — kurulum/key/CLI durumunu kontrol et.
+## Commands
+- `/claude-ds:setup` — install the wrappers (`claude-ds` + `claude-ds-stream` + parser) + config + smoke test.
+- `/claude-ds:run <task>` — delegate a task (worktree isolation for repo tasks, session-tracked).
+- `/claude-ds:sessions` — list past/active sessions.
+- `/claude-ds:watch <id>` — show a session's compact live status (cost-conscious).
+- `/claude-ds:status` — check installation/key/CLI status.
+- `/claude-ds:balance` — show the DeepSeek account balance.
