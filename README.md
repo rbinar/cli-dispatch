@@ -59,26 +59,59 @@ Gereksinim: `claude` CLI kurulu ve `~/.local/bin` PATH'te olmalı. DeepSeek key'
 
 | Komut | İş |
 |-------|-----|
-| `/claude-ds:setup` | Wrapper'ı kur + config iskeleti + smoke test |
-| `/claude-ds:run <görev>` | Bir görevi claude-ds'e delege et |
+| `/claude-ds:setup` | Wrapper'ları kur + config iskeleti + smoke test |
+| `/claude-ds:run <görev>` | Bir görevi claude-ds'e delege et (session-takipli) |
+| `/claude-ds:sessions` | Geçmiş/aktif session'ları listele |
+| `/claude-ds:watch <id>` | Bir session'ın canlı durumunu göster (maliyet-odaklı) |
 | `/claude-ds:status` | Kurulum/key/CLI durumunu kontrol et |
 | `/claude-ds:balance` | DeepSeek hesap bakiyesini göster |
 
 Doğrudan kullanım (terminal):
 
 ```bash
-# Üretim modu (dosya yazmaz)
+# Üretim modu (dosya yazmaz) — session-takipli, canlı izlenebilir
+claude-ds-stream -p "Write a Python one-liner for fib(n)"
+
+# Hızlı tek-atış (parse/session yok)
 claude-ds -p "Write a Python one-liner for fib(n)"
 
 # Tam agentic mod (dosya yazar + bash çalıştırır) — izole worktree ile
 plugins/claude-ds/scripts/ds-worktree-run.sh <repo> <branch> <brief-file>
 ```
 
+## Session takibi (canlı izleme + resume)
+
+`claude-ds-stream`, delege ettiğin işi **opak bir arka plan süreci** olmaktan çıkarır: Claude Code CLI'ı `--output-format stream-json` ile çalıştırır, çıktıyı satır satır parse eder ve her görevi bir **session dizinine** yazar. Böylece DeepSeek işçisinin ne yaptığını **canlı, yapılandırılmış ve resume-edilebilir** şekilde takip edebilirsin.
+
+Session dizini: `${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions/<id>/`
+
+| Dosya | İçerik |
+|-------|--------|
+| `status.json` | Kompakt özet (durum, son tool, tool sayıları, sonuç önizlemesi) — **izlemek için tek okunan dosya** |
+| `progress.log` | Terse insan-okur akış (`▸ Edit foo.ts`, `✓ / ✗`, kısaltılmış metin) |
+| `transcript.jsonl` | Ham stream-json (resume/audit; izlerken okunmaz) |
+| `meta.json` | Prompt önizlemesi, cwd, branch, model, başlangıç/bitiş |
+
+**Maliyet-odaklı izleme:** ilerlemeyi yalnızca küçük `status.json`'dan takip et (`/claude-ds:watch <id>`); ham transcript'i okuma, sıkı döngüde tail etme. Orkestratör (Claude Code) her okumada token harcadığı için akış bu ilkeye göre tasarlandı.
+
+```bash
+# Listele
+/claude-ds:sessions
+
+# Bir session'ı canlı izle (status.json + progress.log son satırlar)
+/claude-ds:watch <session-id>
+
+# Aynı DeepSeek session'ına takip görevi gönder (devamlılık)
+claude-ds-stream --resume <session-id> -p "<follow-up>"
+```
+
+> Gereksinim: `claude-ds-stream` parser için `node` ister (claude-code zaten node ortamında çalışır). Düz `claude-ds` wrapper'ı parse/session olmadan çalışmaya devam eder.
+
 ## Windows
 
 Native Windows'ta (WSL kullanmıyorsan) PowerShell varyantları devreye girer:
 
-- `/claude-ds:setup` → `install.ps1` çalışır: `claude-ds.ps1` + bir `claude-ds.cmd` shim'i `~/.local/bin`'e kurar (böylece `claude-ds` cmd/PowerShell'den çağrılır), config'i `~/.config/claude-ds/config`'e yazar.
+- `/claude-ds:setup` → `install.ps1` çalışır: `claude-ds.ps1` + `claude-ds-stream.ps1` ve `.cmd` shim'lerini `~/.local/bin`'e, stream parser'ını (`ds-stream-parse.mjs`) `~/.local/share/claude-ds`'e kurar (böylece `claude-ds` / `claude-ds-stream` cmd/PowerShell'den çağrılır), config'i `~/.config/claude-ds/config`'e yazar.
 - Repo görevleri: `ds-worktree-run.ps1` — `node_modules` için symlink yerine **junction** (`New-Item -ItemType Junction`; admin/developer-mode gerektirmez) kullanır.
 - WSL ya da Git Bash varsa Unix `.sh` scriptleri de çalışır.
 
@@ -100,13 +133,17 @@ Tam temizlik için sırayla: (1) plugin'i kaldır, (2) wrapper + config dosyalar
 
 ```bash
 # macOS / Linux / WSL / Git Bash
-rm -f  ~/.local/bin/claude-ds
+rm -f  ~/.local/bin/claude-ds ~/.local/bin/claude-ds-stream
+rm -rf ~/.local/share/claude-ds     # stream parser (ds-stream-parse.mjs)
+rm -rf ~/.cache/claude-ds           # session kayıtları (status/progress/transcript)
 rm -rf ~/.config/claude-ds          # config (API key dahil) burada — silinince key de gider
 ```
 
 ```powershell
 # Native Windows (PowerShell)
-Remove-Item -Force  "$HOME\.local\bin\claude-ds.ps1","$HOME\.local\bin\claude-ds.cmd" -ErrorAction SilentlyContinue
+Remove-Item -Force "$HOME\.local\bin\claude-ds.ps1","$HOME\.local\bin\claude-ds.cmd","$HOME\.local\bin\claude-ds-stream.ps1","$HOME\.local\bin\claude-ds-stream.cmd" -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force "$HOME\.local\share\claude-ds" -ErrorAction SilentlyContinue   # stream parser
+Remove-Item -Recurse -Force "$HOME\.cache\claude-ds" -ErrorAction SilentlyContinue          # session kayıtları
 Remove-Item -Recurse -Force "$HOME\.config\claude-ds" -ErrorAction SilentlyContinue
 ```
 

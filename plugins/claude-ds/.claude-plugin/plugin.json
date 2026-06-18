@@ -1,7 +1,7 @@
 {
   "name": "claude-ds",
-  "version": "1.2.0",
-  "description": "DeepSeek destekli Claude Code'u delege isci olarak calistirin — izole worktree'de tam-agentic gorevler, uretim modu, guvenli operasyon akisi.",
+  "version": "1.3.0",
+  "description": "DeepSeek destekli Claude Code'u delege isci olarak calistirin — stream-json session takibi (canli izleme + resume), izole worktree'de tam-agentic gorevler, uretim modu, guvenli operasyon akisi.",
   "author": { "name": "rbinar", "url": "https://github.com/rbinar" },
   "homepage": "https://github.com/rbinar/claude-ds",
   "repository": "https://github.com/rbinar/claude-ds",
