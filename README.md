@@ -6,9 +6,29 @@ Claude Code'un yerleşik `Agent`/subagent tool'u yalnızca Anthropic modellerini
 
 ## Kurulum
 
+> ⚠️ Bu komutlar **slash komutudur** ve **Claude Code CLI'ın içinden** çalıştırılmalıdır (normal terminal/shell'de değil). Önce `claude` yazıp Claude Code oturumunu başlat, komutları o oturumun prompt'una gir.
+
+Komutları **tek tek, sırayla** çalıştır — hepsini aynı anda yapıştırma. Her komutu gönder, sonucu bekle, sonra bir sonrakine geç:
+
+**1. Adım — Marketplace'i ekle:**
+
 ```text
 /plugin marketplace add rbinar/claude-ds
+```
+
+> Eğer "Enter marketplace source" kutusu açılırsa, o kutuya **yalnızca kaynağı** yaz (komutu değil): `rbinar/claude-ds`
+
+**2. Adım — Plugin'i kur** (marketplace eklendikten sonra):
+
+```text
 /plugin install claude-ds@claude-ds
+```
+
+> Format `plugin-adı@marketplace-adı` şeklindedir; her ikisi de `claude-ds` olduğu için isim tekrar eder, bu normaldir.
+
+**3. Adım — Kurulumu çalıştır** (plugin kurulduktan sonra):
+
+```text
 /claude-ds:setup
 ```
 
