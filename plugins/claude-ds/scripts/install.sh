@@ -5,9 +5,17 @@ BIN_DIR="$HOME/.local/bin"
 CONFIG_DIR="$HOME/.config/claude-ds"
 CONFIG="$CONFIG_DIR/config"
 
+LIBEXEC_DIR="$HOME/.local/share/claude-ds"
+
 mkdir -p "$BIN_DIR"
 install -m 0755 "$SCRIPT_DIR/claude-ds" "$BIN_DIR/claude-ds"
 echo "Installed wrapper -> $BIN_DIR/claude-ds"
+
+# Stream/session-tracking variant + its Node parser.
+install -m 0755 "$SCRIPT_DIR/claude-ds-stream" "$BIN_DIR/claude-ds-stream"
+mkdir -p "$LIBEXEC_DIR"
+install -m 0644 "$SCRIPT_DIR/ds-stream-parse.mjs" "$LIBEXEC_DIR/ds-stream-parse.mjs"
+echo "Installed stream wrapper -> $BIN_DIR/claude-ds-stream (parser -> $LIBEXEC_DIR/ds-stream-parse.mjs)"
 
 if [ ! -f "$CONFIG" ]; then
   mkdir -p "$CONFIG_DIR"

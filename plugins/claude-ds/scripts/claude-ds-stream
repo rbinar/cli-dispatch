@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+# claude-ds-stream — the stream-json + session-tracked variant of claude-ds.
+#
+# Runs `claude` with the DeepSeek env and the stream-json output format, piping
+# stdout into ds-stream-parse.mjs. The parser writes transcript.jsonl /
+# progress.log / status.json / meta.json to a session directory and prints the
+# final text to stdout.
+#
+# Usage:
+#   claude-ds-stream [--cwd <dir>] [--resume <id>] -p "<prompt>" [extra claude flags]
+#   echo "<prompt>" | claude-ds-stream [--cwd <dir>]
+#
+# Session directory: ${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions/<id>/
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+CONFIG="${CLAUDE_DS_CONFIG:-$HOME/.config/claude-ds/config}"
+if [ -f "$CONFIG" ]; then
+  # shellcheck disable=SC1090
+  . "$CONFIG"
+fi
+if [ -z "${DEEPSEEK_API_KEY:-}" ]; then
+  echo "claude-ds-stream: DEEPSEEK_API_KEY not set. Add it to $CONFIG (run /claude-ds:setup)." >&2
+  exit 1
+fi
+
+# Required for the node parser (claude-code already runs in a node environment).
+if ! command -v node >/dev/null 2>&1; then
+  echo "claude-ds-stream: 'node' not found in PATH (required for the stream parser)." >&2
+  exit 1
+fi
+
+# Resolve the parser path: env > installed location > repo/script dir.
+PARSER="${CLAUDE_DS_PARSER:-}"
+if [ -z "$PARSER" ]; then
+  for cand in "$HOME/.local/share/claude-ds/ds-stream-parse.mjs" "$SCRIPT_DIR/ds-stream-parse.mjs"; do
+    if [ -f "$cand" ]; then PARSER="$cand"; break; fi
+  done
+fi
+if [ -z "$PARSER" ] || [ ! -f "$PARSER" ]; then
+  echo "claude-ds-stream: ds-stream-parse.mjs not found (set CLAUDE_DS_PARSER)." >&2
+  exit 1
+fi
+
+# ---- parse arguments ----
+CWD="$(pwd)"
+RESUME_ID=""
+PROMPT=""
+HAVE_PROMPT=0
+PASS_ARGS=()
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --cwd)        CWD="$2"; shift 2;;
+    --cwd=*)      CWD="${1#*=}"; shift;;
+    --resume)     RESUME_ID="$2"; shift 2;;
+    --resume=*)   RESUME_ID="${1#*=}"; shift;;
+    -p|--prompt)  PROMPT="$2"; HAVE_PROMPT=1; shift 2;;
+    -p=*)         PROMPT="${1#*=}"; HAVE_PROMPT=1; shift;;
+    --prompt=*)   PROMPT="${1#*=}"; HAVE_PROMPT=1; shift;;
+    *)            PASS_ARGS+=("$1"); shift;;
+  esac
+done
+
+# No prompt → read from stdin (pipe support).
+if [ "$HAVE_PROMPT" -eq 0 ]; then
+  if [ ! -t 0 ]; then
+    PROMPT="$(cat)"
+  else
+    echo "claude-ds-stream: no prompt. Use -p \"<prompt>\" or pipe via stdin." >&2
+    exit 1
+  fi
+fi
+
+# ---- prepare the session directory ----
+SESSIONS_ROOT="${CLAUDE_DS_SESSIONS_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions}"
+RESUME=0
+if [ -n "$RESUME_ID" ]; then
+  SID="$RESUME_ID"
+  RESUME=1
+else
+  SID="$(node -e 'process.stdout.write(require("crypto").randomUUID())' 2>/dev/null || true)"
+  [ -z "$SID" ] && SID="$(uuidgen 2>/dev/null | tr 'A-Z' 'a-z' || true)"
+  [ -z "$SID" ] && SID="$(date +%s)-$$-$RANDOM"
+fi
+SESSION_DIR="$SESSIONS_ROOT/$SID"
+mkdir -p "$SESSION_DIR"
+
+BRANCH="$(git -C "$CWD" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+MODEL="${DS_MODEL:-deepseek-v4-pro}"
+
+echo "claude-ds session: $SID" >&2
+echo "  cwd:    $CWD" >&2
+echo "  dir:    $SESSION_DIR" >&2
+echo "  status: $SESSION_DIR/status.json" >&2
+echo "  log:    $SESSION_DIR/progress.log" >&2
+
+# ---- claude arguments (same core as octo-ai buildClaudeArgs) ----
+CLAUDE_ARGS=(
+  --print
+  --output-format stream-json
+  --include-partial-messages
+  --verbose
+  --permission-mode bypassPermissions
+  --add-dir "$CWD"
+)
+if [ "$RESUME" -eq 1 ]; then
+  CLAUDE_ARGS+=(--resume "$SID")
+else
+  CLAUDE_ARGS+=(--session-id "$SID")
+fi
+if [ "${#PASS_ARGS[@]}" -gt 0 ]; then
+  CLAUDE_ARGS+=("${PASS_ARGS[@]}")
+fi
+
+# The prompt is passed via stdin (so variadic flags can't swallow it — octo-ai note).
+set +e
+printf '%s' "$PROMPT" | env \
+  ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic" \
+  ANTHROPIC_AUTH_TOKEN="$DEEPSEEK_API_KEY" \
+  ANTHROPIC_MODEL="${DS_MODEL:-deepseek-v4-pro}" \
+  ANTHROPIC_DEFAULT_OPUS_MODEL="${DS_MODEL:-deepseek-v4-pro}" \
+  ANTHROPIC_DEFAULT_SONNET_MODEL="${DS_MODEL:-deepseek-v4-pro}" \
+  ANTHROPIC_DEFAULT_HAIKU_MODEL="${DS_FLASH_MODEL:-deepseek-v4-flash}" \
+  CLAUDE_CODE_SUBAGENT_MODEL="${DS_FLASH_MODEL:-deepseek-v4-flash}" \
+  claude "${CLAUDE_ARGS[@]}" \
+  | CLAUDE_DS_SESSION_DIR="$SESSION_DIR" \
+    CLAUDE_DS_PROMPT_PREVIEW="$(printf '%.120s' "$PROMPT")" \
+    CLAUDE_DS_CWD="$CWD" \
+    CLAUDE_DS_BRANCH="$BRANCH" \
+    CLAUDE_DS_MODEL="$MODEL" \
+    CLAUDE_DS_RESUME="$RESUME" \
+    node "$PARSER"
+CLAUDE_RC=${PIPESTATUS[0]}
+set -e
+
+exit "$CLAUDE_RC"

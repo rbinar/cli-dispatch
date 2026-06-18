@@ -3,18 +3,29 @@ $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BinDir = Join-Path $HOME ".local/bin"
+$LibExecDir = Join-Path $HOME ".local/share/claude-ds"
 $ConfigDir = Join-Path $HOME ".config/claude-ds"
 $Config = Join-Path $ConfigDir "config"
 
 New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
 Copy-Item -Force (Join-Path $ScriptDir "claude-ds.ps1") (Join-Path $BinDir "claude-ds.ps1")
 
-$shim = @'
+# .cmd shim generator (uses pwsh if available, otherwise falls back to powershell).
+function New-Shim($name) {
+  @"
 @echo off
-where pwsh >nul 2>nul && (pwsh -NoProfile -ExecutionPolicy Bypass -File "%~dp0claude-ds.ps1" %*) || (powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0claude-ds.ps1" %*)
-'@
-Set-Content -Path (Join-Path $BinDir "claude-ds.cmd") -Value $shim -Encoding ASCII
+where pwsh >nul 2>nul && (pwsh -NoProfile -ExecutionPolicy Bypass -File "%~dp0$name.ps1" %*) || (powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0$name.ps1" %*)
+"@
+}
+Set-Content -Path (Join-Path $BinDir "claude-ds.cmd") -Value (New-Shim "claude-ds") -Encoding ASCII
 Write-Host "Installed wrapper -> $BinDir\claude-ds.ps1 (+ claude-ds.cmd shim)"
+
+# Stream/session-tracking variant + its Node parser.
+Copy-Item -Force (Join-Path $ScriptDir "claude-ds-stream.ps1") (Join-Path $BinDir "claude-ds-stream.ps1")
+Set-Content -Path (Join-Path $BinDir "claude-ds-stream.cmd") -Value (New-Shim "claude-ds-stream") -Encoding ASCII
+New-Item -ItemType Directory -Force -Path $LibExecDir | Out-Null
+Copy-Item -Force (Join-Path $ScriptDir "ds-stream-parse.mjs") (Join-Path $LibExecDir "ds-stream-parse.mjs")
+Write-Host "Installed stream wrapper -> $BinDir\claude-ds-stream.ps1 (+ .cmd shim; parser -> $LibExecDir\ds-stream-parse.mjs)"
 
 if (-not (Test-Path $Config)) {
   New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null

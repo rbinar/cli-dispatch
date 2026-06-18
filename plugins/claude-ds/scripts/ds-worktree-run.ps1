@@ -20,10 +20,10 @@ if ((Test-Path $repoNM) -and -not (Test-Path $wtNM)) {
   New-Item -ItemType Junction -Path $wtNM -Target $repoNM | Out-Null
 }
 
-Write-Host ">>> Running claude-ds (agentic) in $WT ..."
+Write-Host ">>> Running claude-ds-stream (agentic, session-tracked) in $WT ..."
 $brief = Get-Content -Raw $BriefFile
-Push-Location $WT
-try { claude-ds --dangerously-skip-permissions -p $brief } catch { } finally { Pop-Location }
+# Stream variant: progress/status/transcript are written to a session dir (path on stderr).
+try { claude-ds-stream --cwd $WT --dangerously-skip-permissions -p $brief } catch { }
 
 Write-Host ">>> Worktree: $WT  (branch: $Branch)"
 Write-Host ">>> Review the diff, then YOU handle git/PR/merge. Cleanup:"

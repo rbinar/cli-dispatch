@@ -1,33 +1,47 @@
 ---
-description: Bir gorevi claude-ds'e (DeepSeek) delege et
-argument-hint: <gorev aciklamasi>
+description: Delegate a task to claude-ds (DeepSeek)
+argument-hint: <task description>
 allowed-tools: Bash, Read
 ---
 
-# claude-ds'e görev delege et
+# Delegate a task to claude-ds
 
-Delege edilecek görev: **$ARGUMENTS**
+Task to delegate: **$ARGUMENTS**
 
-Önce kullanıcının bunu DeepSeek'e göndermeyi açıkça istediğinden emin ol (prompt/kod harici servise gider).
+First make sure the user explicitly wants this sent to DeepSeek (the prompt/code leaves to an external service).
 
-**Gerçek repo görevi** ise (dosya değişikliği gerekiyorsa) — izole worktree kullan:
-1. Görevi bir brief dosyasına yaz (örn. `/tmp/ds-brief.txt`).
-2. Çalıştır (background task) — OS'a göre:
+The task runs via `claude-ds-stream`: its output is parsed as **stream-json** and written to a
+session directory → **live, observable, resumable**. Monitor progress in a **cost-conscious** way:
+read only the small `status.json`, never the raw transcript.
+
+**If it's a real repo task** (file changes needed) — use an isolated worktree:
+1. Write the task to a brief file (e.g. `/tmp/ds-brief.txt`).
+2. Run it (as a background task) — depending on the OS:
    - **macOS / Linux / WSL**:
      ```bash
-     "${CLAUDE_PLUGIN_ROOT}/scripts/ds-worktree-run.sh" <repo-path> <branch-adi> /tmp/ds-brief.txt
+     "${CLAUDE_PLUGIN_ROOT}/scripts/ds-worktree-run.sh" <repo-path> <branch-name> /tmp/ds-brief.txt
      ```
-   - **Native Windows** (node_modules için symlink yerine junction kullanır):
+   - **Native Windows**:
      ```powershell
-     powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/ds-worktree-run.ps1" <repo-path> <branch-adi> <brief-file>
+     powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/ds-worktree-run.ps1" <repo-path> <branch-name> <brief-file>
      ```
-3. Script bittiğinde worktree'deki diff'i **incele** (`git -C <worktree> diff`), bağımsız doğrula (tsc/build/test).
-4. Sorun yoksa git/commit/push/PR/merge'i **sen** yap; sonra worktree'yi temizle.
+   (The script uses `claude-ds-stream` internally; the session directory is printed on stderr.)
+3. **Monitor (cost-conscious):** capture the session id, occasionally check `status.json` via
+   `/claude-ds:watch <id>` (`state: running→done`). Do NOT tight-loop tail.
+4. When done, **review** the diff in the worktree (`git -C <worktree> diff`), verify independently (tsc/build/test).
+5. If all good, **you** handle git/commit/push/PR/merge; then clean up the worktree.
 
-**Saf üretim** (kod/metin, dosya yok) ise:
+**If it's pure generation** (code/text, no files) — as a background task:
 ```bash
-claude-ds -p "$ARGUMENTS"
+claude-ds-stream -p "$ARGUMENTS"
 ```
-(background task olarak çalıştır.)
+The final text is printed to stdout; progress lives in `status.json`/`progress.log`. Session id on stderr.
 
-claude-ds = işçi, sen = reviewer/merge sahibi. Doğrulanmadan çıktıyı güvene alma.
+**Follow-up / fix** (continue the same DeepSeek session):
+```bash
+claude-ds-stream --resume <session-id> -p "<follow-up>"
+```
+
+To see all sessions, use `/claude-ds:sessions`.
+
+claude-ds = worker, you = reviewer/merge owner. Don't trust the output until verified.
