@@ -62,6 +62,7 @@ Gereksinim: `claude` CLI kurulu ve `~/.local/bin` PATH'te olmalı. DeepSeek key'
 | `/claude-ds:setup` | Wrapper'ı kur + config iskeleti + smoke test |
 | `/claude-ds:run <görev>` | Bir görevi claude-ds'e delege et |
 | `/claude-ds:status` | Kurulum/key/CLI durumunu kontrol et |
+| `/claude-ds:balance` | DeepSeek hesap bakiyesini göster |
 
 Doğrudan kullanım (terminal):
 
