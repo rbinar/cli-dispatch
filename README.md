@@ -57,6 +57,13 @@ Gereksinim: `claude` CLI kurulu ve `~/.local/bin` PATH'te olmalı. DeepSeek key'
 
 ## Kullanım
 
+claude-ds **iki ayrı yerden** kullanılır — karıştırma. Bu README'de kod bloklarını buna göre işaretliyoruz:
+
+- 💬 **Claude Code prompt'u** — `claude` oturumunun **içine** yazılır: `/claude-ds:*` slash komutları + `ds-runner` subagent. **Terminale yazılmaz.**
+- 🖥 **Terminal** — normal kabuk (iTerm/bash). `claude-ds`, `claude-ds-stream`, `ds-agent` CLI'ları buraya yazılır. (Claude Code de bunları Bash tool ile çalıştırabilir — ama yazımı terminal komutu yazımıdır.)
+
+### 💬 Claude Code komutları (slash — `claude` prompt'una yazılır)
+
 | Komut | İş |
 |-------|-----|
 | `/claude-ds:setup` | Wrapper'ları kur + config iskeleti + smoke test |
@@ -68,14 +75,17 @@ Gereksinim: `claude` CLI kurulu ve `~/.local/bin` PATH'te olmalı. DeepSeek key'
 
 ### Hangi aracı kullanmalı?
 
-Kurulumdan sonra `~/.local/bin`'e dört giriş noktası gelir. İhtiyaca göre seç:
+Kurulumdan sonra `~/.local/bin`'e **üç CLI komutu** gelir — `claude-ds`, `claude-ds-stream`,
+`ds-agent`. Üçü de **hem düz terminalden hem Claude Code içinden (Bash tool)** çağrılır.
+`ds-runner` ise binary **değildir**: bir Claude Code **subagent**'ıdır, yalnızca Claude Code
+içinden `Agent` tool'uyla çağrılır.
 
-| Araç | Ne zaman | Çıktı / takip |
-|------|----------|----------------|
-| **`ds-agent`** | **En basit.** Tek komut: görevi ver, çalışsın, cevabı al (subagent gibi, senkron). | Nihai cevap → stdout; canlı tool ilerlemesi → stderr |
-| **`claude-ds-stream`** | Arka planda çalıştırıp **izlemek / resume** etmek istediğinde. | `status.json`/`progress.log` + `--resume` |
-| **`claude-ds`** | Hızlı tek-atış, takip/parse gerekmiyor. | Sadece düz `claude` çıktısı |
-| **`ds-runner`** (subagent) | Orkestratör bağlamını **temiz tutmak** + otomatik doğrulama. | Kısa, doğrulanmış sonuç |
+| Araç | Nereden çağrılır | Ne zaman | Çıktı / takip |
+|------|------------------|----------|----------------|
+| **`ds-agent`** | Terminal **veya** Claude Code (Bash) | **En basit.** Tek komut: görevi ver, çalışsın, cevabı al (senkron). | Nihai cevap → stdout; canlı ilerleme → stderr |
+| **`claude-ds-stream`** | Terminal **veya** Claude Code (Bash) | Arka planda çalıştırıp **izlemek / resume** etmek istediğinde. | `status.json`/`progress.log` + `--resume` |
+| **`claude-ds`** | Terminal **veya** Claude Code (Bash) | Hızlı tek-atış, takip/parse gerekmiyor. | Sadece düz `claude` çıktısı |
+| **`ds-runner`** (subagent) | **Sadece Claude Code** (`Agent` tool) | Orkestratör bağlamını **temiz tutmak** + otomatik doğrulama. | Kısa, doğrulanmış sonuç |
 
 > ⚠️ **Varsayılan mod bir sandbox değildir.** Wrapper her zaman `--permission-mode
 > bypassPermissions` ile çalışır (non-interactive `--print` modunda onay sorulamaz), bu yüzden
@@ -84,27 +94,29 @@ Kurulumdan sonra `~/.local/bin`'e dört giriş noktası gelir. İhtiyaca göre s
 
 ## Örnekler
 
-### 1) Hızlı soru / analiz (yazmaz)
+> Aksi belirtilmedikçe örnekler 🖥 **terminalde** çalışır. 💬 ile işaretli bloklar Claude Code prompt'una yazılır.
+
+### 1) Hızlı soru / analiz (yazmaz) — 🖥 terminal
 ```bash
 ds-agent --read-only "JWT ile session-cookie auth farkını kısa açıkla"
 ds-agent --read-only "bu repodaki mimariyi özetle"
 ```
 `--read-only` → Write/Edit/Bash kapalı; sadece okur ve metin üretir. Cevap stdout'a basılır.
 
-### 2) Kod üretip dosyaya yazdırma (agentic, izole dizinde)
+### 2) Kod üretip dosyaya yazdırma (agentic, izole dizinde) — 🖥 terminal
 ```bash
 mkdir -p /tmp/scratch && ds-agent --cwd /tmp/scratch "fizzbuzz.py oluştur, 1-15 yaz, çalıştırıp doğrula"
 ```
 İzole bir dizin verdiğin için repo'na dokunmaz; `▸ Write … ✓`, `▸ Bash … ✓` adımlarını canlı görürsün.
 
-### 3) Çıktıyı yakalama / pipe'lama
+### 3) Çıktıyı yakalama / pipe'lama — 🖥 terminal
 ```bash
 ds-agent --read-only -q "PostgreSQL bağlantı stringi örneği ver" > conn.txt   # -q: banner yok
 answer=$(ds-agent --read-only -q "tek satır: docker nedir")
 ```
 `-q` banner/ilerlemeyi susturur; stdout **yalnızca** nihai cevabı taşır → güvenle pipe'lanır.
 
-### 4) Çok-turlu araştırma (aynı bağlamı sürdür)
+### 4) Çok-turlu araştırma (aynı bağlamı sürdür) — 🖥 terminal
 ```bash
 ds-agent --read-only "bitcoin nedir, uzun cevap"            # session id stderr'de basılır
 ds-agent --read-only --resume <session-id> "lightning network'ü açıkla"
@@ -113,26 +125,36 @@ ds-agent --read-only --resume <session-id> "taproot nedir"
 `--resume` aynı DeepSeek konuşmasına ekler; model önceki turları hatırlar.
 
 ### 5) Arka planda uzun iş + canlı izleme (maliyet-odaklı)
+🖥 **Terminal** — işi başlat (session id stderr'de basılır):
 ```bash
-claude-ds-stream -p "$(cat brief.txt)"     # background task olarak çalıştır; session id stderr'de
-/claude-ds:watch <session-id>              # sadece status.json + son satırlar (ucuz)
-/claude-ds:sessions                        # tüm session'ları listele
+claude-ds-stream -p "$(cat brief.txt)"
+```
+💬 **Claude Code prompt'u** — izle (slash komutları, terminale değil):
+```text
+/claude-ds:watch <session-id>     # sadece status.json + son satırlar (ucuz)
+/claude-ds:sessions               # tüm session'ları listele
 ```
 
-### 6) Güvenlik ağı: timeout
+### 6) Güvenlik ağı: timeout — 🖥 terminal
 ```bash
 ds-agent --max-runtime 600 --idle-timeout 90 "büyük refactor görevi"
 ```
 İş 600 sn'yi aşarsa ya da 90 sn çıktı üretmezse worker (ve çocuk süreçleri) öldürülür; session `state: error` olur.
 
 ### 7) Gerçek repo görevi (worktree'de izole + sen incele/merge et)
-```bash
-printf '%s' "auth.ts'e rate-limit ekle, testlerini de yaz" > /tmp/brief.txt
-"${CLAUDE_PLUGIN_ROOT}/scripts/ds-worktree-run.sh" <repo> ds/rate-limit /tmp/brief.txt
-# → izole worktree'de çalışır, diff'i COMMIT'siz bırakır. Sen: git diff → build/test → merge.
+💬 **Claude Code prompt'u** — en temiz yol:
+```text
+/claude-ds:run auth.ts'e rate-limit ekle, testlerini de yaz
 ```
+Claude Code bunu izole bir git worktree'de çalıştırır (`ds-worktree-run.sh`; bu script
+`~/.local/bin`'de **değildir**, plugin içinden çağrılır), diff'i COMMIT'siz bırakır —
+sonra sen/Claude diff → build/test → merge.
 
 ### 8) Subagent'a devret (orkestratör bağlamı temiz kalsın)
+💬 **Claude Code prompt'u** — bunu **doğal dille** istersin, örn:
+> "şu görevi `ds-runner` ile yap: …" (kolaysa haiku, build/test gerekiyorsa sonnet)
+
+Bunun üzerine Claude Code arka planda şu tool çağrısını yapar (**sen `Agent(...)`'ı elle yazmazsın**):
 ```text
 Agent(subagent_type="ds-runner", model="haiku",  prompt="<kendine yeten görev>")   # saf üretim/analiz
 Agent(subagent_type="ds-runner", model="sonnet", prompt="<repo/kod görevi>")        # build/test doğrulaması gerekir
