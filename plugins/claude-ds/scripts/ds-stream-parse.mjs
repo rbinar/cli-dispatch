@@ -16,7 +16,7 @@
 //   CLAUDE_DS_PROMPT_PREVIEW, CLAUDE_DS_CWD, CLAUDE_DS_BRANCH, CLAUDE_DS_MODEL
 //   CLAUDE_DS_RESUME        ("1" → append to transcript/progress, keep existing meta)
 
-import { appendFileSync, writeFileSync, readFileSync, existsSync, mkdirSync, openSync, writeSync, closeSync } from 'node:fs'
+import { writeFileSync, readFileSync, existsSync, mkdirSync, openSync, writeSync, closeSync } from 'node:fs'
 import path from 'node:path'
 
 const dir = process.env.CLAUDE_DS_SESSION_DIR
@@ -55,19 +55,17 @@ meta = {
 const writeMeta = () => { try { writeFileSync(metaFile, JSON.stringify(meta, null, 2) + '\n') } catch { /* ignore */ } }
 writeMeta()
 
-if (!isResume) {
-  try { writeFileSync(progressFile, '') } catch { /* ignore */ }
-} else {
-  try { appendFileSync(progressFile, `\n--- resume @ ${new Date().toISOString()} ---\n`) } catch { /* ignore */ }
-}
-
-// Keep ONE append fd open for the transcript. appendFileSync re-opens and closes the file
-// on every call (~3 syscalls/line), which dominates runtime on large streams (measured:
-// 50k lines spent ~0.9s in syscalls vs ~0.17s of actual work). writeSync to a held fd
-// still updates mtime per write, so the wrapper's idle-timeout watchdog keeps working.
-let transcriptFd = -1
+// Hold ONE append fd each for the transcript and the progress log. appendFileSync re-opens
+// and closes the file on every call (~3 syscalls), which dominates runtime on large or
+// tool-heavy streams. writeSync to a held fd still updates mtime, so the idle-timeout
+// watchdog (which keys off transcript.jsonl) keeps working.
+let transcriptFd = -1, progressFd = -1
 try { transcriptFd = openSync(transcriptFile, isResume ? 'a' : 'w') } catch { /* ignore */ }
+try { progressFd = openSync(progressFile, isResume ? 'a' : 'w') } catch { /* ignore */ }
 const writeTranscript = (s) => { if (transcriptFd >= 0) { try { writeSync(transcriptFd, s) } catch { /* ignore */ } } }
+if (isResume && progressFd >= 0) {
+  try { writeSync(progressFd, `\n--- resume @ ${new Date().toISOString()} ---\n`) } catch { /* ignore */ }
+}
 
 // ---- rolling state ----
 const status = {
@@ -80,8 +78,26 @@ const status = {
   lastActivityAt: new Date().toISOString(),
   finalResultPreview: '',
 }
-const writeStatus = () => { try { writeFileSync(statusFile, JSON.stringify(status, null, 2) + '\n') } catch { /* ignore */ } }
-writeStatus()
+// status.json is a polled snapshot — it needn't hit disk on every event. Throttle the
+// full-file rewrites to ~200ms (coalescing bursts of tool events); finalize forces a final
+// write. Idle detection keys off transcript.jsonl, not this file, so throttling is safe.
+const STATUS_THROTTLE_MS = 200
+let lastStatusWrite = 0
+let statusTimer = null
+const flushStatus = () => {
+  if (statusTimer) { clearTimeout(statusTimer); statusTimer = null }
+  lastStatusWrite = Date.now()
+  try { writeFileSync(statusFile, JSON.stringify(status, null, 2) + '\n') } catch { /* ignore */ }
+}
+const writeStatus = () => {
+  const since = Date.now() - lastStatusWrite
+  if (since >= STATUS_THROTTLE_MS) { flushStatus(); return }
+  if (!statusTimer) {
+    statusTimer = setTimeout(flushStatus, STATUS_THROTTLE_MS - since)
+    statusTimer.unref?.()
+  }
+}
+flushStatus() // initial snapshot, written immediately
 
 const emittedToolUseIds = new Set()
 const emittedToolResultIds = new Set()
@@ -89,7 +105,7 @@ let finalText = ''
 let streamedText = ''
 let pendingText = '' // coalesced streamed text; flushed as a single terse progress line
 
-const appendProgress = (line) => { try { appendFileSync(progressFile, line + '\n') } catch { /* ignore */ } }
+const appendProgress = (line) => { if (progressFd >= 0) { try { writeSync(progressFd, line + '\n') } catch { /* ignore */ } } }
 
 // Flush streamed text to progress.log as a single truncated line (cost-conscious).
 const flushPending = () => {
@@ -218,11 +234,12 @@ function finalize(code) {
   }
   if (transcriptFd >= 0) { try { closeSync(transcriptFd) } catch { /* ignore */ } transcriptFd = -1 }
   flushPending()
+  if (progressFd >= 0) { try { closeSync(progressFd) } catch { /* ignore */ } progressFd = -1 }
   const out = finalText || streamedText
   status.state = out ? 'done' : (code === 0 ? 'done' : 'error')
   status.finalResultPreview = (out || '').replace(/\s+/g, ' ').slice(0, 300)
   status.lastActivityAt = new Date().toISOString()
-  writeStatus()
+  flushStatus() // force the final snapshot (cancels any pending throttled write)
   meta.endedAt = new Date().toISOString()
   meta.exitCode = code ?? 0
   meta.state = status.state
