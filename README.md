@@ -69,6 +69,11 @@ Gereksinim: `claude` CLI kurulu ve `~/.local/bin` PATH'te olmalı. DeepSeek key'
 Doğrudan kullanım (terminal):
 
 ```bash
+# En basit — subagent gibi tek komut: görevi ver, çalışsın, cevabı al
+ds-agent "fib(n) için bir Python tek-satırı yaz"          # agentic (cwd'de yazabilir)
+ds-agent --read-only "bu repodaki mimariyi özetle"         # salt-okunur (yazmaz)
+#   → nihai cevap stdout'a; canlı tool ilerlemesi stderr'e. `-q` ile sessiz.
+
 # Üretim modu — session-takipli, canlı izlenebilir
 claude-ds-stream -p "Write a Python one-liner for fib(n)"
 

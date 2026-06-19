@@ -105,7 +105,14 @@ let finalText = ''
 let streamedText = ''
 let pendingText = '' // coalesced streamed text; flushed as a single terse progress line
 
-const appendProgress = (line) => { if (progressFd >= 0) { try { writeSync(progressFd, line + '\n') } catch { /* ignore */ } } }
+// When CLAUDE_DS_PROGRESS_STDERR=1, mirror each progress line to stderr too — lets a
+// synchronous caller (ds-agent) show live tool activity while the worker runs, without
+// touching stdout (which carries only the final answer).
+const progressToStderr = process.env.CLAUDE_DS_PROGRESS_STDERR === '1'
+const appendProgress = (line) => {
+  if (progressFd >= 0) { try { writeSync(progressFd, line + '\n') } catch { /* ignore */ } }
+  if (progressToStderr) { try { process.stderr.write(line + '\n') } catch { /* ignore */ } }
+}
 
 // Flush streamed text to progress.log as a single truncated line (cost-conscious).
 const flushPending = () => {
