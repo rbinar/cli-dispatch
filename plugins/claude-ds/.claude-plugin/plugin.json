@@ -1,7 +1,7 @@
 {
   "name": "claude-ds",
-  "version": "1.6.0",
-  "description": "DeepSeek destekli Claude Code'u delege isci olarak calistirin — tek-komut subagent (ds-agent), stream-json session takibi (canli izleme + resume), read-only mod, global MCP izolasyonu (strict-mcp-config), runtime/idle timeout guvenlik agi, izole worktree'de tam-agentic gorevler, guvenli operasyon akisi.",
+  "version": "1.7.0",
+  "description": "DeepSeek destekli Claude Code'u delege isci olarak calistirin — ds-runner subagent'i (babysitter+reviewer, model'i orkestrator secer), tek-komut ds-agent, stream-json session takibi (canli izleme + resume), read-only mod, global MCP izolasyonu (strict-mcp-config), runtime/idle timeout guvenlik agi, izole worktree'de tam-agentic gorevler, guvenli operasyon akisi.",
   "author": { "name": "rbinar", "url": "https://github.com/rbinar" },
   "homepage": "https://github.com/rbinar/claude-ds",
   "repository": "https://github.com/rbinar/claude-ds",

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [1.7.0] — 2026-06-19
+
+### Added
+- **`ds-runner` subagent** (`agents/ds-runner.md`). Offloads a DeepSeek delegation into a
+  sub-context: it picks the mode, isolates the work, **verifies it**, and returns a concise
+  result — keeping the orchestrator's context clean. It runs the worker via the `ds-*` CLIs
+  (`ds-agent` / `ds-worktree-run.sh`) over **Bash**, so the worker is always DeepSeek while
+  the agent's own (babysitter) model is chosen **per call by the orchestrator**:
+  `model="haiku"` for pure generation/analysis (the frontmatter default), `model="sonnet"`
+  for repo/code tasks needing real build/test verification or diff review.
+  - Pure generation/analysis → `ds-agent --read-only`, return the answer (no verification).
+  - Repo/code task → isolate in a git worktree, run independent checks (typecheck/build/test),
+    return a verdict + diff location; commit/merge stays with the orchestrator/human.
+
 ## [1.6.0] — 2026-06-19
 
 ### Added

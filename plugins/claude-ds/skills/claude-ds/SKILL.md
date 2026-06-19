@@ -52,6 +52,18 @@ Session directory: `${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions/<id>/`
 - `transcript.jsonl` — raw stream-json (resume/audit; **NOT read while polling**)
 - `meta.json` — prompt preview, cwd, branch, model, start/end
 
+## Offloading to the `ds-runner` subagent (keep your context clean)
+Instead of running the `ds-*` CLIs yourself and babysitting them, you can hand the whole
+delegation to the bundled **`ds-runner`** subagent. It runs/monitors/isolates/**verifies**
+the DeepSeek work in its own context and returns a short result — the management churn never
+enters yours. Pick its model by difficulty (the worker stays DeepSeek either way):
+```
+Agent(subagent_type="ds-runner", model="haiku",  prompt="<self-contained task>")  # pure gen/analysis (default)
+Agent(subagent_type="ds-runner", model="sonnet", prompt="<self-contained repo/code task>")  # needs build/test verification
+```
+Worth it for long/agentic tasks, verification, or running several in parallel. For a quick
+one-shot, just call `ds-agent` directly (the subagent's extra model layer isn't worth it).
+
 ## Run rules
 - **Always run as a background task**: Bash tool `run_in_background: true` (don't block).
 - For a **long prompt**, write the brief to a file and pass it with `-p "$(cat <brieffile>)"`.

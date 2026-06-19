@@ -129,6 +129,22 @@ claude-ds-stream --max-runtime 600 --idle-timeout 90 -p "<prompt>"
 
 > Gereksinim: `claude-ds-stream` parser için `node` ister (claude-code zaten node ortamında çalışır). Düz `claude-ds` wrapper'ı parse/session olmadan çalışmaya devam eder.
 
+## ds-runner subagent (bağlamı temiz tut)
+
+`ds-*` komutlarını kendin çalıştırıp izlemek yerine, tüm delegasyonu paketlenmiş **`ds-runner`**
+subagent'ına devredebilirsin. O; modu seçer, işi izole eder, **doğrular** (repo/kod görevinde
+build/test) ve kısa bir sonuç döndürür — yönetim gürültüsü orkestratörün bağlamına hiç girmez.
+İşçi her zaman DeepSeek'tir; subagent'ın *kendi* (babysitter) modelini orkestratör zorluğa göre
+seçer:
+
+```text
+Agent(subagent_type="ds-runner", model="haiku",  prompt="<kendine yeten görev>")   # saf üretim/analiz
+Agent(subagent_type="ds-runner", model="sonnet", prompt="<repo/kod görevi>")        # build/test doğrulaması gerekir
+```
+
+Uzun/agentic işler, doğrulama ya da paralel birden çok iş için değerli; tek-atışlık işte doğrudan
+`ds-agent` daha ucuz.
+
 ## Windows
 
 Native Windows'ta (WSL kullanmıyorsan) PowerShell varyantları devreye girer:
