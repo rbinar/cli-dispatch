@@ -40,11 +40,16 @@ if ([string]::IsNullOrEmpty($parser) -or -not (Test-Path $parser)) {
   exit 1
 }
 
+# Safe integer parse (non-numeric / null -> 0).
+function ConvertTo-Int($v) { $n = 0; if ([int]::TryParse("$v", [ref]$n)) { return $n } return 0 }
+
 # ---- parse arguments ----
 $cwd = (Get-Location).Path
 $resumeId = ""
 $prompt = $null
 $readOnly = 0
+$maxRuntime = ConvertTo-Int $env:CLAUDE_DS_MAX_RUNTIME    # seconds; 0 = no overall cap
+$idleTimeout = ConvertTo-Int $env:CLAUDE_DS_IDLE_TIMEOUT  # seconds; 0 = no idle cap
 $passArgs = @()
 # Guard value-consuming flags ($argc/$idx passed in — $args inside a function would
 # refer to the function's own args, not the script's).
@@ -63,12 +68,10 @@ while ($i -lt $argc) {
     '^(-p|--prompt)$' { Need-Val $a $i $argc; $prompt = $args[$i+1]; $i += 2; continue }
     '^--prompt=(.*)' { $prompt = $matches[1]; $i += 1; continue }
     '^--read-only$' { $readOnly = 1; $i += 1; continue }
-    '^(--max-runtime|--idle-timeout)$' {
-      # Recognized for CLI parity; enforcement (watchdog/kill-tree) is currently bash-only.
-      [Console]::Error.WriteLine("claude-ds-stream: $a is currently enforced only on bash (macOS/Linux/WSL); ignored here.")
-      $i += 2; continue
-    }
-    '^(--max-runtime|--idle-timeout)=' { $i += 1; continue }
+    '^--max-runtime$'  { Need-Val '--max-runtime' $i $argc;  $maxRuntime = ConvertTo-Int $args[$i+1]; $i += 2; continue }
+    '^--max-runtime=(.*)'  { $maxRuntime = ConvertTo-Int $matches[1]; $i += 1; continue }
+    '^--idle-timeout$' { Need-Val '--idle-timeout' $i $argc; $idleTimeout = ConvertTo-Int $args[$i+1]; $i += 2; continue }
+    '^--idle-timeout=(.*)' { $idleTimeout = ConvertTo-Int $matches[1]; $i += 1; continue }
     default        { $passArgs += $a; $i += 1 }
   }
 }
@@ -141,6 +144,50 @@ if ($resume -eq 1) { $claudeArgs += @("--resume", $sid) } else { $claudeArgs += 
 if ($readOnly -eq 1) { $claudeArgs += @("--tools", "Read,Grep,Glob") }
 if ($passArgs.Count -gt 0) { $claudeArgs += $passArgs }
 
+# Optional safety net: a background-job watchdog kills the worker (and its child tree via
+# taskkill /T /F) if it exceeds the runtime cap or stalls. We can't capture the worker's PID
+# mid-pipe in PowerShell, so the watchdog locates it by its unique --session-id value +
+# stream-json invocation in the process command line. Mirrors the bash watchdog.
+$timeoutFile = Join-Path $sessionDir '.timeout'
+Remove-Item -Force $timeoutFile -ErrorAction SilentlyContinue
+$watchJob = $null
+if ($maxRuntime -gt 0 -or $idleTimeout -gt 0) {
+  [Console]::Error.WriteLine("  guard:  max-runtime=${maxRuntime}s idle-timeout=${idleTimeout}s")
+  $watchJob = Start-Job -ScriptBlock {
+    param($sid, $sessionDir, $maxRuntime, $idleTimeout)
+    $start = Get-Date
+    $transcript = Join-Path $sessionDir 'transcript.jsonl'
+    $tf = Join-Path $sessionDir '.timeout'
+    $procId = $null
+    for ($n = 0; $n -lt 160; $n++) {
+      $p = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+           Where-Object { $_.CommandLine -and $_.CommandLine.Contains($sid) -and $_.CommandLine.Contains('stream-json') } |
+           Select-Object -First 1
+      if ($p) { $procId = $p.ProcessId; break }
+      Start-Sleep -Milliseconds 250
+    }
+    if (-not $procId) { return }
+    while (Get-Process -Id $procId -ErrorAction SilentlyContinue) {
+      Start-Sleep -Seconds 2
+      $now = Get-Date
+      if ($maxRuntime -gt 0 -and ($now - $start).TotalSeconds -ge $maxRuntime) {
+        Set-Content -Path $tf -Value "runtime ${maxRuntime}s"
+        & taskkill /PID $procId /T /F 2>$null | Out-Null
+        return
+      }
+      if ($idleTimeout -gt 0) {
+        $m = $start
+        try { $m = (Get-Item $transcript -ErrorAction Stop).LastWriteTime } catch {}
+        if (($now - $m).TotalSeconds -ge $idleTimeout) {
+          Set-Content -Path $tf -Value "idle ${idleTimeout}s"
+          & taskkill /PID $procId /T /F 2>$null | Out-Null
+          return
+        }
+      }
+    }
+  } -ArgumentList $sid, $sessionDir, $maxRuntime, $idleTimeout
+}
+
 # Run claude with its working directory set to $cwd (not just --add-dir allow-listed),
 # so relative work lands there — matching octo-ai's spawn({ cwd }). Parser/session paths
 # are absolute, so this doesn't affect where the session files are written.
@@ -148,4 +195,16 @@ Set-Location -LiteralPath $cwd
 
 # Prompt via stdin; claude stdout into the parser.
 $prompt | & claude @claudeArgs | & node $parser
-exit $LASTEXITCODE
+$rc = $LASTEXITCODE
+
+if ($watchJob) { Stop-Job $watchJob -ErrorAction SilentlyContinue; Remove-Job $watchJob -Force -ErrorAction SilentlyContinue }
+
+# Reconcile a timeout kill into the session state (mirrors the bash wrapper).
+if (Test-Path $timeoutFile) {
+  $env:CLAUDE_DS_RECON_DIR = $sessionDir
+  $env:CLAUDE_DS_RECON_ERR = "timeout: " + ((Get-Content -Raw $timeoutFile).Trim())
+  node -e "const fs=require('fs'),p=require('path');const d=process.env.CLAUDE_DS_RECON_DIR,err=process.env.CLAUDE_DS_RECON_ERR;for(const f of ['status.json','meta.json']){const fp=p.join(d,f);try{const o=JSON.parse(fs.readFileSync(fp,'utf8'));o.state='error';o.error=err;fs.writeFileSync(fp,JSON.stringify(o,null,2)+String.fromCharCode(10))}catch(e){}}"
+  Remove-Item -Force $timeoutFile -ErrorAction SilentlyContinue
+  exit 143
+}
+exit $rc

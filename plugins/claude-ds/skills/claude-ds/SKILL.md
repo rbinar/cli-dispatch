@@ -85,8 +85,9 @@ A background watchdog kills the worker (and its child processes) if it exceeds t
 runtime cap (`--max-runtime`) or stalls with no new output (`--idle-timeout`, measured from
 `transcript.jsonl` activity). Timed-out sessions are marked `state: error` with
 `error: "timeout: …"`. Env fallbacks: `CLAUDE_DS_MAX_RUNTIME`, `CLAUDE_DS_IDLE_TIMEOUT`.
-Both default off. (Enforcement is bash-only for now; the PowerShell wrapper accepts the
-flags but doesn't enforce them yet.)
+Both default off. Enforced on both wrappers — bash via a `kill_tree` watchdog, PowerShell
+via a background-job watchdog that locates the worker by its session id and kills the tree
+with `taskkill /T /F`.
 
 ## Safe operation for a real repo task (MANDATORY)
 Use the bundled helper:

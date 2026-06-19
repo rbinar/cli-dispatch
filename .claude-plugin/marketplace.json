@@ -3,12 +3,12 @@
   "name": "claude-ds",
   "description": "claude-ds — DeepSeek destekli Claude Code'u delege isci olarak calistirin",
   "owner": { "name": "rbinar", "url": "https://github.com/rbinar" },
-  "metadata": { "version": "1.5.0" },
+  "metadata": { "version": "1.5.1" },
   "plugins": [
     {
       "name": "claude-ds",
       "description": "DeepSeek destekli Claude Code'u delege isci olarak kurun ve kullanin (skill + setup/run/sessions/watch/status/balance komutlari + stream-json session takibi + read-only mod + global MCP izolasyonu + runtime/idle timeout + tasinabilir wrapper)",
-      "version": "1.5.0",
+      "version": "1.5.1",
       "category": "development",
       "keywords": ["deepseek", "delegation", "subagent", "worker"],
       "source": "./plugins/claude-ds"

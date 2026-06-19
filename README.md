@@ -120,7 +120,7 @@ claude-ds-stream --max-runtime 600 --idle-timeout 90 -p "<prompt>"
 > Timeout: bir watchdog, worker toplam süreyi (`--max-runtime`) aşarsa ya da çıktı üretmeden
 > takılırsa (`--idle-timeout`, `transcript.jsonl` aktivitesine göre) worker'ı **ve çocuk
 > süreçlerini** öldürür; session `state: error` ("timeout: …") olur. Env: `CLAUDE_DS_MAX_RUNTIME`,
-> `CLAUDE_DS_IDLE_TIMEOUT`. (Enforcement şimdilik bash/WSL'de; PowerShell flag'leri kabul eder ama henüz uygulamaz.)
+> `CLAUDE_DS_IDLE_TIMEOUT`. Her iki wrapper'da da uygulanır — bash `kill_tree` watchdog'u ile, PowerShell worker'ı session id'sinden bulup `taskkill /T /F` ile ağacıyla öldüren bir arka plan watchdog'u ile.
 
 > Gereksinim: `claude-ds-stream` parser için `node` ister (claude-code zaten node ortamında çalışır). Düz `claude-ds` wrapper'ı parse/session olmadan çalışmaya devam eder.
 
