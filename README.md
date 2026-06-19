@@ -79,14 +79,14 @@ Hepsi Claude Code içinden kullanılır (`/claude-ds:run <görev>` ya da "deepse
 
 - **Delege & doğrula** — görevi DeepSeek işçisine verir; Claude Code yürütür, canlı izler, çıktıyı doğrular. Konuşma bağlamı paylaşılmaz → görev **kendine yeten** olmalı.
 - **Session takibi (canlı izleme + resume)** — iş opak bir arka plan süreci değildir; izlenebilir ve aynı DeepSeek konuşması sürdürülebilir. → [Session takibi](#session-takibi-canlı-izleme--resume)
-- **read-only mod** — işçi dosya yazamaz / bash çalıştıramaz; saf analiz ve üretim için güvenli.
+- **`--read-only` mod** — işçi dosya yazamaz / bash çalıştıramaz; saf analiz ve üretim için güvenli.
 - **agentic + worktree izolasyonu** — gerçek repo görevleri ayrı bir git worktree'de çalışır; diff **commit'siz** bırakılır (incele → build/test → merge **sende/Claude'da**).
 - **timeout güvenlik ağı** — asılı/kaçak işçi, süre veya durgunluk limitinde (çocuk süreçleriyle birlikte) otomatik öldürülür; session `state: error` olur.
 - **global MCP izolasyonu** — işçi senin `~/.claude` MCP sunucularını (playwright, vb.) miras almaz.
 - **ds-runner subagent** — tüm delegasyonu izole bir alt-bağlama devret; yönetim gürültüsü orkestratöre girmez. → [ds-runner](#ds-runner-subagent-bağlamı-temiz-tut)
 - **Yardımcı komutlar** — `/claude-ds:sessions`, `/claude-ds:watch <id>`, `/claude-ds:status`, `/claude-ds:balance`.
 
-> ⚠️ **Varsayılan mod bir sandbox değildir.** İşçi `bypassPermissions` ile çalışır → `--dangerously-skip-permissions` olmasa bile **dosya yazabilir / bash çalıştırabilir**. Gerçek repo işini worktree'de izole et; garantili "dosya yazmaz" için read-only kullan.
+> ⚠️ **Varsayılan mod bir sandbox değildir.** İşçi `bypassPermissions` ile çalışır → `--dangerously-skip-permissions` olmasa bile **dosya yazabilir / bash çalıştırabilir**. Gerçek repo işini worktree'de izole et; garantili "dosya yazmaz" için `--read-only` kullan.
 
 ## Session takibi (canlı izleme + resume)
 
@@ -101,7 +101,7 @@ Session dizini: `${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions/<id>/`
 | `transcript.jsonl` | Ham stream-json (resume/audit; izlerken okunmaz) |
 | `meta.json` | Prompt önizlemesi, cwd, branch, model, başlangıç/bitiş |
 
-**Maliyet-odaklı izleme:** ilerleme yalnızca küçük `status.json`'dan takip edilir (`/claude-ds:watch`); ham transcript okunmaz, sıkı döngüde tail edilmez — orkestratörün her okuması token harcadığı için.
+**Maliyet-odaklı izleme:** ilerleme yalnızca küçük `status.json`'dan takip edilir (`/claude-ds:watch <id>`); ham transcript okunmaz, sıkı döngüde tail edilmez — orkestratörün her okuması token harcadığı için.
 
 > Gereksinim: session takibi/parse için `node` gerekir (claude-code zaten node ortamında çalışır).
 
