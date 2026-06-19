@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [1.5.2] — 2026-06-19
+
+### Performance
+- The parser now writes the transcript through a single held file descriptor instead of
+  re-opening the file on every line (`appendFileSync`). On a 50k-line stream this cut wall
+  time ~7× (1.08s → 0.16s) and syscall time ~15×. Correctness is unchanged — chunk-boundary
+  reassembly, split multibyte (UTF-8) characters, and resume-append were all verified
+  identical, and the idle-timeout watchdog still works (mtime updates on each write).
+
 ## [1.5.1] — 2026-06-19
 
 ### Added

@@ -16,7 +16,7 @@
 //   CLAUDE_DS_PROMPT_PREVIEW, CLAUDE_DS_CWD, CLAUDE_DS_BRANCH, CLAUDE_DS_MODEL
 //   CLAUDE_DS_RESUME        ("1" → append to transcript/progress, keep existing meta)
 
-import { appendFileSync, writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs'
+import { appendFileSync, writeFileSync, readFileSync, existsSync, mkdirSync, openSync, writeSync, closeSync } from 'node:fs'
 import path from 'node:path'
 
 const dir = process.env.CLAUDE_DS_SESSION_DIR
@@ -56,12 +56,18 @@ const writeMeta = () => { try { writeFileSync(metaFile, JSON.stringify(meta, nul
 writeMeta()
 
 if (!isResume) {
-  // New session: reset the files.
-  try { writeFileSync(transcriptFile, '') } catch { /* ignore */ }
   try { writeFileSync(progressFile, '') } catch { /* ignore */ }
 } else {
   try { appendFileSync(progressFile, `\n--- resume @ ${new Date().toISOString()} ---\n`) } catch { /* ignore */ }
 }
+
+// Keep ONE append fd open for the transcript. appendFileSync re-opens and closes the file
+// on every call (~3 syscalls/line), which dominates runtime on large streams (measured:
+// 50k lines spent ~0.9s in syscalls vs ~0.17s of actual work). writeSync to a held fd
+// still updates mtime per write, so the wrapper's idle-timeout watchdog keeps working.
+let transcriptFd = -1
+try { transcriptFd = openSync(transcriptFile, isResume ? 'a' : 'w') } catch { /* ignore */ }
+const writeTranscript = (s) => { if (transcriptFd >= 0) { try { writeSync(transcriptFd, s) } catch { /* ignore */ } } }
 
 // ---- rolling state ----
 const status = {
@@ -199,17 +205,18 @@ process.stdin.on('data', (chunk) => {
   lineBuf = lines.pop() ?? ''
   for (const line of lines) {
     if (!line.trim()) continue
-    try { appendFileSync(transcriptFile, line + '\n') } catch { /* ignore */ }
+    writeTranscript(line + '\n')
     try { handleEvent(JSON.parse(line)) } catch { /* not JSON — ignore */ }
   }
 })
 
 function finalize(code) {
   if (lineBuf.trim()) {
-    try { appendFileSync(transcriptFile, lineBuf + '\n') } catch { /* ignore */ }
+    writeTranscript(lineBuf + '\n')
     try { handleEvent(JSON.parse(lineBuf)) } catch { /* ignore */ }
     lineBuf = ''
   }
+  if (transcriptFd >= 0) { try { closeSync(transcriptFd) } catch { /* ignore */ } transcriptFd = -1 }
   flushPending()
   const out = finalText || streamedText
   status.state = out ? 'done' : (code === 0 ? 'done' : 'error')
