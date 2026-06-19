@@ -7,8 +7,14 @@
 # final text to stdout.
 #
 # Usage:
-#   claude-ds-stream [--cwd <dir>] [--resume <id>] -p "<prompt>" [extra claude flags]
+#   claude-ds-stream [--cwd <dir>] [--resume <id>] [--read-only] -p "<prompt>" [extra claude flags]
 #   echo "<prompt>" | claude-ds-stream [--cwd <dir>]
+#
+# NOTE: by default the worker runs with --permission-mode bypassPermissions (the CLI
+# can't prompt in non-interactive --print mode), so it CAN write files and run bash
+# even without --dangerously-skip-permissions. This is delegation, not a sandbox —
+# isolate real-repo work in a worktree. Pass --read-only for true read-only generation
+# (denies Write/Edit/Bash so nothing is mutated on disk).
 #
 # Session directory: ${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions/<id>/
 set -euo pipefail
@@ -48,16 +54,21 @@ CWD="$(pwd)"
 RESUME_ID=""
 PROMPT=""
 HAVE_PROMPT=0
+READ_ONLY=0
 PASS_ARGS=()
+# A value-consuming flag at the end of argv would read an unset $2 under `set -u`
+# and crash cryptically; guard each with a $# check for a friendly message.
+need_val() { [ "$2" -ge 2 ] || { echo "claude-ds-stream: $1 requires a value." >&2; exit 1; }; }
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --cwd)        CWD="$2"; shift 2;;
+    --cwd)        need_val --cwd "$#";    CWD="$2"; shift 2;;
     --cwd=*)      CWD="${1#*=}"; shift;;
-    --resume)     RESUME_ID="$2"; shift 2;;
+    --resume)     need_val --resume "$#"; RESUME_ID="$2"; shift 2;;
     --resume=*)   RESUME_ID="${1#*=}"; shift;;
-    -p|--prompt)  PROMPT="$2"; HAVE_PROMPT=1; shift 2;;
+    -p|--prompt)  need_val "$1" "$#";     PROMPT="$2"; HAVE_PROMPT=1; shift 2;;
     -p=*)         PROMPT="${1#*=}"; HAVE_PROMPT=1; shift;;
     --prompt=*)   PROMPT="${1#*=}"; HAVE_PROMPT=1; shift;;
+    --read-only)  READ_ONLY=1; shift;;
     *)            PASS_ARGS+=("$1"); shift;;
   esac
 done
@@ -102,6 +113,11 @@ CLAUDE_ARGS=(
   --include-partial-messages
   --verbose
   --permission-mode bypassPermissions
+  # Don't inherit the user's global ~/.claude MCP servers (playwright code-exec,
+  # whatsapp, gmail, jira, ...) into the delegated worker. With bypassPermissions the
+  # worker could otherwise drive ALL of them. To add MCP servers deliberately, pass
+  # --mcp-config <file> (PASS_ARGS) — strict honors that while ignoring the global set.
+  --strict-mcp-config
   --add-dir "$CWD"
 )
 if [ "$RESUME" -eq 1 ]; then
@@ -109,13 +125,23 @@ if [ "$RESUME" -eq 1 ]; then
 else
   CLAUDE_ARGS+=(--session-id "$SID")
 fi
+# --read-only: restrict the worker to a read-only tool set. --tools is RESTRICTIVE
+# (it REPLACES the built-in tool set), so Write/Edit/Bash are simply unavailable even
+# under bypassPermissions. NB: --disallowed-tools does NOT work here — bypassPermissions
+# skips the permission system that deny rules live in, so denied tools still run.
+if [ "$READ_ONLY" -eq 1 ]; then
+  CLAUDE_ARGS+=(--tools "Read,Grep,Glob")
+fi
 if [ "${#PASS_ARGS[@]}" -gt 0 ]; then
   CLAUDE_ARGS+=("${PASS_ARGS[@]}")
 fi
 
 # The prompt is passed via stdin (so variadic flags can't swallow it — octo-ai note).
+# claude runs in a subshell cd'd into $CWD so its process working directory is the
+# target dir (not just --add-dir allow-listed) — relative work lands there, matching
+# octo-ai's spawn({ cwd }). Without this, claude writes into the wrapper's cwd.
 set +e
-printf '%s' "$PROMPT" | env \
+printf '%s' "$PROMPT" | ( cd "$CWD" && env \
   ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic" \
   ANTHROPIC_AUTH_TOKEN="$DEEPSEEK_API_KEY" \
   ANTHROPIC_MODEL="${DS_MODEL:-deepseek-v4-pro}" \
@@ -123,7 +149,7 @@ printf '%s' "$PROMPT" | env \
   ANTHROPIC_DEFAULT_SONNET_MODEL="${DS_MODEL:-deepseek-v4-pro}" \
   ANTHROPIC_DEFAULT_HAIKU_MODEL="${DS_FLASH_MODEL:-deepseek-v4-flash}" \
   CLAUDE_CODE_SUBAGENT_MODEL="${DS_FLASH_MODEL:-deepseek-v4-flash}" \
-  claude "${CLAUDE_ARGS[@]}" \
+  claude "${CLAUDE_ARGS[@]}" ) \
   | CLAUDE_DS_SESSION_DIR="$SESSION_DIR" \
     CLAUDE_DS_PROMPT_PREVIEW="$(printf '%.120s' "$PROMPT")" \
     CLAUDE_DS_CWD="$CWD" \
@@ -131,7 +157,25 @@ printf '%s' "$PROMPT" | env \
     CLAUDE_DS_MODEL="$MODEL" \
     CLAUDE_DS_RESUME="$RESUME" \
     node "$PARSER"
-CLAUDE_RC=${PIPESTATUS[0]}
+# PIPESTATUS: [0]=printf, [1]=claude subshell, [2]=node parser. We want claude's exit.
+CLAUDE_RC=${PIPESTATUS[1]}
 set -e
+
+# The parser only sees stdin EOF — it can't know claude crashed (nonzero exit, bad
+# cwd, no output), so it would mark such a run "done". Reconcile here: if claude
+# failed, flag the session "error" (unless a real result was still captured).
+if [ "${CLAUDE_RC:-0}" -ne 0 ]; then
+  CLAUDE_DS_SESSION_DIR="$SESSION_DIR" CLAUDE_DS_EXIT="$CLAUDE_RC" node -e '
+    const fs = require("fs"), p = require("path")
+    const d = process.env.CLAUDE_DS_SESSION_DIR, rc = Number(process.env.CLAUDE_DS_EXIT)
+    let s = {}; try { s = JSON.parse(fs.readFileSync(p.join(d, "status.json"), "utf8")) } catch {}
+    const st = s.finalResultPreview ? (s.state || "done") : "error"
+    s.state = st; s.error = "claude exited " + rc
+    try { fs.writeFileSync(p.join(d, "status.json"), JSON.stringify(s, null, 2) + "\n") } catch {}
+    let m = {}; try { m = JSON.parse(fs.readFileSync(p.join(d, "meta.json"), "utf8")) } catch {}
+    m.state = st; m.exitCode = rc; m.error = "claude exited " + rc
+    try { fs.writeFileSync(p.join(d, "meta.json"), JSON.stringify(m, null, 2) + "\n") } catch {}
+  ' || true
+fi
 
 exit "$CLAUDE_RC"

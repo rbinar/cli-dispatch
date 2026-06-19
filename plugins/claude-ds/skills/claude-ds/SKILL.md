@@ -45,17 +45,31 @@ Session directory: `${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions/<id>/`
 - **Windows:** after setup, `claude-ds` / `claude-ds-stream` are called directly (`.cmd` shim);
   the parser `.mjs` is shared cross-platform. On macOS/Linux/WSL the `.sh` variants apply.
 
-### Mode 1 — Generation (writes no files; produces code/text/analysis)
+> **Not a sandbox by default.** The wrapper always runs with `--permission-mode
+> bypassPermissions` (the CLI can't prompt in non-interactive `--print` mode), so the
+> worker **can write files and run bash even without `--dangerously-skip-permissions`**.
+> "Generation mode" is a convention (you didn't give it a file task), not an enforced
+> sandbox. For real-repo tasks, isolate in a worktree. For guaranteed no-writes, use `--read-only`.
+
+### Mode 1 — Generation (code/text/analysis)
 ```bash
 claude-ds-stream -p "<self-contained prompt>"
 ```
 The final text goes to stdout, progress goes to the session directory. Session id on stderr.
+The worker *can* still write files if the prompt leads it to — add `--read-only` to forbid that.
+
+### Mode 1-safe — True read-only (denies Write/Edit/Bash; nothing mutated)
+```bash
+claude-ds-stream --read-only -p "<analysis/generation prompt>"
+```
+Use when the output must be text-only and the worker must not touch disk.
 
 ### Mode 2 — Full agentic (writes files + runs bash)
 ```bash
 claude-ds-stream --cwd <dir> --dangerously-skip-permissions -p "$(cat /tmp/ds-brief.txt)"
 ```
-`--dangerously-skip-permissions` means unapproved file/bash → **you MUST isolate it**.
+Writes files / runs bash → **you MUST isolate it** (worktree). (`--dangerously-skip-permissions`
+is largely redundant with the default bypassPermissions; it signals intent and matches the worktree helper.)
 
 ### Follow-up / resume (continue the same DeepSeek session)
 ```bash

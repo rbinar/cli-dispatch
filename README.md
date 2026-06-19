@@ -69,8 +69,11 @@ Gereksinim: `claude` CLI kurulu ve `~/.local/bin` PATH'te olmalı. DeepSeek key'
 Doğrudan kullanım (terminal):
 
 ```bash
-# Üretim modu (dosya yazmaz) — session-takipli, canlı izlenebilir
+# Üretim modu — session-takipli, canlı izlenebilir
 claude-ds-stream -p "Write a Python one-liner for fib(n)"
+
+# Gerçek read-only üretim (Write/Edit/Bash kapalı — diske dokunmaz)
+claude-ds-stream --read-only -p "Bu repodaki mimariyi özetle"
 
 # Hızlı tek-atış (parse/session yok)
 claude-ds -p "Write a Python one-liner for fib(n)"
@@ -78,6 +81,12 @@ claude-ds -p "Write a Python one-liner for fib(n)"
 # Tam agentic mod (dosya yazar + bash çalıştırır) — izole worktree ile
 plugins/claude-ds/scripts/ds-worktree-run.sh <repo> <branch> <brief-file>
 ```
+
+> ⚠️ **Varsayılan mod bir sandbox değildir.** Wrapper her zaman `--permission-mode
+> bypassPermissions` ile çalışır (non-interactive `--print` modunda onay sorulamaz), bu yüzden
+> işçi `--dangerously-skip-permissions` olmadan da **dosya yazabilir / bash çalıştırabilir**.
+> "Üretim modu" bir kuraldır (dosya görevi vermedin), zorunlu izolasyon değil. Gerçek repo
+> görevlerini worktree'de izole et; garantili "dosya yazmaz" için `--read-only` kullan.
 
 ## Session takibi (canlı izleme + resume)
 
