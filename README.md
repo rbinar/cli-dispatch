@@ -4,7 +4,7 @@
 
 Claude Code'un yerleşik `Agent`/subagent tool'u yalnızca Anthropic modellerini (sonnet/opus/haiku) destekler — DeepSeek'e iş veremez. `claude-ds`, Claude Code CLI'ı DeepSeek'in Anthropic-uyumlu API'siyle çalıştıran taşınabilir bir wrapper kurar; böylece görevleri DeepSeek'e **delege işçi** olarak verebilirsin.
 
-![Uploading image.png…]()
+<img width="1814" height="606" alt="image" src="https://github.com/user-attachments/assets/a0963910-1571-4d7d-93af-ec003c3090d0" />
 
 ## Kurulum
 
