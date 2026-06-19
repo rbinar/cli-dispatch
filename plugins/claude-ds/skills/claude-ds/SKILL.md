@@ -24,11 +24,27 @@ PATH, call it **directly as `claude-ds`** (no old `zsh -ic` function trick neede
   This is the only way to hand work to DeepSeek.
 - Conversation context is **not shared** → the prompt must be **self-contained**.
 
-## Two wrappers
-- **`claude-ds-stream`** (PREFERRED) — runs `claude` with stream-json, parses the output and
-  writes it to a **session directory**: live + observable + resumable.
-- **`claude-ds`** — plain env wrapper (`claude "$@"`). No parsing/session; use only for fast,
-  one-shot generation that doesn't need tracking.
+## Wrappers
+- **`ds-agent`** (SIMPLEST — subagent-style) — one synchronous command: give it a task, it
+  runs to completion, streams tool activity to stderr, and prints **only the final answer to
+  stdout**. Default agentic (may write/run in `--cwd`); `--read-only` for analysis-only.
+  Best when you just want "delegate this and give me the result" in a single call.
+- **`claude-ds-stream`** — runs `claude` with stream-json, parses output into a **session
+  directory** (live + observable + resumable). Use when you want to run in the background and
+  poll, or need the session id / `--resume` / `/claude-ds:watch` workflow.
+- **`claude-ds`** — plain env wrapper (`claude "$@"`). No parsing/session; fast one-shot only.
+
+### ds-agent — single command (subagent-style)
+```bash
+ds-agent "<task>"                     # agentic in cwd; live progress on stderr; answer on stdout
+ds-agent --read-only "<question>"     # no writes / no bash
+ds-agent --cwd <dir> "<task>"         # work in <dir> (use an isolated dir for safety)
+ds-agent --resume <id> "<follow-up>"  # continue a session
+echo "<task>" | ds-agent              # task via stdin
+```
+stdout = final answer only (safe to capture/pipe); stderr = banner + live tool activity.
+Exit code is the worker's. `-q` silences the banner/progress. It forwards
+`--max-runtime`/`--idle-timeout` to the underlying `claude-ds-stream`.
 
 Session directory: `${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions/<id>/`
 - `status.json` — compact rolling summary (**the only file to poll**: state, lastTool, toolCounts, finalResultPreview)

@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# ds-agent — call claude-ds (DeepSeek) like a subagent: ONE command, live progress, final answer.
+#
+#   ds-agent "<task>"                    # agentic in the current dir; streams tool activity; prints the answer
+#   ds-agent --read-only "<question>"    # analysis only (no writes / no bash)
+#   ds-agent --cwd <dir> "<task>"        # work in <dir>
+#   ds-agent --resume <id> "<follow-up>" # continue an existing session
+#   echo "<task>" | ds-agent             # task via stdin
+#
+# A thin SYNCHRONOUS wrapper over claude-ds-stream: it blocks until the worker is done,
+# shows tool activity live on stderr, and prints ONLY the final answer on stdout.
+# Default is agentic (the worker can write files / run bash in --cwd). Pass --read-only
+# for a no-writes run, or point --cwd at an isolated/throwaway directory.
+set -euo pipefail
+
+usage() { echo 'usage: ds-agent [--read-only] [--cwd <dir>] [--resume <id>] [--max-runtime <s>] [--idle-timeout <s>] [-q] "<task>"' >&2; }
+
+QUIET=0
+AGENTIC=1
+TASK=""
+HAVE_TASK=0
+FWD=()
+need_val() { [ "$2" -ge 2 ] || { echo "ds-agent: $1 requires a value." >&2; exit 1; }; }
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --read-only)      AGENTIC=0; FWD+=(--read-only); shift;;
+    --cwd)            need_val --cwd "$#"; FWD+=(--cwd "$2"); shift 2;;
+    --resume)         need_val --resume "$#"; FWD+=(--resume "$2"); shift 2;;
+    --max-runtime)    need_val --max-runtime "$#"; FWD+=(--max-runtime "$2"); shift 2;;
+    --idle-timeout)   need_val --idle-timeout "$#"; FWD+=(--idle-timeout "$2"); shift 2;;
+    -q|--quiet)       QUIET=1; shift;;
+    -p|--prompt)      need_val "$1" "$#"; TASK="$2"; HAVE_TASK=1; shift 2;;
+    -h|--help)        usage; exit 0;;
+    -*)               FWD+=("$1"); shift;;   # forward any other flag (e.g. --cwd=… or future flags)
+    *)                TASK="$1"; HAVE_TASK=1; shift;;
+  esac
+done
+
+if [ "$HAVE_TASK" -eq 0 ]; then
+  if [ ! -t 0 ]; then TASK="$(cat)"; else usage; exit 1; fi
+fi
+[ "$AGENTIC" -eq 1 ] && FWD+=(--dangerously-skip-permissions)
+
+# Locate claude-ds-stream (PATH, else next to this script).
+STREAM="$(command -v claude-ds-stream 2>/dev/null || true)"
+[ -z "$STREAM" ] && STREAM="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/claude-ds-stream"
+[ -x "$STREAM" ] || { echo "ds-agent: claude-ds-stream not found (run /claude-ds:setup)." >&2; exit 1; }
+
+if [ "$QUIET" -eq 0 ]; then
+  echo "▶ ds-agent → claude-ds (DeepSeek) [$([ "$AGENTIC" -eq 1 ] && echo 'agentic: may modify cwd' || echo 'read-only')]" >&2
+  export CLAUDE_DS_PROGRESS_STDERR=1   # parser mirrors tool activity to stderr (live)
+fi
+
+# Foreground/blocking. claude-ds-stream prints the final answer to stdout (+ session info /
+# live progress to stderr); we just pass its exit code through.
+set +e
+"$STREAM" "${FWD[@]}" -p "$TASK"
+rc=$?
+set -e
+exit "$rc"

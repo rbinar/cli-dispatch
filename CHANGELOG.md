@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [1.6.0] — 2026-06-19
+
+### Added
+- **`ds-agent` — single-command, subagent-style wrapper.** Give it a task and it runs to
+  completion synchronously, streams tool activity to **stderr**, and prints **only the final
+  answer to stdout** (safe to capture/pipe). Default agentic (may write/run in `--cwd`);
+  `--read-only` for analysis-only. Forwards `--cwd` / `--resume` / `--max-runtime` /
+  `--idle-timeout`; reads the task from a positional arg, `-p`, or stdin; `-q` silences the
+  banner. Installed to `~/.local/bin/ds-agent` (+ `.ps1`/`.cmd` on Windows).
+- Parser: opt-in `CLAUDE_DS_PROGRESS_STDERR=1` mirrors each progress line to stderr (used by
+  `ds-agent` for live activity), without touching stdout or changing default behavior.
+
 ## [1.5.3] — 2026-06-19
 
 ### Performance

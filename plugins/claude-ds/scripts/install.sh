@@ -17,6 +17,10 @@ mkdir -p "$LIBEXEC_DIR"
 install -m 0644 "$SCRIPT_DIR/ds-stream-parse.mjs" "$LIBEXEC_DIR/ds-stream-parse.mjs"
 echo "Installed stream wrapper -> $BIN_DIR/claude-ds-stream (parser -> $LIBEXEC_DIR/ds-stream-parse.mjs)"
 
+# Single-command, subagent-style synchronous wrapper.
+install -m 0755 "$SCRIPT_DIR/ds-agent" "$BIN_DIR/ds-agent"
+echo "Installed agent wrapper -> $BIN_DIR/ds-agent"
+
 if [ ! -f "$CONFIG" ]; then
   mkdir -p "$CONFIG_DIR"
   umask 077

@@ -27,6 +27,11 @@ New-Item -ItemType Directory -Force -Path $LibExecDir | Out-Null
 Copy-Item -Force (Join-Path $ScriptDir "ds-stream-parse.mjs") (Join-Path $LibExecDir "ds-stream-parse.mjs")
 Write-Host "Installed stream wrapper -> $BinDir\claude-ds-stream.ps1 (+ .cmd shim; parser -> $LibExecDir\ds-stream-parse.mjs)"
 
+# Single-command, subagent-style synchronous wrapper.
+Copy-Item -Force (Join-Path $ScriptDir "ds-agent.ps1") (Join-Path $BinDir "ds-agent.ps1")
+Set-Content -Path (Join-Path $BinDir "ds-agent.cmd") -Value (New-Shim "ds-agent") -Encoding ASCII
+Write-Host "Installed agent wrapper -> $BinDir\ds-agent.ps1 (+ .cmd shim)"
+
 if (-not (Test-Path $Config)) {
   New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
   @'
