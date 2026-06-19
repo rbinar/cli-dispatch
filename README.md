@@ -57,113 +57,38 @@ Gereksinim: `claude` CLI kurulu ve `~/.local/bin` PATH'te olmalı. DeepSeek key'
 
 ## Kullanım
 
-claude-ds **iki ayrı yerden** kullanılır — karıştırma. Bu README'de kod bloklarını buna göre işaretliyoruz:
+claude-ds'i **Claude Code'un içinden** kullanırsın — iki yol:
 
-- 💬 **Claude Code prompt'u** — `claude` oturumunun **içine** yazılır: `/claude-ds:*` slash komutları + `ds-runner` subagent. **Terminale yazılmaz.**
-- 🖥 **Terminal** — normal kabuk (iTerm/bash). `claude-ds`, `claude-ds-stream`, `ds-agent` CLI'ları buraya yazılır. (Claude Code de bunları Bash tool ile çalıştırabilir — ama yazımı terminal komutu yazımıdır.)
-
-### 💬 Claude Code komutları (slash — `claude` prompt'una yazılır)
+1. **Slash komutları** (aşağıdaki tablo) — `claude` oturumunun prompt'una yazılır.
+2. **Doğal dille** — "deepseek ile şunu yap", "bunu claude-ds'e delege et" dersin; skill devreye girer ve Claude Code işi yürütür.
 
 | Komut | İş |
 |-------|-----|
-| `/claude-ds:setup` | Wrapper'ları kur + config iskeleti + smoke test |
-| `/claude-ds:run <görev>` | Bir görevi claude-ds'e delege et (session-takipli) |
+| `/claude-ds:setup` | Kur + config iskeleti + smoke test |
+| `/claude-ds:run <görev>` | Bir görevi DeepSeek'e delege et (session-takipli; repo görevinde worktree izolasyonu) |
 | `/claude-ds:sessions` | Geçmiş/aktif session'ları listele |
 | `/claude-ds:watch <id>` | Bir session'ın canlı durumunu göster (maliyet-odaklı) |
 | `/claude-ds:status` | Kurulum/key/CLI durumunu kontrol et |
 | `/claude-ds:balance` | DeepSeek hesap bakiyesini göster |
 
-### Hangi aracı kullanmalı?
+## Özellikler
 
-Kurulumdan sonra `~/.local/bin`'e **üç CLI komutu** gelir — `claude-ds`, `claude-ds-stream`,
-`ds-agent`. Üçü de **hem düz terminalden hem Claude Code içinden (Bash tool)** çağrılır.
-`ds-runner` ise binary **değildir**: bir Claude Code **subagent**'ıdır, yalnızca Claude Code
-içinden `Agent` tool'uyla çağrılır.
+Hepsi Claude Code içinden kullanılır (`/claude-ds:run <görev>` ya da "deepseek ile <görev>"):
 
-| Araç | Nereden çağrılır | Ne zaman | Çıktı / takip |
-|------|------------------|----------|----------------|
-| **`ds-agent`** | Terminal **veya** Claude Code (Bash) | **En basit.** Tek komut: görevi ver, çalışsın, cevabı al (senkron). | Nihai cevap → stdout; canlı ilerleme → stderr |
-| **`claude-ds-stream`** | Terminal **veya** Claude Code (Bash) | Arka planda çalıştırıp **izlemek / resume** etmek istediğinde. | `status.json`/`progress.log` + `--resume` |
-| **`claude-ds`** | Terminal **veya** Claude Code (Bash) | Hızlı tek-atış, takip/parse gerekmiyor. | Sadece düz `claude` çıktısı |
-| **`ds-runner`** (subagent) | **Sadece Claude Code** (`Agent` tool) | Orkestratör bağlamını **temiz tutmak** + otomatik doğrulama. | Kısa, doğrulanmış sonuç |
+- **Delege & doğrula** — görevi DeepSeek işçisine verir; Claude Code yürütür, canlı izler, çıktıyı doğrular. Konuşma bağlamı paylaşılmaz → görev **kendine yeten** olmalı.
+- **Session takibi (canlı izleme + resume)** — iş opak bir arka plan süreci değildir; izlenebilir ve aynı DeepSeek konuşması sürdürülebilir. → [Session takibi](#session-takibi-canlı-izleme--resume)
+- **read-only mod** — işçi dosya yazamaz / bash çalıştıramaz; saf analiz ve üretim için güvenli.
+- **agentic + worktree izolasyonu** — gerçek repo görevleri ayrı bir git worktree'de çalışır; diff **commit'siz** bırakılır (incele → build/test → merge **sende/Claude'da**).
+- **timeout güvenlik ağı** — asılı/kaçak işçi, süre veya durgunluk limitinde (çocuk süreçleriyle birlikte) otomatik öldürülür; session `state: error` olur.
+- **global MCP izolasyonu** — işçi senin `~/.claude` MCP sunucularını (playwright, vb.) miras almaz.
+- **ds-runner subagent** — tüm delegasyonu izole bir alt-bağlama devret; yönetim gürültüsü orkestratöre girmez. → [ds-runner](#ds-runner-subagent-bağlamı-temiz-tut)
+- **Yardımcı komutlar** — `/claude-ds:sessions`, `/claude-ds:watch <id>`, `/claude-ds:status`, `/claude-ds:balance`.
 
-> ⚠️ **Varsayılan mod bir sandbox değildir.** Wrapper her zaman `--permission-mode
-> bypassPermissions` ile çalışır (non-interactive `--print` modunda onay sorulamaz), bu yüzden
-> işçi `--dangerously-skip-permissions` olmadan da **dosya yazabilir / bash çalıştırabilir**.
-> Gerçek repo görevlerini worktree'de izole et; garantili "dosya yazmaz" için `--read-only` kullan.
-
-## Örnekler
-
-> Aksi belirtilmedikçe örnekler 🖥 **terminalde** çalışır. 💬 ile işaretli bloklar Claude Code prompt'una yazılır.
-
-### 1) Hızlı soru / analiz (yazmaz) — 🖥 terminal
-```bash
-ds-agent --read-only "JWT ile session-cookie auth farkını kısa açıkla"
-ds-agent --read-only "bu repodaki mimariyi özetle"
-```
-`--read-only` → Write/Edit/Bash kapalı; sadece okur ve metin üretir. Cevap stdout'a basılır.
-
-### 2) Kod üretip dosyaya yazdırma (agentic, izole dizinde) — 🖥 terminal
-```bash
-mkdir -p /tmp/scratch && ds-agent --cwd /tmp/scratch "fizzbuzz.py oluştur, 1-15 yaz, çalıştırıp doğrula"
-```
-İzole bir dizin verdiğin için repo'na dokunmaz; `▸ Write … ✓`, `▸ Bash … ✓` adımlarını canlı görürsün.
-
-### 3) Çıktıyı yakalama / pipe'lama — 🖥 terminal
-```bash
-ds-agent --read-only -q "PostgreSQL bağlantı stringi örneği ver" > conn.txt   # -q: banner yok
-answer=$(ds-agent --read-only -q "tek satır: docker nedir")
-```
-`-q` banner/ilerlemeyi susturur; stdout **yalnızca** nihai cevabı taşır → güvenle pipe'lanır.
-
-### 4) Çok-turlu araştırma (aynı bağlamı sürdür) — 🖥 terminal
-```bash
-ds-agent --read-only "bitcoin nedir, uzun cevap"            # session id stderr'de basılır
-ds-agent --read-only --resume <session-id> "lightning network'ü açıkla"
-ds-agent --read-only --resume <session-id> "taproot nedir"
-```
-`--resume` aynı DeepSeek konuşmasına ekler; model önceki turları hatırlar.
-
-### 5) Arka planda uzun iş + canlı izleme (maliyet-odaklı)
-🖥 **Terminal** — işi başlat (session id stderr'de basılır):
-```bash
-claude-ds-stream -p "$(cat brief.txt)"
-```
-💬 **Claude Code prompt'u** — izle (slash komutları, terminale değil):
-```text
-/claude-ds:watch <session-id>     # sadece status.json + son satırlar (ucuz)
-/claude-ds:sessions               # tüm session'ları listele
-```
-
-### 6) Güvenlik ağı: timeout — 🖥 terminal
-```bash
-ds-agent --max-runtime 600 --idle-timeout 90 "büyük refactor görevi"
-```
-İş 600 sn'yi aşarsa ya da 90 sn çıktı üretmezse worker (ve çocuk süreçleri) öldürülür; session `state: error` olur.
-
-### 7) Gerçek repo görevi (worktree'de izole + sen incele/merge et)
-💬 **Claude Code prompt'u** — en temiz yol:
-```text
-/claude-ds:run auth.ts'e rate-limit ekle, testlerini de yaz
-```
-Claude Code bunu izole bir git worktree'de çalıştırır (`ds-worktree-run.sh`; bu script
-`~/.local/bin`'de **değildir**, plugin içinden çağrılır), diff'i COMMIT'siz bırakır —
-sonra sen/Claude diff → build/test → merge.
-
-### 8) Subagent'a devret (orkestratör bağlamı temiz kalsın)
-💬 **Claude Code prompt'u** — bunu **doğal dille** istersin, örn:
-> "şu görevi `ds-runner` ile yap: …" (kolaysa haiku, build/test gerekiyorsa sonnet)
-
-Bunun üzerine Claude Code arka planda şu tool çağrısını yapar (**sen `Agent(...)`'ı elle yazmazsın**):
-```text
-Agent(subagent_type="ds-runner", model="haiku",  prompt="<kendine yeten görev>")   # saf üretim/analiz
-Agent(subagent_type="ds-runner", model="sonnet", prompt="<repo/kod görevi>")        # build/test doğrulaması gerekir
-```
-Detay için aşağıdaki [ds-runner subagent](#ds-runner-subagent-bağlamı-temiz-tut) bölümüne bak.
+> ⚠️ **Varsayılan mod bir sandbox değildir.** İşçi `bypassPermissions` ile çalışır → `--dangerously-skip-permissions` olmasa bile **dosya yazabilir / bash çalıştırabilir**. Gerçek repo işini worktree'de izole et; garantili "dosya yazmaz" için read-only kullan.
 
 ## Session takibi (canlı izleme + resume)
 
-`claude-ds-stream`, delege ettiğin işi **opak bir arka plan süreci** olmaktan çıkarır: Claude Code CLI'ı `--output-format stream-json` ile çalıştırır, çıktıyı satır satır parse eder ve her görevi bir **session dizinine** yazar. Böylece DeepSeek işçisinin ne yaptığını **canlı, yapılandırılmış ve resume-edilebilir** şekilde takip edebilirsin.
+Delege edilen iş **opak bir arka plan süreci değildir**: çıktı satır satır (stream-json) parse edilip her görev bir **session dizinine** yazılır. DeepSeek işçisinin ne yaptığını `/claude-ds:sessions` ve `/claude-ds:watch <id>` ile **canlı, yapılandırılmış ve resume-edilebilir** şekilde takip edersin.
 
 Session dizini: `${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions/<id>/`
 
@@ -174,30 +99,48 @@ Session dizini: `${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions/<id>/`
 | `transcript.jsonl` | Ham stream-json (resume/audit; izlerken okunmaz) |
 | `meta.json` | Prompt önizlemesi, cwd, branch, model, başlangıç/bitiş |
 
-**Maliyet-odaklı izleme:** ilerlemeyi yalnızca küçük `status.json`'dan takip et (`/claude-ds:watch <id>`); ham transcript'i okuma, sıkı döngüde tail etme. Orkestratör (Claude Code) her okumada token harcadığı için akış bu ilkeye göre tasarlandı. (Komut örnekleri için yukarıdaki [Örnekler](#örnekler) — #4 resume, #5 izleme, #6 timeout.)
+**Maliyet-odaklı izleme:** ilerleme yalnızca küçük `status.json`'dan takip edilir (`/claude-ds:watch`); ham transcript okunmaz, sıkı döngüde tail edilmez — orkestratörün her okuması token harcadığı için.
 
-> Timeout: bir watchdog, worker toplam süreyi (`--max-runtime`) aşarsa ya da çıktı üretmeden
-> takılırsa (`--idle-timeout`, `transcript.jsonl` aktivitesine göre) worker'ı **ve çocuk
-> süreçlerini** öldürür; session `state: error` ("timeout: …") olur. Env: `CLAUDE_DS_MAX_RUNTIME`,
-> `CLAUDE_DS_IDLE_TIMEOUT`. Her iki wrapper'da da uygulanır — bash `kill_tree` watchdog'u ile, PowerShell worker'ı session id'sinden bulup `taskkill /T /F` ile ağacıyla öldüren bir arka plan watchdog'u ile.
-
-> Gereksinim: `claude-ds-stream` parser için `node` ister (claude-code zaten node ortamında çalışır). Düz `claude-ds` wrapper'ı parse/session olmadan çalışmaya devam eder.
+> Gereksinim: session takibi/parse için `node` gerekir (claude-code zaten node ortamında çalışır).
 
 ## ds-runner subagent (bağlamı temiz tut)
 
-`ds-*` komutlarını kendin çalıştırıp izlemek yerine, tüm delegasyonu paketlenmiş **`ds-runner`**
-subagent'ına devredebilirsin. O; modu seçer, işi izole eder, **doğrular** (repo/kod görevinde
-build/test) ve kısa bir sonuç döndürür — yönetim gürültüsü orkestratörün bağlamına hiç girmez.
-İşçi her zaman DeepSeek'tir; subagent'ın *kendi* (babysitter) modelini orkestratör zorluğa göre
-seçer:
+Bir delegasyonu adım adım kendin yönetmek yerine, tümünü paketlenmiş **`ds-runner`**
+subagent'ına devredebilirsin (Claude Code içinde "şu görevi ds-runner ile yap" dersin).
+O; modu seçer, işi izole eder, **doğrular** (repo/kod görevinde build/test) ve kısa bir sonuç
+döndürür — yönetim gürültüsü orkestratörün bağlamına hiç girmez. İşçi her zaman DeepSeek'tir;
+subagent'ın *kendi* (babysitter) modelini Claude Code zorluğa göre seçer (Claude Code içeride
+şu çağrıyı yapar, sen `Agent(...)`'ı elle yazmazsın):
 
 ```text
 Agent(subagent_type="ds-runner", model="haiku",  prompt="<kendine yeten görev>")   # saf üretim/analiz
 Agent(subagent_type="ds-runner", model="sonnet", prompt="<repo/kod görevi>")        # build/test doğrulaması gerekir
 ```
 
-Uzun/agentic işler, doğrulama ya da paralel birden çok iş için değerli; tek-atışlık işte doğrudan
-`ds-agent` daha ucuz.
+Uzun/agentic işler, doğrulama ya da paralel birden çok iş için değerli; tek-atışlık basit işte
+doğrudan `/claude-ds:run` yeter.
+
+## Kaputun altı (ileri düzey)
+
+Plugin, Claude Code'un **Bash ile çağırdığı** taşınabilir CLI'ları `~/.local/bin`'e kurar —
+normalde bunları **sen çağırmazsın**, Claude Code yönetir:
+
+| CLI | Ne |
+|-----|----|
+| `claude-ds` | Düz env wrapper (`claude`'u DeepSeek'e yönlendirir; parse/session yok) |
+| `claude-ds-stream` | Session-takipli varyant (stream-json parse + status/progress/transcript) |
+| `ds-agent` | Tek-komut senkron sarmalayıcı: görev → çalış → cevap (stdout); ilerleme stderr'de |
+
+İstersen terminalden de doğrudan kullanabilirsin (ör. plugin dışı script'lerde):
+
+```bash
+ds-agent --read-only "soru"             # tek komut; cevap stdout'a
+ds-agent --cwd /tmp/x "dosya üret"      # agentic, izole dizin
+claude-ds-stream --resume <id> -p "…"   # mevcut session'a devam
+```
+
+Bayraklar: `--read-only`, `--cwd <dir>`, `--resume <id>`, `--max-runtime`/`--idle-timeout`, `-q`.
+(`ds-runner` bunlardan biri **değildir** — o bir Claude Code subagent'ıdır, `~/.local/bin`'de yer almaz.)
 
 ## Windows
 
