@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [1.5.3] — 2026-06-19
+
+### Performance
+- Tool-heavy sessions: `progress.log` now uses a single held file descriptor (like the
+  transcript), and `status.json` writes are throttled to ~200ms (it's a polled snapshot;
+  `finalize` forces a final write). A 5000-tool stream went from real 0.63s / sys 0.50s to
+  real 0.07s / sys 0.02s (~9× wall, ~25× syscalls). Final state and `toolCounts` are
+  unchanged, and idle detection is unaffected (it keys off `transcript.jsonl`).
+
 ## [1.5.2] — 2026-06-19
 
 ### Performance
