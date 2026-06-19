@@ -48,6 +48,9 @@ meta = {
   lastResumedAt: isResume ? new Date().toISOString() : undefined,
   endedAt: null,
   exitCode: null,
+  // Clear any stale error from a prior (failed) run; the wrapper re-sets it on
+  // this run only if claude exits nonzero again. (undefined → omitted by JSON.stringify)
+  error: undefined,
 }
 const writeMeta = () => { try { writeFileSync(metaFile, JSON.stringify(meta, null, 2) + '\n') } catch { /* ignore */ } }
 writeMeta()

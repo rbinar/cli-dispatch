@@ -44,17 +44,25 @@ if ([string]::IsNullOrEmpty($parser) -or -not (Test-Path $parser)) {
 $cwd = (Get-Location).Path
 $resumeId = ""
 $prompt = $null
+$readOnly = 0
 $passArgs = @()
+# Guard value-consuming flags ($argc/$idx passed in — $args inside a function would
+# refer to the function's own args, not the script's).
+function Need-Val($name, $idx, $argc) {
+  if ($idx + 1 -ge $argc) { Write-Error "claude-ds-stream: $name requires a value."; exit 1 }
+}
 $i = 0
-while ($i -lt $args.Count) {
+$argc = $args.Count
+while ($i -lt $argc) {
   $a = $args[$i]
   switch -Regex ($a) {
-    '^--cwd$'      { $cwd = $args[$i+1]; $i += 2; continue }
+    '^--cwd$'      { Need-Val '--cwd' $i $argc; $cwd = $args[$i+1]; $i += 2; continue }
     '^--cwd=(.*)'  { $cwd = $matches[1]; $i += 1; continue }
-    '^--resume$'   { $resumeId = $args[$i+1]; $i += 2; continue }
+    '^--resume$'   { Need-Val '--resume' $i $argc; $resumeId = $args[$i+1]; $i += 2; continue }
     '^--resume=(.*)' { $resumeId = $matches[1]; $i += 1; continue }
-    '^(-p|--prompt)$' { $prompt = $args[$i+1]; $i += 2; continue }
+    '^(-p|--prompt)$' { Need-Val $a $i $argc; $prompt = $args[$i+1]; $i += 2; continue }
     '^--prompt=(.*)' { $prompt = $matches[1]; $i += 1; continue }
+    '^--read-only$' { $readOnly = 1; $i += 1; continue }
     default        { $passArgs += $a; $i += 1 }
   }
 }
@@ -115,10 +123,22 @@ $claudeArgs = @(
   "--include-partial-messages",
   "--verbose",
   "--permission-mode", "bypassPermissions",
+  # Don't inherit the user's global ~/.claude MCP servers into the worker; pass
+  # --mcp-config <file> to add servers deliberately (strict honors that).
+  "--strict-mcp-config",
   "--add-dir", $cwd
 )
 if ($resume -eq 1) { $claudeArgs += @("--resume", $sid) } else { $claudeArgs += @("--session-id", $sid) }
+# --read-only: restrict to a read-only tool set. --tools REPLACES the built-in set, so
+# Write/Edit/Bash are unavailable even under bypassPermissions (--disallowed-tools does
+# NOT work here — bypassPermissions skips the permission system deny rules live in).
+if ($readOnly -eq 1) { $claudeArgs += @("--tools", "Read,Grep,Glob") }
 if ($passArgs.Count -gt 0) { $claudeArgs += $passArgs }
+
+# Run claude with its working directory set to $cwd (not just --add-dir allow-listed),
+# so relative work lands there — matching octo-ai's spawn({ cwd }). Parser/session paths
+# are absolute, so this doesn't affect where the session files are written.
+Set-Location -LiteralPath $cwd
 
 # Prompt via stdin; claude stdout into the parser.
 $prompt | & claude @claudeArgs | & node $parser

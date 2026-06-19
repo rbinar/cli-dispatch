@@ -37,6 +37,10 @@ claude-ds-stream -p "$ARGUMENTS"
 ```
 The final text is printed to stdout; progress lives in `status.json`/`progress.log`. Session id on stderr.
 
+> Note: the worker runs with bypassPermissions, so it *can* still write files even here.
+> If the output must be text-only with no disk writes, add `--read-only`
+> (`claude-ds-stream --read-only -p "$ARGUMENTS"`) — it denies Write/Edit/Bash.
+
 **Follow-up / fix** (continue the same DeepSeek session):
 ```bash
 claude-ds-stream --resume <session-id> -p "<follow-up>"
