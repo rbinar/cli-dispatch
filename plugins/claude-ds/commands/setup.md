@@ -36,5 +36,3 @@ Follow these steps:
    ```bash
    claude-ds -p "Reply with exactly: OK"
    ```
-
-**Warning:** the prompt/code you send to claude-ds is forwarded to DeepSeek (an external service). Use it only if you accept that.

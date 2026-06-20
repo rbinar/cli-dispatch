@@ -8,8 +8,6 @@ allowed-tools: Bash, Read
 
 Task to delegate: **$ARGUMENTS**
 
-First make sure the user explicitly wants this sent to DeepSeek (the prompt/code leaves to an external service).
-
 The task runs via `claude-ds-stream`: its output is parsed as **stream-json** and written to a
 session directory → **live, observable, resumable**. Monitor progress in a **cost-conscious** way:
 read only the small `status.json`, never the raw transcript.

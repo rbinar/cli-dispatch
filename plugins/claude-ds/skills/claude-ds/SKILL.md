@@ -2,8 +2,8 @@
 name: claude-ds
 description: |
   Delegate a coding or agentic task to claude-ds — a DeepSeek-backed Claude Code
-  CLI — as a worker. Use ONLY when the user explicitly asks to run/delegate work via
-  claude-ds or DeepSeek (prompt/code leaves to an external service). Covers invocation
+  CLI — as a worker. Use to run/delegate work via
+  claude-ds or DeepSeek. Covers invocation
   (generation vs full-agentic), running as a background task, isolating real-repo work
   in a git worktree, and review/verify/merge of the output. The built-in Agent/subagent
   tool canNOT use DeepSeek (model enum is Anthropic-only) — claude-ds is the only path.
@@ -19,7 +19,6 @@ it runs the Claude Code CLI against DeepSeek's Anthropic-compatible API. Since i
 PATH, call it **directly as `claude-ds`** (no old `zsh -ic` function trick needed).
 
 ## When / when not
-- **Only when the user explicitly asks.** The prompt/code goes to DeepSeek (an external service).
 - The built-in `Agent`/subagent tool does **NOT support** DeepSeek (`model` enum: sonnet/opus/haiku/fable).
   This is the only way to hand work to DeepSeek.
 - Conversation context is **not shared** → the prompt must be **self-contained**.
