@@ -144,6 +144,8 @@ claude-ds-stream --resume <id> -p "…"   # mevcut session'a devam
 Bayraklar: `--read-only`, `--cwd <dir>`, `--resume <id>`, `--max-runtime`/`--idle-timeout`, `-q`.
 (`ds-runner` bunlardan biri **değildir** — o bir Claude Code subagent'ıdır, `~/.local/bin`'de yer almaz.)
 
+> 📄 Terminalden kurulum, tüm komutlar, bayraklar ve env override'larının tam referansı: [TERMINAL.md](TERMINAL.md).
+
 ## Windows
 
 Native Windows'ta (WSL kullanmıyorsan) PowerShell varyantları devreye girer:
