@@ -215,7 +215,6 @@ Environment overrides:
 ## Security notes
 
 - The API key never leaves `~/.config/claude-ds/config`. The file is mode 0600 and not committed to version control.
-- Prompts and code are sent to DeepSeek's external API (`https://api.deepseek.com/anthropic`). Treat this as any third-party service: do not send secrets, credentials, or sensitive internal data in prompts.
 - Real repo tasks should use worktree isolation via `ds-worktree-run.sh`. The worktree runs in `/tmp/ds-wt-XXXXXX` and never commits or merges automatically.
 - `--read-only` guarantees no writes: it restricts the worker to `Read`, `Grep`, and `Glob` tools only. Bash and write tools are excluded.
 - Workers run with `--strict-mcp-config` and do not inherit global MCP servers from the orchestrator's Claude Code session.
