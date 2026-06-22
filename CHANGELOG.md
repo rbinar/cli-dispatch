@@ -1,11 +1,21 @@
 # Changelog
 
-All notable changes to **claude-ds** are documented here.
+All notable changes to **cli-dispatch** (formerly **claude-ds**) are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
+
+## [2.0.0] — 2026-06-23
+
+### Changed (BREAKING)
+- **Renamed the plugin and marketplace `claude-ds` → `cli-dispatch`**, repositioning it as a multi-backend delegation hub (a task is dispatched to the right worker CLI). DeepSeek-backed Claude Code is now "the DeepSeek backend"; future worker CLIs (e.g. Antigravity `agy`) can be added as additional backends.
+- **Commands are now `ds-` prefixed** under the new namespace (the `ds-` marks the DeepSeek backend): `/claude-ds:setup` → `/cli-dispatch:ds-setup`, and likewise `ds-run`, `ds-sessions`, `ds-watch`, `ds-status`, `ds-balance`. The umbrella delegation skill `claude-ds` is now `ds-delegate`. The `ds-runner` subagent keeps its name (now under `cli-dispatch:`).
+- Repo references updated to `rbinar/cli-dispatch`; install is now `/plugin marketplace add rbinar/cli-dispatch` then `/plugin install cli-dispatch@cli-dispatch`.
+
+### Unchanged
+- The backend wrapper binaries keep their names (`claude-ds`, `claude-ds-stream`, `ds-agent`) and install paths: config `~/.config/claude-ds/config`, parser `~/.local/share/claude-ds/`, sessions `~/.cache/claude-ds/`, and the `CLAUDE_DS_*` env vars. These are backend-specific (the DeepSeek backend is named `claude-ds`), so they do not change when new backends are added.
 
 ## [1.7.2] — 2026-06-22
 

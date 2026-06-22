@@ -14,7 +14,7 @@ node <<'EOF'
 const fs = require('fs'), path = require('path')
 const root = process.env.CLAUDE_DS_SESSIONS_DIR ||
   path.join(process.env.XDG_CACHE_HOME || path.join(process.env.HOME, '.cache'), 'claude-ds', 'sessions')
-if (!fs.existsSync(root)) { console.log('(no sessions yet — start one with /claude-ds:run)'); process.exit(0) }
+if (!fs.existsSync(root)) { console.log('(no sessions yet — start one with /cli-dispatch:ds-run)'); process.exit(0) }
 const dirs = fs.readdirSync(root).filter(d => { try { return fs.statSync(path.join(root, d)).isDirectory() } catch { return false } })
 const read = (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')) } catch { return {} } }
 const rows = dirs.map(d => {
@@ -37,5 +37,5 @@ for (const r of rows) {
 EOF
 ```
 
-To see a session's detail/live status: `/claude-ds:watch <id>`.
+To see a session's detail/live status: `/cli-dispatch:ds-watch <id>`.
 To send a follow-up (continue the same session): `claude-ds-stream --resume <id> -p "<follow-up>"`.

@@ -6,7 +6,7 @@ if [ -f "$CONFIG" ]; then
   . "$CONFIG"
 fi
 if [ -z "${DEEPSEEK_API_KEY:-}" ]; then
-  echo "claude-ds: DEEPSEEK_API_KEY not set. Add it to $CONFIG (run /claude-ds:setup)." >&2
+  echo "claude-ds: DEEPSEEK_API_KEY not set. Add it to $CONFIG (run /cli-dispatch:ds-setup)." >&2
   exit 1
 fi
 exec env \

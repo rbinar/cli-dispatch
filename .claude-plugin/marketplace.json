@@ -1,17 +1,17 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "claude-ds",
-  "description": "claude-ds — DeepSeek destekli Claude Code'u delege isci olarak calistirin",
+  "name": "cli-dispatch",
+  "description": "cli-dispatch — bir gorevi uygun isci CLI'ya delege et (cok-backend hub; mevcut backend: DeepSeek destekli Claude Code)",
   "owner": { "name": "rbinar", "url": "https://github.com/rbinar" },
-  "metadata": { "version": "1.7.2" },
+  "metadata": { "version": "2.0.0" },
   "plugins": [
     {
-      "name": "claude-ds",
-      "description": "DeepSeek destekli Claude Code'u delege isci olarak kurun ve kullanin (ds-runner subagent + skill + setup/run/sessions/watch/status/balance komutlari + tek-komut ds-agent + stream-json session takibi + read-only mod + global MCP izolasyonu + runtime/idle timeout + tasinabilir wrapper)",
-      "version": "1.7.2",
+      "name": "cli-dispatch",
+      "description": "Bir gorevi uygun isci CLI'ya delege et — cok-backend delege hub'i. DeepSeek backend'i (claude-ds): ds-runner subagent + ds-* komutlari (setup/run/sessions/watch/status/balance) + tek-komut ds-agent + stream-json session takibi + read-only mod + global MCP izolasyonu + runtime/idle timeout + tasinabilir wrapper",
+      "version": "2.0.0",
       "category": "development",
-      "keywords": ["deepseek", "delegation", "subagent", "worker"],
-      "source": "./plugins/claude-ds"
+      "keywords": ["cli-dispatch", "delegation", "deepseek", "subagent", "worker"],
+      "source": "./plugins/cli-dispatch"
     }
   ]
 }

@@ -1,0 +1,11 @@
+{
+  "name": "cli-dispatch",
+  "version": "2.0.0",
+  "description": "Bir gorevi uygun isci CLI'ya delege et — cok-backend delege hub'i. Mevcut backend: DeepSeek destekli Claude Code (claude-ds). ds-runner subagent'i (babysitter+reviewer, model'i orkestrator secer), tek-komut ds-agent, stream-json session takibi (canli izleme + resume), read-only mod, global MCP izolasyonu (strict-mcp-config), runtime/idle timeout guvenlik agi, izole worktree'de tam-agentic gorevler, guvenli operasyon akisi.",
+  "author": { "name": "rbinar", "url": "https://github.com/rbinar" },
+  "homepage": "https://github.com/rbinar/cli-dispatch",
+  "repository": "https://github.com/rbinar/cli-dispatch",
+  "license": "MIT",
+  "category": "development",
+  "keywords": ["cli-dispatch", "delegation", "deepseek", "worker", "claude-code"]
+}

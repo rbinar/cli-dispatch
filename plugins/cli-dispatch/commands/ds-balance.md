@@ -10,10 +10,10 @@ Call the DeepSeek balance API with the `DEEPSEEK_API_KEY` from the config and sh
 
 ```bash
 CFG="${CLAUDE_DS_CONFIG:-$HOME/.config/claude-ds/config}"
-if [ ! -f "$CFG" ]; then echo "config: MISSING ($CFG) — run /claude-ds:setup"; exit 1; fi
+if [ ! -f "$CFG" ]; then echo "config: MISSING ($CFG) — run /cli-dispatch:ds-setup"; exit 1; fi
 # shellcheck disable=SC1090
 . "$CFG"
-if [ -z "${DEEPSEEK_API_KEY:-}" ]; then echo "key: MISSING — add it to the config (/claude-ds:setup)"; exit 1; fi
+if [ -z "${DEEPSEEK_API_KEY:-}" ]; then echo "key: MISSING — add it to the config (/cli-dispatch:ds-setup)"; exit 1; fi
 curl -sS --max-time 20 https://api.deepseek.com/user/balance \
   -H "Authorization: Bearer $DEEPSEEK_API_KEY" \
   -H "Accept: application/json"
@@ -24,7 +24,7 @@ echo
 
 ```powershell
 $cfg = Join-Path $HOME '.config/claude-ds/config'
-if (-not (Test-Path $cfg)) { 'config: MISSING — run /claude-ds:setup'; return }
+if (-not (Test-Path $cfg)) { 'config: MISSING — run /cli-dispatch:ds-setup'; return }
 $key = (Select-String -Path $cfg -Pattern 'DEEPSEEK_API_KEY="([^"]+)"').Matches.Groups[1].Value
 if (-not $key) { 'key: MISSING — add it to the config'; return }
 Invoke-RestMethod -Uri 'https://api.deepseek.com/user/balance' `

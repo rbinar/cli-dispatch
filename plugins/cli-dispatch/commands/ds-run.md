@@ -25,7 +25,7 @@ read only the small `status.json`, never the raw transcript.
      ```
    (The script uses `claude-ds-stream` internally; the session directory is printed on stderr.)
 3. **Monitor (cost-conscious):** capture the session id, occasionally check `status.json` via
-   `/claude-ds:watch <id>` (`state: running→done`). Do NOT tight-loop tail.
+   `/cli-dispatch:ds-watch <id>` (`state: running→done`). Do NOT tight-loop tail.
 4. When done, **review** the diff in the worktree (`git -C <worktree> diff`), verify independently (tsc/build/test).
 5. If all good, **you** handle git/commit/push/PR/merge; then clean up the worktree.
 
@@ -44,6 +44,6 @@ The final text is printed to stdout; progress lives in `status.json`/`progress.l
 claude-ds-stream --resume <session-id> -p "<follow-up>"
 ```
 
-To see all sessions, use `/claude-ds:sessions`.
+To see all sessions, use `/cli-dispatch:ds-sessions`.
 
 claude-ds = worker, you = reviewer/merge owner. Don't trust the output until verified.

@@ -1,5 +1,5 @@
 ---
-name: claude-ds
+name: ds-delegate
 description: |
   Delegate a coding or agentic task to claude-ds — a DeepSeek-backed Claude Code
   CLI — as a worker. Use to run/delegate work via
@@ -14,7 +14,7 @@ user-invocable: true
 
 # claude-ds — DeepSeek delegation worker
 
-`claude-ds` is a portable wrapper installed to `~/.local/bin` by `/claude-ds:setup`;
+`claude-ds` is a portable wrapper installed to `~/.local/bin` by `/cli-dispatch:ds-setup`;
 it runs the Claude Code CLI against DeepSeek's Anthropic-compatible API. Since it's on
 PATH, call it **directly as `claude-ds`** (no old `zsh -ic` function trick needed).
 
@@ -30,7 +30,7 @@ PATH, call it **directly as `claude-ds`** (no old `zsh -ic` function trick neede
   Best when you just want "delegate this and give me the result" in a single call.
 - **`claude-ds-stream`** — runs `claude` with stream-json, parses output into a **session
   directory** (live + observable + resumable). Use when you want to run in the background and
-  poll, or need the session id / `--resume` / `/claude-ds:watch` workflow.
+  poll, or need the session id / `--resume` / `/cli-dispatch:ds-watch` workflow.
 - **`claude-ds`** — plain env wrapper (`claude "$@"`). No parsing/session; fast one-shot only.
 
 ### ds-agent — single command (subagent-style)
@@ -67,7 +67,7 @@ one-shot, just call `ds-agent` directly (the subagent's extra model layer isn't 
 - **Always run as a background task**: Bash tool `run_in_background: true` (don't block).
 - For a **long prompt**, write the brief to a file and pass it with `-p "$(cat <brieffile>)"`.
 - **Cost-conscious monitoring (MANDATORY):** track progress by reading only the small `status.json`
-  (`/claude-ds:watch <id>`). Don't read the raw `transcript.jsonl`; don't tail it repeatedly in a
+  (`/cli-dispatch:ds-watch <id>`). Don't read the raw `transcript.jsonl`; don't tail it repeatedly in a
   tight loop; check once per orchestration step. When the task finishes you get re-invoked anyway.
 - **Windows:** after setup, `claude-ds` / `claude-ds-stream` are called directly (`.cmd` shim);
   the parser `.mjs` is shared cross-platform. On macOS/Linux/WSL the `.sh` variants apply.
@@ -102,7 +102,7 @@ is largely redundant with the default bypassPermissions; it signals intent and m
 ```bash
 claude-ds-stream --resume <session-id> -p "<follow-up>"
 ```
-The transcript is appended to the same session; `status.json` is updated. See sessions: `/claude-ds:sessions`.
+The transcript is appended to the same session; `status.json` is updated. See sessions: `/cli-dispatch:ds-sessions`.
 
 ### Timeouts (safety net for hung/runaway workers)
 ```bash
@@ -123,7 +123,7 @@ Use the bundled helper:
 ```
 This script: opens an isolated git worktree (origin/main), symlinks `node_modules` if present,
 runs **claude-ds-stream** in Mode 2 inside the worktree (session-tracked), and leaves the diff
-**UNCOMMITTED**. The session id is printed on stderr → watch it with `/claude-ds:watch <id>`.
+**UNCOMMITTED**. The session id is printed on stderr → watch it with `/cli-dispatch:ds-watch <id>`.
 
 Then **YOU are the reviewer:**
 1. Review the FULL diff with `git -C <worktree> status && git -C <worktree> diff` — check for
@@ -138,9 +138,9 @@ claude-ds = worker (generation/implementation), you = orchestrator + reviewer + 
 Don't trust any output until verified.
 
 ## Commands
-- `/claude-ds:setup` — install the wrappers (`claude-ds` + `claude-ds-stream` + parser) + config + smoke test.
-- `/claude-ds:run <task>` — delegate a task (worktree isolation for repo tasks, session-tracked).
-- `/claude-ds:sessions` — list past/active sessions.
-- `/claude-ds:watch <id>` — show a session's compact live status (cost-conscious).
-- `/claude-ds:status` — check installation/key/CLI status.
-- `/claude-ds:balance` — show the DeepSeek account balance.
+- `/cli-dispatch:ds-setup` — install the wrappers (`claude-ds` + `claude-ds-stream` + parser) + config + smoke test.
+- `/cli-dispatch:ds-run <task>` — delegate a task (worktree isolation for repo tasks, session-tracked).
+- `/cli-dispatch:ds-sessions` — list past/active sessions.
+- `/cli-dispatch:ds-watch <id>` — show a session's compact live status (cost-conscious).
+- `/cli-dispatch:ds-status` — check installation/key/CLI status.
+- `/cli-dispatch:ds-balance` — show the DeepSeek account balance.
