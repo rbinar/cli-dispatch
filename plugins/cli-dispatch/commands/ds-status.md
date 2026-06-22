@@ -8,8 +8,8 @@ allowed-tools: Bash
 Run the checks below (read-only; do NOT print the key VALUE):
 
 ```bash
-command -v claude-ds >/dev/null 2>&1 && echo "wrapper: installed ($(command -v claude-ds))" || echo "wrapper: MISSING (run /claude-ds:setup)"
-command -v claude-ds-stream >/dev/null 2>&1 && echo "stream wrapper: installed ($(command -v claude-ds-stream))" || echo "stream wrapper: MISSING (run /claude-ds:setup)"
+command -v claude-ds >/dev/null 2>&1 && echo "wrapper: installed ($(command -v claude-ds))" || echo "wrapper: MISSING (run /cli-dispatch:ds-setup)"
+command -v claude-ds-stream >/dev/null 2>&1 && echo "stream wrapper: installed ($(command -v claude-ds-stream))" || echo "stream wrapper: MISSING (run /cli-dispatch:ds-setup)"
 CFG="${CLAUDE_DS_CONFIG:-$HOME/.config/claude-ds/config}"
 if [ -f "$CFG" ]; then
   ( . "$CFG"; [ -n "${DEEPSEEK_API_KEY:-}" ] && echo "key: set" || echo "key: MISSING (add it to the config)" )

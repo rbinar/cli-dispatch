@@ -44,7 +44,7 @@ fi
 # Locate claude-ds-stream (PATH, else next to this script).
 STREAM="$(command -v claude-ds-stream 2>/dev/null || true)"
 [ -z "$STREAM" ] && STREAM="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/claude-ds-stream"
-[ -x "$STREAM" ] || { echo "ds-agent: claude-ds-stream not found (run /claude-ds:setup)." >&2; exit 1; }
+[ -x "$STREAM" ] || { echo "ds-agent: claude-ds-stream not found (run /cli-dispatch:ds-setup)." >&2; exit 1; }
 
 if [ "$QUIET" -eq 0 ]; then
   echo "▶ ds-agent → claude-ds (DeepSeek) [$([ "$AGENTIC" -eq 1 ] && echo 'agentic: may modify cwd' || echo 'read-only')]" >&2

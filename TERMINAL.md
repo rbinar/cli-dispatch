@@ -2,7 +2,7 @@
 
 ## Introduction
 
-`claude-ds` makes DeepSeek runnable as a delegate worker straight from the terminal. It wraps the Claude Code CLI so all model slots route through DeepSeek's Anthropic-compatible API. The architectural split: **DeepSeek is the worker** (executes tasks, writes code, runs commands); **you are the orchestrator** (review output, own git history, approve merges).
+`claude-ds` (the DeepSeek backend of the **cli-dispatch** plugin) makes DeepSeek runnable as a delegate worker straight from the terminal. It wraps the Claude Code CLI so all model slots route through DeepSeek's Anthropic-compatible API. The architectural split: **DeepSeek is the worker** (executes tasks, writes code, runs commands); **you are the orchestrator** (review output, own git history, approve merges).
 
 This document covers only the terminal-runnable commands. The four executables installed to `~/.local/bin` (`claude-ds`, `claude-ds-stream`, `ds-agent`) plus the worktree script (`ds-worktree-run.sh`) are all you need from a shell.
 
