@@ -48,7 +48,7 @@ DS_FLASH_MODEL="deepseek-v4-flash"
 # Open the config so the user can paste their key — only while the key is still
 # empty. Best-effort: never fail the install if opening doesn't work.
 # Override the opener via $env:CLAUDE_DS_EDITOR (e.g. "code").
-if ((Get-Content $Config -Raw) -match 'DEEPSEEK_API_KEY=""') {
+if ((Get-Content $Config -Raw) -cmatch 'DEEPSEEK_API_KEY=""') {
   try {
     if ($env:CLAUDE_DS_EDITOR) { Start-Process $env:CLAUDE_DS_EDITOR $Config }
     else { Start-Process notepad $Config }

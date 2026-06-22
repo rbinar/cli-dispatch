@@ -6,7 +6,10 @@ $Config = if ($env:CLAUDE_DS_CONFIG) { $env:CLAUDE_DS_CONFIG } else { Join-Path 
 $cfg = @{}
 if (Test-Path $Config) {
   Get-Content $Config | ForEach-Object {
-    if ($_ -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*"?([^"]*)"?\s*$') { $cfg[$matches[1]] = $matches[2] }
+    # -cmatch (case-sensitive): config keys are uppercase, and a case-insensitive
+    # match miscompares the 'I' in DEEPSEEK_API_KEY under tr-TR locale (dotless-i
+    # case folding => the key line never matches => "DEEPSEEK_API_KEY not set").
+    if ($_ -cmatch '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*"?([^"]*)"?\s*$') { $cfg[$matches[1]] = $matches[2] }
   }
 }
 
