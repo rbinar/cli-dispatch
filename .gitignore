@@ -2,3 +2,6 @@
 config
 .env
 *.local
+
+# Internal design notes — local only, not published
+.specs/
