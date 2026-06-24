@@ -1,168 +1,165 @@
 # cli-dispatch
 
-**Bir görevi uygun işçi CLI'ya delege eden** bir Claude Code plugin'i — çok-backend delege hub'ı. Mevcut backend: **DeepSeek destekli Claude Code** (`claude-ds`).
+> 🌐 **Languages:** **English** · [Türkçe](README.tr.md)
 
-> ℹ️ **Çok-backend delege hub'ı.** Şu an tek backend var: DeepSeek destekli Claude Code. Komutlar backend'i belirten `ds-` önekiyle gelir (`/cli-dispatch:ds-setup`, `ds-run`, …). Wrapper binary ve config yolları `claude-ds` adını korur (DeepSeek backend'inin adı) — ileride başka işçi CLI backend'leri eklenebilir.
+A Claude Code plugin that **delegates a task to the right worker CLI** — a multi-backend delegation hub. Current backend: **DeepSeek-powered Claude Code** (`claude-ds`).
 
-Claude Code'un yerleşik `Agent`/subagent tool'u yalnızca Anthropic modellerini (sonnet/opus/haiku) destekler — DeepSeek'e iş veremez. `claude-ds`, Claude Code CLI'ı DeepSeek'in Anthropic-uyumlu API'siyle çalıştıran taşınabilir bir wrapper kurar; böylece görevleri DeepSeek'e **delege işçi** olarak verebilirsin.
+> ℹ️ **Multi-backend delegation hub.** Only one backend exists today: DeepSeek-powered Claude Code. Commands carry the backend-identifying `ds-` prefix (`/cli-dispatch:ds-setup`, `ds-run`, …). The wrapper binary and config paths keep the `claude-ds` name (the DeepSeek backend's name) — other worker-CLI backends may be added later.
+
+Claude Code's built-in `Agent`/subagent tool only supports Anthropic models (sonnet/opus/haiku) — it can't hand work to DeepSeek. `claude-ds` installs a portable wrapper that runs the Claude Code CLI against DeepSeek's Anthropic-compatible API, so you can hand tasks to DeepSeek as a **delegated worker**.
+
+> 📝 **Write-up (Turkish):** [cli-dispatch: a plugin that makes Claude the boss and DeepSeek the worker](https://medium.com/@rbinar/cli-dispatch-claudea-patron-deepseek-e-i%CC%87%C5%9F%C3%A7i-rol%C3%BC-veren-bir-plugin-b232803581fc) — Medium
 
 <img width="1814" height="606" alt="image" src="https://github.com/user-attachments/assets/a0963910-1571-4d7d-93af-ec003c3090d0" />
 
-## Kurulum
+## Install
 
-> ⚠️ Bu komutlar **slash komutudur** ve **Claude Code CLI'ın içinden** çalıştırılmalıdır (normal terminal/shell'de değil). Önce `claude` yazıp Claude Code oturumunu başlat, komutları o oturumun prompt'una gir.
+> ⚠️ These commands are **slash commands** and must be run **from inside the Claude Code CLI** (not in a normal terminal/shell). First type `claude` to start a Claude Code session, then enter the commands at that session's prompt.
 
-Komutları **tek tek, sırayla** çalıştır — hepsini aynı anda yapıştırma. Her komutu gönder, sonucu bekle, sonra bir sonrakine geç:
+Run the commands **one at a time, in order** — don't paste them all at once. Send each command, wait for the result, then move to the next:
 
-**1. Adım — Marketplace'i ekle:**
+**Step 1 — Add the marketplace:**
 
 ```text
 /plugin marketplace add rbinar/cli-dispatch
 ```
 
-> Eğer "Enter marketplace source" kutusu açılırsa, o kutuya **yalnızca kaynağı** yaz (komutu değil): `rbinar/cli-dispatch`
+> If an "Enter marketplace source" box opens, type **only the source** into it (not the command): `rbinar/cli-dispatch`
 
-**2. Adım — Plugin'i kur** (marketplace eklendikten sonra):
+**Step 2 — Install the plugin** (after the marketplace is added):
 
 ```text
 /plugin install cli-dispatch@cli-dispatch
 ```
 
-> Format `plugin-adı@marketplace-adı` şeklindedir; her ikisi de `cli-dispatch` olduğu için isim tekrar eder, bu normaldir.
+> The format is `plugin-name@marketplace-name`; since both are `cli-dispatch` the name repeats, which is normal.
 
-**3. Adım — Plugin'i etkinleştir:**
+**Step 3 — Enable the plugin:**
 
-Install çıktısı `Run /reload-plugins to apply` der. Komutların (`/cli-dispatch:ds-*`) tanınması için bu adım zorunludur:
+The install output says `Run /reload-plugins to apply`. This step is required for the commands (`/cli-dispatch:ds-*`) to be recognized:
 
 ```text
 /reload-plugins
 ```
 
-> Reload sonrası hâlâ "Unknown command: /cli-dispatch:ds-setup" alıyorsan, Claude Code'u tamamen kapatıp yeniden aç. `/plugin` komutuyla `cli-dispatch`'in yüklü ve **enabled** olduğunu doğrulayabilirsin.
+> If you still get "Unknown command: /cli-dispatch:ds-setup" after reload, fully quit Claude Code and reopen it. You can verify `cli-dispatch` is installed and **enabled** with the `/plugin` command.
 
-**4. Adım — Kurulumu çalıştır** (plugin etkinleştikten sonra):
+**Step 4 — Run setup** (after the plugin is enabled):
 
 ```text
 /cli-dispatch:ds-setup
 ```
 
-`/cli-dispatch:ds-setup` wrapper'ı `~/.local/bin/claude-ds`'e kurar ve `~/.config/claude-ds/config` iskeletini oluşturur. Key hâlâ boşsa setup config dosyasını **platformun varsayılan editöründe otomatik açar** (macOS `open`, Linux `xdg-open`, WSL `explorer.exe`, Windows `notepad`). Açılan dosyada DeepSeek API key'ini **kendin** ekle:
+`/cli-dispatch:ds-setup` installs the wrapper to `~/.local/bin/claude-ds` and creates a `~/.config/claude-ds/config` skeleton. If the key is still empty, setup **automatically opens the config file in your platform's default editor** (macOS `open`, Linux `xdg-open`, WSL `explorer.exe`, Windows `notepad`). Add your DeepSeek API key **yourself** in the opened file:
 
 ```bash
 # ~/.config/claude-ds/config
-DEEPSEEK_API_KEY="sk-..."     # kendi DeepSeek key'in
+DEEPSEEK_API_KEY="sk-..."     # your own DeepSeek key
 DS_MODEL="deepseek-v4-pro"
 DS_FLASH_MODEL="deepseek-v4-flash"
 ```
 
-> Farklı bir editör istiyorsan `CLAUDE_DS_EDITOR` ortam değişkenini ayarla (ör. `CLAUDE_DS_EDITOR="code"`). Otomatik açma başarısız olursa dosyayı elle aç: `${EDITOR:-nano} ~/.config/claude-ds/config`.
+> Want a different editor? Set the `CLAUDE_DS_EDITOR` environment variable (e.g. `CLAUDE_DS_EDITOR="code"`). If auto-open fails, open the file manually: `${EDITOR:-nano} ~/.config/claude-ds/config`.
 
-Gereksinim: `claude` CLI kurulu ve `~/.local/bin` PATH'te olmalı. DeepSeek key'i: https://platform.deepseek.com/api_keys
+Requirements: the `claude` CLI installed and `~/.local/bin` on PATH. DeepSeek key: https://platform.deepseek.com/api_keys
 
-## Kullanım
+## Usage
 
-claude-ds'i **Claude Code'un içinden** kullanırsın — iki yol:
+You use claude-ds **from inside Claude Code** — two ways:
 
-1. **Slash komutları** (aşağıdaki tablo) — `claude` oturumunun prompt'una yazılır.
-2. **Doğal dille** — "deepseek ile şunu yap", "bunu claude-ds'e delege et" dersin; skill devreye girer ve Claude Code işi yürütür.
+1. **Slash commands** (table below) — typed at the `claude` session's prompt.
+2. **Natural language** — say "do this with deepseek", "delegate this to claude-ds"; the skill kicks in and Claude Code runs the work.
 
-| Komut | İş |
-|-------|-----|
-| `/cli-dispatch:ds-setup` | Kur + config iskeleti + smoke test |
-| `/cli-dispatch:ds-run <görev>` | Bir görevi DeepSeek'e delege et (session-takipli; repo görevinde worktree izolasyonu) |
-| `/cli-dispatch:ds-sessions` | Geçmiş/aktif session'ları listele |
-| `/cli-dispatch:ds-watch <id>` | Bir session'ın canlı durumunu göster (maliyet-odaklı) |
-| `/cli-dispatch:ds-status` | Kurulum/key/CLI durumunu kontrol et |
-| `/cli-dispatch:ds-balance` | DeepSeek hesap bakiyesini göster |
+| Command | What it does |
+|---------|--------------|
+| `/cli-dispatch:ds-setup` | Install + config skeleton + smoke test |
+| `/cli-dispatch:ds-run <task>` | Delegate a task to DeepSeek (session-tracked; worktree isolation for repo tasks) |
+| `/cli-dispatch:ds-sessions` | List past/active sessions |
+| `/cli-dispatch:ds-watch <id>` | Show a session's live status (cost-aware) |
+| `/cli-dispatch:ds-status` | Check install/key/CLI status |
+| `/cli-dispatch:ds-balance` | Show DeepSeek account balance |
 
-## Özellikler
+## Features
 
-Hepsi Claude Code içinden kullanılır (`/cli-dispatch:ds-run <görev>` ya da "deepseek ile <görev>"):
+All used from inside Claude Code (`/cli-dispatch:ds-run <task>` or "do <task> with deepseek"):
 
-- **Delege & doğrula** — görevi DeepSeek işçisine verir; Claude Code yürütür, canlı izler, çıktıyı doğrular. Konuşma bağlamı paylaşılmaz → görev **kendine yeten** olmalı.
-- **Session takibi (canlı izleme + resume)** — iş opak bir arka plan süreci değildir; izlenebilir ve aynı DeepSeek konuşması sürdürülebilir. → [Session takibi](#session-takibi-canlı-izleme--resume)
-- **`--read-only` mod** — işçi dosya yazamaz / bash çalıştıramaz; saf analiz ve üretim için güvenli.
-- **agentic + worktree izolasyonu** — gerçek repo görevleri ayrı bir git worktree'de çalışır; diff **commit'siz** bırakılır (incele → build/test → merge **sende/Claude'da**).
-- **timeout güvenlik ağı** — asılı/kaçak işçi, süre veya durgunluk limitinde (çocuk süreçleriyle birlikte) otomatik öldürülür; session `state: error` olur.
-- **global MCP izolasyonu** — işçi senin `~/.claude` MCP sunucularını (playwright, vb.) miras almaz.
-- **ds-runner subagent** — tüm delegasyonu izole bir alt-bağlama devret; yönetim gürültüsü orkestratöre girmez. → [ds-runner](#ds-runner-subagent-bağlamı-temiz-tut)
-- **Yardımcı komutlar** — `/cli-dispatch:ds-sessions`, `/cli-dispatch:ds-watch <id>`, `/cli-dispatch:ds-status`, `/cli-dispatch:ds-balance`.
+- **Delegate & verify** — hands the task to a DeepSeek worker; Claude Code runs it, watches live, verifies the output. Conversation context is not shared → the task must be **self-contained**.
+- **Session tracking (live watch + resume)** — work is not an opaque background process; it's observable and the same DeepSeek conversation can be resumed. → [Session tracking](#session-tracking-live-watch--resume)
+- **`--read-only` mode** — the worker can't write files / run bash; safe for pure analysis and generation.
+- **agentic + worktree isolation** — real repo tasks run in a separate git worktree; the diff is left **uncommitted** (review → build/test → merge is **on you/Claude**).
+- **timeout safety net** — a hung/runaway worker is auto-killed (with its child processes) at a runtime or idle limit; the session goes `state: error`.
+- **global MCP isolation** — the worker does not inherit your `~/.claude` MCP servers (playwright, etc.).
+- **ds-runner subagent** — hand the whole delegation to an isolated sub-context; the management noise never enters the orchestrator. → [ds-runner](#ds-runner-subagent-keep-context-clean)
+- **Helper commands** — `/cli-dispatch:ds-sessions`, `/cli-dispatch:ds-watch <id>`, `/cli-dispatch:ds-status`, `/cli-dispatch:ds-balance`.
 
-> ⚠️ **Varsayılan mod bir sandbox değildir.** İşçi `bypassPermissions` ile çalışır → `--dangerously-skip-permissions` olmasa bile **dosya yazabilir / bash çalıştırabilir**. Gerçek repo işini worktree'de izole et; garantili "dosya yazmaz" için `--read-only` kullan.
+> ⚠️ **The default mode is not a sandbox.** The worker runs with `bypassPermissions` → it **can write files / run bash** even without `--dangerously-skip-permissions`. Isolate real repo work in a worktree; use `--read-only` for a guaranteed "won't write files".
 
-## Session takibi (canlı izleme + resume)
+## Session tracking (live watch + resume)
 
-Delege edilen iş **opak bir arka plan süreci değildir**: çıktı satır satır (stream-json) parse edilip her görev bir **session dizinine** yazılır. DeepSeek işçisinin ne yaptığını `/cli-dispatch:ds-sessions` ve `/cli-dispatch:ds-watch <id>` ile **canlı, yapılandırılmış ve resume-edilebilir** şekilde takip edersin.
+Delegated work is **not an opaque background process**: output is parsed line by line (stream-json) and each task is written to a **session directory**. You track what the DeepSeek worker is doing in a **live, structured, resumable** way via `/cli-dispatch:ds-sessions` and `/cli-dispatch:ds-watch <id>`.
 
-Session dizini: `${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions/<id>/`
+Session directory: `${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions/<id>/`
 
-| Dosya | İçerik |
-|-------|--------|
-| `status.json` | Kompakt özet (durum, son tool, tool sayıları, sonuç önizlemesi) — **izlemek için tek okunan dosya** |
-| `progress.log` | Terse insan-okur akış (`▸ Edit foo.ts`, `✓ / ✗`, kısaltılmış metin) |
-| `transcript.jsonl` | Ham stream-json (resume/audit; izlerken okunmaz) |
-| `meta.json` | Prompt önizlemesi, cwd, branch, model, başlangıç/bitiş |
+| File | Contents |
+|------|----------|
+| `status.json` | Compact summary (state, last tool, tool counts, result preview) — **the only file read to watch** |
+| `progress.log` | Terse human-readable stream (`▸ Edit foo.ts`, `✓ / ✗`, truncated text) |
+| `transcript.jsonl` | Raw stream-json (resume/audit; not read while watching) |
+| `meta.json` | Prompt preview, cwd, branch, model, start/end |
 
-**Maliyet-odaklı izleme:** ilerleme yalnızca küçük `status.json`'dan takip edilir (`/cli-dispatch:ds-watch <id>`); ham transcript okunmaz, sıkı döngüde tail edilmez — orkestratörün her okuması token harcadığı için.
+**Cost-aware watching:** progress is tracked only from the small `status.json` (`/cli-dispatch:ds-watch <id>`); the raw transcript is not read, not tailed in a tight loop — because every read by the orchestrator spends tokens.
 
-> Gereksinim: session takibi/parse için `node` gerekir (claude-code zaten node ortamında çalışır).
+> Requirement: `node` is needed for session tracking/parsing (claude-code already runs in a node environment).
 
-## ds-runner subagent (bağlamı temiz tut)
+## ds-runner subagent (keep context clean)
 
-Bir delegasyonu adım adım kendin yönetmek yerine, tümünü paketlenmiş **`ds-runner`**
-subagent'ına devredebilirsin (Claude Code içinde "şu görevi ds-runner ile yap" dersin).
-O; modu seçer, işi izole eder, **doğrular** (repo/kod görevinde build/test) ve kısa bir sonuç
-döndürür — yönetim gürültüsü orkestratörün bağlamına hiç girmez. İşçi her zaman DeepSeek'tir;
-subagent'ın *kendi* (babysitter) modelini Claude Code zorluğa göre seçer (Claude Code içeride
-şu çağrıyı yapar, sen `Agent(...)`'ı elle yazmazsın):
+Instead of managing a delegation step by step yourself, you can hand the whole thing to the packaged **`ds-runner`** subagent (inside Claude Code, say "do this task with ds-runner"). It picks the mode, isolates the work, **verifies** (build/test for repo/code tasks), and returns a short result — the management noise never enters the orchestrator's context. The worker is always DeepSeek; Claude Code picks the subagent's *own* (babysitter) model by difficulty (Claude Code makes the call below internally; you don't write `Agent(...)` by hand):
 
 ```text
-Agent(subagent_type="ds-runner", model="haiku",  prompt="<kendine yeten görev>")   # saf üretim/analiz
-Agent(subagent_type="ds-runner", model="sonnet", prompt="<repo/kod görevi>")        # build/test doğrulaması gerekir
+Agent(subagent_type="ds-runner", model="haiku",  prompt="<self-contained task>")   # pure generation/analysis
+Agent(subagent_type="ds-runner", model="sonnet", prompt="<repo/code task>")         # needs build/test verification
 ```
 
-Uzun/agentic işler, doğrulama ya da paralel birden çok iş için değerli; tek-atışlık basit işte
-doğrudan `/cli-dispatch:ds-run` yeter.
+Valuable for long/agentic work, verification, or several jobs in parallel; for a simple one-shot job `/cli-dispatch:ds-run` is enough.
 
-## Kaputun altı (ileri düzey)
+## Under the hood (advanced)
 
-Plugin, Claude Code'un **Bash ile çağırdığı** taşınabilir CLI'ları `~/.local/bin`'e kurar —
-normalde bunları **sen çağırmazsın**, Claude Code yönetir:
+The plugin installs portable CLIs that Claude Code **invokes via Bash** into `~/.local/bin` — normally **you don't call these**, Claude Code manages them:
 
-| CLI | Ne |
-|-----|----|
-| `claude-ds` | Düz env wrapper (`claude`'u DeepSeek'e yönlendirir; parse/session yok) |
-| `claude-ds-stream` | Session-takipli varyant (stream-json parse + status/progress/transcript) |
-| `ds-agent` | Tek-komut senkron sarmalayıcı: görev → çalış → cevap (stdout); ilerleme stderr'de |
+| CLI | What |
+|-----|------|
+| `claude-ds` | Plain env wrapper (points `claude` at DeepSeek; no parse/session) |
+| `claude-ds-stream` | Session-tracked variant (stream-json parse + status/progress/transcript) |
+| `ds-agent` | One-shot synchronous wrapper: task → run → answer (stdout); progress on stderr |
 
-İstersen terminalden de doğrudan kullanabilirsin (ör. plugin dışı script'lerde):
+If you want, you can also use them directly from the terminal (e.g. in scripts outside the plugin):
 
 ```bash
-ds-agent --read-only "soru"             # tek komut; cevap stdout'a
-ds-agent --cwd /tmp/x "dosya üret"      # agentic, izole dizin
-claude-ds-stream --resume <id> -p "…"   # mevcut session'a devam
+ds-agent --read-only "question"          # one shot; answer to stdout
+ds-agent --cwd /tmp/x "generate a file"   # agentic, isolated dir
+claude-ds-stream --resume <id> -p "…"     # continue an existing session
 ```
 
-Bayraklar: `--read-only`, `--cwd <dir>`, `--resume <id>`, `--max-runtime`/`--idle-timeout`, `-q`.
-(`ds-runner` bunlardan biri **değildir** — o bir Claude Code subagent'ıdır, `~/.local/bin`'de yer almaz.)
+Flags: `--read-only`, `--cwd <dir>`, `--resume <id>`, `--max-runtime`/`--idle-timeout`, `-q`.
+(`ds-runner` is **not** one of these — it's a Claude Code subagent, not in `~/.local/bin`.)
 
-> 📄 Terminalden kurulum, tüm komutlar, bayraklar ve env override'larının tam referansı: [TERMINAL.md](TERMINAL.md).
+> 📄 Full reference for terminal install, all commands, flags, and env overrides: [TERMINAL.md](TERMINAL.md).
 
 ## Windows
 
-Native Windows'ta (WSL kullanmıyorsan) PowerShell varyantları devreye girer:
+On native Windows (if you're not using WSL) the PowerShell variants kick in:
 
-- `/cli-dispatch:ds-setup` → `install.ps1` çalışır: `claude-ds.ps1` + `claude-ds-stream.ps1` ve `.cmd` shim'lerini `~/.local/bin`'e, stream parser'ını (`ds-stream-parse.mjs`) `~/.local/share/claude-ds`'e kurar (böylece `claude-ds` / `claude-ds-stream` cmd/PowerShell'den çağrılır), config'i `~/.config/claude-ds/config`'e yazar.
-- Repo görevleri: `ds-worktree-run.ps1` — `node_modules` için symlink yerine **junction** (`New-Item -ItemType Junction`; admin/developer-mode gerektirmez) kullanır.
-- WSL ya da Git Bash varsa Unix `.sh` scriptleri de çalışır.
+- `/cli-dispatch:ds-setup` → runs `install.ps1`: installs `claude-ds.ps1` + `claude-ds-stream.ps1` and `.cmd` shims into `~/.local/bin`, and the stream parser (`ds-stream-parse.mjs`) into `~/.local/share/claude-ds` (so `claude-ds` / `claude-ds-stream` are callable from cmd/PowerShell), and writes the config to `~/.config/claude-ds/config`.
+- Repo tasks: `ds-worktree-run.ps1` — uses a **junction** instead of a symlink for `node_modules` (`New-Item -ItemType Junction`; doesn't require admin/developer-mode).
+- If WSL or Git Bash is present, the Unix `.sh` scripts also work.
 
-Gereksinim: PowerShell 5.1+ veya pwsh 7+, ve `claude` CLI PATH'te.
+Requirements: PowerShell 5.1+ or pwsh 7+, and the `claude` CLI on PATH.
 
-## Kaldırma (Uninstall)
+## Uninstall
 
-Tam temizlik için sırayla: (1) plugin'i kaldır, (2) wrapper + config dosyalarını sil, (3) varsa geçici worktree'leri temizle.
+For a full cleanup, in order: (1) remove the plugin, (2) delete the wrapper + config files, (3) clean up any temporary worktrees.
 
-**1. Adım — Plugin'i ve marketplace'i kaldır** (Claude Code CLI içinden):
+**Step 1 — Remove the plugin and marketplace** (from inside Claude Code CLI):
 
 ```text
 /plugin uninstall cli-dispatch@cli-dispatch
@@ -170,46 +167,46 @@ Tam temizlik için sırayla: (1) plugin'i kaldır, (2) wrapper + config dosyalar
 /reload-plugins
 ```
 
-**2. Adım — Wrapper ve config dosyalarını sil:**
+**Step 2 — Delete the wrapper and config files:**
 
 ```bash
 # macOS / Linux / WSL / Git Bash
 rm -f  ~/.local/bin/claude-ds ~/.local/bin/claude-ds-stream
 rm -rf ~/.local/share/claude-ds     # stream parser (ds-stream-parse.mjs)
-rm -rf ~/.cache/claude-ds           # session kayıtları (status/progress/transcript)
-rm -rf ~/.config/claude-ds          # config (API key dahil) burada — silinince key de gider
+rm -rf ~/.cache/claude-ds           # session records (status/progress/transcript)
+rm -rf ~/.config/claude-ds          # config (incl. API key) lives here — deleting it removes the key too
 ```
 
 ```powershell
 # Native Windows (PowerShell)
 Remove-Item -Force "$HOME\.local\bin\claude-ds.ps1","$HOME\.local\bin\claude-ds.cmd","$HOME\.local\bin\claude-ds-stream.ps1","$HOME\.local\bin\claude-ds-stream.cmd" -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force "$HOME\.local\share\claude-ds" -ErrorAction SilentlyContinue   # stream parser
-Remove-Item -Recurse -Force "$HOME\.cache\claude-ds" -ErrorAction SilentlyContinue          # session kayıtları
+Remove-Item -Recurse -Force "$HOME\.cache\claude-ds" -ErrorAction SilentlyContinue          # session records
 Remove-Item -Recurse -Force "$HOME\.config\claude-ds" -ErrorAction SilentlyContinue
 ```
 
-**3. Adım — (Opsiyonel) geçici worktree'leri temizle:**
+**Step 3 — (Optional) clean up temporary worktrees:**
 
-`/cli-dispatch:ds-run` veya `ds-worktree-run.sh` kullandıysan ayrı git worktree'ler kalmış olabilir. İlgili repoda kontrol et:
+If you used `/cli-dispatch:ds-run` or `ds-worktree-run.sh`, separate git worktrees may remain. Check in the relevant repo:
 
 ```bash
-git worktree list          # claude-ds'in açtığı worktree'leri gör
-git worktree remove <yol>  # gereksizleri kaldır
-git worktree prune         # ölü kayıtları temizle
+git worktree list          # see worktrees claude-ds opened
+git worktree remove <path> # remove the ones you don't need
+git worktree prune         # clean up dead records
 ```
 
-> Not: PATH'e `~/.local/bin`'i bu plugin için elle eklediysen ve başka bir şey kullanmıyorsan, shell profilinden (`~/.zshrc`, `~/.bashrc` vb.) o satırı da kaldırabilirsin. DeepSeek hesabındaki API key'i iptal etmek istersen https://platform.deepseek.com/api_keys üzerinden sil.
+> Note: if you manually added `~/.local/bin` to PATH for this plugin and use nothing else from it, you can also remove that line from your shell profile (`~/.zshrc`, `~/.bashrc`, etc.). To revoke the API key on your DeepSeek account, delete it at https://platform.deepseek.com/api_keys.
 
-## Güvenlik ve veri
+## Security and data
 
-- **API key makineden çıkmaz:** key `~/.config/claude-ds/config` içinde (0600, repo dışında) tutulur ve **asla commit edilmez**. Plugin/skill key'i hiçbir yere yazmaz; sen eklersin.
-- **Veri egress:** claude-ds'e verdiğin **prompt ve kod DeepSeek'e (harici servis) gönderilir.** Yalnızca bunu kabul ediyorsan kullan.
-- **İzole çalışma:** gerçek repo görevleri `ds-worktree-run.sh` ile ayrı git worktree'de çalışır; `--dangerously-skip-permissions` ana checkout'a/diğer branch'lere dokunmaz. Üreteni inceleyip (diff + build/test) merge etmek **sana** kalır.
+- **The API key never leaves your machine:** the key lives in `~/.config/claude-ds/config` (0600, outside the repo) and is **never committed**. The plugin/skill never writes the key anywhere; you add it.
+- **Data egress:** the **prompt and code you give claude-ds are sent to DeepSeek (an external service).** Use it only if you accept that.
+- **Isolated work:** real repo tasks run in a separate git worktree via `ds-worktree-run.sh`; `--dangerously-skip-permissions` doesn't touch the main checkout/other branches. Reviewing the output (diff + build/test) and merging is **up to you**.
 
-## Mimari rol
+## Architectural role
 
-`claude-ds` = işçi (DeepSeek üretimi/uygulaması). Sen (Claude Code, Anthropic) = orkestratör + reviewer + git/merge sahibi.
+`claude-ds` = the worker (DeepSeek generation/implementation). You (Claude Code, Anthropic) = orchestrator + reviewer + git/merge owner.
 
-## Lisans
+## License
 
-MIT — bkz. [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).
