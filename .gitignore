@@ -5,3 +5,6 @@ config
 
 # Internal design notes — local only, not published
 .specs/
+
+# vhs demo source — local only; the rendered assets/demo.gif is what ships
+*.tape
