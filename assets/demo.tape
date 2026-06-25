@@ -1,64 +1,46 @@
-# cli-dispatch demo — vhs tape (mock / key-free, deterministic)
+# cli-dispatch demo — vhs tape (Claude Code CLI look, mock / key-free)
 # Render:  vhs demo.tape   ->   demo.gif
 #
-# Uses Hide/Show to define mock ds-agent / ds-status functions off-camera,
-# so the visible commands look real but need no DeepSeek key and always
-# render identically. To make a LIVE version, drop the Hide..Show block
-# and ensure ds-setup + a key are configured.
+# Simulates a Claude Code session: a tan ">" prompt, a /cli-dispatch slash
+# command, and ⏺ / └ tool-use blocks streamed line by line.
+# A DEBUG trap (extdebug) intercepts the slash command off-camera and
+# prints the mocked session, then returns non-zero to skip real execution
+# — so it renders key-free and deterministically. Outputs are faithful to
+# real ds-runner behavior.
 
 Output demo.gif
 
 Set Shell "bash"
-Set FontSize 18
-Set Width 1240
-Set Height 720
-Set Padding 26
-Set Theme "Dracula"
-Set TypingSpeed 42ms
+Set FontSize 19
+Set Width 1280
+Set Height 760
+Set Padding 28
+Set TypingSpeed 50ms
+Set WindowBar Colorful
+Set Margin 16
+Set BorderRadius 10
+Set Theme { "name": "claude-code", "background": "#1c1917", "foreground": "#e7e5e4", "cursor": "#d97757", "selection": "#44403c", "black": "#1c1917", "red": "#f87171", "green": "#4ade80", "yellow": "#fbbf24", "blue": "#60a5fa", "magenta": "#c084fc", "cyan": "#22d3ee", "white": "#e7e5e4", "brightBlack": "#78716c", "brightRed": "#f87171", "brightGreen": "#4ade80", "brightYellow": "#fbbf24", "brightBlue": "#60a5fa", "brightMagenta": "#c084fc", "brightCyan": "#22d3ee", "brightWhite": "#fafaf9" }
 
-# ---- off-camera setup: mock the CLIs + a clean prompt ----
+# ---- off-camera setup: Claude-Code-style prompt + slash-command mock ----
 Hide
-Type `export PS1='\[\e[36m\]~/demo\[\e[0m\] $ '`
+Type `PS1=$'\033[38;2;217;119;87m> \033[0m'`
 Enter
-Type `ds-status(){ printf 'claude-ds   installed  ~/.local/bin/claude-ds\nconfig      ok         ~/.config/claude-ds/config (0600)\nkey         set        DEEPSEEK_API_KEY (sk-***)\nclaude CLI  on PATH\nmodel       deepseek-v4-pro\n'; }`
+Type `A=$'\033[38;2;217;119;87m'; D=$'\033[38;5;245m'; G=$'\033[32m'; R=$'\033[0m'; __g=0`
 Enter
-Type `ds-agent(){ if [ "$1" = "--read-only" ]; then printf '\033[2m▸ worker: DeepSeek (read-only)\033[0m\n\033[2m▸ thinking…\033[0m\n3\n'; else printf '\033[2m▸ worker: DeepSeek (agentic, cwd=/tmp/demo)\033[0m\n\033[2m▸ Write hello.py\033[0m\n\033[2m✓ done\033[0m\n'; mkdir -p /tmp/demo; printf 'print("hi")\n' > /tmp/demo/hello.py; fi; }`
+Type `__cc(){ [ "$__g" = 1 ] && return 0; case "$BASH_COMMAND" in /cli-dispatch:ds-run*) __g=1; echo; printf "%s⏺%s Delegating to DeepSeek via ds-runner…\n" "$A" "$R"; sleep 0.6; echo; printf "%s⏺%s ds-runner(write hello.py + a pytest test)\n" "$A" "$R"; sleep 0.5; printf "  %s└  worker: DeepSeek (deepseek-v4-pro) · isolated git worktree%s\n" "$D" "$R"; sleep 0.45; printf "  %s└  ▸ Write hello.py%s\n" "$D" "$R"; sleep 0.45; printf "  %s└  ▸ Write test_hello.py%s\n" "$D" "$R"; sleep 0.45; printf "  %s└  %s✓ pytest: 1 passed%s\n" "$D" "$G" "$R"; sleep 0.45; printf "  %s└  done — diff left uncommitted for review%s\n" "$D" "$R"; sleep 0.6; echo; printf "%s⏺%s DeepSeek wrote hello.py and a passing test in an isolated\n" "$A" "$R"; printf "  worktree. You review the diff and merge.%s\n" "$R"; echo; __g=0; return 1;; esac; return 0; }`
+Enter
+Type `shopt -s extdebug; trap '__cc' DEBUG`
 Enter
 Type "clear"
 Enter
 Show
 
-# ---- intro ----
-Type "# cli-dispatch — hand a task to DeepSeek as a worker"
-Enter
-Sleep 1200ms
-
-# ---- status ----
-Type "ds-status"
-Enter
-Sleep 2800ms
-
-# ---- read-only delegation ----
-Type "# read-only: worker cannot write files / run bash"
-Enter
+# ---- the session ----
+Sleep 600ms
+Type "/cli-dispatch:ds-run write hello.py that prints hi, with a pytest test"
 Sleep 700ms
-Type `ds-agent --read-only "how many times does 'r' appear in strawberry?"`
 Enter
-Sleep 3000ms
+Sleep 5500ms
 
-# ---- agentic, isolated dir ----
-Type "# agentic: generate a file, runs on DeepSeek, isolated cwd"
-Enter
-Sleep 700ms
-Type `ds-agent --cwd /tmp/demo "write hello.py that prints hi"`
-Enter
-Sleep 2800ms
-
-Type "cat /tmp/demo/hello.py"
-Enter
-Sleep 2400ms
-
-# ---- closer ----
-Type "# orchestrator = Claude · worker = DeepSeek · you review + merge"
-Enter
-Sleep 3000ms
+# hold on the final frame
+Sleep 2500ms
