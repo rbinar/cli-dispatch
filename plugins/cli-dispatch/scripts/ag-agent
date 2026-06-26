@@ -3,7 +3,6 @@
 # live progress, final answer. The agy-backend twin of ds-agent.
 #
 #   ag-agent "<task>"                    # agentic in the current dir; streams tool activity; prints the answer
-#   ag-agent --read-only "<question>"    # best-effort analysis-only (agy --sandbox; see note)
 #   ag-agent --cwd <dir> "<task>"        # work in <dir>
 #   ag-agent --resume <conv-id> "<follow-up>"  # continue an existing agy conversation
 #   echo "<task>" | ag-agent             # task via stdin
@@ -11,12 +10,13 @@
 # A thin SYNCHRONOUS wrapper over ag-stream: blocks until the worker is done, shows tool
 # activity live on stderr, prints ONLY the final answer on stdout.
 #
-# NOTE on --read-only: unlike DeepSeek (claude --tools hard-restricts to read-only), agy
-# has no verified write-deny flag — --read-only maps to `agy --sandbox` (best effort). For
-# a hard no-writes guarantee, point --cwd at a throwaway/worktree directory.
+# NO read-only mode: unlike DeepSeek (claude --tools hard-restricts to read-only), agy has
+# no tool-level write-deny (--sandbox restricts the terminal, not file writes — tested). So
+# --read-only is rejected. For a no-writes guarantee, isolate via a throwaway/worktree --cwd
+# and review the diff.
 set -euo pipefail
 
-usage() { echo 'usage: ag-agent [--read-only] [--cwd <dir>] [--resume <conv-id>] [--model <m>] [--max-runtime <s>] [--idle-timeout <s>] [-q] "<task>"' >&2; }
+usage() { echo 'usage: ag-agent [--cwd <dir>] [--resume <conv-id>] [--model <m>] [--max-runtime <s>] [--idle-timeout <s>] [-q] "<task>"' >&2; }
 
 QUIET=0
 TASK=""
@@ -42,6 +42,7 @@ done
 if [ "$HAVE_TASK" -eq 0 ]; then
   if [ ! -t 0 ]; then TASK="$(cat)"; else usage; exit 1; fi
 fi
+if [ -z "${TASK//[[:space:]]/}" ]; then echo "ag-agent: empty task — nothing to delegate." >&2; exit 1; fi
 
 STREAM="$(command -v ag-stream 2>/dev/null || true)"
 [ -z "$STREAM" ] && STREAM="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ag-stream"

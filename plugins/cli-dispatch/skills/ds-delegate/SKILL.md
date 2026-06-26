@@ -147,7 +147,6 @@ changes:
 ag-agent "<task>"                     # agentic in cwd; live progress on stderr; answer on stdout
 ag-agent -q "<task>"                  # answer only on stdout (banner/progress silenced)
 ag-agent --cwd <dir> "<task>"         # work in <dir>; <dir> is registered as agy's workspace
-ag-agent --read-only "<question>"     # best-effort no-writes (agy --sandbox); see note
 ag-agent --resume <conv-id> "<follow-up>"   # continue the same agy conversation
 ag-stream --cwd <dir> -p "<task>"     # background/session-tracked variant (poll status.json)
 ```
@@ -157,8 +156,9 @@ ag-stream --cwd <dir> -p "<task>"     # background/session-tracked variant (poll
   `ag-stream` runs it under a pseudo-TTY (`script`) and **tails agy's on-disk JSONL transcript**
   for live progress + the final answer. Requires `script` (pseudo-tty) + `node`.
 - **Auth:** Google sign-in (run `agy` once) or `GEMINI_API_KEY`/`ANTIGRAVITY_API_KEY` in the config.
-- **read-only caveat:** agy lacks a verified write-deny flag; `--read-only` maps to `--sandbox`
-  (best-effort). For a hard guarantee, isolate in a throwaway/worktree `--cwd`.
+- **no read-only mode:** agy has no tool-level write-deny (`--sandbox` restricts the terminal,
+  not file writes — tested), so `--read-only` is rejected. For a no-writes guarantee, isolate
+  in a throwaway/worktree `--cwd` and review the diff.
 - **Isolation:** same worktree rule for real-repo tasks — run `ag-agent --cwd <worktree>` and
   review the diff yourself. (Worktree isolation also avoids agy's per-workspace conv-id race.)
 - **Babysitter subagent:** the `ds-runner` subagent currently targets DeepSeek; for Antigravity

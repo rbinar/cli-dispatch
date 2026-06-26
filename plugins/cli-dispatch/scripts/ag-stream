@@ -82,6 +82,11 @@ if [ "$HAVE_PROMPT" -eq 0 ]; then
     echo "ag-stream: no prompt. Use -p \"<prompt>\" or pipe via stdin." >&2; exit 1
   fi
 fi
+# Reject an empty/whitespace-only prompt: agy with `-p ""` produces no new conversation,
+# which would push discovery onto the fallback and risk attaching to a STALE conv-id.
+if [ -z "${PROMPT//[[:space:]]/}" ]; then
+  echo "ag-stream: empty prompt — nothing to delegate." >&2; exit 1
+fi
 case "$MAX_RUNTIME"  in ''|*[!0-9]*) MAX_RUNTIME=0;;  esac
 case "$IDLE_TIMEOUT" in ''|*[!0-9]*) IDLE_TIMEOUT=0;; esac
 
@@ -103,14 +108,17 @@ BRAIN="$AG_HOME/brain"
 AGY_ARGS=(-p "$PROMPT" --add-dir "$CWD")
 PT="${MAX_RUNTIME:-0}"; [ "$PT" -gt 0 ] || PT=600   # agy's own print-mode wait cap (s)
 AGY_ARGS+=(--print-timeout "${PT}s")
+# NOTE: agy has NO verified write-deny flag. `--sandbox` restricts the *terminal* but NOT
+# the internal write_to_file tool — tested: agy under --sandbox still wrote a file. So we do
+# NOT offer a read-only guarantee here (unlike the DeepSeek backend's hard --tools deny).
+# Rejecting --read-only is safer than shipping a control that silently fails to protect.
 if [ "$READ_ONLY" -eq 1 ]; then
-  # Best-effort read-only: agy has no verified write-deny tool flag like claude's
-  # --tools restriction, so --sandbox is the closest. For a hard guarantee, isolate
-  # the run in a throwaway/worktree cwd instead.
-  AGY_ARGS+=(--sandbox)
-else
-  AGY_ARGS+=(--dangerously-skip-permissions)
+  echo "ag-stream: --read-only is NOT supported on the Antigravity backend." >&2
+  echo "  agy has no tool-level write-deny (--sandbox restricts the terminal, not file writes)." >&2
+  echo "  For a no-writes guarantee, isolate the run in a throwaway/worktree --cwd and review the diff." >&2
+  exit 2
 fi
+AGY_ARGS+=(--dangerously-skip-permissions)
 [ -n "$MODEL" ] && AGY_ARGS+=(--model "$MODEL")
 RESUME=0
 if [ -n "$RESUME_ID" ]; then
@@ -135,9 +143,12 @@ run_agy_bg() { # backgrounds agy under a pty, writes its PID to $PIDFILE, output
   echo $! > "$PIDFILE"
 }
 
-# Snapshot pre-run state for conv-id discovery.
+# Snapshot pre-run state for conv-id discovery: the prior conv-id for THIS workspace, and
+# the set of existing brain/ dirs (so the fallback only ever picks a NEWLY-created one and
+# can never attach to an unrelated stale conversation).
 PRE_CID=""
 [ -f "$LC" ] && PRE_CID="$(node -e 'try{const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(m[process.argv[2]]||"")}catch{}' "$LC" "$CWD" 2>/dev/null || true)"
+PRE_BRAIN="$(ls "$BRAIN" 2>/dev/null | sort || true)"
 
 echo "ag-stream → Antigravity (agy) worker" >&2
 echo "  cwd:    $CWD" >&2
@@ -159,10 +170,15 @@ discover_cid() {
     kill -0 "$AGY_PID" 2>/dev/null || break   # agy already exited
     sleep 0.25
   done
-  # Fallback: newest brain/ subdir (belt-and-suspenders for the discovery race).
+  # Fallback (belt-and-suspenders): the NEWEST brain/ subdir that did NOT exist before we
+  # launched. Restricting to newly-created dirs prevents attaching to an unrelated stale
+  # conversation when last_conversations.json never updated (e.g. agy did nothing).
   if [ -d "$BRAIN" ]; then
-    cid="$(ls -t "$BRAIN" 2>/dev/null | head -1 || true)"
-    [ -n "$cid" ] && { printf '%s' "$cid"; return 0; }
+    local d
+    for d in $(ls -t "$BRAIN" 2>/dev/null); do
+      case $'\n'"$PRE_BRAIN"$'\n' in *$'\n'"$d"$'\n'*) continue;; esac
+      printf '%s' "$d"; return 0
+    done
   fi
   return 1
 }

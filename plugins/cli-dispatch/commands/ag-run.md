@@ -38,9 +38,10 @@ avoids agy's per-workspace conversation-id race):
 ag-agent -q "$ARGUMENTS"        # stdout = final answer only; progress in status.json/progress.log
 ```
 
-> Note on read-only: unlike DeepSeek (which hard-restricts tools), agy has no verified
-> write-deny flag — `--read-only` maps to `agy --sandbox` (best-effort). For a hard
-> no-writes guarantee, run in a throwaway/worktree `--cwd`.
+> No read-only mode: unlike DeepSeek (which hard-restricts tools to Read/Grep/Glob), agy
+> has no tool-level write-deny (`--sandbox` restricts the terminal, not file writes — tested),
+> so `--read-only` is rejected. For a no-writes guarantee, isolate in a throwaway/worktree
+> `--cwd` and review the diff (the review step is your real safety boundary anyway).
 
 **Follow-up / fix** (continue the same agy conversation):
 ```bash
