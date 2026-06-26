@@ -1,13 +1,14 @@
 ---
-description: Check the claude-ds installation status
+description: Check the cli-dispatch installation status (DeepSeek + Antigravity)
 allowed-tools: Bash
 ---
 
-# claude-ds status
+# cli-dispatch status
 
 Run the checks below (read-only; do NOT print the key VALUE):
 
 ```bash
+echo "== DeepSeek backend (claude-ds) =="
 command -v claude-ds >/dev/null 2>&1 && echo "wrapper: installed ($(command -v claude-ds))" || echo "wrapper: MISSING (run /cli-dispatch:ds-setup)"
 command -v claude-ds-stream >/dev/null 2>&1 && echo "stream wrapper: installed ($(command -v claude-ds-stream))" || echo "stream wrapper: MISSING (run /cli-dispatch:ds-setup)"
 CFG="${CLAUDE_DS_CONFIG:-$HOME/.config/claude-ds/config}"
@@ -17,7 +18,18 @@ else
   echo "config: MISSING ($CFG)"
 fi
 command -v claude >/dev/null 2>&1 && echo "claude CLI: found" || echo "claude CLI: MISSING"
-command -v node >/dev/null 2>&1 && echo "node: found (required by claude-ds-stream)" || echo "node: MISSING (claude-ds-stream needs it)"
+
+echo "== Antigravity backend (agy / Gemini) — optional =="
+command -v ag-agent >/dev/null 2>&1 && echo "wrapper: installed ($(command -v ag-agent))" || echo "wrapper: not installed (enable with /cli-dispatch:ds-setup)"
+if command -v agy >/dev/null 2>&1; then
+  echo "agy CLI: found ($(agy --version 2>/dev/null))"
+  if [ -f "$CFG" ]; then ( . "$CFG"; [ -n "${GEMINI_API_KEY:-}" ] && echo "auth: GEMINI_API_KEY set" || echo "auth: via Google sign-in (run 'agy' once if not signed in)" ); fi
+else
+  echo "agy CLI: MISSING (curl -fsSL https://antigravity.google/cli/install.sh | bash)"
+fi
+command -v script >/dev/null 2>&1 && echo "script (pseudo-tty): found" || echo "script (pseudo-tty): MISSING (ag backend needs it)"
+
+command -v node >/dev/null 2>&1 && echo "node: found (required by both stream parsers)" || echo "node: MISSING (the stream wrappers need it)"
 ```
 
 **Native Windows** (PowerShell equivalent):

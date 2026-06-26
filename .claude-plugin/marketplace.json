@@ -1,16 +1,16 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "cli-dispatch",
-  "description": "cli-dispatch — bir gorevi uygun isci CLI'ya delege et (cok-backend hub; mevcut backend: DeepSeek destekli Claude Code)",
+  "description": "cli-dispatch — bir gorevi uygun isci CLI'ya delege et (cok-backend hub; backend'ler: DeepSeek destekli Claude Code + Antigravity/Gemini)",
   "owner": { "name": "rbinar", "url": "https://github.com/rbinar" },
-  "metadata": { "version": "2.0.0" },
+  "metadata": { "version": "2.1.0" },
   "plugins": [
     {
       "name": "cli-dispatch",
-      "description": "Bir gorevi uygun isci CLI'ya delege et — cok-backend delege hub'i. DeepSeek backend'i (claude-ds): ds-runner subagent + ds-* komutlari (setup/run/sessions/watch/status/balance) + tek-komut ds-agent + stream-json session takibi + read-only mod + global MCP izolasyonu + runtime/idle timeout + tasinabilir wrapper",
-      "version": "2.0.0",
+      "description": "Bir gorevi uygun isci CLI'ya delege et — cok-backend delege hub'i. Backend'ler: DeepSeek (claude-ds) + Antigravity/Gemini (agy, ag-agent). Setup'ta backend secimi + ds-runner subagent + ds-*/ag-run komutlari + tek-komut ds-agent/ag-agent + session takibi (canli izleme + resume) + read-only mod + global MCP izolasyonu + runtime/idle timeout + worktree izolasyonu",
+      "version": "2.1.0",
       "category": "development",
-      "keywords": ["cli-dispatch", "delegation", "deepseek", "subagent", "worker"],
+      "keywords": ["cli-dispatch", "delegation", "deepseek", "antigravity", "gemini", "subagent", "worker"],
       "source": "./plugins/cli-dispatch"
     }
   ]

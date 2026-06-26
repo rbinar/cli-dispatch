@@ -2,11 +2,11 @@
 
 > 🌐 **Languages:** **English** · [Türkçe](README.tr.md)
 
-A Claude Code plugin that **delegates a task to the right worker CLI** — a multi-backend delegation hub. Current backend: **DeepSeek-powered Claude Code** (`claude-ds`).
+A Claude Code plugin that **delegates a task to the right worker CLI** — a multi-backend delegation hub. Backends: **DeepSeek-powered Claude Code** (`claude-ds`) and **Antigravity / Gemini** (`agy`, via `ag-agent`).
 
-> ℹ️ **Multi-backend delegation hub.** Only one backend exists today: DeepSeek-powered Claude Code. Commands carry the backend-identifying `ds-` prefix (`/cli-dispatch:ds-setup`, `ds-run`, …). The wrapper binary and config paths keep the `claude-ds` name (the DeepSeek backend's name) — other worker-CLI backends may be added later.
+> ℹ️ **Multi-backend delegation hub.** Two worker backends today — **DeepSeek** (commands `/cli-dispatch:ds-*`) and **Antigravity/Gemini** (`/cli-dispatch:ag-run`, wrappers `ag-agent`/`ag-stream`). You pick which to install at setup. Both write to the same session layout, so `ds-sessions`/`ds-watch` work across both. The DeepSeek wrapper/config paths keep the `claude-ds` name (that backend's name).
 
-Claude Code's built-in `Agent`/subagent tool only supports Anthropic models (sonnet/opus/haiku) — it can't hand work to DeepSeek. `claude-ds` installs a portable wrapper that runs the Claude Code CLI against DeepSeek's Anthropic-compatible API, so you can hand tasks to DeepSeek as a **delegated worker**.
+Claude Code's built-in `Agent`/subagent tool only supports Anthropic models (sonnet/opus/haiku) — it can't hand work to DeepSeek or Gemini. cli-dispatch installs portable wrappers that drive each worker CLI (Claude Code against DeepSeek's API; the Antigravity CLI for Gemini), so you can hand tasks to either as a **delegated worker**.
 
 > 📝 **Write-up (Turkish):** [cli-dispatch: a plugin that makes Claude the boss and DeepSeek the worker](https://medium.com/@rbinar/cli-dispatch-claudea-patron-deepseek-e-i%CC%87%C5%9F%C3%A7i-rol%C3%BC-veren-bir-plugin-b232803581fc) — Medium
 
@@ -50,7 +50,7 @@ The install output says `Run /reload-plugins to apply`. This step is required fo
 /cli-dispatch:ds-setup
 ```
 
-`/cli-dispatch:ds-setup` installs the wrapper to `~/.local/bin/claude-ds` and creates a `~/.config/claude-ds/config` skeleton. If the key is still empty, setup **automatically opens the config file in your platform's default editor** (macOS `open`, Linux `xdg-open`, WSL `explorer.exe`, Windows `notepad`). Add your DeepSeek API key **yourself** in the opened file:
+`/cli-dispatch:ds-setup` first **asks which worker backend(s) to install** — DeepSeek, Antigravity (Gemini), or both. For **DeepSeek** it installs the wrapper to `~/.local/bin/claude-ds` and creates a `~/.config/claude-ds/config` skeleton; if the key is still empty, setup **automatically opens the config in your platform's default editor** (macOS `open`, Linux `xdg-open`, WSL `explorer.exe`, Windows `notepad`). Add your DeepSeek API key **yourself** in the opened file:
 
 ```bash
 # ~/.config/claude-ds/config
@@ -60,6 +60,8 @@ DS_FLASH_MODEL="deepseek-v4-flash"
 ```
 
 > Want a different editor? Set the `CLAUDE_DS_EDITOR` environment variable (e.g. `CLAUDE_DS_EDITOR="code"`). If auto-open fails, open the file manually: `${EDITOR:-nano} ~/.config/claude-ds/config`.
+
+For the **Antigravity (Gemini)** backend, setup installs `ag-agent`/`ag-stream` instead. It needs the `agy` CLI (`curl -fsSL https://antigravity.google/cli/install.sh | bash`) plus `script` (pseudo-TTY) and `node`; auth is via Google sign-in (run `agy` once) or a `GEMINI_API_KEY`. Native Windows: DeepSeek only — use WSL for the Antigravity backend.
 
 Requirements: the `claude` CLI installed and `~/.local/bin` on PATH. DeepSeek key: https://platform.deepseek.com/api_keys
 
@@ -72,11 +74,12 @@ You use claude-ds **from inside Claude Code** — two ways:
 
 | Command | What it does |
 |---------|--------------|
-| `/cli-dispatch:ds-setup` | Install + config skeleton + smoke test |
-| `/cli-dispatch:ds-run <task>` | Delegate a task to DeepSeek (session-tracked; worktree isolation for repo tasks) |
-| `/cli-dispatch:ds-sessions` | List past/active sessions |
+| `/cli-dispatch:ds-setup` | Pick backend(s) + install + config skeleton + smoke test |
+| `/cli-dispatch:ds-run <task>` | Delegate a task to **DeepSeek** (session-tracked; worktree isolation for repo tasks) |
+| `/cli-dispatch:ag-run <task>` | Delegate a task to **Antigravity (Gemini)** (same workflow) |
+| `/cli-dispatch:ds-sessions` | List past/active sessions (both backends; shows a `backend` column) |
 | `/cli-dispatch:ds-watch <id>` | Show a session's live status (cost-aware) |
-| `/cli-dispatch:ds-status` | Check install/key/CLI status |
+| `/cli-dispatch:ds-status` | Check install/key/CLI status for both backends |
 | `/cli-dispatch:ds-balance` | Show DeepSeek account balance |
 
 ## Features

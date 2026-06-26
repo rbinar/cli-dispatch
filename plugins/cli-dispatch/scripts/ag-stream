@@ -1,0 +1,251 @@
+#!/usr/bin/env bash
+# ag-stream — the session-tracked Antigravity (agy / Gemini) worker, mirroring claude-ds-stream.
+#
+# agy is a DIFFERENT binary from claude (own auth/config/output). The "swap the env var"
+# trick used for DeepSeek does NOT apply. Two facts shape this wrapper (verified, agy v1.0.10):
+#   1. No --output-format json  → there is no structured stdout stream to parse.
+#   2. Non-TTY silent-drop bug   → piping agy's stdout can silently drop output (exit 0).
+# So we run agy under a pseudo-TTY (`script`) and TAIL its on-disk JSONL transcript for
+# live progress + the final answer, via ag-transcript-parse.mjs.
+#
+# Usage:
+#   ag-stream [--cwd <dir>] [--resume <conv-id>] [--read-only] [--model <m>] \
+#             [--max-runtime <s>] [--idle-timeout <s>] -p "<prompt>" [extra agy flags]
+#   echo "<prompt>" | ag-stream [--cwd <dir>]
+#
+# Session directory: ${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions/<conv-id>/
+# (same layout as claude-ds, so /cli-dispatch:ds-watch / ds-sessions work for both backends.)
+#
+# Auth: Google keyring (run `agy` once interactively to sign in) OR a key in the config
+# (GEMINI_API_KEY / ANTIGRAVITY_API_KEY). Optional AG_MODEL in the config sets --model.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+command -v agy >/dev/null 2>&1 || {
+  echo "ag-stream: 'agy' (Antigravity CLI) not found in PATH." >&2
+  echo "  install: curl -fsSL https://antigravity.google/cli/install.sh | bash" >&2
+  exit 1
+}
+command -v script >/dev/null 2>&1 || { echo "ag-stream: 'script' (pseudo-tty) not found in PATH." >&2; exit 1; }
+command -v node   >/dev/null 2>&1 || { echo "ag-stream: 'node' not found (required for the transcript parser)." >&2; exit 1; }
+
+# Optional config (shared with claude-ds). Only the Gemini-related keys are used here.
+CONFIG="${CLAUDE_DS_CONFIG:-$HOME/.config/claude-ds/config}"
+if [ -f "$CONFIG" ]; then
+  # shellcheck disable=SC1090
+  . "$CONFIG"
+fi
+
+# Resolve the parser: env > installed location > script dir.
+PARSER="${AG_PARSER:-}"
+if [ -z "$PARSER" ]; then
+  for cand in "$HOME/.local/share/claude-ds/ag-transcript-parse.mjs" "$SCRIPT_DIR/ag-transcript-parse.mjs"; do
+    [ -f "$cand" ] && { PARSER="$cand"; break; }
+  done
+fi
+[ -n "$PARSER" ] && [ -f "$PARSER" ] || { echo "ag-stream: ag-transcript-parse.mjs not found (set AG_PARSER)." >&2; exit 1; }
+
+# ---- parse arguments ----
+CWD="$(pwd)"
+RESUME_ID=""
+PROMPT=""
+HAVE_PROMPT=0
+READ_ONLY=0
+MODEL="${AG_MODEL:-}"
+MAX_RUNTIME="${AG_MAX_RUNTIME:-0}"
+IDLE_TIMEOUT="${AG_IDLE_TIMEOUT:-0}"
+PASS_ARGS=()
+need_val() { [ "$2" -ge 2 ] || { echo "ag-stream: $1 requires a value." >&2; exit 1; }; }
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --cwd)            need_val --cwd "$#";    CWD="$2"; shift 2;;
+    --cwd=*)          CWD="${1#*=}"; shift;;
+    --resume)         need_val --resume "$#"; RESUME_ID="$2"; shift 2;;
+    --resume=*)       RESUME_ID="${1#*=}"; shift;;
+    --model)          need_val --model "$#";  MODEL="$2"; shift 2;;
+    --model=*)        MODEL="${1#*=}"; shift;;
+    -p|--prompt)      need_val "$1" "$#";     PROMPT="$2"; HAVE_PROMPT=1; shift 2;;
+    -p=*)             PROMPT="${1#*=}"; HAVE_PROMPT=1; shift;;
+    --prompt=*)       PROMPT="${1#*=}"; HAVE_PROMPT=1; shift;;
+    --read-only)      READ_ONLY=1; shift;;
+    --max-runtime)    need_val --max-runtime "$#";  MAX_RUNTIME="$2"; shift 2;;
+    --max-runtime=*)  MAX_RUNTIME="${1#*=}"; shift;;
+    --idle-timeout)   need_val --idle-timeout "$#"; IDLE_TIMEOUT="$2"; shift 2;;
+    --idle-timeout=*) IDLE_TIMEOUT="${1#*=}"; shift;;
+    *)                PASS_ARGS+=("$1"); shift;;
+  esac
+done
+
+if [ "$HAVE_PROMPT" -eq 0 ]; then
+  if [ ! -t 0 ]; then PROMPT="$(cat)"; else
+    echo "ag-stream: no prompt. Use -p \"<prompt>\" or pipe via stdin." >&2; exit 1
+  fi
+fi
+case "$MAX_RUNTIME"  in ''|*[!0-9]*) MAX_RUNTIME=0;;  esac
+case "$IDLE_TIMEOUT" in ''|*[!0-9]*) IDLE_TIMEOUT=0;; esac
+
+# Export an auth key if present; otherwise rely on the Google keyring (agy sign-in).
+[ -n "${GEMINI_API_KEY:-}" ]      && export GEMINI_API_KEY
+[ -n "${ANTIGRAVITY_API_KEY:-}" ] && export ANTIGRAVITY_API_KEY
+
+# Make CWD absolute (last_conversations.json keys are absolute paths).
+CWD="$(cd "$CWD" 2>/dev/null && pwd)" || { echo "ag-stream: bad --cwd" >&2; exit 1; }
+
+AG_HOME="$HOME/.gemini/antigravity-cli"
+LC="$AG_HOME/cache/last_conversations.json"
+BRAIN="$AG_HOME/brain"
+
+# ---- build the agy command ----
+# --add-dir registers $CWD as the active workspace. WITHOUT it, agy may decide it has
+# "no active workspace" and scaffold into its own ~/.gemini scratch dir instead of $CWD,
+# which would defeat worktree isolation. (cd-ing the process into $CWD is not enough.)
+AGY_ARGS=(-p "$PROMPT" --add-dir "$CWD")
+PT="${MAX_RUNTIME:-0}"; [ "$PT" -gt 0 ] || PT=600   # agy's own print-mode wait cap (s)
+AGY_ARGS+=(--print-timeout "${PT}s")
+if [ "$READ_ONLY" -eq 1 ]; then
+  # Best-effort read-only: agy has no verified write-deny tool flag like claude's
+  # --tools restriction, so --sandbox is the closest. For a hard guarantee, isolate
+  # the run in a throwaway/worktree cwd instead.
+  AGY_ARGS+=(--sandbox)
+else
+  AGY_ARGS+=(--dangerously-skip-permissions)
+fi
+[ -n "$MODEL" ] && AGY_ARGS+=(--model "$MODEL")
+RESUME=0
+if [ -n "$RESUME_ID" ]; then
+  RESUME=1
+  AGY_ARGS+=(--conversation "$RESUME_ID")
+fi
+[ "${#PASS_ARGS[@]}" -gt 0 ] && AGY_ARGS+=("${PASS_ARGS[@]}")
+
+# ---- run agy under a pseudo-TTY (OS-specific `script` syntax) ----
+RAWLOG="$(mktemp -t ag-raw-XXXXXX)"
+PIDFILE="$(mktemp -t ag-pid-XXXXXX)"; rm -f "$PIDFILE"
+run_agy_bg() { # backgrounds agy under a pty, writes its PID to $PIDFILE, output to $RAWLOG
+  case "$(uname -s)" in
+    Darwin|*BSD)
+      ( cd "$CWD" && exec script -q /dev/null agy "${AGY_ARGS[@]}" ) >"$RAWLOG" 2>&1 &
+      ;;
+    *) # Linux/util-linux: command must be a single -c string; -e propagates exit code.
+      local q="" a; for a in agy "${AGY_ARGS[@]}"; do q+="$(printf '%q ' "$a")"; done
+      ( cd "$CWD" && exec script -qec "$q" /dev/null ) >"$RAWLOG" 2>&1 &
+      ;;
+  esac
+  echo $! > "$PIDFILE"
+}
+
+# Snapshot pre-run state for conv-id discovery.
+PRE_CID=""
+[ -f "$LC" ] && PRE_CID="$(node -e 'try{const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(m[process.argv[2]]||"")}catch{}' "$LC" "$CWD" 2>/dev/null || true)"
+
+echo "ag-stream → Antigravity (agy) worker" >&2
+echo "  cwd:    $CWD" >&2
+[ "$RESUME" -eq 1 ] && echo "  resume: $RESUME_ID" >&2
+
+run_agy_bg
+AGY_PID="$(cat "$PIDFILE" 2>/dev/null || true)"
+[ -n "$AGY_PID" ] || { echo "ag-stream: failed to launch agy." >&2; rm -f "$RAWLOG" "$PIDFILE"; exit 1; }
+
+# ---- discover the conversation-id this run created (or use the resume id) ----
+discover_cid() {
+  if [ "$RESUME" -eq 1 ]; then printf '%s' "$RESUME_ID"; return 0; fi
+  local cid="" i
+  for i in $(seq 1 120); do   # up to ~30s
+    if [ -f "$LC" ]; then
+      cid="$(node -e 'try{const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(m[process.argv[2]]||"")}catch{}' "$LC" "$CWD" 2>/dev/null || true)"
+      if [ -n "$cid" ] && [ "$cid" != "$PRE_CID" ]; then printf '%s' "$cid"; return 0; fi
+    fi
+    kill -0 "$AGY_PID" 2>/dev/null || break   # agy already exited
+    sleep 0.25
+  done
+  # Fallback: newest brain/ subdir (belt-and-suspenders for the discovery race).
+  if [ -d "$BRAIN" ]; then
+    cid="$(ls -t "$BRAIN" 2>/dev/null | head -1 || true)"
+    [ -n "$cid" ] && { printf '%s' "$cid"; return 0; }
+  fi
+  return 1
+}
+CID="$(discover_cid || true)"
+if [ -z "$CID" ]; then
+  echo "ag-stream: could not discover the agy conversation-id." >&2
+  wait "$AGY_PID" 2>/dev/null || true
+  rm -f "$RAWLOG" "$PIDFILE"
+  exit 1
+fi
+
+TRANSCRIPT="$BRAIN/$CID/.system_generated/logs/transcript_full.jsonl"
+SESSIONS_ROOT="${CLAUDE_DS_SESSIONS_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions}"
+SESSION_DIR="$SESSIONS_ROOT/$CID"
+mkdir -p "$SESSION_DIR"
+DONEFILE="$SESSION_DIR/.agy.done"; rm -f "$DONEFILE"
+BRANCH="$(git -C "$CWD" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+
+echo "  conv:   $CID" >&2
+echo "  dir:    $SESSION_DIR" >&2
+echo "  status: $SESSION_DIR/status.json" >&2
+
+# ---- watchdog (reuse claude-ds pattern): runtime cap + idle (transcript mtime) ----
+mtime_of() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null; }
+kill_tree() {
+  local pid="$1" sig="$2" child
+  for child in $(pgrep -P "$pid" 2>/dev/null); do kill_tree "$child" "$sig"; done
+  kill "$sig" "$pid" 2>/dev/null || true
+}
+TIMEOUT_REASON=""
+watchdog() {
+  local start now m
+  start=$(date +%s)
+  while kill -0 "$AGY_PID" 2>/dev/null; do
+    sleep 2
+    now=$(date +%s)
+    if [ "$MAX_RUNTIME" -gt 0 ] && [ "$((now - start))" -ge "$MAX_RUNTIME" ]; then
+      echo "runtime ${MAX_RUNTIME}s" > "$SESSION_DIR/.timeout"
+      kill_tree "$AGY_PID" -TERM; sleep 3; kill_tree "$AGY_PID" -KILL; return 0
+    fi
+    if [ "$IDLE_TIMEOUT" -gt 0 ] && [ -f "$TRANSCRIPT" ]; then
+      m="$(mtime_of "$TRANSCRIPT")"; m="${m:-$start}"
+      if [ "$((now - m))" -ge "$IDLE_TIMEOUT" ]; then
+        echo "idle ${IDLE_TIMEOUT}s" > "$SESSION_DIR/.timeout"
+        kill_tree "$AGY_PID" -TERM; sleep 3; kill_tree "$AGY_PID" -KILL; return 0
+      fi
+    fi
+  done
+}
+WATCHDOG_PID=""
+rm -f "$SESSION_DIR/.timeout"
+if [ "$MAX_RUNTIME" -gt 0 ] || [ "$IDLE_TIMEOUT" -gt 0 ]; then
+  echo "  guard:  max-runtime=${MAX_RUNTIME}s idle-timeout=${IDLE_TIMEOUT}s" >&2
+  watchdog & WATCHDOG_PID=$!
+fi
+
+# ---- start the tail parser; it prints the final answer to stdout ----
+[ "${AG_PROGRESS_STDERR:-0}" = "1" ] && export AG_PROGRESS_STDERR
+AG_SESSION_DIR="$SESSION_DIR" \
+AG_TRANSCRIPT="$TRANSCRIPT" \
+AG_DONEFILE="$DONEFILE" \
+AG_CONV_ID="$CID" \
+AG_PROMPT_PREVIEW="$(printf '%.120s' "$PROMPT")" \
+AG_CWD="$CWD" \
+AG_BRANCH="$BRANCH" \
+AG_MODEL="$MODEL" \
+AG_RESUME="$RESUME" \
+  node "$PARSER" &
+PARSER_PID=$!
+
+# ---- wait for agy, then signal the parser to finalize ----
+set +e
+wait "$AGY_PID"; AGY_RC=$?
+set -e
+[ -n "$WATCHDOG_PID" ] && kill_tree "$WATCHDOG_PID" -TERM
+
+if [ -f "$SESSION_DIR/.timeout" ]; then
+  TIMEOUT_REASON="$(cat "$SESSION_DIR/.timeout" 2>/dev/null || true)"
+  printf 'timeout: %s' "$TIMEOUT_REASON" > "$DONEFILE"
+else
+  printf '%s' "$AGY_RC" > "$DONEFILE"
+fi
+
+wait "$PARSER_PID" 2>/dev/null || true
+rm -f "$RAWLOG" "$PIDFILE" "$SESSION_DIR/.timeout"
+exit "$AGY_RC"

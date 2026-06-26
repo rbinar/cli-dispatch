@@ -1,11 +1,13 @@
 ---
-description: List claude-ds (DeepSeek) sessions
+description: List cli-dispatch worker sessions (DeepSeek + Antigravity)
 allowed-tools: Bash
 ---
 
-# claude-ds sessions
+# cli-dispatch sessions
 
-List the record of delegations started with `claude-ds-stream` (newest first).
+List the record of delegations started with `claude-ds-stream` (DeepSeek) or `ag-stream`
+(Antigravity) — both write to the same session root — newest first. The `backend` column
+shows which worker ran each.
 Cost-conscious: only the small `meta.json` + `status.json` files are read; the raw
 `transcript.jsonl` is NEVER read.
 
@@ -23,6 +25,7 @@ const rows = dirs.map(d => {
   return {
     id: d,
     state: s.state || m.state || '?',
+    backend: s.backend || m.backend || 'deepseek',
     started: m.startedAt || '',
     cwd: m.cwd || '',
     prompt: (m.promptPreview || '').replace(/\s+/g, ' ').slice(0, 60),
@@ -30,7 +33,7 @@ const rows = dirs.map(d => {
 }).sort((a, b) => (b.started || '').localeCompare(a.started || ''))
 if (!rows.length) { console.log('(no sessions yet)'); process.exit(0) }
 for (const r of rows) {
-  console.log(`${(r.state).padEnd(8)} ${r.id}  ${r.started}`)
+  console.log(`${(r.state).padEnd(8)} ${(r.backend).padEnd(11)} ${r.id}  ${r.started}`)
   console.log(`         cwd: ${r.cwd}`)
   if (r.prompt) console.log(`         "${r.prompt}"`)
 }
