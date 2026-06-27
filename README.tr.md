@@ -10,7 +10,7 @@ Claude Code'un yerleşik `Agent`/subagent tool'u yalnızca Anthropic modellerini
 
 > 📝 **Yazı:** [cli-dispatch: Claude'a patron, DeepSeek'e işçi rolü veren bir plugin](https://medium.com/@rbinar/cli-dispatch-claudea-patron-deepseek-e-i%CC%87%C5%9F%C3%A7i-rol%C3%BC-veren-bir-plugin-b232803581fc) — Medium
 
-![cli-dispatch demo — bir read-only görevi her işçiye delege etme (DeepSeek / Antigravity / Codex), ardından birleşik session görünümü](assets/demo.gif)
+![cli-dispatch demo — tamamen Claude Code içinde kur ve kullan: marketplace ekle, install, /cli-dispatch:setup, görev delege et, kullanımı gör](assets/demo.gif)
 
 ## Kurulum
 
@@ -66,6 +66,22 @@ DS_FLASH_MODEL="deepseek-v4-flash"
 **Codex (OpenAI Codex CLI)** backend'i için setup `cx-agent`/`cx-stream` kurar. `codex` CLI'ı (≥ 0.142.3: `npm i -g @openai/codex`, `brew install --cask codex` veya `curl -fsSL https://chatgpt.com/codex/install.sh | sh`) + `node` gerekir; auth `codex login` (ChatGPT/OAuth — kişisel kullanım için API key gerekmez) veya `CODEX_API_KEY` (öncelikli) ya da `OPENAI_API_KEY` ile. Model seçimi: `cx-agent --model <ad>` (veya `CX_MODEL` config default; boş = codex'in kendi default'u). **Öne çıkan özellik:** `cx-agent --read-only` codex'in **gerçek OS-düzey sandbox'ını** aktive eder (macOS Seatbelt / Linux bwrap+seccomp) — yalnızca tool-katman kısıtlaması değil, kernel düzeyinde sert yazma engeli.
 
 Gereksinim: `claude` CLI kurulu ve `~/.local/bin` PATH'te olmalı. DeepSeek key'i: https://platform.deepseek.com/api_keys
+
+## Güncelleme
+
+Plugin'i Claude Code içinden güncelle, sonra reload et (teker teker çalıştır):
+
+```text
+/plugin update cli-dispatch
+/reload-plugins
+```
+
+`/plugin update` marketplace'ten en yeni sürümü çeker; `/reload-plugins` çalışan oturuma uygular
+(tam yeniden başlatma olmadan). `/cli-dispatch:status` ile doğrula.
+
+<video src="https://github.com/rbinar/cli-dispatch/raw/main/assets/update.mp4" controls width="820"></video>
+
+> ▶️ [Güncelleme demosunu izle (mp4)](assets/update.mp4) — Claude Code içinde `/plugin update` sonra `/reload-plugins`.
 
 ## Kullanım
 
