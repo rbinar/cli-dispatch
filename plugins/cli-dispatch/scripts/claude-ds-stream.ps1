@@ -6,7 +6,7 @@ $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-$Config = if ($env:CLAUDE_DS_CONFIG) { $env:CLAUDE_DS_CONFIG } else { Join-Path $HOME ".config/claude-ds/config" }
+$Config = if ($env:CLI_DISPATCH_CONFIG) { $env:CLI_DISPATCH_CONFIG } elseif ($env:CLAUDE_DS_CONFIG) { $env:CLAUDE_DS_CONFIG } elseif (Test-Path (Join-Path $HOME ".config/cli-dispatch/config")) { Join-Path $HOME ".config/cli-dispatch/config" } else { Join-Path $HOME ".config/claude-ds/config" }
 $cfg = @{}
 if (Test-Path $Config) {
   Get-Content $Config | ForEach-Object {
@@ -29,9 +29,10 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
 }
 
 # Resolve the parser path.
-$parser = $env:CLAUDE_DS_PARSER
+$parser = if ($env:CLI_DISPATCH_PARSER) { $env:CLI_DISPATCH_PARSER } else { $env:CLAUDE_DS_PARSER }
 if ([string]::IsNullOrEmpty($parser)) {
   foreach ($cand in @(
+    (Join-Path $HOME ".local/share/cli-dispatch/ds-stream-parse.mjs"),
     (Join-Path $HOME ".local/share/claude-ds/ds-stream-parse.mjs"),
     (Join-Path $ScriptDir "ds-stream-parse.mjs")
   )) {
@@ -88,10 +89,11 @@ if ($null -eq $prompt) {
 }
 
 # ---- prepare the session directory ----
-$sessionsRoot = $env:CLAUDE_DS_SESSIONS_DIR
+$sessionsRoot = if ($env:CLI_DISPATCH_SESSIONS_DIR) { $env:CLI_DISPATCH_SESSIONS_DIR } else { $env:CLAUDE_DS_SESSIONS_DIR }
 if ([string]::IsNullOrEmpty($sessionsRoot)) {
   $cacheRoot = if ($env:XDG_CACHE_HOME) { $env:XDG_CACHE_HOME } else { Join-Path $HOME ".cache" }
-  $sessionsRoot = Join-Path $cacheRoot "claude-ds/sessions"
+  $newRoot = Join-Path $cacheRoot "cli-dispatch/sessions"; $oldRoot = Join-Path $cacheRoot "claude-ds/sessions"
+  $sessionsRoot = if ((Test-Path $newRoot) -or (-not (Test-Path $oldRoot))) { $newRoot } else { $oldRoot }
 }
 $resume = 0
 if (-not [string]::IsNullOrEmpty($resumeId)) {

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.1.0] — 2026-06-27
+
+### Changed
+- **Shared infra moved from the `claude-ds` name to `cli-dispatch`.** The config, session cache, and parser dir — all shared across the three backends — now live under the hub's own name, instead of the DeepSeek wrapper's:
+  - `~/.config/claude-ds/config` → `~/.config/cli-dispatch/config`
+  - `~/.cache/claude-ds/sessions` → `~/.cache/cli-dispatch/sessions`
+  - `~/.local/share/claude-ds/` → `~/.local/share/cli-dispatch/`
+  - env: `CLI_DISPATCH_CONFIG` / `CLI_DISPATCH_SESSIONS_DIR` / `CLI_DISPATCH_EDITOR` (the legacy `CLAUDE_DS_*` names are still honored).
+  - The **worker binary names are unchanged** (`claude-ds`, `claude-ds-stream`, `ds-agent` stay — they name the DeepSeek backend's CLI).
+- **Zero-breakage migration.** `install.sh` / `install.ps1` auto-migrate an existing legacy config + sessions dir to the new paths on the next run. Independently, every wrapper/command **falls back** to the legacy `claude-ds` path at runtime when the new one is absent, so existing installs keep working even without re-running setup.
+
 ## [3.0.2] — 2026-06-27
 
 ### Changed

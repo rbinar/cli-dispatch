@@ -14,8 +14,10 @@ Cost-conscious: only the small `meta.json` + `status.json` files are read; the r
 ```bash
 node <<'EOF'
 const fs = require('fs'), path = require('path')
-const root = process.env.CLAUDE_DS_SESSIONS_DIR ||
-  path.join(process.env.XDG_CACHE_HOME || path.join(process.env.HOME, '.cache'), 'claude-ds', 'sessions')
+const cache = process.env.XDG_CACHE_HOME || path.join(process.env.HOME, '.cache')
+const root = process.env.CLI_DISPATCH_SESSIONS_DIR || process.env.CLAUDE_DS_SESSIONS_DIR ||
+  (fs.existsSync(path.join(cache, 'cli-dispatch', 'sessions')) || !fs.existsSync(path.join(cache, 'claude-ds', 'sessions'))
+    ? path.join(cache, 'cli-dispatch', 'sessions') : path.join(cache, 'claude-ds', 'sessions'))
 if (!fs.existsSync(root)) { console.log('(no sessions yet — start one with /cli-dispatch:ds-run)'); process.exit(0) }
 const dirs = fs.readdirSync(root).filter(d => { try { return fs.statSync(path.join(root, d)).isDirectory() } catch { return false } })
 const read = (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')) } catch { return {} } }

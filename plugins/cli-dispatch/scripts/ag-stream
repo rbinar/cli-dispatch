@@ -13,7 +13,7 @@
 #             [--max-runtime <s>] [--idle-timeout <s>] -p "<prompt>" [extra agy flags]
 #   echo "<prompt>" | ag-stream [--cwd <dir>]
 #
-# Session directory: ${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions/<conv-id>/
+# Session directory: ${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<conv-id>/ (legacy: claude-ds)
 # (same layout as claude-ds, so /cli-dispatch:ds-watch / ds-sessions work for both backends.)
 #
 # Auth: Google keyring (run `agy` once interactively to sign in) OR a key in the config
@@ -30,8 +30,9 @@ command -v agy >/dev/null 2>&1 || {
 command -v script >/dev/null 2>&1 || { echo "ag-stream: 'script' (pseudo-tty) not found in PATH." >&2; exit 1; }
 command -v node   >/dev/null 2>&1 || { echo "ag-stream: 'node' not found (required for the transcript parser)." >&2; exit 1; }
 
-# Optional config (shared with claude-ds). Only the Gemini-related keys are used here.
-CONFIG="${CLAUDE_DS_CONFIG:-$HOME/.config/claude-ds/config}"
+# Optional config (shared across backends). cli-dispatch dir, legacy claude-ds fallback (env wins).
+CONFIG="${CLI_DISPATCH_CONFIG:-${CLAUDE_DS_CONFIG:-}}"
+[ -n "$CONFIG" ] || { CONFIG="$HOME/.config/cli-dispatch/config"; [ -f "$CONFIG" ] || [ ! -f "$HOME/.config/claude-ds/config" ] || CONFIG="$HOME/.config/claude-ds/config"; }
 if [ -f "$CONFIG" ]; then
   # shellcheck disable=SC1090
   . "$CONFIG"
@@ -40,7 +41,7 @@ fi
 # Resolve the parser: env > installed location > script dir.
 PARSER="${AG_PARSER:-}"
 if [ -z "$PARSER" ]; then
-  for cand in "$HOME/.local/share/claude-ds/ag-transcript-parse.mjs" "$SCRIPT_DIR/ag-transcript-parse.mjs"; do
+  for cand in "$HOME/.local/share/cli-dispatch/ag-transcript-parse.mjs" "$HOME/.local/share/claude-ds/ag-transcript-parse.mjs" "$SCRIPT_DIR/ag-transcript-parse.mjs"; do
     [ -f "$cand" ] && { PARSER="$cand"; break; }
   done
 fi
@@ -244,7 +245,8 @@ if [ -z "$CID" ]; then
 fi
 
 TRANSCRIPT="$BRAIN/$CID/.system_generated/logs/transcript_full.jsonl"
-SESSIONS_ROOT="${CLAUDE_DS_SESSIONS_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions}"
+SESSIONS_ROOT="${CLI_DISPATCH_SESSIONS_DIR:-${CLAUDE_DS_SESSIONS_DIR:-}}"
+[ -n "$SESSIONS_ROOT" ] || { _c="${XDG_CACHE_HOME:-$HOME/.cache}"; SESSIONS_ROOT="$_c/cli-dispatch/sessions"; [ -d "$SESSIONS_ROOT" ] || [ ! -d "$_c/claude-ds/sessions" ] || SESSIONS_ROOT="$_c/claude-ds/sessions"; }
 SESSION_DIR="$SESSIONS_ROOT/$CID"
 mkdir -p "$SESSION_DIR"
 DONEFILE="$SESSION_DIR/.agy.done"; rm -f "$DONEFILE"

@@ -39,9 +39,10 @@ Follow these steps:
      ```powershell
      powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/install.ps1"
      ```
-   Wrappers go to `~/.local/bin`; parsers to `~/.local/share/claude-ds/`. A shared config
-   skeleton is created at `~/.config/claude-ds/config` if missing (existing configs are
-   never clobbered).
+   Wrappers go to `~/.local/bin`; parsers to `~/.local/share/cli-dispatch/`. A shared config
+   skeleton is created at `~/.config/cli-dispatch/config` if missing (existing configs are
+   never clobbered). Legacy `~/.config/claude-ds` config + `~/.cache/claude-ds` sessions are
+   auto-migrated to the `cli-dispatch` paths on install (with a runtime fallback either way).
 
    > Note: both stream variants require `node` for their parser (claude-code already runs in a node environment).
 
@@ -49,7 +50,7 @@ Follow these steps:
    - **DeepSeek** — the user must add their API key themselves. While the key is still empty,
      the installer **auto-opens** the config in the default editor. If it doesn't open, ask
      the user to add their DeepSeek API key to the `DEEPSEEK_API_KEY=""` line in
-     `~/.config/claude-ds/config`.
+     `~/.config/cli-dispatch/config`.
      **You (Claude) must NEVER write/paste the API key** — only the user enters it.
    - **Antigravity** — normally needs no key: the user signs in once by running `agy`
      interactively (Google). For headless/CI, they can set `GEMINI_API_KEY` in the config

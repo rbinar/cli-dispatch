@@ -13,7 +13,7 @@ run, call this ONCE per orchestration step.
 
 ```bash
 SID="$ARGUMENTS"
-ROOT="${CLAUDE_DS_SESSIONS_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions}"
+ROOT="${CLI_DISPATCH_SESSIONS_DIR:-${CLAUDE_DS_SESSIONS_DIR:-}}"; [ -n "$ROOT" ] || { _c="${XDG_CACHE_HOME:-$HOME/.cache}"; ROOT="$_c/cli-dispatch/sessions"; [ -d "$ROOT" ] || [ ! -d "$_c/claude-ds/sessions" ] || ROOT="$_c/claude-ds/sessions"; }
 DIR="$ROOT/$SID"
 if [ ! -d "$DIR" ]; then
   echo "no such session: $SID  (use /cli-dispatch:sessions to list them)"

@@ -2,9 +2,30 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_DIR="$HOME/.local/bin"
-CONFIG_DIR="$HOME/.config/claude-ds"
+CONFIG_DIR="$HOME/.config/cli-dispatch"
 CONFIG="$CONFIG_DIR/config"
-LIBEXEC_DIR="$HOME/.local/share/claude-ds"
+LIBEXEC_DIR="$HOME/.local/share/cli-dispatch"
+
+# ---- one-time migration from the legacy claude-ds paths --------------------
+# Earlier versions kept shared infra under ~/.config/claude-ds and ~/.cache/claude-ds.
+# Move them to the cli-dispatch names so a single hub owns them. Wrappers still FALL BACK
+# to the legacy paths at runtime, so this migration is convenience, not correctness.
+OLD_CONFIG="$HOME/.config/claude-ds/config"
+if [ -f "$OLD_CONFIG" ] && [ ! -f "$CONFIG" ]; then
+  mkdir -p "$CONFIG_DIR"; mv "$OLD_CONFIG" "$CONFIG"
+  echo "Migrated config: $OLD_CONFIG -> $CONFIG"
+fi
+_OLD_SESS="${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions"
+_NEW_SESS="${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions"
+if [ -d "$_OLD_SESS" ] && [ ! -d "$_NEW_SESS" ]; then
+  mkdir -p "$(dirname "$_NEW_SESS")"; mv "$_OLD_SESS" "$_NEW_SESS"
+  echo "Migrated sessions: $_OLD_SESS -> $_NEW_SESS"
+fi
+_OLD_LIBEXEC="$HOME/.local/share/claude-ds"
+if [ -d "$_OLD_LIBEXEC" ] && [ "$_OLD_LIBEXEC" != "$LIBEXEC_DIR" ]; then
+  rm -f "$_OLD_LIBEXEC"/ds-stream-parse.mjs "$_OLD_LIBEXEC"/ag-transcript-parse.mjs "$_OLD_LIBEXEC"/cx-stream-parse.mjs 2>/dev/null || true
+  rmdir "$_OLD_LIBEXEC" 2>/dev/null || true
+fi
 
 # ---- which worker backends to install --------------------------------------
 # Usage: install.sh [--backends deepseek,antigravity | all]
@@ -114,10 +135,11 @@ fi
 
 # Auto-open the config so the user can paste a key — only when the DeepSeek backend is
 # selected AND its key is still empty (Antigravity normally needs no key → no prompt).
-# Override the opener via CLAUDE_DS_EDITOR (e.g. CLAUDE_DS_EDITOR="code").
+# Override the opener via CLI_DISPATCH_EDITOR (legacy CLAUDE_DS_EDITOR still honored), e.g. ="code".
+_EDITOR="${CLI_DISPATCH_EDITOR:-${CLAUDE_DS_EDITOR:-}}"
 if [ "$WANT_DS" -eq 1 ] && grep -q '^DEEPSEEK_API_KEY=""' "$CONFIG" 2>/dev/null; then
-  if [ -n "${CLAUDE_DS_EDITOR:-}" ]; then
-    "$CLAUDE_DS_EDITOR" "$CONFIG" >/dev/null 2>&1 && echo "Opened config in \$CLAUDE_DS_EDITOR -> add your key, then save." || true
+  if [ -n "$_EDITOR" ]; then
+    "$_EDITOR" "$CONFIG" >/dev/null 2>&1 && echo "Opened config in \$CLI_DISPATCH_EDITOR -> add your key, then save." || true
   elif command -v open >/dev/null 2>&1; then            # macOS
     open -e "$CONFIG" >/dev/null 2>&1 && echo "Opened config in editor -> add your key, then save." || true
   elif command -v xdg-open >/dev/null 2>&1; then         # Linux

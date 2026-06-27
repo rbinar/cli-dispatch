@@ -9,7 +9,7 @@ Call the DeepSeek balance API with the `DEEPSEEK_API_KEY` from the config and sh
 **Do not print the key VALUE** — only present the balance info.
 
 ```bash
-CFG="${CLAUDE_DS_CONFIG:-$HOME/.config/claude-ds/config}"
+CFG="${CLI_DISPATCH_CONFIG:-${CLAUDE_DS_CONFIG:-}}"; [ -n "$CFG" ] || { CFG="$HOME/.config/cli-dispatch/config"; [ -f "$CFG" ] || [ ! -f "$HOME/.config/claude-ds/config" ] || CFG="$HOME/.config/claude-ds/config"; }
 if [ ! -f "$CFG" ]; then echo "config: MISSING ($CFG) — run /cli-dispatch:setup"; exit 1; fi
 # shellcheck disable=SC1090
 . "$CFG"
@@ -23,7 +23,7 @@ echo
 **Native Windows** (PowerShell equivalent):
 
 ```powershell
-$cfg = Join-Path $HOME '.config/claude-ds/config'
+$cfg = if ($env:CLI_DISPATCH_CONFIG) { $env:CLI_DISPATCH_CONFIG } elseif ($env:CLAUDE_DS_CONFIG) { $env:CLAUDE_DS_CONFIG } elseif (Test-Path (Join-Path $HOME '.config/cli-dispatch/config')) { Join-Path $HOME '.config/cli-dispatch/config' } else { Join-Path $HOME '.config/claude-ds/config' }
 if (-not (Test-Path $cfg)) { 'config: MISSING — run /cli-dispatch:setup'; return }
 $key = (Select-String -Path $cfg -Pattern 'DEEPSEEK_API_KEY="([^"]+)"').Matches.Groups[1].Value
 if (-not $key) { 'key: MISSING — add it to the config'; return }

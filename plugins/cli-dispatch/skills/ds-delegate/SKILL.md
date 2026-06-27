@@ -51,7 +51,7 @@ stdout = final answer only (safe to capture/pipe); stderr = banner + live tool a
 Exit code is the worker's. `-q` silences the banner/progress. It forwards
 `--max-runtime`/`--idle-timeout` to the underlying `claude-ds-stream`.
 
-Session directory: `${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions/<id>/`
+Session directory: `${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<id>/` (legacy `claude-ds` path still read as a fallback)
 - `status.json` — compact rolling summary (**the only file to poll**: state, lastTool, toolCounts, finalResultPreview)
 - `progress.log` — terse human-readable stream (`▸ Edit foo.ts`, `✓/✗`, truncated text)
 - `transcript.jsonl` — raw stream-json (resume/audit; **NOT read while polling**)
@@ -161,7 +161,7 @@ ag-stream --cwd <dir> -p "<task>"     # background/session-tracked variant (poll
   `Claude Sonnet 4.6 (Thinking)`, `Claude Opus 4.6 (Thinking)`, `GPT-OSS 120B (Medium)`. Default
   `Gemini 3.5 Flash (High)`. ⚠ An unknown name makes agy SILENTLY use its default — ag-stream
   warns when `--model` isn't in `agy models`, but double-check the exact string (incl. suffix).
-- **Same session dir** as DeepSeek (`…/claude-ds/sessions/<id>/` with `status.json` etc.), so
+- **Same session dir** as DeepSeek (`…/cli-dispatch/sessions/<id>/` with `status.json` etc.), so
   `/cli-dispatch:sessions` / `watch` work for both. The session id IS the agy conv-id.
 - **How it works:** agy has no `--output-format json` and a non-TTY silent-drop bug, so
   `ag-stream` runs it under a pseudo-TTY (`script`) and **tails agy's on-disk JSONL transcript**
@@ -205,7 +205,7 @@ cx-stream --cwd <dir> -p "<task>"       # background/session-tracked variant (po
   Current: `gpt-5.5` (default, frontier), `gpt-5.4` (flagship), `gpt-5.4-mini` (fast/cheap,
   subagents), `gpt-5.3-codex-spark` (ChatGPT Pro preview). `gpt-5.2`/`gpt-5.3-codex` deprecated.
   Run `/model` inside codex for the live list.
-- **Same session dir** as the others (`…/claude-ds/sessions/<id>/`), so `/cli-dispatch:sessions`
+- **Same session dir** as the others (`…/cli-dispatch/sessions/<id>/`), so `/cli-dispatch:sessions`
   / `watch` work for all three. The session id is the codex **thread-id**.
 - **How it works:** `codex exec --json` emits a clean JSONL stream → `cx-stream` pipes it
   through `cx-stream-parse.mjs` (no pseudo-TTY/file-tail needed). Requires `node`.
