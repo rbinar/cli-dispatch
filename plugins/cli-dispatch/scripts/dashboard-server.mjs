@@ -272,6 +272,46 @@ function send(res, code, obj) {
 }
 const okId = (id) => typeof id === 'string' && ID_RE.test(id)
 
+// Resolve a `watch` spec to concrete file/dir targets for SSE fs.watch.
+// Returns [{path, recursive}]. Invalid/unknown specs → [] (stream stays open, heartbeat only).
+function watchTargets(spec) {
+  if (spec === 'sessions') {
+    // cheap, shallow: live busy/idle flips + worker churn (the list doesn't need per-keystroke fidelity)
+    return [{ path: CC_SESSIONS_DIR, recursive: false }, { path: WORKERS_ROOT, recursive: false }]
+  }
+  let m
+  if ((m = spec.match(/^session:([^:]+)$/)) && okId(m[1])) {
+    const sess = findSession(m[1]); if (!sess) return []
+    return [{ path: sess.file, recursive: false }, { path: subagentDir(sess), recursive: true }]
+  }
+  if ((m = spec.match(/^subagent:([^:]+):([^:]+)$/)) && okId(m[1]) && okId(m[2])) {
+    const sess = findSession(m[1]); if (!sess) return []
+    const jl = path.join(subagentDir(sess), 'agent-' + m[2] + '.jsonl')
+    if (!path.resolve(jl).startsWith(path.resolve(subagentDir(sess)) + path.sep)) return []
+    return fs.existsSync(jl) ? [{ path: jl, recursive: false }] : [{ path: subagentDir(sess), recursive: true }]
+  }
+  if ((m = spec.match(/^worker:([^:]+)$/)) && okId(m[1])) {
+    const dir = path.resolve(path.join(WORKERS_ROOT, m[1]))
+    if (!dir.startsWith(path.resolve(WORKERS_ROOT) + path.sep) || !isDir(dir)) return []
+    return [{ path: dir, recursive: false }]
+  }
+  return []
+}
+
+function sse(req, res, spec) {
+  res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no' })
+  res.write(': ok\n\n')
+  let t = null
+  const ping = () => { clearTimeout(t); t = setTimeout(() => { try { res.write('event: change\ndata: {}\n\n') } catch {} }, 250) }
+  const watchers = []
+  for (const tg of watchTargets(spec)) {
+    try { watchers.push(fs.watch(tg.path, { persistent: false, recursive: tg.recursive }, ping)) }
+    catch { try { watchers.push(fs.watch(tg.path, { persistent: false }, ping)) } catch {} }  // recursive unsupported (Linux) → shallow
+  }
+  const hb = setInterval(() => { try { res.write(': hb\n\n') } catch {} }, 20000)
+  req.on('close', () => { clearInterval(hb); clearTimeout(t); for (const w of watchers) { try { w.close() } catch {} } })
+}
+
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, 'http://127.0.0.1')
   const p = u.pathname
@@ -280,6 +320,7 @@ const server = http.createServer((req, res) => {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(PAGE); return
     }
     if (p === '/favicon.ico') { res.writeHead(204); res.end(); return }
+    if (p === '/api/stream') return sse(req, res, u.searchParams.get('watch') || 'sessions')
     if (p === '/api/sessions') return send(res, 200, listSessions())
     if (p === '/api/workers') return send(res, 200, listWorkers())
 
@@ -379,7 +420,18 @@ a.agentlink{color:var(--lnk);cursor:pointer}
  <div class="main"><div class="crumb" id="crumb">Select a session…</div><div id="view" class="empty">←</div></div>
 </div>
 <script>
-let mode='cc', sel=null, timer=null
+let mode='cc', sel=null
+// Live updates via Server-Sent Events. One detail stream for the open item; it
+// pushes a 'change' event whenever the watched file/dir changes (fs.watch).
+let detailES=null, detailSpec=null
+function watchDetail(spec, fn){
+  if(spec===detailSpec) return
+  if(detailES){ detailES.close(); detailES=null }
+  detailSpec=spec||null
+  if(!spec) return
+  detailES=new EventSource('/api/stream?watch='+encodeURIComponent(spec))
+  detailES.addEventListener('change', fn)
+}
 const E=(h)=>{const d=document.createElement('div');d.innerHTML=h;return d.firstChild}
 const esc=(s)=>String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))
 async function j(u){const r=await fetch(u);return r.json()}
@@ -419,7 +471,7 @@ function renderFlow(steps){
 }
 function chipHtml(a){return '<span class="sa'+(a.active?' act':'')+'" onclick="openSub(\\''+a.agentId+'\\','+(a.active?'true':'false')+')">'+(a.active?'● ':'')+esc(a.agentType)+': '+esc(a.description||a.agentId.slice(0,8))+(a.spawnDepth>1?' ·d'+a.spawnDepth:'')+'</span>'}
 async function openSession(s){
-  sel=s.id; mode='cc'; clearInterval(timer)
+  sel=s.id; mode='cc'
   document.getElementById('crumb').innerHTML='<a onclick="back()">sessions</a> › '+esc(s.id.slice(0,8))+' <span class="muted">('+esc(s.status)+')</span>'
   const prevPanel=document.querySelector('#view details.restpanel'); const subsOpen=prevPanel?prevPanel.open:true
   const v=document.getElementById('view'); v.className=''; v.innerHTML='loading…'
@@ -433,31 +485,34 @@ async function openSession(s){
   }
   h+=renderFlow(flow.steps)+(flow.truncated?'<div class="small muted">(showing last '+flow.steps.length+' of '+flow.total+')</div>':'')
   v.innerHTML=h; loadList()
-  if(s.status==='busy') timer=setInterval(()=>openSession(s),3000)
+  watchDetail(s.status==='busy'?'session:'+s.id:null, ()=>openSession(s))
 }
 async function openSub(aid,active){
   const sid=window._cur&&window._cur.type==='session'?window._cur.id:(window._cur&&window._cur.sid)
-  if(!sid) return; clearInterval(timer)
+  if(!sid) return;
   document.getElementById('crumb').innerHTML='<a onclick="back()">sessions</a> › <a onclick="reopen(\\''+sid+'\\')">'+esc(sid.slice(0,8))+'</a> › <span class="k">subagent '+esc(aid.slice(0,8))+'</span>'+(active?' <span class="live">● live</span>':'')
   const v=document.getElementById('view'); v.className=''; if(!v.querySelector('.step')) v.innerHTML='loading…'
   const flow=await j('/api/subagent/'+sid+'/'+aid+'/flow')
   window._cur={type:'sub',sid:sid,aid:aid}
   v.innerHTML=renderFlow(flow.steps)+(flow.truncated?'<div class="small muted">(last '+flow.steps.length+' of '+flow.total+')</div>':'')
-  if(active) timer=setInterval(()=>openSub(aid,true),3000)
+  watchDetail(active?'subagent:'+sid+':'+aid:null, ()=>openSub(aid,true))
 }
 async function openWorker(w){
-  sel=w.id; clearInterval(timer)
+  sel=w.id;
   document.getElementById('crumb').innerHTML='<a onclick="back()">workers</a> › '+esc(w.backend)+' '+esc(w.id.slice(0,12))+' <span class="muted">('+esc(w.state)+')</span>'
   const v=document.getElementById('view'); v.className=''; v.innerHTML='loading…'
   const flow=await j('/api/worker/'+w.id+'/flow')
   let h=renderFlow(flow.steps)
   if(flow.finalResultPreview) h+='<div class="step message" style="margin-top:10px">⏺ <b>result:</b> '+esc(flow.finalResultPreview)+'</div>'
   v.innerHTML=h; loadList()
-  if(w.state==='running') timer=setInterval(()=>openWorker(w),3000)
+  watchDetail(w.state==='running'?'worker:'+w.id:null, ()=>openWorker(w))
 }
 function reopen(sid){ fetch('/api/sessions').then(r=>r.json()).then(ss=>{const s=ss.find(x=>x.id===sid); if(s) openSession(s)}) }
-function back(){ clearInterval(timer); sel=null; window._cur=null; document.getElementById('crumb').textContent='Select a session…'; document.getElementById('view').className='empty'; document.getElementById('view').innerHTML='←'; loadList() }
+function back(){ watchDetail(null); sel=null; window._cur=null; document.getElementById('crumb').textContent='Select a session…'; document.getElementById('view').className='empty'; document.getElementById('view').innerHTML='←'; loadList() }
 document.getElementById('tabCC').onclick=()=>{mode='cc';document.getElementById('tabCC').classList.add('on');document.getElementById('tabW').classList.remove('on');back()}
 document.getElementById('tabW').onclick=()=>{mode='w';document.getElementById('tabW').classList.add('on');document.getElementById('tabCC').classList.remove('on');back()}
-loadList(); setInterval(()=>{ if(!sel) loadList() },4000)
+loadList()
+// Live list: SSE pushes a change whenever sessions/workers state changes (busy/idle flips, new runs).
+const listES=new EventSource('/api/stream?watch=sessions')
+listES.addEventListener('change', ()=>{ if(!sel) loadList() })
 </script></body></html>`
