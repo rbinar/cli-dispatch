@@ -218,6 +218,9 @@ function listSubagents(sess) {
       spawnDepth: meta.spawnDepth || 1,
       startedAt: st ? new Date(st.birthtimeMs || st.mtimeMs).toISOString() : null,
       sizeKB: st ? Math.round(st.size / 1024) : 0,
+      // "active" = its transcript was written very recently (still streaming).
+      active: st ? (Date.now() - st.mtimeMs < 45000) : false,
+      lastActivityMs: st ? st.mtimeMs : 0,
     })
   }
   return out
@@ -360,6 +363,10 @@ header b{color:var(--acc)} .grow{flex:1}
 .panel[open]>summary::before{content:'▾ ';color:var(--dim)}
 .panel>summary:hover{background:#1f2630;border-radius:8px}
 .sabody{padding:2px 8px 8px}
+.panel.act{border-color:var(--g);background:#101a12}
+.panel.act>summary{color:var(--g)}
+.sa.act{border-color:var(--g);color:var(--g)}
+.live{color:var(--g)}
 a.agentlink{color:var(--lnk);cursor:pointer}
 </style></head><body>
 <header><b>cli-dispatch</b> <span class="muted">dashboard</span><span class="grow"></span>
@@ -410,27 +417,33 @@ function renderFlow(steps){
     return '<div class="step log">'+esc(s.text)+'</div>'
   }).join('')
 }
+function chipHtml(a){return '<span class="sa'+(a.active?' act':'')+'" onclick="openSub(\\''+a.agentId+'\\','+(a.active?'true':'false')+')">'+(a.active?'● ':'')+esc(a.agentType)+': '+esc(a.description||a.agentId.slice(0,8))+(a.spawnDepth>1?' ·d'+a.spawnDepth:'')+'</span>'}
 async function openSession(s){
   sel=s.id; mode='cc'; clearInterval(timer)
   document.getElementById('crumb').innerHTML='<a onclick="back()">sessions</a> › '+esc(s.id.slice(0,8))+' <span class="muted">('+esc(s.status)+')</span>'
-  const prevPanel=document.querySelector('#view .panel'); const subsOpen=prevPanel?prevPanel.open:true
+  const prevPanel=document.querySelector('#view details.restpanel'); const subsOpen=prevPanel?prevPanel.open:true
   const v=document.getElementById('view'); v.className=''; v.innerHTML='loading…'
   const [flow,subs]=await Promise.all([j('/api/session/'+s.id+'/flow'),j('/api/session/'+s.id+'/subagents')])
   window._cur={type:'session',id:s.id}
   let h=''
-  if(subs.length){h+='<details class="panel"'+(subsOpen?' open':'')+'><summary>Subagents <span class="badge">'+subs.length+'</span></summary><div class="sabody">'+subs.map(a=>'<span class="sa" onclick="openSub(\\''+a.agentId+'\\')">'+esc(a.agentType)+': '+esc(a.description||a.agentId.slice(0,8))+(a.spawnDepth>1?' ·d'+a.spawnDepth:'')+'</span>').join('')+'</div></details>'}
+  if(subs.length){
+    const act=subs.filter(a=>a.active), rest=subs.filter(a=>!a.active)
+    if(act.length) h+='<details class="panel act" open><summary>Active subagents <span class="badge">'+act.length+'</span></summary><div class="sabody">'+act.map(chipHtml).join('')+'</div></details>'
+    if(rest.length) h+='<details class="panel restpanel"'+(subsOpen?' open':'')+'><summary>Subagents <span class="badge">'+rest.length+'</span></summary><div class="sabody">'+rest.map(chipHtml).join('')+'</div></details>'
+  }
   h+=renderFlow(flow.steps)+(flow.truncated?'<div class="small muted">(showing last '+flow.steps.length+' of '+flow.total+')</div>':'')
   v.innerHTML=h; loadList()
   if(s.status==='busy') timer=setInterval(()=>openSession(s),3000)
 }
-async function openSub(aid){
+async function openSub(aid,active){
   const sid=window._cur&&window._cur.type==='session'?window._cur.id:(window._cur&&window._cur.sid)
   if(!sid) return; clearInterval(timer)
-  document.getElementById('crumb').innerHTML='<a onclick="back()">sessions</a> › <a onclick="reopen(\\''+sid+'\\')">'+esc(sid.slice(0,8))+'</a> › <span class="k">subagent '+esc(aid.slice(0,8))+'</span>'
-  const v=document.getElementById('view'); v.className=''; v.innerHTML='loading…'
+  document.getElementById('crumb').innerHTML='<a onclick="back()">sessions</a> › <a onclick="reopen(\\''+sid+'\\')">'+esc(sid.slice(0,8))+'</a> › <span class="k">subagent '+esc(aid.slice(0,8))+'</span>'+(active?' <span class="live">● live</span>':'')
+  const v=document.getElementById('view'); v.className=''; if(!v.querySelector('.step')) v.innerHTML='loading…'
   const flow=await j('/api/subagent/'+sid+'/'+aid+'/flow')
   window._cur={type:'sub',sid:sid,aid:aid}
   v.innerHTML=renderFlow(flow.steps)+(flow.truncated?'<div class="small muted">(last '+flow.steps.length+' of '+flow.total+')</div>':'')
+  if(active) timer=setInterval(()=>openSub(aid,true),3000)
 }
 async function openWorker(w){
   sel=w.id; clearInterval(timer)

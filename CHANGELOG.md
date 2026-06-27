@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.5.0] — 2026-06-28
+
+### Added
+- **Dashboard: active subagents in their own live panel.** A subagent whose transcript was written in the last ~45s is treated as **active** and shown in a separate, green-accented "Active subagents" panel above the (collapsible) full "Subagents" list. Clicking an active subagent opens its flow with a **● live** badge and auto-refreshes (~3s) so you can watch what it's doing in real time. Active flag is computed server-side from the subagent transcript mtime (`active`/`lastActivityMs` on `/api/session/:id/subagents`).
+
 ## [3.4.3] — 2026-06-28
 
 ### Changed
