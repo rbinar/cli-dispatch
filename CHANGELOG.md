@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.7.0] — 2026-06-28
+
+### Added
+- **Dashboard: status filter in the left rail.** A filter bar (all / busy / idle / closed, each with a live count) above the Claude Code session list; click to show only that status. Hidden on the workers tab.
+- **Dashboard: subagent chips now show a start time** (HH:MM:SS) next to each subagent in the active/Subagents panels.
+
 ## [3.6.0] — 2026-06-28
 
 ### Changed

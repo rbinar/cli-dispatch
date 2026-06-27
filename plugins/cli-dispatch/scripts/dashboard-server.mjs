@@ -383,6 +383,10 @@ header b{color:var(--acc)} .grow{flex:1}
 .rail{border-right:1px solid var(--bd);overflow:auto}
 .tabs{display:flex;border-bottom:1px solid var(--bd)} .tab{flex:1;padding:8px;text-align:center;cursor:pointer;color:var(--dim)}
 .tab.on{color:var(--fg);border-bottom:2px solid var(--acc)}
+.filter{display:flex;gap:6px;padding:6px 8px;border-bottom:1px solid var(--bd);flex-wrap:wrap}
+.fchip{padding:2px 9px;border:1px solid var(--bd);border-radius:12px;cursor:pointer;color:var(--dim);font-size:11px;user-select:none}
+.fchip:hover{background:#1f2630}.fchip.on{color:var(--fg);border-color:var(--acc)}
+.fchip .c{color:var(--dim);margin-left:3px}
 .item{padding:8px 12px;border-bottom:1px solid var(--bd);cursor:pointer}
 .item:hover{background:#1f2630}.item.sel{background:#1f2937}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}
@@ -415,12 +419,14 @@ a.agentlink{color:var(--lnk);cursor:pointer}
 <div class="layout">
  <div class="rail">
    <div class="tabs"><div class="tab on" id="tabCC">Claude Code</div><div class="tab" id="tabW">cli-dispatch workers</div></div>
+   <div id="filter" class="filter"></div>
    <div id="list"></div>
  </div>
  <div class="main"><div class="crumb" id="crumb">Select a session…</div><div id="view" class="empty">←</div></div>
 </div>
 <script>
-let mode='cc', sel=null
+let mode='cc', sel=null, flt='all'
+function setFilter(k){ flt=k; loadList() }
 // Live updates via Server-Sent Events. One detail stream for the open item; it
 // pushes a 'change' event whenever the watched file/dir changes (fs.watch).
 let detailES=null, detailSpec=null
@@ -438,14 +444,20 @@ async function j(u){const r=await fetch(u);return r.json()}
 
 async function loadList(){
   const el=document.getElementById('list'); el.innerHTML=''
+  const fb=document.getElementById('filter')
   if(mode==='cc'){
     const ss=await j('/api/sessions')
+    const counts={busy:0,idle:0,closed:0}; ss.forEach(s=>counts[s.status]=(counts[s.status]||0)+1)
+    fb.style.display='flex'
+    fb.innerHTML=[['all',ss.length],['busy',counts.busy],['idle',counts.idle],['closed',counts.closed]].map(([k,n])=>'<span class="fchip'+(flt===k?' on':'')+'" onclick="setFilter(\\''+k+'\\')">'+k+'<span class="c">'+n+'</span></span>').join('')
     document.getElementById('meta').textContent=ss.length+' sessions'
-    ss.forEach(s=>{
+    const shown=flt==='all'?ss:ss.filter(s=>s.status===flt)
+    shown.forEach(s=>{
       const it=E('<div class="item'+(sel===s.id?' sel':'')+'"><div><span class="dot '+s.status+'"></span>'+esc(s.project.replace(/^-/,'').split('-').slice(-2).join('/'))+'<span class="badge">'+s.status+'</span>'+(s.subagentCount?'<span class="badge">'+s.subagentCount+' sub</span>':'')+'</div><div class="small muted">'+esc(s.firstPrompt||s.id.slice(0,8))+'</div><div class="small muted">'+esc((s.lastActivityAt||'').replace('T',' ').slice(0,19))+' · '+s.sizeKB+'KB</div></div>')
       it.onclick=()=>openSession(s); el.appendChild(it)
     })
   }else{
+    fb.style.display='none'
     const ws=await j('/api/workers')
     document.getElementById('meta').textContent=ws.length+' workers'
     ws.forEach(w=>{
@@ -469,7 +481,7 @@ function renderFlow(steps){
     return '<div class="step log">'+esc(s.text)+'</div>'
   }).join('')
 }
-function chipHtml(a){return '<span class="sa'+(a.active?' act':'')+'" onclick="openSub(\\''+a.agentId+'\\','+(a.active?'true':'false')+')">'+(a.active?'● ':'')+esc(a.agentType)+': '+esc(a.description||a.agentId.slice(0,8))+(a.spawnDepth>1?' ·d'+a.spawnDepth:'')+'</span>'}
+function chipHtml(a){const t=a.startedAt?a.startedAt.replace('T',' ').slice(11,19):'';return '<span class="sa'+(a.active?' act':'')+'" onclick="openSub(\\''+a.agentId+'\\','+(a.active?'true':'false')+')">'+(a.active?'● ':'')+esc(a.agentType)+': '+esc(a.description||a.agentId.slice(0,8))+(a.spawnDepth>1?' ·d'+a.spawnDepth:'')+(t?' <span class="c">'+t+'</span>':'')+'</span>'}
 async function openSession(s){
   sel=s.id; mode='cc'
   document.getElementById('crumb').innerHTML='<a onclick="back()">sessions</a> › '+esc(s.id.slice(0,8))+' <span class="muted">('+esc(s.status)+')</span>'
