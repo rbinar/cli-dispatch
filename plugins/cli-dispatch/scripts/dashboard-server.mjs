@@ -353,6 +353,13 @@ header b{color:var(--acc)} .grow{flex:1}
 .k{color:var(--acc)}.ok{color:var(--g)}.err{color:#f85149}
 .sa{display:inline-block;margin:3px 6px 3px 0;padding:3px 8px;border:1px solid var(--bd);border-radius:6px;cursor:pointer;color:var(--lnk)}
 .sa:hover{background:#1f2630}.empty{color:var(--dim);padding:20px}
+.panel{border:1px solid var(--bd);border-radius:8px;margin-bottom:10px;background:#11161d}
+.panel>summary{cursor:pointer;padding:7px 10px;color:var(--fg);list-style:none;user-select:none}
+.panel>summary::-webkit-details-marker{display:none}
+.panel>summary::before{content:'▸ ';color:var(--dim)}
+.panel[open]>summary::before{content:'▾ ';color:var(--dim)}
+.panel>summary:hover{background:#1f2630;border-radius:8px}
+.sabody{padding:2px 8px 8px}
 a.agentlink{color:var(--lnk);cursor:pointer}
 </style></head><body>
 <header><b>cli-dispatch</b> <span class="muted">dashboard</span><span class="grow"></span>
@@ -406,11 +413,12 @@ function renderFlow(steps){
 async function openSession(s){
   sel=s.id; mode='cc'; clearInterval(timer)
   document.getElementById('crumb').innerHTML='<a onclick="back()">sessions</a> › '+esc(s.id.slice(0,8))+' <span class="muted">('+esc(s.status)+')</span>'
+  const prevPanel=document.querySelector('#view .panel'); const subsOpen=prevPanel?prevPanel.open:true
   const v=document.getElementById('view'); v.className=''; v.innerHTML='loading…'
   const [flow,subs]=await Promise.all([j('/api/session/'+s.id+'/flow'),j('/api/session/'+s.id+'/subagents')])
   window._cur={type:'session',id:s.id}
   let h=''
-  if(subs.length){h+='<div style="margin-bottom:10px">'+subs.map(a=>'<span class="sa" onclick="openSub(\\''+a.agentId+'\\')">'+esc(a.agentType)+': '+esc(a.description||a.agentId.slice(0,8))+(a.spawnDepth>1?' ·d'+a.spawnDepth:'')+'</span>').join('')+'</div>'}
+  if(subs.length){h+='<details class="panel"'+(subsOpen?' open':'')+'><summary>Subagents <span class="badge">'+subs.length+'</span></summary><div class="sabody">'+subs.map(a=>'<span class="sa" onclick="openSub(\\''+a.agentId+'\\')">'+esc(a.agentType)+': '+esc(a.description||a.agentId.slice(0,8))+(a.spawnDepth>1?' ·d'+a.spawnDepth:'')+'</span>').join('')+'</div></details>'}
   h+=renderFlow(flow.steps)+(flow.truncated?'<div class="small muted">(showing last '+flow.steps.length+' of '+flow.total+')</div>':'')
   v.innerHTML=h; loadList()
   if(s.status==='busy') timer=setInterval(()=>openSession(s),3000)
