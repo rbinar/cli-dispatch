@@ -1,0 +1,344 @@
+#!/usr/bin/env bash
+# cx-stream — the session-tracked Codex (OpenAI Codex CLI) worker, mirroring claude-ds-stream
+# and ag-stream.
+#
+# Unlike agy (no stdout stream → tail an on-disk transcript), `codex exec --json` emits a
+# clean JSONL event stream on stdout. So this wrapper is closer to the DeepSeek backend: it
+# PIPES codex's stdout through cx-stream-parse.mjs for live progress + a rolling status.json.
+# Two codex specifics shape the call:
+#   1. Prompt-as-arg blocks on stdin → we redirect </dev/null so codex does not wait for
+#      "Reading additional input from stdin...".
+#   2. -o <file> writes the final agent message cleanly → we print THAT on stdout (falling
+#      back to the parser's last agent_message if the file is empty).
+# Codex HAS a real sandbox (`-s read-only`), so --read-only is a genuine guarantee here.
+#
+# Usage:
+#   cx-stream [--cwd <dir>] [--resume <session-id>] [--read-only] [--sandbox <mode>] \
+#             [--model <m>] [--max-runtime <s>] [--idle-timeout <s>] -p "<prompt>" [extra codex flags]
+#   echo "<prompt>" | cx-stream [--cwd <dir>]
+#
+# Session directory: ${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions/<thread-id>/
+# (same layout as claude-ds, so /cli-dispatch:ds-watch / ds-sessions work for all backends.)
+#
+# Auth: codex's own login (`codex login`). Optional CX_MODEL in the config sets --model.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+command -v codex >/dev/null 2>&1 || {
+  echo "cx-stream: 'codex' (OpenAI Codex CLI) not found in PATH." >&2
+  echo "  install: npm i -g @openai/codex   (or see https://github.com/openai/codex)" >&2
+  exit 1
+}
+command -v node >/dev/null 2>&1 || { echo "cx-stream: 'node' not found (required for the stream parser)." >&2; exit 1; }
+
+# Optional config (shared with claude-ds). Only the codex-related keys are used here.
+CONFIG="${CLAUDE_DS_CONFIG:-$HOME/.config/claude-ds/config}"
+if [ -f "$CONFIG" ]; then
+  # shellcheck disable=SC1090
+  . "$CONFIG"
+fi
+
+# Resolve the parser: env > installed location > script dir.
+PARSER="${CX_PARSER:-}"
+if [ -z "$PARSER" ]; then
+  for cand in "$HOME/.local/share/claude-ds/cx-stream-parse.mjs" "$SCRIPT_DIR/cx-stream-parse.mjs"; do
+    [ -f "$cand" ] && { PARSER="$cand"; break; }
+  done
+fi
+[ -n "$PARSER" ] && [ -f "$PARSER" ] || { echo "cx-stream: cx-stream-parse.mjs not found (set CX_PARSER)." >&2; exit 1; }
+
+# ---- parse arguments ----
+CWD="$(pwd)"
+RESUME_ID=""
+PROMPT=""
+HAVE_PROMPT=0
+READ_ONLY=0
+SANDBOX=""                       # explicit --sandbox passthrough (overrides default/--read-only)
+MODEL="${CX_MODEL:-${CODEX_MODEL:-}}"
+MAX_RUNTIME="${CX_MAX_RUNTIME:-0}"
+IDLE_TIMEOUT="${CX_IDLE_TIMEOUT:-0}"
+PASS_ARGS=()
+need_val() { [ "$2" -ge 2 ] || { echo "cx-stream: $1 requires a value." >&2; exit 1; }; }
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --cwd)            need_val --cwd "$#";    CWD="$2"; shift 2;;
+    --cwd=*)          CWD="${1#*=}"; shift;;
+    --resume)         need_val --resume "$#"; RESUME_ID="$2"; shift 2;;
+    --resume=*)       RESUME_ID="${1#*=}"; shift;;
+    --model)          need_val --model "$#";  MODEL="$2"; shift 2;;
+    --model=*)        MODEL="${1#*=}"; shift;;
+    --sandbox)        need_val --sandbox "$#"; SANDBOX="$2"; shift 2;;
+    --sandbox=*)      SANDBOX="${1#*=}"; shift;;
+    -p|--prompt)      need_val "$1" "$#";     PROMPT="$2"; HAVE_PROMPT=1; shift 2;;
+    -p=*)             PROMPT="${1#*=}"; HAVE_PROMPT=1; shift;;
+    --prompt=*)       PROMPT="${1#*=}"; HAVE_PROMPT=1; shift;;
+    --read-only)      READ_ONLY=1; shift;;
+    --max-runtime)    need_val --max-runtime "$#";  MAX_RUNTIME="$2"; shift 2;;
+    --max-runtime=*)  MAX_RUNTIME="${1#*=}"; shift;;
+    --idle-timeout)   need_val --idle-timeout "$#"; IDLE_TIMEOUT="$2"; shift 2;;
+    --idle-timeout=*) IDLE_TIMEOUT="${1#*=}"; shift;;
+    *)                PASS_ARGS+=("$1"); shift;;
+  esac
+done
+
+if [ "$HAVE_PROMPT" -eq 0 ]; then
+  if [ ! -t 0 ]; then PROMPT="$(cat)"; else
+    echo "cx-stream: no prompt. Use -p \"<prompt>\" or pipe via stdin." >&2; exit 1
+  fi
+fi
+# Reject an empty/whitespace-only prompt: codex exec "" produces no useful turn.
+if [ -z "${PROMPT//[[:space:]]/}" ]; then
+  echo "cx-stream: empty prompt — nothing to delegate." >&2; exit 1
+fi
+case "$MAX_RUNTIME"  in ''|*[!0-9]*) MAX_RUNTIME=0;;  esac
+case "$IDLE_TIMEOUT" in ''|*[!0-9]*) IDLE_TIMEOUT=0;; esac
+
+# The resume id is used as a session-dir path component → reject path-traversal early.
+if [ -n "$RESUME_ID" ]; then
+  case "$RESUME_ID" in
+    */*|*..*) echo "cx-stream: invalid --resume id" >&2; exit 1;;
+  esac
+fi
+
+# Make CWD absolute.
+CWD="$(cd "$CWD" 2>/dev/null && pwd)" || { echo "cx-stream: bad --cwd" >&2; exit 1; }
+
+# ---- resolve the sandbox mode ----
+# Default to workspace-write for normal agentic work. --read-only is a REAL codex sandbox
+# (verified: codex honors -s read-only), so honor it as a genuine no-writes guarantee
+# (unlike the agy backend, which has no tool-level write-deny). An explicit --sandbox wins.
+SANDBOX_MODE="workspace-write"
+[ "$READ_ONLY" -eq 1 ] && SANDBOX_MODE="read-only"
+[ -n "$SANDBOX" ] && SANDBOX_MODE="$SANDBOX"
+
+# ---- build the codex command ----
+# `codex exec [resume <id>] [flags] "<prompt>"`. We always emit --json (parser input) and
+# -o <file> (clean final answer), pass --skip-git-repo-check (works outside git). Prompt is
+# the LAST positional, fed </dev/null at run time.
+#
+# IMPORTANT: `codex exec resume` accepts a DIFFERENT flag set than plain `codex exec`.
+# resume does NOT accept -s/--sandbox, -C/--cd, or --color; passing them errors with
+# "unexpected argument". So the resume path builds its own arg list: sandbox is passed via
+# the config override `-c sandbox_mode=<mode>` instead of `-s`, and cwd/color are dropped
+# (resume reuses the existing thread + its recorded cwd; a cwd override isn't supported on
+# the resume subcommand).
+OUTFILE="$(mktemp -t cx-out-XXXXXX)"
+RESUME=0
+if [ -n "$RESUME_ID" ]; then
+  RESUME=1
+  CODEX_ARGS=(exec resume --json -o "$OUTFILE" --skip-git-repo-check)
+  [ -n "$MODEL" ] && CODEX_ARGS+=(-m "$MODEL")
+  CODEX_ARGS+=(-c "sandbox_mode=$SANDBOX_MODE")
+  [ "${#PASS_ARGS[@]}" -gt 0 ] && CODEX_ARGS+=("${PASS_ARGS[@]}")
+  CODEX_ARGS+=("$RESUME_ID" "$PROMPT")
+else
+  CODEX_ARGS=(exec --json -o "$OUTFILE" --skip-git-repo-check --color never -C "$CWD" -s "$SANDBOX_MODE")
+  [ -n "$MODEL" ] && CODEX_ARGS+=(-m "$MODEL")
+  [ "${#PASS_ARGS[@]}" -gt 0 ] && CODEX_ARGS+=("${PASS_ARGS[@]}")
+  CODEX_ARGS+=("$PROMPT")
+fi
+
+# ---- session bookkeeping ----
+# The thread/session id is only known once codex emits thread.started. Until then we run in a
+# TEMP session dir; the parser captures the thread id and we relocate to the canonical dir.
+SESSIONS_ROOT="${CLAUDE_DS_SESSIONS_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions}"
+mkdir -p "$SESSIONS_ROOT"
+if [ "$RESUME" -eq 1 ]; then
+  SESSION_ID="$RESUME_ID"
+else
+  SESSION_ID="cx-$(date +%s)-$$"   # provisional; renamed to the real thread id on completion
+fi
+SESSION_DIR="$SESSIONS_ROOT/$SESSION_ID"
+mkdir -p "$SESSION_DIR"
+BRANCH="$(git -C "$CWD" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+
+# ---- process helpers (defined before launch; the watchdog reuses them) ----
+mtime_of() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null; }
+
+kill_tree() {
+  local pid="$1" sig="${2:--TERM}" child
+  for child in $(pgrep -P "$pid" 2>/dev/null); do kill_tree "$child" "$sig"; done
+  kill "$sig" "$pid" 2>/dev/null || true
+}
+
+# Snapshot a pid + all descendants (newline-separated, numeric → safe to word-split).
+proc_tree() {
+  local pid="$1" child
+  for child in $(pgrep -P "$pid" 2>/dev/null); do proc_tree "$child"; done
+  printf '%s\n' "$pid"
+}
+
+# Hard-kill the codex subtree. macOS has NO `timeout` binary, so we manage the tree
+# ourselves: snapshot the subtree FIRST, TERM it (graceful), then KILL the SAME captured
+# pids (survives reparenting). (bash-3.2 safe: no mapfile.)
+kill_worker() {
+  local root="$1" tree p
+  tree="$(proc_tree "$root")"
+  for p in $tree; do kill -TERM "$p" 2>/dev/null || true; done
+  sleep 3
+  for p in $tree; do kill -KILL "$p" 2>/dev/null || true; done
+}
+
+echo "cx-stream → Codex (OpenAI Codex CLI) worker" >&2
+echo "  cwd:     $CWD" >&2
+echo "  sandbox: $SANDBOX_MODE" >&2
+[ -n "$MODEL" ] && echo "  model:   $MODEL" >&2
+[ "$RESUME" -eq 1 ] && echo "  resume:  $RESUME_ID" >&2
+echo "  dir:     $SESSION_DIR" >&2
+echo "  status:  $SESSION_DIR/status.json" >&2
+
+# ---- launch codex; pipe its JSONL stdout through the parser ----
+# codex stdout (JSONL) → parser; codex stderr → our stderr. The parser writes status.json
+# and prints the last agent_message on ITS stdout (captured as the fallback answer).
+[ "${CX_PROGRESS_STDERR:-0}" = "1" ] && export CX_PROGRESS_STDERR
+
+PARSER_OUT="$(mktemp -t cx-parsed-XXXXXX)"
+DONEFILE="$SESSION_DIR/.cx.done"; rm -f "$DONEFILE" "$SESSION_DIR/.timeout"
+
+# Launch codex as a DIRECT background job whose stdout feeds the parser via a PROCESS
+# SUBSTITUTION, rather than the old `( codex ) | node` pipeline. Two bugs are fixed at once:
+#   1. pid: in a pipeline `$!` is the LAST stage (node), and codex/node are SIBLINGS — so the
+#      old `pgrep -P $!` never found codex, and the watchdog killed the parser while codex ran
+#      on, ORPHANED (the runtime/idle cap was a no-op). As a direct background job, `$!` is
+#      codex's REAL pid (no subshell, no bash-3.2-incompatible $BASHPID, no exec), so the
+#      watchdog targets the right process and `wait` on it yields codex's TRUE exit code.
+#   2. EOF: a named-pipe (FIFO) feeding node hangs — libuv reopens an stdin FIFO O_RDWR, so it
+#      keeps a writer reference and NEVER sees EOF after codex closes its end (the parser would
+#      never finalize). Process substitution uses an anonymous pipe, which delivers EOF cleanly.
+# The parser writes its session files, prints the fallback answer to PARSER_OUT, and on exit
+# touches PARSER_DONE so we can synchronize on it (a process-substitution child isn't a job we
+# can `wait` on directly).
+RC_FILE="$(mktemp -t cx-rc-XXXXXX)"   # reserved (kept for the cleanup trap); rc now via `wait`
+PARSER_DONE="$(mktemp -u -t cx-pdone-XXXXXX)"
+
+# M2: clean up ALL temp files + reap the watchdog (and the codex worker) on ANY exit path —
+# normal, error, or signal (Ctrl-C) — so nothing leaks and the watchdog can't outlive us.
+cleanup() {
+  [ -n "${WATCHDOG_PID:-}" ] && kill "$WATCHDOG_PID" 2>/dev/null || true
+  [ -n "${CODEX_PID:-}" ] && kill -TERM "$CODEX_PID" 2>/dev/null || true
+  rm -f "$OUTFILE" "$PARSER_OUT" "$RC_FILE" "$PARSER_DONE" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+# codex's stdout → parser (process substitution); codex's stderr passes through to our stderr.
+# Prompt-as-arg → redirect stdin from /dev/null (the documented gotcha; without it codex blocks
+# on "Reading additional input from stdin..."). The `{ node ...; touch DONE; }` wrapper lets us
+# detect when the parser has fully drained + written status.json.
+codex "${CODEX_ARGS[@]}" </dev/null > >(
+  CX_SESSION_DIR="$SESSION_DIR" \
+  CX_PROMPT_PREVIEW="$(printf '%.120s' "$PROMPT")" \
+  CX_CWD="$CWD" \
+  CX_BRANCH="$BRANCH" \
+  CX_MODEL="$MODEL" \
+  CX_THREAD_ID="$([ "$RESUME" -eq 1 ] && printf '%s' "$RESUME_ID" || true)" \
+  CX_RESUME="$RESUME" \
+    node "$PARSER" > "$PARSER_OUT"
+  touch "$PARSER_DONE"
+) &
+CODEX_PID=$!
+
+# The watchdog watches codex itself for liveness and TARGETS the real codex pid for the kill.
+PIPE_PID="$CODEX_PID"
+
+# ---- watchdog: runtime cap + idle on status.json mtime (best-effort) ----
+TRANSCRIPT="$SESSION_DIR/transcript.jsonl"
+watchdog() {
+  local start now m target
+  target="${CODEX_PID:-$PIPE_PID}"
+  start=$(date +%s)
+  while kill -0 "$PIPE_PID" 2>/dev/null; do
+    sleep 2
+    now=$(date +%s)
+    if [ "$MAX_RUNTIME" -gt 0 ] && [ "$((now - start))" -ge "$MAX_RUNTIME" ]; then
+      echo "runtime ${MAX_RUNTIME}s" > "$SESSION_DIR/.timeout"
+      [ -n "$target" ] && kill_worker "$target"
+      kill_tree "$PIPE_PID" -TERM
+      return 0
+    fi
+    if [ "$IDLE_TIMEOUT" -gt 0 ] && [ -f "$TRANSCRIPT" ]; then
+      m="$(mtime_of "$TRANSCRIPT")"; m="${m:-$start}"
+      if [ "$((now - m))" -ge "$IDLE_TIMEOUT" ]; then
+        echo "idle ${IDLE_TIMEOUT}s" > "$SESSION_DIR/.timeout"
+        [ -n "$target" ] && kill_worker "$target"
+        kill_tree "$PIPE_PID" -TERM
+        return 0
+      fi
+    fi
+  done
+}
+WATCHDOG_PID=""
+if [ "$MAX_RUNTIME" -gt 0 ] || [ "$IDLE_TIMEOUT" -gt 0 ]; then
+  echo "  guard:   max-runtime=${MAX_RUNTIME}s idle-timeout=${IDLE_TIMEOUT}s" >&2
+  watchdog & WATCHDOG_PID=$!
+fi
+
+# ---- wait for codex + parser to finish ----
+# Wait on the codex job FIRST: its exit status is codex's REAL exit code (direct bg job).
+set +e
+wait "$CODEX_PID"; CODEX_RC=$?
+set -e
+[ -n "$WATCHDOG_PID" ] && kill_tree "$WATCHDOG_PID" -TERM
+case "$CODEX_RC" in ''|*[!0-9]*) CODEX_RC=1;; esac
+
+# The parser runs in a process substitution (not a job we can `wait` on), so synchronize on
+# its done-marker: it touches PARSER_DONE only AFTER draining stdin and writing status.json.
+# Bounded poll so we never hang if the parser died early.
+for _ in $(seq 1 100); do
+  [ -e "$PARSER_DONE" ] && break
+  sleep 0.1
+done
+
+if [ -f "$SESSION_DIR/.timeout" ]; then
+  TIMEOUT_REASON="$(cat "$SESSION_DIR/.timeout" 2>/dev/null || true)"
+  printf 'timeout: %s' "$TIMEOUT_REASON" > "$DONEFILE"
+  echo "cx-stream: stopped by watchdog ($TIMEOUT_REASON)." >&2
+  # A watchdog stop is always a failure, regardless of codex's reported rc.
+  [ "$CODEX_RC" -eq 0 ] && CODEX_RC=124
+else
+  printf '%s' "$CODEX_RC" > "$DONEFILE"
+fi
+
+# ---- H2: consult the parser's result; turn-level errors must propagate ----
+# codex frequently emits a turn-level error (turn.failed / item.type:"error") yet still
+# exits 0. The parser records that as status.json state=error (+ error message). Surface the
+# reason on stderr and force a non-zero exit so callers don't see "success" with no output.
+CX_STATE=""; CX_ERR=""
+if [ -f "$SESSION_DIR/status.json" ]; then
+  CX_STATE="$(node -e 'try{const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(s.state||"")}catch{}' "$SESSION_DIR/status.json" 2>/dev/null || true)"
+  CX_ERR="$(node -e 'try{const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(s.error||"")}catch{}' "$SESSION_DIR/status.json" 2>/dev/null || true)"
+fi
+if [ "$CX_STATE" = "error" ]; then
+  [ -n "$CX_ERR" ] && echo "cx-stream: codex turn failed: $CX_ERR" >&2 \
+                    || echo "cx-stream: codex turn failed." >&2
+  [ "$CODEX_RC" -eq 0 ] && CODEX_RC=1
+fi
+
+# ---- relocate the provisional session dir to the real thread id (best-effort) ----
+if [ "$RESUME" -eq 0 ]; then
+  THREAD_ID="$(node -e 'try{const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(m.threadId||"")}catch{}' "$SESSION_DIR/meta.json" 2>/dev/null || true)"
+  if [ -n "$THREAD_ID" ] && [ "$THREAD_ID" != "$SESSION_ID" ]; then
+    FINAL_DIR="$SESSIONS_ROOT/$THREAD_ID"
+    if [ ! -e "$FINAL_DIR" ]; then
+      mv "$SESSION_DIR" "$FINAL_DIR" 2>/dev/null && SESSION_DIR="$FINAL_DIR"
+    else
+      # Don't clobber an existing thread dir; warn instead of silently leaving the session
+      # stranded in the provisional dir with no trace.
+      echo "cx-stream: thread dir $FINAL_DIR exists; session left at $SESSION_DIR" >&2
+    fi
+    echo "  thread:  $THREAD_ID" >&2
+  fi
+fi
+
+# ---- print ONLY the final agent message on stdout ----
+# Prefer codex's -o file (clean final message); fall back to the parser's captured
+# last agent_message.
+if [ -s "$OUTFILE" ]; then
+  cat "$OUTFILE"
+elif [ -s "$PARSER_OUT" ]; then
+  cat "$PARSER_OUT"
+fi
+
+rm -f "$SESSION_DIR/.timeout" 2>/dev/null || true
+# Temp files (OUTFILE/PARSER_OUT/PIDFILE/RC_FILE/FIFO) are removed by the EXIT trap.
+exit "$CODEX_RC"

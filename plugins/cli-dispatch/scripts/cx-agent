@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# cx-agent — call the Codex (OpenAI Codex CLI) worker like a subagent: ONE command,
+# live progress, final answer. The codex-backend twin of ds-agent / ag-agent.
+#
+#   cx-agent "<task>"                    # agentic in the current dir; streams tool activity; prints the answer
+#   cx-agent --cwd <dir> "<task>"        # work in <dir>
+#   cx-agent --read-only "<task>"        # REAL no-writes sandbox (codex -s read-only)
+#   cx-agent --resume <session-id> "<follow-up>"   # continue an existing codex session
+#   echo "<task>" | cx-agent             # task via stdin
+#
+# A thin SYNCHRONOUS wrapper over cx-stream: blocks until the worker is done, shows tool
+# activity live on stderr, prints ONLY the final answer on stdout.
+#
+# READ-ONLY: unlike agy (no tool-level write-deny — --read-only is rejected there), codex
+# has a GENUINE sandbox (`-s read-only`), so --read-only is forwarded to cx-stream and is a
+# real no-writes guarantee.
+set -euo pipefail
+
+usage() { echo 'usage: cx-agent [--cwd <dir>] [--resume <session-id>] [--read-only] [--sandbox <mode>] [--model <m>] [--max-runtime <s>] [--idle-timeout <s>] [-q] "<task>"' >&2; }
+
+QUIET=0
+TASK=""
+HAVE_TASK=0
+FWD=()
+need_val() { [ "$2" -ge 2 ] || { echo "cx-agent: $1 requires a value." >&2; exit 1; }; }
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --read-only)      FWD+=(--read-only); shift;;
+    --cwd)            need_val --cwd "$#";    FWD+=(--cwd "$2"); shift 2;;
+    --resume)         need_val --resume "$#"; FWD+=(--resume "$2"); shift 2;;
+    --model)          need_val --model "$#";  FWD+=(--model "$2"); shift 2;;
+    --sandbox)        need_val --sandbox "$#"; FWD+=(--sandbox "$2"); shift 2;;
+    --max-runtime)    need_val --max-runtime "$#";  FWD+=(--max-runtime "$2"); shift 2;;
+    --idle-timeout)   need_val --idle-timeout "$#"; FWD+=(--idle-timeout "$2"); shift 2;;
+    -q|--quiet)       QUIET=1; shift;;
+    -p|--prompt)      need_val "$1" "$#"; TASK="$2"; HAVE_TASK=1; shift 2;;
+    -h|--help)        usage; exit 0;;
+    -*)               FWD+=("$1"); shift;;
+    *)                TASK="$1"; HAVE_TASK=1; shift;;
+  esac
+done
+
+if [ "$HAVE_TASK" -eq 0 ]; then
+  if [ ! -t 0 ]; then TASK="$(cat)"; else usage; exit 1; fi
+fi
+if [ -z "${TASK//[[:space:]]/}" ]; then echo "cx-agent: empty task — nothing to delegate." >&2; exit 1; fi
+
+STREAM="$(command -v cx-stream 2>/dev/null || true)"
+[ -z "$STREAM" ] && STREAM="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cx-stream"
+[ -x "$STREAM" ] || { echo "cx-agent: cx-stream not found (run /cli-dispatch:ds-setup)." >&2; exit 1; }
+
+if [ "$QUIET" -eq 0 ]; then
+  echo "▶ cx-agent → Codex (OpenAI Codex CLI) worker" >&2
+  export CX_PROGRESS_STDERR=1
+fi
+
+set +e
+# M1: on macOS bash 3.2 under `set -u`, expanding an EMPTY "${FWD[@]}" is an unbound-variable
+# error — which would break the common no-flags `cx-agent "task"` call. The ${arr[@]+...}
+# idiom expands to nothing when FWD is empty and to the quoted elements otherwise.
+"$STREAM" ${FWD[@]+"${FWD[@]}"} -p "$TASK"
+rc=$?
+set -e
+exit "$rc"

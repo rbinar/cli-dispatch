@@ -7,8 +7,11 @@ description: |
   (generation vs full-agentic), running as a background task, isolating real-repo work
   in a git worktree, and review/verify/merge of the output. The built-in Agent/subagent
   tool canNOT use DeepSeek (model enum is Anthropic-only) — claude-ds is the only path.
-  Triggers: "claude-ds", "delegate to claude-ds", "run with deepseek" (also Turkish:
-  "deepseek ile yap/çalıştır", "delege et claude-ds").
+  cli-dispatch is multi-backend: a second worker, **Antigravity (agy / Gemini)**, is
+  available via `ag-agent` / `ag-stream` (see the Antigravity section below).
+  Triggers: "claude-ds", "delegate to claude-ds", "run with deepseek", "delegate to
+  antigravity/gemini", "run with agy" (also Turkish: "deepseek ile yap/çalıştır",
+  "gemini/antigravity ile yap", "delege et claude-ds").
 user-invocable: true
 ---
 
@@ -133,14 +136,58 @@ Then **YOU are the reviewer:**
    Note in the commit body that "implementation was delegated to claude-ds (DeepSeek)" (transparency).
 4. Cleanup: `rm <worktree>/node_modules` → `git worktree remove <worktree> --force` → `git worktree prune`.
 
+## Antigravity (Gemini) backend — `ag-agent` / `ag-stream`
+cli-dispatch's second worker is **Antigravity** (`agy`, Google's Gemini-powered agentic CLI).
+It's a *different binary* from `claude` with its own auth/config — the DeepSeek "swap the env
+var" trick does NOT apply. Enable it via `/cli-dispatch:ds-setup` (choose Antigravity/Both).
+
+The `ag-*` family mirrors the `ds-*` one, so the workflow is the same — only the command name
+changes:
+```bash
+ag-agent "<task>"                     # agentic in cwd; live progress on stderr; answer on stdout
+ag-agent -q "<task>"                  # answer only on stdout (banner/progress silenced)
+ag-agent --cwd <dir> "<task>"         # work in <dir>; <dir> is registered as agy's workspace
+ag-agent --resume <conv-id> "<follow-up>"   # continue the same agy conversation
+ag-agent --model "Claude Opus 4.6 (Thinking)" "<task>"   # pick a specific model (see below)
+ag-stream --cwd <dir> -p "<task>"     # background/session-tracked variant (poll status.json)
+```
+- **Model selection (agy proxies multiple families):** `agy models` lists them; pass the EXACT
+  display name to `--model` (config default: `AG_MODEL`). Verified working cross-vendor —
+  e.g. `--model "Claude Opus 4.6 (Thinking)"` actually routes to Claude, `"Gemini 3.1 Pro (High)"`
+  to Gemini. Current list: `Gemini 3.5 Flash (Low|Medium|High)`, `Gemini 3.1 Pro (Low|High)`,
+  `Claude Sonnet 4.6 (Thinking)`, `Claude Opus 4.6 (Thinking)`, `GPT-OSS 120B (Medium)`. Default
+  `Gemini 3.5 Flash (High)`. ⚠ An unknown name makes agy SILENTLY use its default — ag-stream
+  warns when `--model` isn't in `agy models`, but double-check the exact string (incl. suffix).
+- **Same session dir** as DeepSeek (`…/claude-ds/sessions/<id>/` with `status.json` etc.), so
+  `/cli-dispatch:ds-sessions` / `ds-watch` work for both. The session id IS the agy conv-id.
+- **How it works:** agy has no `--output-format json` and a non-TTY silent-drop bug, so
+  `ag-stream` runs it under a pseudo-TTY (`script`) and **tails agy's on-disk JSONL transcript**
+  for live progress + the final answer. Requires `script` (pseudo-tty) + `node`.
+- **Auth:** Google sign-in (run `agy` once) or `GEMINI_API_KEY`/`ANTIGRAVITY_API_KEY` in the config.
+- **no read-only mode:** agy has no tool-level write-deny (`--sandbox` restricts the terminal,
+  not file writes — tested), so `--read-only` is rejected. For a no-writes guarantee, isolate
+  in a throwaway/worktree `--cwd` and review the diff.
+- **timeout semantics differ from DeepSeek:** agy spawns detached workers + runs under a pty,
+  so an external tree-kill is unreliable (verified: SIGKILL on the tracked tree left agy
+  working). `--max-runtime N` is therefore enforced via agy's OWN `--print-timeout` (a
+  per-model-wait cap, so total wall-time may exceed N), and the watchdog is only a best-effort
+  backstop for a fully-hung agy. A capped run may report `done` (partial output) or `error`
+  (no final answer), not a guaranteed `error`. For a true wall-clock bound, run it yourself
+  under `timeout(1)`/worktree and don't rely on the worker self-terminating.
+- **Isolation:** same worktree rule for real-repo tasks — run `ag-agent --cwd <worktree>` and
+  review the diff yourself. (Worktree isolation also avoids agy's per-workspace conv-id race.)
+- **Babysitter subagent:** the `ds-runner` subagent currently targets DeepSeek; for Antigravity
+  call `ag-agent` directly (or inside a worktree) and verify the result yourself.
+
 ## Role
-claude-ds = worker (generation/implementation), you = orchestrator + reviewer + git/merge owner.
-Don't trust any output until verified.
+The worker (claude-ds = DeepSeek, or ag-agent = Antigravity/Gemini) does the work;
+you = orchestrator + reviewer + git/merge owner. Don't trust any output until verified.
 
 ## Commands
-- `/cli-dispatch:ds-setup` — install the wrappers (`claude-ds` + `claude-ds-stream` + parser) + config + smoke test.
-- `/cli-dispatch:ds-run <task>` — delegate a task (worktree isolation for repo tasks, session-tracked).
-- `/cli-dispatch:ds-sessions` — list past/active sessions.
+- `/cli-dispatch:ds-setup` — install worker backends (DeepSeek and/or Antigravity); choose at setup + config + smoke test.
+- `/cli-dispatch:ds-run <task>` — delegate to the **DeepSeek** worker (worktree isolation for repo tasks, session-tracked).
+- `/cli-dispatch:ag-run <task>` — delegate to the **Antigravity (Gemini)** worker (same workflow).
+- `/cli-dispatch:ds-sessions` — list past/active sessions (all backends; shows a `backend` column).
 - `/cli-dispatch:ds-watch <id>` — show a session's compact live status (cost-conscious).
-- `/cli-dispatch:ds-status` — check installation/key/CLI status.
+- `/cli-dispatch:ds-status` — check installation/key/CLI status for all backends.
 - `/cli-dispatch:ds-balance` — show the DeepSeek account balance.

@@ -2,11 +2,11 @@
 
 > 🌐 **Languages:** **English** · [Türkçe](README.tr.md)
 
-A Claude Code plugin that **delegates a task to the right worker CLI** — a multi-backend delegation hub. Current backend: **DeepSeek-powered Claude Code** (`claude-ds`).
+A Claude Code plugin that **delegates a task to the right worker CLI** — a multi-backend delegation hub. Backends: **DeepSeek-powered Claude Code** (`claude-ds`), **Antigravity / Gemini** (`agy`, via `ag-agent`), and **OpenAI Codex CLI** (`codex`, via `cx-agent`).
 
-> ℹ️ **Multi-backend delegation hub.** Only one backend exists today: DeepSeek-powered Claude Code. Commands carry the backend-identifying `ds-` prefix (`/cli-dispatch:ds-setup`, `ds-run`, …). The wrapper binary and config paths keep the `claude-ds` name (the DeepSeek backend's name) — other worker-CLI backends may be added later.
+> ℹ️ **Multi-backend delegation hub.** Three worker backends today — **DeepSeek** (commands `/cli-dispatch:ds-*`), **Antigravity/Gemini** (`/cli-dispatch:ag-run`, wrappers `ag-agent`/`ag-stream`), and **Codex** (`/cli-dispatch:cx-run`, wrappers `cx-agent`/`cx-stream`). You pick which to install at setup. All three write to the same session layout, so `ds-sessions`/`ds-watch` work across all. The DeepSeek wrapper/config paths keep the `claude-ds` name (that backend's name).
 
-Claude Code's built-in `Agent`/subagent tool only supports Anthropic models (sonnet/opus/haiku) — it can't hand work to DeepSeek. `claude-ds` installs a portable wrapper that runs the Claude Code CLI against DeepSeek's Anthropic-compatible API, so you can hand tasks to DeepSeek as a **delegated worker**.
+Claude Code's built-in `Agent`/subagent tool only supports Anthropic models (sonnet/opus/haiku) — it can't hand work to DeepSeek or Gemini. cli-dispatch installs portable wrappers that drive each worker CLI (Claude Code against DeepSeek's API; the Antigravity CLI for Gemini), so you can hand tasks to either as a **delegated worker**.
 
 > 📝 **Write-up (Turkish):** [cli-dispatch: a plugin that makes Claude the boss and DeepSeek the worker](https://medium.com/@rbinar/cli-dispatch-claudea-patron-deepseek-e-i%CC%87%C5%9F%C3%A7i-rol%C3%BC-veren-bir-plugin-b232803581fc) — Medium
 
@@ -50,7 +50,7 @@ The install output says `Run /reload-plugins to apply`. This step is required fo
 /cli-dispatch:ds-setup
 ```
 
-`/cli-dispatch:ds-setup` installs the wrapper to `~/.local/bin/claude-ds` and creates a `~/.config/claude-ds/config` skeleton. If the key is still empty, setup **automatically opens the config file in your platform's default editor** (macOS `open`, Linux `xdg-open`, WSL `explorer.exe`, Windows `notepad`). Add your DeepSeek API key **yourself** in the opened file:
+`/cli-dispatch:ds-setup` first **asks which worker backend(s) to install** — DeepSeek, Antigravity (Gemini), Codex, or all (`--backends all` or `--backends deepseek,antigravity,codex`). For **DeepSeek** it installs the wrapper to `~/.local/bin/claude-ds` and creates a `~/.config/claude-ds/config` skeleton; if the key is still empty, setup **automatically opens the config in your platform's default editor** (macOS `open`, Linux `xdg-open`, WSL `explorer.exe`, Windows `notepad`). Add your DeepSeek API key **yourself** in the opened file:
 
 ```bash
 # ~/.config/claude-ds/config
@@ -60,6 +60,10 @@ DS_FLASH_MODEL="deepseek-v4-flash"
 ```
 
 > Want a different editor? Set the `CLAUDE_DS_EDITOR` environment variable (e.g. `CLAUDE_DS_EDITOR="code"`). If auto-open fails, open the file manually: `${EDITOR:-nano} ~/.config/claude-ds/config`.
+
+For the **Antigravity (Gemini)** backend, setup installs `ag-agent`/`ag-stream` instead. It needs the `agy` CLI (`curl -fsSL https://antigravity.google/cli/install.sh | bash`) plus `script` (pseudo-TTY) and `node`; auth is via Google sign-in (run `agy` once) or a `GEMINI_API_KEY`. Native Windows: DeepSeek only — use WSL for the Antigravity backend. agy proxies **multiple model families** — pick one with `ag-agent --model "<name>"` (or the `AG_MODEL` config default): `Gemini 3.1 Pro (High)`, `Claude Opus 4.6 (Thinking)`, `GPT-OSS 120B (Medium)`, … (run `agy models` for the exact list; default `Gemini 3.5 Flash (High)`).
+
+For the **Codex (OpenAI Codex CLI)** backend, setup installs `cx-agent`/`cx-stream`. It needs the `codex` CLI (≥ 0.142.3: `npm i -g @openai/codex`, `brew install --cask codex`, or `curl -fsSL https://chatgpt.com/codex/install.sh | sh`) plus `node`; auth is via `codex login` (ChatGPT/OAuth — no API key needed for personal use) or `CODEX_API_KEY` (takes precedence) or `OPENAI_API_KEY`. Select a model with `cx-agent --model <name>` (or the `CX_MODEL` config default; blank = codex's own default). **Key advantage:** `cx-agent --read-only` activates codex's **real OS-level sandbox** (macOS Seatbelt / Linux bwrap+seccomp) — a kernel-enforced hard-block on all file writes, not just tool-layer restriction.
 
 Requirements: the `claude` CLI installed and `~/.local/bin` on PATH. DeepSeek key: https://platform.deepseek.com/api_keys
 
@@ -72,11 +76,13 @@ You use claude-ds **from inside Claude Code** — two ways:
 
 | Command | What it does |
 |---------|--------------|
-| `/cli-dispatch:ds-setup` | Install + config skeleton + smoke test |
-| `/cli-dispatch:ds-run <task>` | Delegate a task to DeepSeek (session-tracked; worktree isolation for repo tasks) |
-| `/cli-dispatch:ds-sessions` | List past/active sessions |
+| `/cli-dispatch:ds-setup` | Pick backend(s) + install + config skeleton + smoke test |
+| `/cli-dispatch:ds-run <task>` | Delegate a task to **DeepSeek** (session-tracked; worktree isolation for repo tasks) |
+| `/cli-dispatch:ag-run <task>` | Delegate a task to **Antigravity (Gemini)** (same workflow) |
+| `/cli-dispatch:cx-run <task>` | Delegate a task to **Codex (OpenAI)** (real read-only sandbox; same session layout) |
+| `/cli-dispatch:ds-sessions` | List past/active sessions (all backends; shows a `backend` column) |
 | `/cli-dispatch:ds-watch <id>` | Show a session's live status (cost-aware) |
-| `/cli-dispatch:ds-status` | Check install/key/CLI status |
+| `/cli-dispatch:ds-status` | Check install/key/CLI status for all backends |
 | `/cli-dispatch:ds-balance` | Show DeepSeek account balance |
 
 ## Features
@@ -122,6 +128,10 @@ Agent(subagent_type="ds-runner", model="sonnet", prompt="<repo/code task>")     
 
 Valuable for long/agentic work, verification, or several jobs in parallel; for a simple one-shot job `/cli-dispatch:ds-run` is enough.
 
+## cx-runner subagent (Codex twin — keep context clean)
+
+The Codex backend has its own parallel subagent: **`cx-runner`**. It works identically to `ds-runner` — picks the mode, isolates the work in a git worktree when needed, **verifies** (build/test for repo tasks), and returns a short result — but the worker is always Codex. The headline advantage over the other backends is Mode A: `--read-only` activates a **real OS-level sandbox** (macOS Seatbelt / Linux bwrap+seccomp), a kernel-enforced hard-block on all file writes — no worktree needed for a genuine no-writes guarantee. Inside Claude Code, say "do this task with cx-runner" or use `Agent(subagent_type="cx-runner", ...)`.
+
 ## Under the hood (advanced)
 
 The plugin installs portable CLIs that Claude Code **invokes via Bash** into `~/.local/bin` — normally **you don't call these**, Claude Code manages them:
@@ -131,17 +141,25 @@ The plugin installs portable CLIs that Claude Code **invokes via Bash** into `~/
 | `claude-ds` | Plain env wrapper (points `claude` at DeepSeek; no parse/session) |
 | `claude-ds-stream` | Session-tracked variant (stream-json parse + status/progress/transcript) |
 | `ds-agent` | One-shot synchronous wrapper: task → run → answer (stdout); progress on stderr |
+| `ag-stream` | Session-tracked Antigravity wrapper (tails agy's on-disk JSONL transcript) |
+| `ag-agent` | One-shot synchronous wrapper for agy: task → run → answer (stdout) |
+| `cx-stream` | Session-tracked Codex wrapper (pipes codex's JSONL stdout through the parser) |
+| `cx-agent` | One-shot synchronous wrapper for codex: task → run → answer (stdout) |
 
 If you want, you can also use them directly from the terminal (e.g. in scripts outside the plugin):
 
 ```bash
-ds-agent --read-only "question"          # one shot; answer to stdout
+ds-agent --read-only "question"           # one shot; answer to stdout
 ds-agent --cwd /tmp/x "generate a file"   # agentic, isolated dir
 claude-ds-stream --resume <id> -p "…"     # continue an existing session
+
+cx-agent --read-only -q "question"        # read-only: kernel-enforced sandbox (macOS Seatbelt / Linux bwrap)
+cx-agent --cwd /tmp/x "generate a file"   # agentic, isolated dir
+cx-agent --resume <thread-id> "follow-up"                # resume reuses stored context; --cwd not supported on resume
 ```
 
-Flags: `--read-only`, `--cwd <dir>`, `--resume <id>`, `--max-runtime`/`--idle-timeout`, `-q`.
-(`ds-runner` is **not** one of these — it's a Claude Code subagent, not in `~/.local/bin`.)
+Flags (cx-agent / cx-stream): `--read-only`, `--sandbox <mode>`, `--cwd <dir>`, `--resume <id>`, `--model <m>`, `--max-runtime`/`--idle-timeout`, `-q`.
+(`cx-runner` is **not** one of these — it's a Claude Code subagent, not in `~/.local/bin`.)
 
 > 📄 Full reference for terminal install, all commands, flags, and env overrides: [TERMINAL.md](TERMINAL.md).
 

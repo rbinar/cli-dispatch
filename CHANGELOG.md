@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [2.2.0] — 2026-06-27
+
+### Added
+- **Codex (OpenAI Codex CLI) worker backend.** cli-dispatch is now a three-backend hub: alongside DeepSeek and Antigravity you can delegate to **OpenAI's Codex CLI** (`codex`, ≥ 0.142.3). New wrappers `cx-agent` (one-shot, subagent-style) and `cx-stream` (session-tracked), plus the `cx-stream-parse.mjs` parser, a `/cli-dispatch:cx-run <task>` command, and a `cx-runner` subagent.
+  - `cx-stream` pipes `codex exec --json` stdout through `cx-stream-parse.mjs` (no pseudo-TTY or file-tail needed — codex has a native JSONL stream). Writes the **same session-dir layout** as the other backends (`status.json`/`meta.json`/`progress.log`/`transcript.jsonl`), keyed by codex's thread-id, so `/cli-dispatch:ds-sessions` and `/cli-dispatch:ds-watch` cover all three backends.
+  - **Real OS-level read-only sandbox:** `cx-agent --read-only` passes `-s read-only` to codex, activating macOS Seatbelt / Linux bwrap+seccomp — a kernel-enforced hard-block on all file writes (not a tool-layer restriction like DeepSeek, and not absent like Antigravity). Pure analysis tasks can pass `--read-only` without worktree isolation and get a genuine no-writes guarantee.
+  - Sandbox defaults to `workspace-write` for normal agentic work; override per-call with `cx-agent --read-only` or `cx-agent --sandbox <mode>`.
+  - Resume via the thread-id printed on stderr: `cx-agent --resume <thread-id> --cwd <dir> "<follow-up>"`. Always re-pass `--cwd` on resume (codex reloads workspace from the thread but needs the directory explicitly).
+  - **Auth:** `codex login` (ChatGPT/OAuth — no key needed for personal use) or `CODEX_API_KEY` (takes precedence over `OPENAI_API_KEY`). Config variable for the default model: `CX_MODEL` (with `CODEX_MODEL` as fallback); blank = codex's own default (varies by version, not hardcoded here).
+  - **`cx-runner` subagent** (`agents/cx-runner.md`): babysitter-model agent (haiku/sonnet by difficulty) that manages a full cx-agent delegation in a sub-context — picks mode, isolates in a git worktree for code tasks, verifies (build/test), and returns a concise verdict.
+- **Backend selection extended.** `install.sh --backends` now accepts `codex` as a keyword; `all` expands to `deepseek,antigravity,codex`. The config skeleton gains a Codex section documenting `CODEX_API_KEY`, `CX_MODEL`, and sandbox options.
+
+## [2.1.0] — 2026-06-26
+
+### Added
+- **Antigravity (Gemini) worker backend.** cli-dispatch is now genuinely multi-backend: alongside DeepSeek you can delegate to Google's **Antigravity CLI** (`agy`). New wrappers `ag-agent` (one-shot, subagent-style) and `ag-stream` (session-tracked), plus the `ag-transcript-parse.mjs` parser and a `/cli-dispatch:ag-run <task>` command.
+  - agy has no `--output-format json` and a non-TTY silent-drop bug, so `ag-stream` runs it under a **pseudo-TTY** (`script`) and **tails agy's on-disk JSONL transcript** (`transcript_full.jsonl`) for live progress + the final answer — instead of parsing stdout.
+  - Writes the **same session-dir layout** as the DeepSeek backend (`status.json`/`meta.json`/`progress.log`), keyed by agy's conversation-id, so `/cli-dispatch:ds-sessions` and `/cli-dispatch:ds-watch` work for both backends (sessions now show a `backend` column). Resume via `ag-agent --resume <conv-id>`. Reuses the runtime/idle-timeout watchdog and worktree isolation.
+  - Registers `--cwd` as agy's active workspace (`--add-dir`) so files land in the target dir, not agy's scratch dir. No read-only mode: agy has no tool-level write-deny (`--sandbox` restricts the terminal, not file writes — tested), so `--read-only` is rejected; isolate in a throwaway/worktree `--cwd` and review the diff for a no-writes guarantee.
+  - **Auth:** Google sign-in (run `agy` once) or `GEMINI_API_KEY` / `ANTIGRAVITY_API_KEY`.
+  - **Model selection:** `--model "<name>"` (or the `AG_MODEL` config default) passes through to agy, which proxies multiple families — verified routing to `Gemini 3.5 Flash`, `Gemini 3.1 Pro`, `Claude Sonnet 4.6`, `Claude Opus 4.6`, and `GPT-OSS 120B` (each with reasoning tiers; exact display names from `agy models`; default `Gemini 3.5 Flash (High)`). ag-stream warns when a `--model` value isn't in `agy models` (agy otherwise silently falls back to its default).
+- **Backend selection at setup.** `/cli-dispatch:ds-setup` now asks which backend(s) to install (DeepSeek, Antigravity, or both); `install.sh` gained `--backends deepseek,antigravity|all`. The config skeleton holds an optional Gemini section; existing configs are never clobbered.
+
+### Notes
+- Native Windows installs the DeepSeek backend only — the Antigravity backend needs a pseudo-TTY (`script`), so use WSL for it.
+- **Timeout semantics differ from the DeepSeek backend.** agy spawns detached worker processes and runs under a pty, so an external process-tree kill is not a reliable stop (verified: SIGKILL on the whole tracked tree left agy working). `--max-runtime` is therefore enforced via agy's own `--print-timeout` (a per-model-wait cap, so total wall-time may exceed it), with the watchdog as a best-effort backstop only; `--idle-timeout` is best-effort. A capped run may report `done` (partial) or `error`. For a strict wall-clock bound, wrap the call in `timeout(1)` and isolate in a worktree.
+- **No `--read-only`** on the Antigravity backend (agy has no tool-level write-deny; `--sandbox` does not block file writes). The watchdog kill path is hardened with a snapshot-based killer (captures the subtree before signalling) since agy ignores SIGTERM and reparents to init, and the discovery-failure path now kills a startup-hung agy instead of waiting forever.
+
 ## [2.0.0] — 2026-06-23
 
 ### Changed (BREAKING)

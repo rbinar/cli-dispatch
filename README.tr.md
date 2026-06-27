@@ -2,11 +2,11 @@
 
 > 🌐 **Diller:** **Türkçe** · [English](README.md)
 
-**Bir görevi uygun işçi CLI'ya delege eden** bir Claude Code plugin'i — çok-backend delege hub'ı. Mevcut backend: **DeepSeek destekli Claude Code** (`claude-ds`).
+**Bir görevi uygun işçi CLI'ya delege eden** bir Claude Code plugin'i — çok-backend delege hub'ı. Backend'ler: **DeepSeek destekli Claude Code** (`claude-ds`), **Antigravity / Gemini** (`agy`, `ag-agent` ile) ve **OpenAI Codex CLI** (`codex`, `cx-agent` ile).
 
-> ℹ️ **Çok-backend delege hub'ı.** Şu an tek backend var: DeepSeek destekli Claude Code. Komutlar backend'i belirten `ds-` önekiyle gelir (`/cli-dispatch:ds-setup`, `ds-run`, …). Wrapper binary ve config yolları `claude-ds` adını korur (DeepSeek backend'inin adı) — ileride başka işçi CLI backend'leri eklenebilir.
+> ℹ️ **Çok-backend delege hub'ı.** Bugün üç işçi backend'i var — **DeepSeek** (komutlar `/cli-dispatch:ds-*`), **Antigravity/Gemini** (`/cli-dispatch:ag-run`, wrapper'lar `ag-agent`/`ag-stream`) ve **Codex** (`/cli-dispatch:cx-run`, wrapper'lar `cx-agent`/`cx-stream`). Hangisini kuracağını setup'ta seçersin. Üçü de aynı session düzenine yazar; `ds-sessions`/`ds-watch` hepsinde çalışır. DeepSeek wrapper/config yolları `claude-ds` adını korur (o backend'in adı).
 
-Claude Code'un yerleşik `Agent`/subagent tool'u yalnızca Anthropic modellerini (sonnet/opus/haiku) destekler — DeepSeek'e iş veremez. `claude-ds`, Claude Code CLI'ı DeepSeek'in Anthropic-uyumlu API'siyle çalıştıran taşınabilir bir wrapper kurar; böylece görevleri DeepSeek'e **delege işçi** olarak verebilirsin.
+Claude Code'un yerleşik `Agent`/subagent tool'u yalnızca Anthropic modellerini (sonnet/opus/haiku) destekler — DeepSeek'e ya da Gemini'ye iş veremez. cli-dispatch her işçi CLI'ı süren taşınabilir wrapper'lar kurar (Claude Code'u DeepSeek API'siyle; Gemini için Antigravity CLI'ı); böylece görevleri ikisine de **delege işçi** olarak verebilirsin.
 
 > 📝 **Yazı:** [cli-dispatch: Claude'a patron, DeepSeek'e işçi rolü veren bir plugin](https://medium.com/@rbinar/cli-dispatch-claudea-patron-deepseek-e-i%CC%87%C5%9F%C3%A7i-rol%C3%BC-veren-bir-plugin-b232803581fc) — Medium
 
@@ -50,7 +50,7 @@ Install çıktısı `Run /reload-plugins to apply` der. Komutların (`/cli-dispa
 /cli-dispatch:ds-setup
 ```
 
-`/cli-dispatch:ds-setup` wrapper'ı `~/.local/bin/claude-ds`'e kurar ve `~/.config/claude-ds/config` iskeletini oluşturur. Key hâlâ boşsa setup config dosyasını **platformun varsayılan editöründe otomatik açar** (macOS `open`, Linux `xdg-open`, WSL `explorer.exe`, Windows `notepad`). Açılan dosyada DeepSeek API key'ini **kendin** ekle:
+`/cli-dispatch:ds-setup` önce **hangi backend('ler)i kuracağını sorar** — DeepSeek, Antigravity (Gemini), Codex ya da hepsi (`--backends all` veya `--backends deepseek,antigravity,codex`). **DeepSeek** için wrapper'ı `~/.local/bin/claude-ds`'e kurar ve `~/.config/claude-ds/config` iskeletini oluşturur; key hâlâ boşsa config'i **platformun varsayılan editöründe otomatik açar** (macOS `open`, Linux `xdg-open`, WSL `explorer.exe`, Windows `notepad`). Açılan dosyada DeepSeek API key'ini **kendin** ekle:
 
 ```bash
 # ~/.config/claude-ds/config
@@ -60,6 +60,10 @@ DS_FLASH_MODEL="deepseek-v4-flash"
 ```
 
 > Farklı bir editör istiyorsan `CLAUDE_DS_EDITOR` ortam değişkenini ayarla (ör. `CLAUDE_DS_EDITOR="code"`). Otomatik açma başarısız olursa dosyayı elle aç: `${EDITOR:-nano} ~/.config/claude-ds/config`.
+
+**Antigravity (Gemini)** backend'i için setup `ag-agent`/`ag-stream` kurar. `agy` CLI'ı (`curl -fsSL https://antigravity.google/cli/install.sh | bash`) + `script` (pseudo-TTY) + `node` gerekir; auth Google ile giriş (bir kez `agy` çalıştır) veya `GEMINI_API_KEY` ile. Native Windows: yalnızca DeepSeek — Antigravity için WSL kullan. agy **birden çok model ailesi** proxy'ler — `ag-agent --model "<ad>"` (veya `AG_MODEL` config default) ile seç: `Gemini 3.1 Pro (High)`, `Claude Opus 4.6 (Thinking)`, `GPT-OSS 120B (Medium)`, … (kesin liste için `agy models`; default `Gemini 3.5 Flash (High)`).
+
+**Codex (OpenAI Codex CLI)** backend'i için setup `cx-agent`/`cx-stream` kurar. `codex` CLI'ı (≥ 0.142.3: `npm i -g @openai/codex`, `brew install --cask codex` veya `curl -fsSL https://chatgpt.com/codex/install.sh | sh`) + `node` gerekir; auth `codex login` (ChatGPT/OAuth — kişisel kullanım için API key gerekmez) veya `CODEX_API_KEY` (öncelikli) ya da `OPENAI_API_KEY` ile. Model seçimi: `cx-agent --model <ad>` (veya `CX_MODEL` config default; boş = codex'in kendi default'u). **Öne çıkan özellik:** `cx-agent --read-only` codex'in **gerçek OS-düzey sandbox'ını** aktive eder (macOS Seatbelt / Linux bwrap+seccomp) — yalnızca tool-katman kısıtlaması değil, kernel düzeyinde sert yazma engeli.
 
 Gereksinim: `claude` CLI kurulu ve `~/.local/bin` PATH'te olmalı. DeepSeek key'i: https://platform.deepseek.com/api_keys
 
@@ -72,11 +76,13 @@ claude-ds'i **Claude Code'un içinden** kullanırsın — iki yol:
 
 | Komut | İş |
 |-------|-----|
-| `/cli-dispatch:ds-setup` | Kur + config iskeleti + smoke test |
-| `/cli-dispatch:ds-run <görev>` | Bir görevi DeepSeek'e delege et (session-takipli; repo görevinde worktree izolasyonu) |
-| `/cli-dispatch:ds-sessions` | Geçmiş/aktif session'ları listele |
+| `/cli-dispatch:ds-setup` | Backend(ler) seç + kur + config iskeleti + smoke test |
+| `/cli-dispatch:ds-run <görev>` | Bir görevi **DeepSeek**'e delege et (session-takipli; repo görevinde worktree izolasyonu) |
+| `/cli-dispatch:ag-run <görev>` | Bir görevi **Antigravity (Gemini)**'ye delege et (aynı akış) |
+| `/cli-dispatch:cx-run <görev>` | Bir görevi **Codex (OpenAI)**'e delege et (gerçek read-only sandbox; aynı session düzeni) |
+| `/cli-dispatch:ds-sessions` | Geçmiş/aktif session'ları listele (tüm backend'ler; `backend` kolonu) |
 | `/cli-dispatch:ds-watch <id>` | Bir session'ın canlı durumunu göster (maliyet-odaklı) |
-| `/cli-dispatch:ds-status` | Kurulum/key/CLI durumunu kontrol et |
+| `/cli-dispatch:ds-status` | Tüm backend'ler için kurulum/key/CLI durumunu kontrol et |
 | `/cli-dispatch:ds-balance` | DeepSeek hesap bakiyesini göster |
 
 ## Özellikler
@@ -128,6 +134,10 @@ Agent(subagent_type="ds-runner", model="sonnet", prompt="<repo/kod görevi>")   
 Uzun/agentic işler, doğrulama ya da paralel birden çok iş için değerli; tek-atışlık basit işte
 doğrudan `/cli-dispatch:ds-run` yeter.
 
+## cx-runner subagent (Codex ikizi — bağlamı temiz tut)
+
+Codex backend'inin kendi paralel subagent'ı vardır: **`cx-runner`**. `ds-runner` ile aynı şekilde çalışır — modu seçer, gerektiğinde işi git worktree'de izole eder, **doğrular** (repo görevinde build/test) ve kısa bir sonuç döndürür — ancak işçi her zaman Codex'tir. Diğer backend'lere göre öne çıkan avantajı Mod A'dır: `--read-only`, **gerçek bir OS-düzey sandbox** (macOS Seatbelt / Linux bwrap+seccomp) aktive eder; kernel düzeyinde sert yazma engeli — gerçek bir yazma garantisi için worktree gerekmez. Claude Code içinde "şu görevi cx-runner ile yap" dersin veya `Agent(subagent_type="cx-runner", ...)` kullanırsın.
+
 ## Kaputun altı (ileri düzey)
 
 Plugin, Claude Code'un **Bash ile çağırdığı** taşınabilir CLI'ları `~/.local/bin`'e kurar —
@@ -138,6 +148,10 @@ normalde bunları **sen çağırmazsın**, Claude Code yönetir:
 | `claude-ds` | Düz env wrapper (`claude`'u DeepSeek'e yönlendirir; parse/session yok) |
 | `claude-ds-stream` | Session-takipli varyant (stream-json parse + status/progress/transcript) |
 | `ds-agent` | Tek-komut senkron sarmalayıcı: görev → çalış → cevap (stdout); ilerleme stderr'de |
+| `ag-stream` | Session-takipli Antigravity wrapper (agy'nin disk JSONL transcript'ini tail eder) |
+| `ag-agent` | agy için tek-komut senkron sarmalayıcı: görev → çalış → cevap (stdout) |
+| `cx-stream` | Session-takipli Codex wrapper (codex'in JSONL stdout'unu parser'dan geçirir) |
+| `cx-agent` | codex için tek-komut senkron sarmalayıcı: görev → çalış → cevap (stdout) |
 
 İstersen terminalden de doğrudan kullanabilirsin (ör. plugin dışı script'lerde):
 
@@ -145,10 +159,14 @@ normalde bunları **sen çağırmazsın**, Claude Code yönetir:
 ds-agent --read-only "soru"             # tek komut; cevap stdout'a
 ds-agent --cwd /tmp/x "dosya üret"      # agentic, izole dizin
 claude-ds-stream --resume <id> -p "…"   # mevcut session'a devam
+
+cx-agent --read-only -q "soru"          # read-only: kernel düzeyinde sandbox (macOS Seatbelt / Linux bwrap)
+cx-agent --cwd /tmp/x "dosya üret"      # agentic, izole dizin
+cx-agent --resume <thread-id> "devam"                # resume saklanan bağlamı kullanır; --cwd resume'da desteklenmez
 ```
 
-Bayraklar: `--read-only`, `--cwd <dir>`, `--resume <id>`, `--max-runtime`/`--idle-timeout`, `-q`.
-(`ds-runner` bunlardan biri **değildir** — o bir Claude Code subagent'ıdır, `~/.local/bin`'de yer almaz.)
+Bayraklar (cx-agent / cx-stream): `--read-only`, `--sandbox <mod>`, `--cwd <dir>`, `--resume <id>`, `--model <m>`, `--max-runtime`/`--idle-timeout`, `-q`.
+(`cx-runner` bunlardan biri **değildir** — o bir Claude Code subagent'ıdır, `~/.local/bin`'de yer almaz.)
 
 > 📄 Terminalden kurulum, tüm komutlar, bayraklar ve env override'larının tam referansı: [TERMINAL.md](TERMINAL.md).
 
