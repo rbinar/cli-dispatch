@@ -1,6 +1,6 @@
 {
   "name": "cli-dispatch",
-  "version": "3.0.1",
+  "version": "3.0.2",
   "description": "Bir gorevi uygun isci CLI'ya delege et — cok-backend delege hub'i. Backend'ler: DeepSeek destekli Claude Code (claude-ds), Antigravity / Gemini (agy, ag-agent) ve OpenAI Codex CLI (codex, cx-agent). Setup'ta backend secimi, ds/ag/cx-runner subagent'lari (babysitter+reviewer), tek-komut ds/ag/cx-agent, session takibi (canli izleme + resume), read-only mod, global MCP izolasyonu, runtime/idle timeout guvenlik agi, izole worktree'de tam-agentic gorevler.",
   "author": { "name": "rbinar", "url": "https://github.com/rbinar" },
   "homepage": "https://github.com/rbinar/cli-dispatch",

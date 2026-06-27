@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.0.2] — 2026-06-27
+
+### Changed
+- **New demo GIF** (`assets/demo.gif`) reflecting the three-backend hub: a real read-only delegation to each worker (DeepSeek → Antigravity → Codex) followed by the unified `sessions` view with its `backend` column. README alt text updated. Asset-only.
+
 ## [3.0.1] — 2026-06-27
 
 ### Changed
