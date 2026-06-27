@@ -15,10 +15,7 @@ progress in a **cost-conscious** way: read only the small `status.json`, never t
 transcript. The session id is the agy **conversation-id** (printed on stderr).
 
 Prerequisite: `ag-agent` / `ag-stream` installed (`/cli-dispatch:setup`, Antigravity
-backend) and `agy` signed in (run `agy` once) or `GEMINI_API_KEY` set. **Check first:** run
-`command -v ag-agent`. If it is missing, tell the user to run `/cli-dispatch:setup`
-(Antigravity backend) and **STOP** — do NOT silently fall back to doing the task yourself;
-that defeats the whole point of delegating to Antigravity.
+backend) and `agy` signed in (run `agy` once) or `GEMINI_API_KEY` set.
 
 **If it's a real repo task** (file changes needed) — isolate in a git worktree (this also
 avoids agy's per-workspace conversation-id race):

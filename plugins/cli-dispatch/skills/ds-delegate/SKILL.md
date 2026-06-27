@@ -26,12 +26,6 @@ PATH, call it **directly as `claude-ds`** (no old `zsh -ic` function trick neede
   This is the only way to hand work to DeepSeek.
 - Conversation context is **not shared** → the prompt must be **self-contained**.
 
-> **Wrapper missing → STOP, don't fall back.** Before delegating, check the wrapper is on
-> PATH (`command -v ds-agent` / `ag-agent` / `cx-agent`). If it's absent, tell the user to
-> run `/cli-dispatch:setup` for that backend and **stop** — do NOT silently do the task
-> yourself with your own tools. Delegation was requested on purpose; a quiet fallback hides
-> that the backend isn't installed.
-
 ## Wrappers
 - **`ds-agent`** (SIMPLEST — subagent-style) — one synchronous command: give it a task, it
   runs to completion, streams tool activity to stderr, and prints **only the final answer to

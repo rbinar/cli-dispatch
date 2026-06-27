@@ -15,10 +15,7 @@ DeepSeek and Antigravity backends use → **live, observable, resumable**. Monit
 id is the codex **thread-id** (printed on stderr after the run completes).
 
 Prerequisite: `cx-agent` / `cx-stream` installed (`/cli-dispatch:setup`, Codex backend) and
-`codex` signed in (`codex login`) or `CODEX_API_KEY` set. **Check first:** run
-`command -v cx-agent`. If it is missing, tell the user to run `/cli-dispatch:setup` (Codex
-backend) and **STOP** — do NOT silently fall back to doing the task yourself; that defeats
-the whole point of delegating to Codex.
+`codex` signed in (`codex login`) or `CODEX_API_KEY` set.
 
 **If it's a real repo task** (file changes needed) — isolate in a git worktree:
 1. Open a worktree off `origin/main` (or the base stated in the task):
