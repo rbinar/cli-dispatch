@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.6.0] — 2026-06-28
+
+### Changed
+- **Dashboard now updates via Server-Sent Events instead of polling.** A new `GET /api/stream?watch=<spec>` SSE endpoint `fs.watch`es just the relevant file(s)/dir(s) and pushes a debounced `change` event; the client re-fetches only what changed. Specs: `sessions` (list — shallow watch of `~/.claude/sessions` + the workers root), `session:<id>` (its transcript + subagents dir, recursive), `subagent:<sid>:<aid>` (that transcript — near-instant streaming of an active subagent), `worker:<id>` (its dir). Replaces the fixed ~3–4s `setInterval` polling, so live views update the moment the underlying file changes; heartbeat keeps the connection alive; specs are sanitised and path-traversal-checked. Recursive watch falls back to shallow on platforms that don't support it.
+
 ## [3.5.0] — 2026-06-28
 
 ### Added
