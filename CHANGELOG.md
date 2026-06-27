@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.2.0] — 2026-06-27
+
+### Added
+- **`ds-sessions` + `ds-status`** — the DeepSeek backend now has the same per-backend views Antigravity and Codex already had. `/cli-dispatch:ds-sessions` lists sessions filtered to `backend: deepseek`; `/cli-dispatch:ds-status` is a DeepSeek-only install/key/model health check. Fixes an asymmetry introduced in 3.0.0: when `ds-sessions`/`ds-status` were renamed to the unprefixed all-backend `sessions`/`status`, DeepSeek lost the filtered view that `ag-*`/`cx-*` kept. (Also adds the per-backend rows that were missing from the Turkish README command table.)
+
 ## [3.1.0] — 2026-06-27
 
 ### Changed

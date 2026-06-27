@@ -81,10 +81,10 @@ You use claude-ds **from inside Claude Code** — two ways:
 | `/cli-dispatch:ag-run <task>` | Delegate a task to **Antigravity (Gemini)** (same workflow) |
 | `/cli-dispatch:cx-run <task>` | Delegate a task to **Codex (OpenAI)** (real read-only sandbox; same session layout) |
 | `/cli-dispatch:sessions` | List past/active sessions (all backends; shows a `backend` column) |
-| `/cli-dispatch:ag-sessions` / `cx-sessions` | Same list, filtered to just Antigravity / Codex |
+| `/cli-dispatch:ds-sessions` / `ag-sessions` / `cx-sessions` | Same list, filtered to just DeepSeek / Antigravity / Codex |
 | `/cli-dispatch:watch <id>` | Show a session's live status (cost-aware; any backend) |
 | `/cli-dispatch:status` | Check install/key/CLI status for all backends |
-| `/cli-dispatch:ag-status` / `cx-status` | Same check, scoped to just Antigravity / Codex |
+| `/cli-dispatch:ds-status` / `ag-status` / `cx-status` | Same check, scoped to just DeepSeek / Antigravity / Codex |
 | `/cli-dispatch:ds-balance` | Show DeepSeek account balance |
 
 ## Features

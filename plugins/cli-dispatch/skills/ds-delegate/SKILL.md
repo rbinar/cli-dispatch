@@ -222,7 +222,7 @@ does the work; you = orchestrator + reviewer + git/merge owner. Don't trust any 
 - `/cli-dispatch:ds-run <task>` — delegate to the **DeepSeek** worker (worktree isolation for repo tasks, session-tracked).
 - `/cli-dispatch:ag-run <task>` — delegate to the **Antigravity (Gemini)** worker (same workflow).
 - `/cli-dispatch:cx-run <task>` — delegate to the **Codex (OpenAI)** worker (real read-only sandbox; same workflow).
-- `/cli-dispatch:sessions` — list past/active sessions (all backends; shows a `backend` column). Per-backend: `ag-sessions` / `cx-sessions`.
+- `/cli-dispatch:sessions` — list past/active sessions (all backends; shows a `backend` column). Per-backend: `ds-sessions` / `ag-sessions` / `cx-sessions`.
 - `/cli-dispatch:watch <id>` — show a session's compact live status (cost-conscious).
-- `/cli-dispatch:status` — check installation/key/CLI status for all backends. Per-backend: `ag-status` / `cx-status`.
+- `/cli-dispatch:status` — check installation/key/CLI status for all backends. Per-backend: `ds-status` / `ag-status` / `cx-status`.
 - `/cli-dispatch:ds-balance` — show the DeepSeek account balance.
