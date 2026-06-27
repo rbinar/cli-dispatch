@@ -50,16 +50,16 @@ The install output says `Run /reload-plugins to apply`. This step is required fo
 /cli-dispatch:setup
 ```
 
-`/cli-dispatch:setup` first **asks which worker backend(s) to install** — DeepSeek, Antigravity (Gemini), Codex, or all (`--backends all` or `--backends deepseek,antigravity,codex`). For **DeepSeek** it installs the wrapper to `~/.local/bin/claude-ds` and creates a `~/.config/claude-ds/config` skeleton; if the key is still empty, setup **automatically opens the config in your platform's default editor** (macOS `open`, Linux `xdg-open`, WSL `explorer.exe`, Windows `notepad`). Add your DeepSeek API key **yourself** in the opened file:
+`/cli-dispatch:setup` first **asks which worker backend(s) to install** — DeepSeek, Antigravity (Gemini), Codex, or all (`--backends all` or `--backends deepseek,antigravity,codex`). For **DeepSeek** it installs the wrapper to `~/.local/bin/claude-ds` and creates a `~/.config/cli-dispatch/config` skeleton; if the key is still empty, setup **automatically opens the config in your platform's default editor** (macOS `open`, Linux `xdg-open`, WSL `explorer.exe`, Windows `notepad`). Add your DeepSeek API key **yourself** in the opened file:
 
 ```bash
-# ~/.config/claude-ds/config
+# ~/.config/cli-dispatch/config
 DEEPSEEK_API_KEY="sk-..."     # your own DeepSeek key
 DS_MODEL="deepseek-v4-pro"
 DS_FLASH_MODEL="deepseek-v4-flash"
 ```
 
-> Want a different editor? Set the `CLAUDE_DS_EDITOR` environment variable (e.g. `CLAUDE_DS_EDITOR="code"`). If auto-open fails, open the file manually: `${EDITOR:-nano} ~/.config/claude-ds/config`.
+> Want a different editor? Set the `CLI_DISPATCH_EDITOR` environment variable (e.g. `CLI_DISPATCH_EDITOR="code"`; the legacy `CLAUDE_DS_EDITOR` is still honored). If auto-open fails, open the file manually: `${EDITOR:-nano} ~/.config/cli-dispatch/config`.
 
 For the **Antigravity (Gemini)** backend, setup installs `ag-agent`/`ag-stream` instead. It needs the `agy` CLI (`curl -fsSL https://antigravity.google/cli/install.sh | bash`) plus `script` (pseudo-TTY) and `node`; auth is via Google sign-in (run `agy` once) or a `GEMINI_API_KEY`. Native Windows: DeepSeek only — use WSL for the Antigravity backend. agy proxies **multiple model families** — pick one with `ag-agent --model "<name>"` (or the `AG_MODEL` config default): `Gemini 3.1 Pro (High)`, `Claude Opus 4.6 (Thinking)`, `GPT-OSS 120B (Medium)`, … (run `agy models` for the exact list; default `Gemini 3.5 Flash (High)`).
 
@@ -106,7 +106,7 @@ All used from inside Claude Code (`/cli-dispatch:ds-run <task>` or "do <task> wi
 
 Delegated work is **not an opaque background process**: output is parsed line by line (stream-json) and each task is written to a **session directory**. You track what the DeepSeek worker is doing in a **live, structured, resumable** way via `/cli-dispatch:sessions` and `/cli-dispatch:watch <id>`.
 
-Session directory: `${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions/<id>/`
+Session directory: `${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<id>/` (legacy `claude-ds` path still read as a fallback)
 
 | File | Contents |
 |------|----------|
@@ -169,7 +169,7 @@ Flags (cx-agent / cx-stream): `--read-only`, `--sandbox <mode>`, `--cwd <dir>`, 
 
 On native Windows (if you're not using WSL) the PowerShell variants kick in:
 
-- `/cli-dispatch:setup` → runs `install.ps1`: installs `claude-ds.ps1` + `claude-ds-stream.ps1` and `.cmd` shims into `~/.local/bin`, and the stream parser (`ds-stream-parse.mjs`) into `~/.local/share/claude-ds` (so `claude-ds` / `claude-ds-stream` are callable from cmd/PowerShell), and writes the config to `~/.config/claude-ds/config`.
+- `/cli-dispatch:setup` → runs `install.ps1`: installs `claude-ds.ps1` + `claude-ds-stream.ps1` and `.cmd` shims into `~/.local/bin`, and the stream parser (`ds-stream-parse.mjs`) into `~/.local/share/cli-dispatch` (so `claude-ds` / `claude-ds-stream` are callable from cmd/PowerShell), and writes the config to `~/.config/cli-dispatch/config`.
 - Repo tasks: `ds-worktree-run.ps1` — uses a **junction** instead of a symlink for `node_modules` (`New-Item -ItemType Junction`; doesn't require admin/developer-mode).
 - If WSL or Git Bash is present, the Unix `.sh` scripts also work.
 
@@ -192,9 +192,9 @@ For a full cleanup, in order: (1) remove the plugin, (2) delete the wrapper + co
 ```bash
 # macOS / Linux / WSL / Git Bash
 rm -f  ~/.local/bin/claude-ds ~/.local/bin/claude-ds-stream
-rm -rf ~/.local/share/claude-ds     # stream parser (ds-stream-parse.mjs)
-rm -rf ~/.cache/claude-ds           # session records (status/progress/transcript)
-rm -rf ~/.config/claude-ds          # config (incl. API key) lives here — deleting it removes the key too
+rm -rf ~/.local/share/cli-dispatch ~/.local/share/claude-ds   # stream parsers (also legacy path)
+rm -rf ~/.cache/cli-dispatch ~/.cache/claude-ds               # session records (also legacy path)
+rm -rf ~/.config/cli-dispatch ~/.config/claude-ds             # config (incl. API key) — deleting removes the key too (also legacy path)
 ```
 
 ```powershell
@@ -219,7 +219,7 @@ git worktree prune         # clean up dead records
 
 ## Security and data
 
-- **The API key never leaves your machine:** the key lives in `~/.config/claude-ds/config` (0600, outside the repo) and is **never committed**. The plugin/skill never writes the key anywhere; you add it.
+- **The API key never leaves your machine:** the key lives in `~/.config/cli-dispatch/config` (0600, outside the repo) and is **never committed**. The plugin/skill never writes the key anywhere; you add it.
 - **Data egress:** the **prompt and code you give claude-ds are sent to DeepSeek (an external service).** Use it only if you accept that.
 - **Isolated work:** real repo tasks run in a separate git worktree via `ds-worktree-run.sh`; `--dangerously-skip-permissions` doesn't touch the main checkout/other branches. Reviewing the output (diff + build/test) and merging is **up to you**.
 

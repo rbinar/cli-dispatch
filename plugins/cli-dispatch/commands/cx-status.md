@@ -12,7 +12,7 @@ use `/cli-dispatch:status`.
 echo "== Codex backend (cx / OpenAI) =="
 command -v cx-agent  >/dev/null 2>&1 && echo "cx-agent:  installed ($(command -v cx-agent))"  || echo "cx-agent:  MISSING (enable with /cli-dispatch:setup)"
 command -v cx-stream >/dev/null 2>&1 && echo "cx-stream: installed ($(command -v cx-stream))" || echo "cx-stream: MISSING (enable with /cli-dispatch:setup)"
-CFG="${CLAUDE_DS_CONFIG:-$HOME/.config/claude-ds/config}"
+CFG="${CLI_DISPATCH_CONFIG:-${CLAUDE_DS_CONFIG:-}}"; [ -n "$CFG" ] || { CFG="$HOME/.config/cli-dispatch/config"; [ -f "$CFG" ] || [ ! -f "$HOME/.config/claude-ds/config" ] || CFG="$HOME/.config/claude-ds/config"; }
 if command -v codex >/dev/null 2>&1; then
   echo "codex CLI: found ($(codex --version 2>/dev/null || echo 'version unknown'))"
   if [ -f "$CFG" ]; then

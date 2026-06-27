@@ -21,12 +21,14 @@
 # isolate real-repo work in a worktree. Pass --read-only for true read-only generation
 # (denies Write/Edit/Bash so nothing is mutated on disk).
 #
-# Session directory: ${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions/<id>/
+# Session directory: ${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<id>/ (legacy: claude-ds)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-CONFIG="${CLAUDE_DS_CONFIG:-$HOME/.config/claude-ds/config}"
+# Config path: cli-dispatch dir, with legacy ~/.config/claude-ds fallback (env wins).
+CONFIG="${CLI_DISPATCH_CONFIG:-${CLAUDE_DS_CONFIG:-}}"
+[ -n "$CONFIG" ] || { CONFIG="$HOME/.config/cli-dispatch/config"; [ -f "$CONFIG" ] || [ ! -f "$HOME/.config/claude-ds/config" ] || CONFIG="$HOME/.config/claude-ds/config"; }
 if [ -f "$CONFIG" ]; then
   # shellcheck disable=SC1090
   . "$CONFIG"
@@ -43,9 +45,9 @@ if ! command -v node >/dev/null 2>&1; then
 fi
 
 # Resolve the parser path: env > installed location > repo/script dir.
-PARSER="${CLAUDE_DS_PARSER:-}"
+PARSER="${CLI_DISPATCH_PARSER:-${CLAUDE_DS_PARSER:-}}"
 if [ -z "$PARSER" ]; then
-  for cand in "$HOME/.local/share/claude-ds/ds-stream-parse.mjs" "$SCRIPT_DIR/ds-stream-parse.mjs"; do
+  for cand in "$HOME/.local/share/cli-dispatch/ds-stream-parse.mjs" "$HOME/.local/share/claude-ds/ds-stream-parse.mjs" "$SCRIPT_DIR/ds-stream-parse.mjs"; do
     if [ -f "$cand" ]; then PARSER="$cand"; break; fi
   done
 fi
@@ -99,7 +101,9 @@ case "$MAX_RUNTIME"  in ''|*[!0-9]*) MAX_RUNTIME=0;;  esac
 case "$IDLE_TIMEOUT" in ''|*[!0-9]*) IDLE_TIMEOUT=0;; esac
 
 # ---- prepare the session directory ----
-SESSIONS_ROOT="${CLAUDE_DS_SESSIONS_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions}"
+# Sessions root: cli-dispatch cache, with legacy claude-ds fallback (env wins).
+SESSIONS_ROOT="${CLI_DISPATCH_SESSIONS_DIR:-${CLAUDE_DS_SESSIONS_DIR:-}}"
+[ -n "$SESSIONS_ROOT" ] || { _c="${XDG_CACHE_HOME:-$HOME/.cache}"; SESSIONS_ROOT="$_c/cli-dispatch/sessions"; [ -d "$SESSIONS_ROOT" ] || [ ! -d "$_c/claude-ds/sessions" ] || SESSIONS_ROOT="$_c/claude-ds/sessions"; }
 RESUME=0
 if [ -n "$RESUME_ID" ]; then
   SID="$RESUME_ID"

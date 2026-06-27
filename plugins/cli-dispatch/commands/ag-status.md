@@ -12,7 +12,7 @@ once use `/cli-dispatch:status`.
 echo "== Antigravity backend (agy / Gemini) =="
 command -v ag-agent  >/dev/null 2>&1 && echo "ag-agent:  installed ($(command -v ag-agent))"  || echo "ag-agent:  MISSING (enable with /cli-dispatch:setup)"
 command -v ag-stream >/dev/null 2>&1 && echo "ag-stream: installed ($(command -v ag-stream))" || echo "ag-stream: MISSING (enable with /cli-dispatch:setup)"
-CFG="${CLAUDE_DS_CONFIG:-$HOME/.config/claude-ds/config}"
+CFG="${CLI_DISPATCH_CONFIG:-${CLAUDE_DS_CONFIG:-}}"; [ -n "$CFG" ] || { CFG="$HOME/.config/cli-dispatch/config"; [ -f "$CFG" ] || [ ! -f "$HOME/.config/claude-ds/config" ] || CFG="$HOME/.config/claude-ds/config"; }
 if command -v agy >/dev/null 2>&1; then
   echo "agy CLI: found ($(agy --version 2>/dev/null))"
   if [ -f "$CFG" ]; then

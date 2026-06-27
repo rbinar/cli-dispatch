@@ -17,7 +17,7 @@
 #             [--model <m>] [--max-runtime <s>] [--idle-timeout <s>] -p "<prompt>" [extra codex flags]
 #   echo "<prompt>" | cx-stream [--cwd <dir>]
 #
-# Session directory: ${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions/<thread-id>/
+# Session directory: ${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<thread-id>/ (legacy: claude-ds)
 # (same layout as claude-ds, so /cli-dispatch:ds-watch / ds-sessions work for all backends.)
 #
 # Auth: codex's own login (`codex login`). Optional CX_MODEL in the config sets --model.
@@ -32,8 +32,9 @@ command -v codex >/dev/null 2>&1 || {
 }
 command -v node >/dev/null 2>&1 || { echo "cx-stream: 'node' not found (required for the stream parser)." >&2; exit 1; }
 
-# Optional config (shared with claude-ds). Only the codex-related keys are used here.
-CONFIG="${CLAUDE_DS_CONFIG:-$HOME/.config/claude-ds/config}"
+# Optional config (shared across backends). cli-dispatch dir, legacy claude-ds fallback (env wins).
+CONFIG="${CLI_DISPATCH_CONFIG:-${CLAUDE_DS_CONFIG:-}}"
+[ -n "$CONFIG" ] || { CONFIG="$HOME/.config/cli-dispatch/config"; [ -f "$CONFIG" ] || [ ! -f "$HOME/.config/claude-ds/config" ] || CONFIG="$HOME/.config/claude-ds/config"; }
 if [ -f "$CONFIG" ]; then
   # shellcheck disable=SC1090
   . "$CONFIG"
@@ -42,7 +43,7 @@ fi
 # Resolve the parser: env > installed location > script dir.
 PARSER="${CX_PARSER:-}"
 if [ -z "$PARSER" ]; then
-  for cand in "$HOME/.local/share/claude-ds/cx-stream-parse.mjs" "$SCRIPT_DIR/cx-stream-parse.mjs"; do
+  for cand in "$HOME/.local/share/cli-dispatch/cx-stream-parse.mjs" "$HOME/.local/share/claude-ds/cx-stream-parse.mjs" "$SCRIPT_DIR/cx-stream-parse.mjs"; do
     [ -f "$cand" ] && { PARSER="$cand"; break; }
   done
 fi
@@ -142,7 +143,8 @@ fi
 # ---- session bookkeeping ----
 # The thread/session id is only known once codex emits thread.started. Until then we run in a
 # TEMP session dir; the parser captures the thread id and we relocate to the canonical dir.
-SESSIONS_ROOT="${CLAUDE_DS_SESSIONS_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions}"
+SESSIONS_ROOT="${CLI_DISPATCH_SESSIONS_DIR:-${CLAUDE_DS_SESSIONS_DIR:-}}"
+[ -n "$SESSIONS_ROOT" ] || { _c="${XDG_CACHE_HOME:-$HOME/.cache}"; SESSIONS_ROOT="$_c/cli-dispatch/sessions"; [ -d "$SESSIONS_ROOT" ] || [ ! -d "$_c/claude-ds/sessions" ] || SESSIONS_ROOT="$_c/claude-ds/sessions"; }
 mkdir -p "$SESSIONS_ROOT"
 if [ "$RESUME" -eq 1 ]; then
   SESSION_ID="$RESUME_ID"

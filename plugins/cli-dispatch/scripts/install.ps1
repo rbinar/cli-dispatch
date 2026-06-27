@@ -3,9 +3,24 @@ $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BinDir = Join-Path $HOME ".local/bin"
-$LibExecDir = Join-Path $HOME ".local/share/claude-ds"
-$ConfigDir = Join-Path $HOME ".config/claude-ds"
+$LibExecDir = Join-Path $HOME ".local/share/cli-dispatch"
+$ConfigDir = Join-Path $HOME ".config/cli-dispatch"
 $Config = Join-Path $ConfigDir "config"
+
+# One-time migration from the legacy claude-ds paths (wrappers also fall back at runtime).
+$oldConfig = Join-Path $HOME ".config/claude-ds/config"
+if ((Test-Path $oldConfig) -and (-not (Test-Path $Config))) {
+  New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
+  Move-Item -Force $oldConfig $Config
+  Write-Host "Migrated config: $oldConfig -> $Config"
+}
+$cacheRoot = if ($env:XDG_CACHE_HOME) { $env:XDG_CACHE_HOME } else { Join-Path $HOME ".cache" }
+$oldSess = Join-Path $cacheRoot "claude-ds/sessions"; $newSess = Join-Path $cacheRoot "cli-dispatch/sessions"
+if ((Test-Path $oldSess) -and (-not (Test-Path $newSess))) {
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $newSess) | Out-Null
+  Move-Item -Force $oldSess $newSess
+  Write-Host "Migrated sessions: $oldSess -> $newSess"
+}
 
 New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
 Copy-Item -Force (Join-Path $ScriptDir "claude-ds.ps1") (Join-Path $BinDir "claude-ds.ps1")
@@ -35,7 +50,7 @@ Write-Host "Installed agent wrapper -> $BinDir\ds-agent.ps1 (+ .cmd shim)"
 if (-not (Test-Path $Config)) {
   New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
   @'
-# claude-ds config — DO NOT COMMIT. Add your DeepSeek API key below.
+# cli-dispatch config — DO NOT COMMIT. Add your DeepSeek API key below.
 DEEPSEEK_API_KEY=""
 DS_MODEL="deepseek-v4-pro"
 DS_FLASH_MODEL="deepseek-v4-flash"

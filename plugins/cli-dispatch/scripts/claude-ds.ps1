@@ -1,7 +1,8 @@
 #!/usr/bin/env pwsh
 $ErrorActionPreference = "Stop"
 
-$Config = if ($env:CLAUDE_DS_CONFIG) { $env:CLAUDE_DS_CONFIG } else { Join-Path $HOME ".config/claude-ds/config" }
+# Config path: cli-dispatch dir, with legacy ~/.config/claude-ds fallback (env wins).
+$Config = if ($env:CLI_DISPATCH_CONFIG) { $env:CLI_DISPATCH_CONFIG } elseif ($env:CLAUDE_DS_CONFIG) { $env:CLAUDE_DS_CONFIG } elseif (Test-Path (Join-Path $HOME ".config/cli-dispatch/config")) { Join-Path $HOME ".config/cli-dispatch/config" } else { Join-Path $HOME ".config/claude-ds/config" }
 
 $cfg = @{}
 if (Test-Path $Config) {

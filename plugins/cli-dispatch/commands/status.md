@@ -11,7 +11,7 @@ Run the checks below (read-only; do NOT print the key VALUE):
 echo "== DeepSeek backend (claude-ds) =="
 command -v claude-ds >/dev/null 2>&1 && echo "wrapper: installed ($(command -v claude-ds))" || echo "wrapper: MISSING (run /cli-dispatch:setup)"
 command -v claude-ds-stream >/dev/null 2>&1 && echo "stream wrapper: installed ($(command -v claude-ds-stream))" || echo "stream wrapper: MISSING (run /cli-dispatch:setup)"
-CFG="${CLAUDE_DS_CONFIG:-$HOME/.config/claude-ds/config}"
+CFG="${CLI_DISPATCH_CONFIG:-${CLAUDE_DS_CONFIG:-}}"; [ -n "$CFG" ] || { CFG="$HOME/.config/cli-dispatch/config"; [ -f "$CFG" ] || [ ! -f "$HOME/.config/claude-ds/config" ] || CFG="$HOME/.config/claude-ds/config"; }
 if [ -f "$CFG" ]; then
   ( . "$CFG"; [ -n "${DEEPSEEK_API_KEY:-}" ] && echo "key: set" || echo "key: MISSING (add it to the config)" )
 else
@@ -59,7 +59,7 @@ command -v node >/dev/null 2>&1 && echo "node: found (required by all stream par
 ```powershell
 if (Get-Command claude-ds -ErrorAction SilentlyContinue) { 'wrapper: installed' } else { 'wrapper: MISSING' }
 if (Get-Command claude-ds-stream -ErrorAction SilentlyContinue) { 'stream wrapper: installed' } else { 'stream wrapper: MISSING' }
-$cfg = Join-Path $HOME '.config/claude-ds/config'
+$cfg = if ($env:CLI_DISPATCH_CONFIG) { $env:CLI_DISPATCH_CONFIG } elseif ($env:CLAUDE_DS_CONFIG) { $env:CLAUDE_DS_CONFIG } elseif (Test-Path (Join-Path $HOME '.config/cli-dispatch/config')) { Join-Path $HOME '.config/cli-dispatch/config' } else { Join-Path $HOME '.config/claude-ds/config' }
 if (Test-Path $cfg) { if ((Get-Content $cfg -Raw) -match 'DEEPSEEK_API_KEY="..*"') { 'key: set' } else { 'key: MISSING' } } else { 'config: MISSING' }
 if (Get-Command claude -ErrorAction SilentlyContinue) { 'claude CLI: found' } else { 'claude CLI: MISSING' }
 if (Get-Command node -ErrorAction SilentlyContinue) { 'node: found' } else { 'node: MISSING (claude-ds-stream needs it)' }

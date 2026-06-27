@@ -50,16 +50,16 @@ Install çıktısı `Run /reload-plugins to apply` der. Komutların (`/cli-dispa
 /cli-dispatch:setup
 ```
 
-`/cli-dispatch:setup` önce **hangi backend('ler)i kuracağını sorar** — DeepSeek, Antigravity (Gemini), Codex ya da hepsi (`--backends all` veya `--backends deepseek,antigravity,codex`). **DeepSeek** için wrapper'ı `~/.local/bin/claude-ds`'e kurar ve `~/.config/claude-ds/config` iskeletini oluşturur; key hâlâ boşsa config'i **platformun varsayılan editöründe otomatik açar** (macOS `open`, Linux `xdg-open`, WSL `explorer.exe`, Windows `notepad`). Açılan dosyada DeepSeek API key'ini **kendin** ekle:
+`/cli-dispatch:setup` önce **hangi backend('ler)i kuracağını sorar** — DeepSeek, Antigravity (Gemini), Codex ya da hepsi (`--backends all` veya `--backends deepseek,antigravity,codex`). **DeepSeek** için wrapper'ı `~/.local/bin/claude-ds`'e kurar ve `~/.config/cli-dispatch/config` iskeletini oluşturur; key hâlâ boşsa config'i **platformun varsayılan editöründe otomatik açar** (macOS `open`, Linux `xdg-open`, WSL `explorer.exe`, Windows `notepad`). Açılan dosyada DeepSeek API key'ini **kendin** ekle:
 
 ```bash
-# ~/.config/claude-ds/config
+# ~/.config/cli-dispatch/config
 DEEPSEEK_API_KEY="sk-..."     # kendi DeepSeek key'in
 DS_MODEL="deepseek-v4-pro"
 DS_FLASH_MODEL="deepseek-v4-flash"
 ```
 
-> Farklı bir editör istiyorsan `CLAUDE_DS_EDITOR` ortam değişkenini ayarla (ör. `CLAUDE_DS_EDITOR="code"`). Otomatik açma başarısız olursa dosyayı elle aç: `${EDITOR:-nano} ~/.config/claude-ds/config`.
+> Farklı bir editör istiyorsan `CLI_DISPATCH_EDITOR` ortam değişkenini ayarla (ör. `CLI_DISPATCH_EDITOR="code"`; eski `CLAUDE_DS_EDITOR` da hâlâ geçerli). Otomatik açma başarısız olursa dosyayı elle aç: `${EDITOR:-nano} ~/.config/cli-dispatch/config`.
 
 **Antigravity (Gemini)** backend'i için setup `ag-agent`/`ag-stream` kurar. `agy` CLI'ı (`curl -fsSL https://antigravity.google/cli/install.sh | bash`) + `script` (pseudo-TTY) + `node` gerekir; auth Google ile giriş (bir kez `agy` çalıştır) veya `GEMINI_API_KEY` ile. Native Windows: yalnızca DeepSeek — Antigravity için WSL kullan. agy **birden çok model ailesi** proxy'ler — `ag-agent --model "<ad>"` (veya `AG_MODEL` config default) ile seç: `Gemini 3.1 Pro (High)`, `Claude Opus 4.6 (Thinking)`, `GPT-OSS 120B (Medium)`, … (kesin liste için `agy models`; default `Gemini 3.5 Flash (High)`).
 
@@ -104,7 +104,7 @@ Hepsi Claude Code içinden kullanılır (`/cli-dispatch:ds-run <görev>` ya da "
 
 Delege edilen iş **opak bir arka plan süreci değildir**: çıktı satır satır (stream-json) parse edilip her görev bir **session dizinine** yazılır. DeepSeek işçisinin ne yaptığını `/cli-dispatch:sessions` ve `/cli-dispatch:watch <id>` ile **canlı, yapılandırılmış ve resume-edilebilir** şekilde takip edersin.
 
-Session dizini: `${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions/<id>/`
+Session dizini: `${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<id>/` (eski `claude-ds` yolu hâlâ fallback olarak okunur)
 
 | Dosya | İçerik |
 |-------|--------|
@@ -174,7 +174,7 @@ Bayraklar (cx-agent / cx-stream): `--read-only`, `--sandbox <mod>`, `--cwd <dir>
 
 Native Windows'ta (WSL kullanmıyorsan) PowerShell varyantları devreye girer:
 
-- `/cli-dispatch:setup` → `install.ps1` çalışır: `claude-ds.ps1` + `claude-ds-stream.ps1` ve `.cmd` shim'lerini `~/.local/bin`'e, stream parser'ını (`ds-stream-parse.mjs`) `~/.local/share/claude-ds`'e kurar (böylece `claude-ds` / `claude-ds-stream` cmd/PowerShell'den çağrılır), config'i `~/.config/claude-ds/config`'e yazar.
+- `/cli-dispatch:setup` → `install.ps1` çalışır: `claude-ds.ps1` + `claude-ds-stream.ps1` ve `.cmd` shim'lerini `~/.local/bin`'e, stream parser'ını (`ds-stream-parse.mjs`) `~/.local/share/cli-dispatch`'e kurar (böylece `claude-ds` / `claude-ds-stream` cmd/PowerShell'den çağrılır), config'i `~/.config/cli-dispatch/config`'e yazar.
 - Repo görevleri: `ds-worktree-run.ps1` — `node_modules` için symlink yerine **junction** (`New-Item -ItemType Junction`; admin/developer-mode gerektirmez) kullanır.
 - WSL ya da Git Bash varsa Unix `.sh` scriptleri de çalışır.
 
@@ -197,9 +197,9 @@ Tam temizlik için sırayla: (1) plugin'i kaldır, (2) wrapper + config dosyalar
 ```bash
 # macOS / Linux / WSL / Git Bash
 rm -f  ~/.local/bin/claude-ds ~/.local/bin/claude-ds-stream
-rm -rf ~/.local/share/claude-ds     # stream parser (ds-stream-parse.mjs)
-rm -rf ~/.cache/claude-ds           # session kayıtları (status/progress/transcript)
-rm -rf ~/.config/claude-ds          # config (API key dahil) burada — silinince key de gider
+rm -rf ~/.local/share/cli-dispatch ~/.local/share/claude-ds   # stream parser'ları (eski yol dahil)
+rm -rf ~/.cache/cli-dispatch ~/.cache/claude-ds               # session kayıtları (eski yol dahil)
+rm -rf ~/.config/cli-dispatch ~/.config/claude-ds             # config (API key dahil) — silinince key de gider (eski yol dahil)
 ```
 
 ```powershell
@@ -224,7 +224,7 @@ git worktree prune         # ölü kayıtları temizle
 
 ## Güvenlik ve veri
 
-- **API key makineden çıkmaz:** key `~/.config/claude-ds/config` içinde (0600, repo dışında) tutulur ve **asla commit edilmez**. Plugin/skill key'i hiçbir yere yazmaz; sen eklersin.
+- **API key makineden çıkmaz:** key `~/.config/cli-dispatch/config` içinde (0600, repo dışında) tutulur ve **asla commit edilmez**. Plugin/skill key'i hiçbir yere yazmaz; sen eklersin.
 - **Veri egress:** claude-ds'e verdiğin **prompt ve kod DeepSeek'e (harici servis) gönderilir.** Yalnızca bunu kabul ediyorsan kullan.
 - **İzole çalışma:** gerçek repo görevleri `ds-worktree-run.sh` ile ayrı git worktree'de çalışır; `--dangerously-skip-permissions` ana checkout'a/diğer branch'lere dokunmaz. Üreteni inceleyip (diff + build/test) merge etmek **sana** kalır.
 
