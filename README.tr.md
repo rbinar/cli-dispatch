@@ -10,7 +10,7 @@ Claude Code'un yerleşik `Agent`/subagent tool'u yalnızca Anthropic modellerini
 
 > 📝 **Yazı:** [cli-dispatch: Claude'a patron, DeepSeek'e işçi rolü veren bir plugin](https://medium.com/@rbinar/cli-dispatch-claudea-patron-deepseek-e-i%CC%87%C5%9F%C3%A7i-rol%C3%BC-veren-bir-plugin-b232803581fc) — Medium
 
-![cli-dispatch demo — tamamen Claude Code içinde kur ve kullan: marketplace ekle, install, /cli-dispatch:setup, görev delege et, kullanımı gör](assets/demo.gif)
+![cli-dispatch demo — projende Claude Code başlat, sonra: install, /cli-dispatch:setup, /cli-dispatch:ds-run ve ds/ag/cx-runner subagent ile delege et, kullanımı gör](assets/demo.gif)
 
 ## Kurulum
 
