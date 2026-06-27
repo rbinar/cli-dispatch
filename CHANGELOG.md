@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.4.1] — 2026-06-28
+
+### Changed
+- **Dashboard flow shows newest first.** Session / subagent / worker flows now render in reverse-chronological order (latest step at the top) so you don't have to scroll to the bottom to see the most recent activity.
+
 ## [3.4.0] — 2026-06-28
 
 ### Added

@@ -389,7 +389,7 @@ async function loadList(){
 }
 function renderFlow(steps){
   if(!steps||!steps.length) return '<div class="empty">no steps</div>'
-  return steps.map(s=>{
+  return steps.slice().reverse().map(s=>{
     if(s.kind==='tool'){
       const st=s.ok===true?'<span class="ok">⎿ ok</span>':s.ok===false?'<span class="err">⎿ error</span>':''
       let head='⏺ <span class="k">'+esc(s.name)+'</span> '+esc(s.summary||'')
