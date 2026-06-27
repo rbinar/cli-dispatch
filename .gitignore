@@ -11,3 +11,7 @@ config
 
 # macOS cruft
 .DS_Store
+
+# Playwright MCP QC artifacts (transient)
+.playwright-mcp/
+dash-session.png
