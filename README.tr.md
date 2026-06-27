@@ -86,6 +86,8 @@ claude-ds'i **Claude Code'un içinden** kullanırsın — iki yol:
 | `/cli-dispatch:status` | Tüm backend'ler için kurulum/key/CLI durumunu kontrol et |
 | `/cli-dispatch:ds-status` / `ag-status` / `cx-status` | Aynı kontrol, yalnızca DeepSeek / Antigravity / Codex kapsamında |
 | `/cli-dispatch:ds-balance` | DeepSeek hesap bakiyesini göster |
+| `/cli-dispatch:cx-balance` | Codex kullanım / rate limit (5h + haftalık kalan %) — native, codex'in kendi disk session kayıtlarından |
+| `/cli-dispatch:ag-balance` | Antigravity kotası (model başına kalan % + plan) — native, local language-server `GetUserStatus` RPC ile |
 
 ## Özellikler
 

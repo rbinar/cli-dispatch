@@ -86,6 +86,8 @@ You use claude-ds **from inside Claude Code** — two ways:
 | `/cli-dispatch:status` | Check install/key/CLI status for all backends |
 | `/cli-dispatch:ds-status` / `ag-status` / `cx-status` | Same check, scoped to just DeepSeek / Antigravity / Codex |
 | `/cli-dispatch:ds-balance` | Show DeepSeek account balance |
+| `/cli-dispatch:cx-balance` | Show Codex usage / rate limits (5h + weekly % left) — native, from codex's own on-disk session records |
+| `/cli-dispatch:ag-balance` | Show Antigravity quota (% left per model + plan) — native, via the local language-server `GetUserStatus` RPC |
 
 ## Features
 

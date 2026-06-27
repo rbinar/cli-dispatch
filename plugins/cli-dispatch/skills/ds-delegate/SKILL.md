@@ -226,3 +226,5 @@ does the work; you = orchestrator + reviewer + git/merge owner. Don't trust any 
 - `/cli-dispatch:watch <id>` — show a session's compact live status (cost-conscious).
 - `/cli-dispatch:status` — check installation/key/CLI status for all backends. Per-backend: `ds-status` / `ag-status` / `cx-status`.
 - `/cli-dispatch:ds-balance` — show the DeepSeek account balance.
+- `/cli-dispatch:cx-balance` — Codex usage / rate limits (5h + weekly % left), read natively from codex's on-disk session records.
+- `/cli-dispatch:ag-balance` — Antigravity quota (% left per model + plan), via the local language-server `GetUserStatus` RPC (needs the Antigravity server running).

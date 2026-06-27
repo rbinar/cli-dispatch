@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.3.0] — 2026-06-27
+
+### Added
+- **`cx-balance` — native Codex usage / rate limits.** `/cli-dispatch:cx-balance` reports the 5h (primary) and weekly 7d (secondary) windows as **% left** + reset time — the same numbers as `/status` in the codex TUI. Codex has no scriptable usage command, but it persists the backend's rate-limit payload into its own session records (`~/.codex/sessions/**/*.jsonl`); this reads the newest one. No network, no token handling, no third-party tool.
+- **`ag-balance` — native Antigravity quota.** `/cli-dispatch:ag-balance` reports the plan + **remaining quota fraction per model** + reset time. It calls the local Antigravity **language server**'s Connect-RPC `GetUserStatus` endpoint directly — discovering the running `language_server` process, its `--csrf_token`, and listening port — instead of shelling out to a third-party tool. Requires the Antigravity language server to be running (IDE open or an `agy` session); prints a hint otherwise.
+- Neither relies on any external dependency — both reverse-engineer the official local data the CLIs already expose.
+
 ## [3.2.0] — 2026-06-27
 
 ### Added
