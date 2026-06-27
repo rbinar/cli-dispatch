@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.4.3] — 2026-06-28
+
+### Changed
+- **Dashboard: the Subagents list is now a collapsible panel** (`▾ Subagents (N)`, macOS-Storage-style disclosure via native `<details>`). Default open; the collapsed/expanded state survives the busy-session auto-refresh.
+
 ## [3.4.2] — 2026-06-28
 
 ### Fixed
