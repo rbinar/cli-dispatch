@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.7.1] — 2026-06-28
+
+### Fixed
+- **Dashboard times now render in the viewer's local timezone.** Timestamps are stored as UTC on disk; the UI was slicing the raw ISO string (so a GMT+3 user saw `22:50` instead of `01:50`). Session/worker/subagent times are now formatted with `Date.toLocaleString`/`toLocaleTimeString`.
+
 ## [3.7.0] — 2026-06-28
 
 ### Added

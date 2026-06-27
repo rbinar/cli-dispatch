@@ -440,6 +440,9 @@ function watchDetail(spec, fn){
 }
 const E=(h)=>{const d=document.createElement('div');d.innerHTML=h;return d.firstChild}
 const esc=(s)=>String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))
+// Times come from disk as UTC ISO; render in the viewer's local timezone.
+const fmtTime=(iso)=>{const d=iso?new Date(iso):null;return d&&!isNaN(d)?d.toLocaleTimeString([],{hour12:false}):''}
+const fmtDT=(iso)=>{const d=iso?new Date(iso):null;return d&&!isNaN(d)?d.toLocaleString([],{hour12:false}).replace(',',''):''}
 async function j(u){const r=await fetch(u);return r.json()}
 
 async function loadList(){
@@ -453,7 +456,7 @@ async function loadList(){
     document.getElementById('meta').textContent=ss.length+' sessions'
     const shown=flt==='all'?ss:ss.filter(s=>s.status===flt)
     shown.forEach(s=>{
-      const it=E('<div class="item'+(sel===s.id?' sel':'')+'"><div><span class="dot '+s.status+'"></span>'+esc(s.project.replace(/^-/,'').split('-').slice(-2).join('/'))+'<span class="badge">'+s.status+'</span>'+(s.subagentCount?'<span class="badge">'+s.subagentCount+' sub</span>':'')+'</div><div class="small muted">'+esc(s.firstPrompt||s.id.slice(0,8))+'</div><div class="small muted">'+esc((s.lastActivityAt||'').replace('T',' ').slice(0,19))+' · '+s.sizeKB+'KB</div></div>')
+      const it=E('<div class="item'+(sel===s.id?' sel':'')+'"><div><span class="dot '+s.status+'"></span>'+esc(s.project.replace(/^-/,'').split('-').slice(-2).join('/'))+'<span class="badge">'+s.status+'</span>'+(s.subagentCount?'<span class="badge">'+s.subagentCount+' sub</span>':'')+'</div><div class="small muted">'+esc(s.firstPrompt||s.id.slice(0,8))+'</div><div class="small muted">'+esc(fmtDT(s.lastActivityAt))+' · '+s.sizeKB+'KB</div></div>')
       it.onclick=()=>openSession(s); el.appendChild(it)
     })
   }else{
@@ -461,7 +464,7 @@ async function loadList(){
     const ws=await j('/api/workers')
     document.getElementById('meta').textContent=ws.length+' workers'
     ws.forEach(w=>{
-      const it=E('<div class="item'+(sel===w.id?' sel':'')+'"><div><span class="dot '+(w.state==='running'?'busy':w.state==='done'?'closed':'idle')+'"></span>'+esc(w.backend)+'<span class="badge">'+esc(w.state)+'</span></div><div class="small muted">'+esc(w.prompt||w.id.slice(0,8))+'</div><div class="small muted">'+esc((w.started||'').replace('T',' ').slice(0,19))+(w.lastTool?' · '+esc(w.lastTool):'')+'</div></div>')
+      const it=E('<div class="item'+(sel===w.id?' sel':'')+'"><div><span class="dot '+(w.state==='running'?'busy':w.state==='done'?'closed':'idle')+'"></span>'+esc(w.backend)+'<span class="badge">'+esc(w.state)+'</span></div><div class="small muted">'+esc(w.prompt||w.id.slice(0,8))+'</div><div class="small muted">'+esc(fmtDT(w.started))+(w.lastTool?' · '+esc(w.lastTool):'')+'</div></div>')
       it.onclick=()=>openWorker(w); el.appendChild(it)
     })
   }
@@ -481,7 +484,7 @@ function renderFlow(steps){
     return '<div class="step log">'+esc(s.text)+'</div>'
   }).join('')
 }
-function chipHtml(a){const t=a.startedAt?a.startedAt.replace('T',' ').slice(11,19):'';return '<span class="sa'+(a.active?' act':'')+'" onclick="openSub(\\''+a.agentId+'\\','+(a.active?'true':'false')+')">'+(a.active?'● ':'')+esc(a.agentType)+': '+esc(a.description||a.agentId.slice(0,8))+(a.spawnDepth>1?' ·d'+a.spawnDepth:'')+(t?' <span class="c">'+t+'</span>':'')+'</span>'}
+function chipHtml(a){const t=fmtTime(a.startedAt);return '<span class="sa'+(a.active?' act':'')+'" onclick="openSub(\\''+a.agentId+'\\','+(a.active?'true':'false')+')">'+(a.active?'● ':'')+esc(a.agentType)+': '+esc(a.description||a.agentId.slice(0,8))+(a.spawnDepth>1?' ·d'+a.spawnDepth:'')+(t?' <span class="c">'+t+'</span>':'')+'</span>'}
 async function openSession(s){
   sel=s.id; mode='cc'
   document.getElementById('crumb').innerHTML='<a onclick="back()">sessions</a> › '+esc(s.id.slice(0,8))+' <span class="muted">('+esc(s.status)+')</span>'
