@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.0.0] — 2026-06-27
+
+### Changed
+- **BREAKING — cross-backend commands dropped the `ds-` prefix.** The commands that were never DeepSeek-specific are renamed: `/cli-dispatch:ds-setup` → `/cli-dispatch:setup`, `ds-sessions` → `sessions`, `ds-status` → `status`, `ds-watch` → `watch`. No aliases are kept — update any scripts/docs/muscle memory. The genuinely DeepSeek-specific commands keep their prefix: `/cli-dispatch:ds-run`, `/cli-dispatch:ds-balance` (and the per-backend `ag-run`/`cx-run`).
+
+### Added
+- **Per-backend `status` + `sessions` views.** `/cli-dispatch:ag-status` / `cx-status` (backend-scoped install/auth/model health) and `/cli-dispatch:ag-sessions` / `cx-sessions` (the session list filtered to `backend: antigravity` / `codex`). The unprefixed `/cli-dispatch:status` and `/cli-dispatch:sessions` still cover all backends at once.
+- **Codex offered in the setup wizard.** `/cli-dispatch:setup` now detects `codex`, offers Codex as a backend choice, and documents its auth (`codex login` / `CODEX_API_KEY`) + smoke test. (`install.sh` already supported `--backends codex`; the wizard had not caught up.)
+- Codex model docs refreshed to the current `gpt-5.x` line (`gpt-5.5` default, `gpt-5.4`, `gpt-5.4-mini` for subagents, `gpt-5.3-codex-spark`); dropped the stale `o4-mini` example. Scripts still pass `--model` through untouched (no hardcoded model).
+
+### Fixed
+- **No silent fallback when a worker wrapper is missing.** The `ds-run`/`ag-run`/`cx-run` commands and the `ds-delegate` skill now instruct: check `command -v <wrapper>` first, and if it is absent, tell the user to run `/cli-dispatch:setup` and **stop** — never quietly do the delegated task with the orchestrator's own tools (observed in testing: a missing `cx-agent` led to the task being done directly, hiding that the backend wasn't installed).
+
 ## [2.2.0] — 2026-06-27
 
 ### Added

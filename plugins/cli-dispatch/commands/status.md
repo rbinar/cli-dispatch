@@ -9,8 +9,8 @@ Run the checks below (read-only; do NOT print the key VALUE):
 
 ```bash
 echo "== DeepSeek backend (claude-ds) =="
-command -v claude-ds >/dev/null 2>&1 && echo "wrapper: installed ($(command -v claude-ds))" || echo "wrapper: MISSING (run /cli-dispatch:ds-setup)"
-command -v claude-ds-stream >/dev/null 2>&1 && echo "stream wrapper: installed ($(command -v claude-ds-stream))" || echo "stream wrapper: MISSING (run /cli-dispatch:ds-setup)"
+command -v claude-ds >/dev/null 2>&1 && echo "wrapper: installed ($(command -v claude-ds))" || echo "wrapper: MISSING (run /cli-dispatch:setup)"
+command -v claude-ds-stream >/dev/null 2>&1 && echo "stream wrapper: installed ($(command -v claude-ds-stream))" || echo "stream wrapper: MISSING (run /cli-dispatch:setup)"
 CFG="${CLAUDE_DS_CONFIG:-$HOME/.config/claude-ds/config}"
 if [ -f "$CFG" ]; then
   ( . "$CFG"; [ -n "${DEEPSEEK_API_KEY:-}" ] && echo "key: set" || echo "key: MISSING (add it to the config)" )
@@ -20,7 +20,7 @@ fi
 command -v claude >/dev/null 2>&1 && echo "claude CLI: found" || echo "claude CLI: MISSING"
 
 echo "== Antigravity backend (agy / Gemini) — optional =="
-command -v ag-agent >/dev/null 2>&1 && echo "wrapper: installed ($(command -v ag-agent))" || echo "wrapper: not installed (enable with /cli-dispatch:ds-setup)"
+command -v ag-agent >/dev/null 2>&1 && echo "wrapper: installed ($(command -v ag-agent))" || echo "wrapper: not installed (enable with /cli-dispatch:setup)"
 if command -v agy >/dev/null 2>&1; then
   echo "agy CLI: found ($(agy --version 2>/dev/null))"
   if [ -f "$CFG" ]; then ( . "$CFG"; [ -n "${GEMINI_API_KEY:-}" ] && echo "auth: GEMINI_API_KEY set" || echo "auth: via Google sign-in (run 'agy' once if not signed in)" ); fi
@@ -30,7 +30,7 @@ fi
 command -v script >/dev/null 2>&1 && echo "script (pseudo-tty): found" || echo "script (pseudo-tty): MISSING (ag backend needs it)"
 
 echo "== Codex backend (cx / OpenAI) — optional =="
-command -v cx-agent >/dev/null 2>&1 && echo "wrapper: installed ($(command -v cx-agent))" || echo "wrapper: not installed (enable with /cli-dispatch:ds-setup)"
+command -v cx-agent >/dev/null 2>&1 && echo "wrapper: installed ($(command -v cx-agent))" || echo "wrapper: not installed (enable with /cli-dispatch:setup)"
 if command -v codex >/dev/null 2>&1; then
   echo "codex CLI: found ($(codex --version 2>/dev/null || echo 'version unknown'))"
   if [ -f "$CFG" ]; then

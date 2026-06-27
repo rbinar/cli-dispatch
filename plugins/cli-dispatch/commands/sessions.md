@@ -40,5 +40,5 @@ for (const r of rows) {
 EOF
 ```
 
-To see a session's detail/live status: `/cli-dispatch:ds-watch <id>`.
+To see a session's detail/live status: `/cli-dispatch:watch <id>`.
 To send a follow-up (continue the same session): `claude-ds-stream --resume <id> -p "<follow-up>"`.

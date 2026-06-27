@@ -16,7 +16,7 @@ SID="$ARGUMENTS"
 ROOT="${CLAUDE_DS_SESSIONS_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions}"
 DIR="$ROOT/$SID"
 if [ ! -d "$DIR" ]; then
-  echo "no such session: $SID  (use /cli-dispatch:ds-sessions to list them)"
+  echo "no such session: $SID  (use /cli-dispatch:sessions to list them)"
 else
   echo "=== status.json ==="
   cat "$DIR/status.json"

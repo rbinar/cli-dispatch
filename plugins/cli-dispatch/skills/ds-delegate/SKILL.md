@@ -17,7 +17,7 @@ user-invocable: true
 
 # claude-ds — DeepSeek delegation worker
 
-`claude-ds` is a portable wrapper installed to `~/.local/bin` by `/cli-dispatch:ds-setup`;
+`claude-ds` is a portable wrapper installed to `~/.local/bin` by `/cli-dispatch:setup`;
 it runs the Claude Code CLI against DeepSeek's Anthropic-compatible API. Since it's on
 PATH, call it **directly as `claude-ds`** (no old `zsh -ic` function trick needed).
 
@@ -26,6 +26,12 @@ PATH, call it **directly as `claude-ds`** (no old `zsh -ic` function trick neede
   This is the only way to hand work to DeepSeek.
 - Conversation context is **not shared** → the prompt must be **self-contained**.
 
+> **Wrapper missing → STOP, don't fall back.** Before delegating, check the wrapper is on
+> PATH (`command -v ds-agent` / `ag-agent` / `cx-agent`). If it's absent, tell the user to
+> run `/cli-dispatch:setup` for that backend and **stop** — do NOT silently do the task
+> yourself with your own tools. Delegation was requested on purpose; a quiet fallback hides
+> that the backend isn't installed.
+
 ## Wrappers
 - **`ds-agent`** (SIMPLEST — subagent-style) — one synchronous command: give it a task, it
   runs to completion, streams tool activity to stderr, and prints **only the final answer to
@@ -33,7 +39,7 @@ PATH, call it **directly as `claude-ds`** (no old `zsh -ic` function trick neede
   Best when you just want "delegate this and give me the result" in a single call.
 - **`claude-ds-stream`** — runs `claude` with stream-json, parses output into a **session
   directory** (live + observable + resumable). Use when you want to run in the background and
-  poll, or need the session id / `--resume` / `/cli-dispatch:ds-watch` workflow.
+  poll, or need the session id / `--resume` / `/cli-dispatch:watch` workflow.
 - **`claude-ds`** — plain env wrapper (`claude "$@"`). No parsing/session; fast one-shot only.
 
 ### ds-agent — single command (subagent-style)
@@ -70,7 +76,7 @@ one-shot, just call `ds-agent` directly (the subagent's extra model layer isn't 
 - **Always run as a background task**: Bash tool `run_in_background: true` (don't block).
 - For a **long prompt**, write the brief to a file and pass it with `-p "$(cat <brieffile>)"`.
 - **Cost-conscious monitoring (MANDATORY):** track progress by reading only the small `status.json`
-  (`/cli-dispatch:ds-watch <id>`). Don't read the raw `transcript.jsonl`; don't tail it repeatedly in a
+  (`/cli-dispatch:watch <id>`). Don't read the raw `transcript.jsonl`; don't tail it repeatedly in a
   tight loop; check once per orchestration step. When the task finishes you get re-invoked anyway.
 - **Windows:** after setup, `claude-ds` / `claude-ds-stream` are called directly (`.cmd` shim);
   the parser `.mjs` is shared cross-platform. On macOS/Linux/WSL the `.sh` variants apply.
@@ -105,7 +111,7 @@ is largely redundant with the default bypassPermissions; it signals intent and m
 ```bash
 claude-ds-stream --resume <session-id> -p "<follow-up>"
 ```
-The transcript is appended to the same session; `status.json` is updated. See sessions: `/cli-dispatch:ds-sessions`.
+The transcript is appended to the same session; `status.json` is updated. See sessions: `/cli-dispatch:sessions`.
 
 ### Timeouts (safety net for hung/runaway workers)
 ```bash
@@ -126,7 +132,7 @@ Use the bundled helper:
 ```
 This script: opens an isolated git worktree (origin/main), symlinks `node_modules` if present,
 runs **claude-ds-stream** in Mode 2 inside the worktree (session-tracked), and leaves the diff
-**UNCOMMITTED**. The session id is printed on stderr → watch it with `/cli-dispatch:ds-watch <id>`.
+**UNCOMMITTED**. The session id is printed on stderr → watch it with `/cli-dispatch:watch <id>`.
 
 Then **YOU are the reviewer:**
 1. Review the FULL diff with `git -C <worktree> status && git -C <worktree> diff` — check for
@@ -139,7 +145,7 @@ Then **YOU are the reviewer:**
 ## Antigravity (Gemini) backend — `ag-agent` / `ag-stream`
 cli-dispatch's second worker is **Antigravity** (`agy`, Google's Gemini-powered agentic CLI).
 It's a *different binary* from `claude` with its own auth/config — the DeepSeek "swap the env
-var" trick does NOT apply. Enable it via `/cli-dispatch:ds-setup` (choose Antigravity/Both).
+var" trick does NOT apply. Enable it via `/cli-dispatch:setup` (choose Antigravity/Both).
 
 The `ag-*` family mirrors the `ds-*` one, so the workflow is the same — only the command name
 changes:
@@ -159,7 +165,7 @@ ag-stream --cwd <dir> -p "<task>"     # background/session-tracked variant (poll
   `Gemini 3.5 Flash (High)`. ⚠ An unknown name makes agy SILENTLY use its default — ag-stream
   warns when `--model` isn't in `agy models`, but double-check the exact string (incl. suffix).
 - **Same session dir** as DeepSeek (`…/claude-ds/sessions/<id>/` with `status.json` etc.), so
-  `/cli-dispatch:ds-sessions` / `ds-watch` work for both. The session id IS the agy conv-id.
+  `/cli-dispatch:sessions` / `watch` work for both. The session id IS the agy conv-id.
 - **How it works:** agy has no `--output-format json` and a non-TTY silent-drop bug, so
   `ag-stream` runs it under a pseudo-TTY (`script`) and **tails agy's on-disk JSONL transcript**
   for live progress + the final answer. Requires `script` (pseudo-tty) + `node`.
@@ -184,10 +190,10 @@ The worker (claude-ds = DeepSeek, or ag-agent = Antigravity/Gemini) does the wor
 you = orchestrator + reviewer + git/merge owner. Don't trust any output until verified.
 
 ## Commands
-- `/cli-dispatch:ds-setup` — install worker backends (DeepSeek and/or Antigravity); choose at setup + config + smoke test.
+- `/cli-dispatch:setup` — install worker backends (DeepSeek and/or Antigravity); choose at setup + config + smoke test.
 - `/cli-dispatch:ds-run <task>` — delegate to the **DeepSeek** worker (worktree isolation for repo tasks, session-tracked).
 - `/cli-dispatch:ag-run <task>` — delegate to the **Antigravity (Gemini)** worker (same workflow).
-- `/cli-dispatch:ds-sessions` — list past/active sessions (all backends; shows a `backend` column).
-- `/cli-dispatch:ds-watch <id>` — show a session's compact live status (cost-conscious).
-- `/cli-dispatch:ds-status` — check installation/key/CLI status for all backends.
+- `/cli-dispatch:sessions` — list past/active sessions (all backends; shows a `backend` column).
+- `/cli-dispatch:watch <id>` — show a session's compact live status (cost-conscious).
+- `/cli-dispatch:status` — check installation/key/CLI status for all backends.
 - `/cli-dispatch:ds-balance` — show the DeepSeek account balance.

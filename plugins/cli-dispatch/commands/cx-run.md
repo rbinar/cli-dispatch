@@ -14,8 +14,11 @@ DeepSeek and Antigravity backends use → **live, observable, resumable**. Monit
 **cost-conscious** way: read only the small `status.json`, never the raw transcript. The session
 id is the codex **thread-id** (printed on stderr after the run completes).
 
-Prerequisite: `cx-agent` / `cx-stream` installed (`/cli-dispatch:ds-setup`, Codex backend) and
-`codex` signed in (`codex login`) or `CODEX_API_KEY` set.
+Prerequisite: `cx-agent` / `cx-stream` installed (`/cli-dispatch:setup`, Codex backend) and
+`codex` signed in (`codex login`) or `CODEX_API_KEY` set. **Check first:** run
+`command -v cx-agent`. If it is missing, tell the user to run `/cli-dispatch:setup` (Codex
+backend) and **STOP** — do NOT silently fall back to doing the task yourself; that defeats
+the whole point of delegating to Codex.
 
 **If it's a real repo task** (file changes needed) — isolate in a git worktree:
 1. Open a worktree off `origin/main` (or the base stated in the task):
@@ -31,7 +34,7 @@ Prerequisite: `cx-agent` / `cx-stream` installed (`/cli-dispatch:ds-setup`, Code
    `--sandbox read-only` or `--sandbox danger-full-access` (valid values: `read-only` |
    `workspace-write` | `danger-full-access`) as needed.
 3. **Monitor (cost-conscious):** capture the thread-id from stderr, then check progress via
-   `/cli-dispatch:ds-watch <thread-id>` (`state: running→done`). Do NOT tight-loop tail.
+   `/cli-dispatch:watch <thread-id>` (`state: running→done`). Do NOT tight-loop tail.
 4. When done, **review** the diff (`git -C "$WORKTREE" diff`), verify independently (build/test).
 5. If all good, **you** handle git/commit/push/PR/merge; then clean up the worktree.
 
@@ -63,6 +66,6 @@ Resume reuses the thread's stored context — do NOT pass `--cwd` on resume (the
 subcommand does not support it). Also: never pass `--ephemeral` to a session you intend to
 resume — it disables session persistence so no thread-id is saved (nothing to resume).
 
-To see all sessions (all backends), use `/cli-dispatch:ds-sessions`.
+To see all sessions (all backends), use `/cli-dispatch:sessions`.
 
 The worker = Codex (OpenAI); you = reviewer/merge owner. Don't trust the output until verified.

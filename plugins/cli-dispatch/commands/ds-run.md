@@ -12,6 +12,11 @@ The task runs via `claude-ds-stream`: its output is parsed as **stream-json** an
 session directory → **live, observable, resumable**. Monitor progress in a **cost-conscious** way:
 read only the small `status.json`, never the raw transcript.
 
+Prerequisite: `claude-ds` / `claude-ds-stream` installed (`/cli-dispatch:setup`, DeepSeek
+backend) and `DEEPSEEK_API_KEY` set. **Check first:** run `command -v claude-ds`. If it is
+missing, tell the user to run `/cli-dispatch:setup` and **STOP** — do NOT silently fall back
+to doing the task yourself; that defeats the whole point of delegating to DeepSeek.
+
 **If it's a real repo task** (file changes needed) — use an isolated worktree:
 1. Write the task to a brief file (e.g. `/tmp/ds-brief.txt`).
 2. Run it (as a background task) — depending on the OS:
@@ -25,7 +30,7 @@ read only the small `status.json`, never the raw transcript.
      ```
    (The script uses `claude-ds-stream` internally; the session directory is printed on stderr.)
 3. **Monitor (cost-conscious):** capture the session id, occasionally check `status.json` via
-   `/cli-dispatch:ds-watch <id>` (`state: running→done`). Do NOT tight-loop tail.
+   `/cli-dispatch:watch <id>` (`state: running→done`). Do NOT tight-loop tail.
 4. When done, **review** the diff in the worktree (`git -C <worktree> diff`), verify independently (tsc/build/test).
 5. If all good, **you** handle git/commit/push/PR/merge; then clean up the worktree.
 
@@ -44,6 +49,6 @@ The final text is printed to stdout; progress lives in `status.json`/`progress.l
 claude-ds-stream --resume <session-id> -p "<follow-up>"
 ```
 
-To see all sessions, use `/cli-dispatch:ds-sessions`.
+To see all sessions, use `/cli-dispatch:sessions`.
 
 claude-ds = worker, you = reviewer/merge owner. Don't trust the output until verified.

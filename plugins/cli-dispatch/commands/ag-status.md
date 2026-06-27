@@ -6,12 +6,12 @@ allowed-tools: Bash
 # Antigravity backend status
 
 Antigravity-only health check (read-only; do NOT print the key VALUE). For all backends at
-once use `/cli-dispatch:ds-status`.
+once use `/cli-dispatch:status`.
 
 ```bash
 echo "== Antigravity backend (agy / Gemini) =="
-command -v ag-agent  >/dev/null 2>&1 && echo "ag-agent:  installed ($(command -v ag-agent))"  || echo "ag-agent:  MISSING (enable with /cli-dispatch:ds-setup)"
-command -v ag-stream >/dev/null 2>&1 && echo "ag-stream: installed ($(command -v ag-stream))" || echo "ag-stream: MISSING (enable with /cli-dispatch:ds-setup)"
+command -v ag-agent  >/dev/null 2>&1 && echo "ag-agent:  installed ($(command -v ag-agent))"  || echo "ag-agent:  MISSING (enable with /cli-dispatch:setup)"
+command -v ag-stream >/dev/null 2>&1 && echo "ag-stream: installed ($(command -v ag-stream))" || echo "ag-stream: MISSING (enable with /cli-dispatch:setup)"
 CFG="${CLAUDE_DS_CONFIG:-$HOME/.config/claude-ds/config}"
 if command -v agy >/dev/null 2>&1; then
   echo "agy CLI: found ($(agy --version 2>/dev/null))"

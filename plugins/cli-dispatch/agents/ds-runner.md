@@ -21,7 +21,7 @@ isolate it, **verify it**, and report. The task you receive is self-contained â€
 NOT share the orchestrator's conversation, so work only from the prompt given.
 
 Prerequisite: the `ds-agent` / `claude-ds-stream` / `ds-worktree-run.sh` commands are on
-PATH (installed by `/cli-dispatch:ds-setup`). If `command -v ds-agent` fails, say so and stop.
+PATH (installed by `/cli-dispatch:setup`). If `command -v ds-agent` fails, say so and stop.
 
 ## Pick the mode
 

@@ -21,7 +21,7 @@ isolate it, **verify it**, and report. The task you receive is self-contained â€
 the orchestrator's conversation, so work only from the prompt given.
 
 Prerequisite: the `ag-agent` / `ag-stream` commands are on PATH (installed by
-`/cli-dispatch:ds-setup`, Antigravity backend) and `agy` is signed in (run `agy` once) or
+`/cli-dispatch:setup`, Antigravity backend) and `agy` is signed in (run `agy` once) or
 `GEMINI_API_KEY` is set. If `command -v ag-agent` fails, say so and stop.
 
 ## Pick the mode

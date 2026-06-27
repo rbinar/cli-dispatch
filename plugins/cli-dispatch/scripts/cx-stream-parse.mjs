@@ -3,7 +3,7 @@
 //
 // Reads a `codex exec --json` JSONL stream from stdin, mirrors ds-stream-parse.mjs /
 // ag-transcript-parse.mjs, and writes the SAME session-dir layout claude-ds uses so
-// /cli-dispatch:ds-watch / ds-sessions work for all backends uniformly:
+// /cli-dispatch:watch / sessions work for all backends uniformly:
 //
 //   transcript.jsonl — raw JSONL (full fidelity; for resume/audit, NOT read while polling)
 //   progress.log     — terse human-readable stream (items + truncated text)

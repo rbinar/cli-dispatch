@@ -6,12 +6,12 @@ allowed-tools: Bash
 # Codex backend status
 
 Codex-only health check (read-only; do NOT print the key VALUE). For all backends at once
-use `/cli-dispatch:ds-status`.
+use `/cli-dispatch:status`.
 
 ```bash
 echo "== Codex backend (cx / OpenAI) =="
-command -v cx-agent  >/dev/null 2>&1 && echo "cx-agent:  installed ($(command -v cx-agent))"  || echo "cx-agent:  MISSING (enable with /cli-dispatch:ds-setup)"
-command -v cx-stream >/dev/null 2>&1 && echo "cx-stream: installed ($(command -v cx-stream))" || echo "cx-stream: MISSING (enable with /cli-dispatch:ds-setup)"
+command -v cx-agent  >/dev/null 2>&1 && echo "cx-agent:  installed ($(command -v cx-agent))"  || echo "cx-agent:  MISSING (enable with /cli-dispatch:setup)"
+command -v cx-stream >/dev/null 2>&1 && echo "cx-stream: installed ($(command -v cx-stream))" || echo "cx-stream: MISSING (enable with /cli-dispatch:setup)"
 CFG="${CLAUDE_DS_CONFIG:-$HOME/.config/claude-ds/config}"
 if command -v codex >/dev/null 2>&1; then
   echo "codex CLI: found ($(codex --version 2>/dev/null || echo 'version unknown'))"

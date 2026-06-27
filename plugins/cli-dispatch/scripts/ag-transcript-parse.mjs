@@ -4,7 +4,7 @@
 // agy has no reliable stdout stream (no --output-format json; non-TTY silent-drop),
 // but it persists a JSONL transcript to disk. This parser TAIL-FOLLOWS that file
 // (poll + byte-offset) instead of reading stdin, and writes the SAME session-dir
-// layout claude-ds uses so /cli-dispatch:ds-watch / ds-sessions work for both
+// layout claude-ds uses so /cli-dispatch:watch / sessions work for both
 // backends uniformly:
 //
 //   transcript.jsonl — a copy of the agy lines we ingested (audit; not polled)

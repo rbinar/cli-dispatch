@@ -7,7 +7,7 @@ allowed-tools: Bash
 
 List delegations started with `ag-stream` (Antigravity), newest first. All backends share
 one session root; this view filters to `backend: antigravity` only. For every backend at
-once use `/cli-dispatch:ds-sessions`.
+once use `/cli-dispatch:sessions`.
 Cost-conscious: only the small `meta.json` + `status.json` files are read; the raw
 `transcript.jsonl` is NEVER read.
 
@@ -41,5 +41,5 @@ for (const r of rows) {
 EOF
 ```
 
-To see a session's detail/live status: `/cli-dispatch:ds-watch <id>`.
+To see a session's detail/live status: `/cli-dispatch:watch <id>`.
 To send a follow-up (continue the same session): `ag-stream --resume <id> -p "<follow-up>"`.

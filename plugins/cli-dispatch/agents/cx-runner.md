@@ -21,7 +21,7 @@ isolate it, **verify it**, and report. The task you receive is self-contained â€
 the orchestrator's conversation, so work only from the prompt given.
 
 Prerequisite: the `cx-agent` / `cx-stream` commands are on PATH (installed by
-`/cli-dispatch:ds-setup`, Codex backend). Codex itself must be authenticated: run `codex login`
+`/cli-dispatch:setup`, Codex backend). Codex itself must be authenticated: run `codex login`
 once (ChatGPT/OAuth) or set `CODEX_API_KEY`. If `command -v cx-agent` fails, say so and stop.
 
 ## Pick the mode

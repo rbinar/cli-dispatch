@@ -14,8 +14,11 @@ directory layout the DeepSeek backend uses → **live, observable, resumable**. 
 progress in a **cost-conscious** way: read only the small `status.json`, never the raw
 transcript. The session id is the agy **conversation-id** (printed on stderr).
 
-Prerequisite: `ag-agent` / `ag-stream` installed (`/cli-dispatch:ds-setup`, Antigravity
-backend) and `agy` signed in (run `agy` once) or `GEMINI_API_KEY` set.
+Prerequisite: `ag-agent` / `ag-stream` installed (`/cli-dispatch:setup`, Antigravity
+backend) and `agy` signed in (run `agy` once) or `GEMINI_API_KEY` set. **Check first:** run
+`command -v ag-agent`. If it is missing, tell the user to run `/cli-dispatch:setup`
+(Antigravity backend) and **STOP** — do NOT silently fall back to doing the task yourself;
+that defeats the whole point of delegating to Antigravity.
 
 **If it's a real repo task** (file changes needed) — isolate in a git worktree (this also
 avoids agy's per-workspace conversation-id race):
@@ -33,7 +36,7 @@ avoids agy's per-workspace conversation-id race):
    > best-effort watchdog backstop — it is NOT a hard wall-clock kill like the DeepSeek
    > backend. For a strict bound, wrap the call in `timeout(1)` yourself.
 3. **Monitor (cost-conscious):** occasionally check `status.json` via
-   `/cli-dispatch:ds-watch <conv-id>` (`state: running→done`). Do NOT tight-loop tail.
+   `/cli-dispatch:watch <conv-id>` (`state: running→done`). Do NOT tight-loop tail.
 4. When done, **review** the diff in the worktree (`git -C <worktree> diff`), verify
    independently (build/test).
 5. If all good, **you** handle git/commit/push/PR/merge; then clean up the worktree.
@@ -53,6 +56,6 @@ ag-agent -q "$ARGUMENTS"        # stdout = final answer only; progress in status
 ag-agent --resume <conv-id> "<follow-up>"
 ```
 
-To see all sessions (all backends), use `/cli-dispatch:ds-sessions`.
+To see all sessions (all backends), use `/cli-dispatch:sessions`.
 
 The worker = Antigravity (Gemini); you = reviewer/merge owner. Don't trust the output until verified.

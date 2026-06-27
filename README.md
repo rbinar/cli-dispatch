@@ -4,7 +4,7 @@
 
 A Claude Code plugin that **delegates a task to the right worker CLI** — a multi-backend delegation hub. Backends: **DeepSeek-powered Claude Code** (`claude-ds`), **Antigravity / Gemini** (`agy`, via `ag-agent`), and **OpenAI Codex CLI** (`codex`, via `cx-agent`).
 
-> ℹ️ **Multi-backend delegation hub.** Three worker backends today — **DeepSeek** (commands `/cli-dispatch:ds-*`), **Antigravity/Gemini** (`/cli-dispatch:ag-run`, wrappers `ag-agent`/`ag-stream`), and **Codex** (`/cli-dispatch:cx-run`, wrappers `cx-agent`/`cx-stream`). You pick which to install at setup. All three write to the same session layout, so `ds-sessions`/`ds-watch` work across all. The DeepSeek wrapper/config paths keep the `claude-ds` name (that backend's name).
+> ℹ️ **Multi-backend delegation hub.** Three worker backends today — **DeepSeek** (commands `/cli-dispatch:ds-*`), **Antigravity/Gemini** (`/cli-dispatch:ag-run`, wrappers `ag-agent`/`ag-stream`), and **Codex** (`/cli-dispatch:cx-run`, wrappers `cx-agent`/`cx-stream`). You pick which to install at setup. All three write to the same session layout, so `sessions`/`watch` work across all. The DeepSeek wrapper/config paths keep the `claude-ds` name (that backend's name).
 
 Claude Code's built-in `Agent`/subagent tool only supports Anthropic models (sonnet/opus/haiku) — it can't hand work to DeepSeek or Gemini. cli-dispatch installs portable wrappers that drive each worker CLI (Claude Code against DeepSeek's API; the Antigravity CLI for Gemini), so you can hand tasks to either as a **delegated worker**.
 
@@ -42,15 +42,15 @@ The install output says `Run /reload-plugins to apply`. This step is required fo
 /reload-plugins
 ```
 
-> If you still get "Unknown command: /cli-dispatch:ds-setup" after reload, fully quit Claude Code and reopen it. You can verify `cli-dispatch` is installed and **enabled** with the `/plugin` command.
+> If you still get "Unknown command: /cli-dispatch:setup" after reload, fully quit Claude Code and reopen it. You can verify `cli-dispatch` is installed and **enabled** with the `/plugin` command.
 
 **Step 4 — Run setup** (after the plugin is enabled):
 
 ```text
-/cli-dispatch:ds-setup
+/cli-dispatch:setup
 ```
 
-`/cli-dispatch:ds-setup` first **asks which worker backend(s) to install** — DeepSeek, Antigravity (Gemini), Codex, or all (`--backends all` or `--backends deepseek,antigravity,codex`). For **DeepSeek** it installs the wrapper to `~/.local/bin/claude-ds` and creates a `~/.config/claude-ds/config` skeleton; if the key is still empty, setup **automatically opens the config in your platform's default editor** (macOS `open`, Linux `xdg-open`, WSL `explorer.exe`, Windows `notepad`). Add your DeepSeek API key **yourself** in the opened file:
+`/cli-dispatch:setup` first **asks which worker backend(s) to install** — DeepSeek, Antigravity (Gemini), Codex, or all (`--backends all` or `--backends deepseek,antigravity,codex`). For **DeepSeek** it installs the wrapper to `~/.local/bin/claude-ds` and creates a `~/.config/claude-ds/config` skeleton; if the key is still empty, setup **automatically opens the config in your platform's default editor** (macOS `open`, Linux `xdg-open`, WSL `explorer.exe`, Windows `notepad`). Add your DeepSeek API key **yourself** in the opened file:
 
 ```bash
 # ~/.config/claude-ds/config
@@ -76,14 +76,14 @@ You use claude-ds **from inside Claude Code** — two ways:
 
 | Command | What it does |
 |---------|--------------|
-| `/cli-dispatch:ds-setup` | Pick backend(s) + install + config skeleton + smoke test |
+| `/cli-dispatch:setup` | Pick backend(s) + install + config skeleton + smoke test |
 | `/cli-dispatch:ds-run <task>` | Delegate a task to **DeepSeek** (session-tracked; worktree isolation for repo tasks) |
 | `/cli-dispatch:ag-run <task>` | Delegate a task to **Antigravity (Gemini)** (same workflow) |
 | `/cli-dispatch:cx-run <task>` | Delegate a task to **Codex (OpenAI)** (real read-only sandbox; same session layout) |
-| `/cli-dispatch:ds-sessions` | List past/active sessions (all backends; shows a `backend` column) |
+| `/cli-dispatch:sessions` | List past/active sessions (all backends; shows a `backend` column) |
 | `/cli-dispatch:ag-sessions` / `cx-sessions` | Same list, filtered to just Antigravity / Codex |
-| `/cli-dispatch:ds-watch <id>` | Show a session's live status (cost-aware; any backend) |
-| `/cli-dispatch:ds-status` | Check install/key/CLI status for all backends |
+| `/cli-dispatch:watch <id>` | Show a session's live status (cost-aware; any backend) |
+| `/cli-dispatch:status` | Check install/key/CLI status for all backends |
 | `/cli-dispatch:ag-status` / `cx-status` | Same check, scoped to just Antigravity / Codex |
 | `/cli-dispatch:ds-balance` | Show DeepSeek account balance |
 
@@ -98,13 +98,13 @@ All used from inside Claude Code (`/cli-dispatch:ds-run <task>` or "do <task> wi
 - **timeout safety net** — a hung/runaway worker is auto-killed (with its child processes) at a runtime or idle limit; the session goes `state: error`.
 - **global MCP isolation** — the worker does not inherit your `~/.claude` MCP servers (playwright, etc.).
 - **ds-runner subagent** — hand the whole delegation to an isolated sub-context; the management noise never enters the orchestrator. → [ds-runner](#ds-runner-subagent-keep-context-clean)
-- **Helper commands** — `/cli-dispatch:ds-sessions`, `/cli-dispatch:ds-watch <id>`, `/cli-dispatch:ds-status`, `/cli-dispatch:ds-balance`.
+- **Helper commands** — `/cli-dispatch:sessions`, `/cli-dispatch:watch <id>`, `/cli-dispatch:status`, `/cli-dispatch:ds-balance`.
 
 > ⚠️ **The default mode is not a sandbox.** The worker runs with `bypassPermissions` → it **can write files / run bash** even without `--dangerously-skip-permissions`. Isolate real repo work in a worktree; use `--read-only` for a guaranteed "won't write files".
 
 ## Session tracking (live watch + resume)
 
-Delegated work is **not an opaque background process**: output is parsed line by line (stream-json) and each task is written to a **session directory**. You track what the DeepSeek worker is doing in a **live, structured, resumable** way via `/cli-dispatch:ds-sessions` and `/cli-dispatch:ds-watch <id>`.
+Delegated work is **not an opaque background process**: output is parsed line by line (stream-json) and each task is written to a **session directory**. You track what the DeepSeek worker is doing in a **live, structured, resumable** way via `/cli-dispatch:sessions` and `/cli-dispatch:watch <id>`.
 
 Session directory: `${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions/<id>/`
 
@@ -115,7 +115,7 @@ Session directory: `${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions/<id>/`
 | `transcript.jsonl` | Raw stream-json (resume/audit; not read while watching) |
 | `meta.json` | Prompt preview, cwd, branch, model, start/end |
 
-**Cost-aware watching:** progress is tracked only from the small `status.json` (`/cli-dispatch:ds-watch <id>`); the raw transcript is not read, not tailed in a tight loop — because every read by the orchestrator spends tokens.
+**Cost-aware watching:** progress is tracked only from the small `status.json` (`/cli-dispatch:watch <id>`); the raw transcript is not read, not tailed in a tight loop — because every read by the orchestrator spends tokens.
 
 > Requirement: `node` is needed for session tracking/parsing (claude-code already runs in a node environment).
 
@@ -169,7 +169,7 @@ Flags (cx-agent / cx-stream): `--read-only`, `--sandbox <mode>`, `--cwd <dir>`, 
 
 On native Windows (if you're not using WSL) the PowerShell variants kick in:
 
-- `/cli-dispatch:ds-setup` → runs `install.ps1`: installs `claude-ds.ps1` + `claude-ds-stream.ps1` and `.cmd` shims into `~/.local/bin`, and the stream parser (`ds-stream-parse.mjs`) into `~/.local/share/claude-ds` (so `claude-ds` / `claude-ds-stream` are callable from cmd/PowerShell), and writes the config to `~/.config/claude-ds/config`.
+- `/cli-dispatch:setup` → runs `install.ps1`: installs `claude-ds.ps1` + `claude-ds-stream.ps1` and `.cmd` shims into `~/.local/bin`, and the stream parser (`ds-stream-parse.mjs`) into `~/.local/share/claude-ds` (so `claude-ds` / `claude-ds-stream` are callable from cmd/PowerShell), and writes the config to `~/.config/claude-ds/config`.
 - Repo tasks: `ds-worktree-run.ps1` — uses a **junction** instead of a symlink for `node_modules` (`New-Item -ItemType Junction`; doesn't require admin/developer-mode).
 - If WSL or Git Bash is present, the Unix `.sh` scripts also work.
 

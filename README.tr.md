@@ -4,7 +4,7 @@
 
 **Bir görevi uygun işçi CLI'ya delege eden** bir Claude Code plugin'i — çok-backend delege hub'ı. Backend'ler: **DeepSeek destekli Claude Code** (`claude-ds`), **Antigravity / Gemini** (`agy`, `ag-agent` ile) ve **OpenAI Codex CLI** (`codex`, `cx-agent` ile).
 
-> ℹ️ **Çok-backend delege hub'ı.** Bugün üç işçi backend'i var — **DeepSeek** (komutlar `/cli-dispatch:ds-*`), **Antigravity/Gemini** (`/cli-dispatch:ag-run`, wrapper'lar `ag-agent`/`ag-stream`) ve **Codex** (`/cli-dispatch:cx-run`, wrapper'lar `cx-agent`/`cx-stream`). Hangisini kuracağını setup'ta seçersin. Üçü de aynı session düzenine yazar; `ds-sessions`/`ds-watch` hepsinde çalışır. DeepSeek wrapper/config yolları `claude-ds` adını korur (o backend'in adı).
+> ℹ️ **Çok-backend delege hub'ı.** Bugün üç işçi backend'i var — **DeepSeek** (komutlar `/cli-dispatch:ds-*`), **Antigravity/Gemini** (`/cli-dispatch:ag-run`, wrapper'lar `ag-agent`/`ag-stream`) ve **Codex** (`/cli-dispatch:cx-run`, wrapper'lar `cx-agent`/`cx-stream`). Hangisini kuracağını setup'ta seçersin. Üçü de aynı session düzenine yazar; `sessions`/`watch` hepsinde çalışır. DeepSeek wrapper/config yolları `claude-ds` adını korur (o backend'in adı).
 
 Claude Code'un yerleşik `Agent`/subagent tool'u yalnızca Anthropic modellerini (sonnet/opus/haiku) destekler — DeepSeek'e ya da Gemini'ye iş veremez. cli-dispatch her işçi CLI'ı süren taşınabilir wrapper'lar kurar (Claude Code'u DeepSeek API'siyle; Gemini için Antigravity CLI'ı); böylece görevleri ikisine de **delege işçi** olarak verebilirsin.
 
@@ -42,15 +42,15 @@ Install çıktısı `Run /reload-plugins to apply` der. Komutların (`/cli-dispa
 /reload-plugins
 ```
 
-> Reload sonrası hâlâ "Unknown command: /cli-dispatch:ds-setup" alıyorsan, Claude Code'u tamamen kapatıp yeniden aç. `/plugin` komutuyla `cli-dispatch`'in yüklü ve **enabled** olduğunu doğrulayabilirsin.
+> Reload sonrası hâlâ "Unknown command: /cli-dispatch:setup" alıyorsan, Claude Code'u tamamen kapatıp yeniden aç. `/plugin` komutuyla `cli-dispatch`'in yüklü ve **enabled** olduğunu doğrulayabilirsin.
 
 **4. Adım — Kurulumu çalıştır** (plugin etkinleştikten sonra):
 
 ```text
-/cli-dispatch:ds-setup
+/cli-dispatch:setup
 ```
 
-`/cli-dispatch:ds-setup` önce **hangi backend('ler)i kuracağını sorar** — DeepSeek, Antigravity (Gemini), Codex ya da hepsi (`--backends all` veya `--backends deepseek,antigravity,codex`). **DeepSeek** için wrapper'ı `~/.local/bin/claude-ds`'e kurar ve `~/.config/claude-ds/config` iskeletini oluşturur; key hâlâ boşsa config'i **platformun varsayılan editöründe otomatik açar** (macOS `open`, Linux `xdg-open`, WSL `explorer.exe`, Windows `notepad`). Açılan dosyada DeepSeek API key'ini **kendin** ekle:
+`/cli-dispatch:setup` önce **hangi backend('ler)i kuracağını sorar** — DeepSeek, Antigravity (Gemini), Codex ya da hepsi (`--backends all` veya `--backends deepseek,antigravity,codex`). **DeepSeek** için wrapper'ı `~/.local/bin/claude-ds`'e kurar ve `~/.config/claude-ds/config` iskeletini oluşturur; key hâlâ boşsa config'i **platformun varsayılan editöründe otomatik açar** (macOS `open`, Linux `xdg-open`, WSL `explorer.exe`, Windows `notepad`). Açılan dosyada DeepSeek API key'ini **kendin** ekle:
 
 ```bash
 # ~/.config/claude-ds/config
@@ -76,13 +76,13 @@ claude-ds'i **Claude Code'un içinden** kullanırsın — iki yol:
 
 | Komut | İş |
 |-------|-----|
-| `/cli-dispatch:ds-setup` | Backend(ler) seç + kur + config iskeleti + smoke test |
+| `/cli-dispatch:setup` | Backend(ler) seç + kur + config iskeleti + smoke test |
 | `/cli-dispatch:ds-run <görev>` | Bir görevi **DeepSeek**'e delege et (session-takipli; repo görevinde worktree izolasyonu) |
 | `/cli-dispatch:ag-run <görev>` | Bir görevi **Antigravity (Gemini)**'ye delege et (aynı akış) |
 | `/cli-dispatch:cx-run <görev>` | Bir görevi **Codex (OpenAI)**'e delege et (gerçek read-only sandbox; aynı session düzeni) |
-| `/cli-dispatch:ds-sessions` | Geçmiş/aktif session'ları listele (tüm backend'ler; `backend` kolonu) |
-| `/cli-dispatch:ds-watch <id>` | Bir session'ın canlı durumunu göster (maliyet-odaklı) |
-| `/cli-dispatch:ds-status` | Tüm backend'ler için kurulum/key/CLI durumunu kontrol et |
+| `/cli-dispatch:sessions` | Geçmiş/aktif session'ları listele (tüm backend'ler; `backend` kolonu) |
+| `/cli-dispatch:watch <id>` | Bir session'ın canlı durumunu göster (maliyet-odaklı) |
+| `/cli-dispatch:status` | Tüm backend'ler için kurulum/key/CLI durumunu kontrol et |
 | `/cli-dispatch:ds-balance` | DeepSeek hesap bakiyesini göster |
 
 ## Özellikler
@@ -96,13 +96,13 @@ Hepsi Claude Code içinden kullanılır (`/cli-dispatch:ds-run <görev>` ya da "
 - **timeout güvenlik ağı** — asılı/kaçak işçi, süre veya durgunluk limitinde (çocuk süreçleriyle birlikte) otomatik öldürülür; session `state: error` olur.
 - **global MCP izolasyonu** — işçi senin `~/.claude` MCP sunucularını (playwright, vb.) miras almaz.
 - **ds-runner subagent** — tüm delegasyonu izole bir alt-bağlama devret; yönetim gürültüsü orkestratöre girmez. → [ds-runner](#ds-runner-subagent-bağlamı-temiz-tut)
-- **Yardımcı komutlar** — `/cli-dispatch:ds-sessions`, `/cli-dispatch:ds-watch <id>`, `/cli-dispatch:ds-status`, `/cli-dispatch:ds-balance`.
+- **Yardımcı komutlar** — `/cli-dispatch:sessions`, `/cli-dispatch:watch <id>`, `/cli-dispatch:status`, `/cli-dispatch:ds-balance`.
 
 > ⚠️ **Varsayılan mod bir sandbox değildir.** İşçi `bypassPermissions` ile çalışır → `--dangerously-skip-permissions` olmasa bile **dosya yazabilir / bash çalıştırabilir**. Gerçek repo işini worktree'de izole et; garantili "dosya yazmaz" için `--read-only` kullan.
 
 ## Session takibi (canlı izleme + resume)
 
-Delege edilen iş **opak bir arka plan süreci değildir**: çıktı satır satır (stream-json) parse edilip her görev bir **session dizinine** yazılır. DeepSeek işçisinin ne yaptığını `/cli-dispatch:ds-sessions` ve `/cli-dispatch:ds-watch <id>` ile **canlı, yapılandırılmış ve resume-edilebilir** şekilde takip edersin.
+Delege edilen iş **opak bir arka plan süreci değildir**: çıktı satır satır (stream-json) parse edilip her görev bir **session dizinine** yazılır. DeepSeek işçisinin ne yaptığını `/cli-dispatch:sessions` ve `/cli-dispatch:watch <id>` ile **canlı, yapılandırılmış ve resume-edilebilir** şekilde takip edersin.
 
 Session dizini: `${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions/<id>/`
 
@@ -113,7 +113,7 @@ Session dizini: `${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions/<id>/`
 | `transcript.jsonl` | Ham stream-json (resume/audit; izlerken okunmaz) |
 | `meta.json` | Prompt önizlemesi, cwd, branch, model, başlangıç/bitiş |
 
-**Maliyet-odaklı izleme:** ilerleme yalnızca küçük `status.json`'dan takip edilir (`/cli-dispatch:ds-watch <id>`); ham transcript okunmaz, sıkı döngüde tail edilmez — orkestratörün her okuması token harcadığı için.
+**Maliyet-odaklı izleme:** ilerleme yalnızca küçük `status.json`'dan takip edilir (`/cli-dispatch:watch <id>`); ham transcript okunmaz, sıkı döngüde tail edilmez — orkestratörün her okuması token harcadığı için.
 
 > Gereksinim: session takibi/parse için `node` gerekir (claude-code zaten node ortamında çalışır).
 
@@ -174,7 +174,7 @@ Bayraklar (cx-agent / cx-stream): `--read-only`, `--sandbox <mod>`, `--cwd <dir>
 
 Native Windows'ta (WSL kullanmıyorsan) PowerShell varyantları devreye girer:
 
-- `/cli-dispatch:ds-setup` → `install.ps1` çalışır: `claude-ds.ps1` + `claude-ds-stream.ps1` ve `.cmd` shim'lerini `~/.local/bin`'e, stream parser'ını (`ds-stream-parse.mjs`) `~/.local/share/claude-ds`'e kurar (böylece `claude-ds` / `claude-ds-stream` cmd/PowerShell'den çağrılır), config'i `~/.config/claude-ds/config`'e yazar.
+- `/cli-dispatch:setup` → `install.ps1` çalışır: `claude-ds.ps1` + `claude-ds-stream.ps1` ve `.cmd` shim'lerini `~/.local/bin`'e, stream parser'ını (`ds-stream-parse.mjs`) `~/.local/share/claude-ds`'e kurar (böylece `claude-ds` / `claude-ds-stream` cmd/PowerShell'den çağrılır), config'i `~/.config/claude-ds/config`'e yazar.
 - Repo görevleri: `ds-worktree-run.ps1` — `node_modules` için symlink yerine **junction** (`New-Item -ItemType Junction`; admin/developer-mode gerektirmez) kullanır.
 - WSL ya da Git Bash varsa Unix `.sh` scriptleri de çalışır.
 

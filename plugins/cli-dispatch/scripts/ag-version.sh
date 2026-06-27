@@ -12,7 +12,7 @@ case "${1:-}" in
 esac
 
 if ! command -v agy >/dev/null 2>&1; then
-  echo "ag-version: agy not found on PATH (run /cli-dispatch:ds-setup, Antigravity backend)." >&2
+  echo "ag-version: agy not found on PATH (run /cli-dispatch:setup, Antigravity backend)." >&2
   exit 1
 fi
 
