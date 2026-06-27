@@ -276,6 +276,7 @@ const server = http.createServer((req, res) => {
     if (p === '/' || p === '/index.html') {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(PAGE); return
     }
+    if (p === '/favicon.ico') { res.writeHead(204); res.end(); return }
     if (p === '/api/sessions') return send(res, 200, listSessions())
     if (p === '/api/workers') return send(res, 200, listWorkers())
 

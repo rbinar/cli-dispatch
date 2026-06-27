@@ -1,0 +1,2076 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]: cli-dispatch
+    - generic [ref=e4]: dashboard
+    - generic [ref=e14]: 442 sessions
+    - generic [ref=e5]: · read-only · localhost
+  - generic [ref=e6]:
+    - generic [ref=e7]:
+      - generic [ref=e8]:
+        - generic [ref=e9] [cursor=pointer]: Claude Code
+        - generic [ref=e10] [cursor=pointer]: cli-dispatch workers
+      - generic [ref=e15]:
+        - generic [ref=e4436] [cursor=pointer]:
+          - generic [ref=e4437]: cli/dispatchbusy2 sub
+          - generic [ref=e4439]: 72aad80b
+          - generic [ref=e4440]: 2026-06-27 22:23:56 · 6924KB
+        - generic [ref=e4441] [cursor=pointer]:
+          - generic [ref=e4442]: blinkbrosai/blinkfinbusy68 sub
+          - generic [ref=e4444]: 9ba84398
+          - generic [ref=e4445]: 2026-06-27 22:24:02 · 15258KB
+        - generic [ref=e4446] [cursor=pointer]:
+          - generic [ref=e4447]: code/kitidle4 sub
+          - generic [ref=e4449]: 6b70f49a
+          - generic [ref=e4450]: 2026-06-27 22:21:10 · 1041KB
+        - generic [ref=e4451] [cursor=pointer]:
+          - generic [ref=e4452]: octo/aiidle135 sub
+          - generic [ref=e4454]: "04690623"
+          - generic [ref=e4455]: 2026-06-27 21:01:16 · 26330KB
+        - generic [ref=e4456] [cursor=pointer]:
+          - generic [ref=e4457]: wt/1774closed
+          - generic [ref=e4459]: 34c76667
+          - generic [ref=e4460]: 2026-06-27 22:13:38 · 149KB
+        - generic [ref=e4461] [cursor=pointer]:
+          - generic [ref=e4462]: code/kitclosed9 sub
+          - generic [ref=e4464]: 1c2d5a8a
+          - generic [ref=e4465]: 2026-06-27 20:31:57 · 2223KB
+        - generic [ref=e4466] [cursor=pointer]:
+          - generic [ref=e4467]: cli/dispatchclosed
+          - generic [ref=e4469]: 8883594b
+          - generic [ref=e4470]: 2026-06-27 16:11:18 · 10KB
+        - generic [ref=e4471] [cursor=pointer]:
+          - generic [ref=e4472]: blinkfin/uiclosed
+          - generic [ref=e4474]: 1b2d1853
+          - generic [ref=e4475]: 2026-06-27 14:21:29 · 677KB
+        - generic [ref=e4476] [cursor=pointer]:
+          - generic [ref=e4477]: cli/dispatchclosed
+          - generic [ref=e4479]: 63b13a12
+          - generic [ref=e4480]: 2026-06-27 13:55:29 · 10KB
+        - generic [ref=e4481] [cursor=pointer]:
+          - generic [ref=e4482]: wt/b5closed
+          - generic [ref=e4484]: 7c9f882e
+          - generic [ref=e4485]: 2026-06-27 13:36:33 · 327KB
+        - generic [ref=e4486] [cursor=pointer]:
+          - generic [ref=e4487]: cli/dispatchclosed
+          - generic [ref=e4489]: 6b853b48
+          - generic [ref=e4490]: 2026-06-27 13:35:16 · 10KB
+        - generic [ref=e4491] [cursor=pointer]:
+          - generic [ref=e4492]: cli/dispatchclosed
+          - generic [ref=e4494]: 3beded82
+          - generic [ref=e4495]: 2026-06-27 13:31:54 · 10KB
+        - generic [ref=e4496] [cursor=pointer]:
+          - generic [ref=e4497]: cli/dispatchclosed
+          - generic [ref=e4499]: ae55b61e
+          - generic [ref=e4500]: 2026-06-27 13:12:23 · 10KB
+        - generic [ref=e4501] [cursor=pointer]:
+          - generic [ref=e4502]: cli/dispatchclosed
+          - generic [ref=e4504]: aaa35843
+          - generic [ref=e4505]: 2026-06-27 12:56:17 · 10KB
+        - generic [ref=e4506] [cursor=pointer]:
+          - generic [ref=e4507]: wt/1754closed2 sub
+          - generic [ref=e4509]: 51dc6d61
+          - generic [ref=e4510]: 2026-06-27 10:25:18 · 320KB
+        - generic [ref=e4511] [cursor=pointer]:
+          - generic [ref=e4512]: blinkbrosai/blinkfinclosed
+          - generic [ref=e4514]: 20452c3e
+          - generic [ref=e4515]: 2026-06-27 10:22:40 · 135KB
+        - generic [ref=e4516] [cursor=pointer]:
+          - generic [ref=e4517]: cli/dispatchclosed10 sub
+          - generic [ref=e4519]: "75575089"
+          - generic [ref=e4520]: 2026-06-27 05:41:38 · 1127KB
+        - generic [ref=e4521] [cursor=pointer]:
+          - generic [ref=e4522]: cli/dispatchclosed2 sub
+          - generic [ref=e4524]: 0bc85eab
+          - generic [ref=e4525]: 2026-06-26 21:22:31 · 7512KB
+        - generic [ref=e4526] [cursor=pointer]:
+          - generic [ref=e4527]: Documents/Reposclosed
+          - generic [ref=e4529]: 586caa93
+          - generic [ref=e4530]: 2026-06-26 21:22:23 · 93KB
+        - generic [ref=e4531] [cursor=pointer]:
+          - generic [ref=e4532]: blinkbrosai/blinkfinclosed
+          - generic [ref=e4534]: c5c495a3
+          - generic [ref=e4535]: 2026-06-26 12:41:52 · 667KB
+        - generic [ref=e4536] [cursor=pointer]:
+          - generic [ref=e4537]: blinkbrosai/blinkfinclosed59 sub
+          - generic [ref=e4539]: 397e7fd0
+          - generic [ref=e4540]: 2026-06-26 10:55:43 · 41553KB
+        - generic [ref=e4541] [cursor=pointer]:
+          - generic [ref=e4542]: 27ad878804e1/scratchpadclosed
+          - generic [ref=e4544]: 3e78d6df
+          - generic [ref=e4545]: 2026-06-25 19:48:30 · 10KB
+        - generic [ref=e4546] [cursor=pointer]:
+          - generic [ref=e4547]: social/mediaclosed5 sub
+          - generic [ref=e4549]: d8dd0b9e
+          - generic [ref=e4550]: 2026-06-24 21:56:35 · 3525KB
+        - generic [ref=e4551] [cursor=pointer]:
+          - generic [ref=e4552]: edit/chatclosed
+          - generic [ref=e4554]: dbdabdc5
+          - generic [ref=e4555]: 2026-06-24 20:36:01 · 70KB
+        - generic [ref=e4556] [cursor=pointer]:
+          - generic [ref=e4557]: cli/dispatchclosed
+          - generic [ref=e4559]: 36aa0a61
+          - generic [ref=e4560]: 2026-06-24 19:48:08 · 111KB
+        - generic [ref=e4561] [cursor=pointer]:
+          - generic [ref=e4562]: media/dashboardclosed
+          - generic [ref=e4564]: c34de7a4
+          - generic [ref=e4565]: 2026-06-24 19:33:28 · 170KB
+        - generic [ref=e4566] [cursor=pointer]:
+          - generic [ref=e4567]: agent/apiclosed
+          - generic [ref=e4569]: 32de48ed
+          - generic [ref=e4570]: 2026-06-24 17:08:12 · 24KB
+        - generic [ref=e4571] [cursor=pointer]:
+          - generic [ref=e4572]: social/mediaclosed
+          - generic [ref=e4574]: 590b8e3b
+          - generic [ref=e4575]: 2026-06-24 17:06:23 · 280KB
+        - generic [ref=e4576] [cursor=pointer]:
+          - generic [ref=e4577]: cli/dispatchclosed
+          - generic [ref=e4579]: cb40374d
+          - generic [ref=e4580]: 2026-06-24 17:05:25 · 23KB
+        - generic [ref=e4581] [cursor=pointer]:
+          - generic [ref=e4582]: social/mediaclosed
+          - generic [ref=e4584]: d2f755f0
+          - generic [ref=e4585]: 2026-06-24 16:57:35 · 192KB
+        - generic [ref=e4586] [cursor=pointer]:
+          - generic [ref=e4587]: octo/aiclosed
+          - generic [ref=e4589]: 0bded319
+          - generic [ref=e4590]: 2026-06-24 14:55:56 · 41KB
+        - generic [ref=e4591] [cursor=pointer]:
+          - generic [ref=e4592]: cli/dispatchclosed3 sub
+          - generic [ref=e4594]: ab62009f
+          - generic [ref=e4595]: 2026-06-24 00:07:28 · 379KB
+        - generic [ref=e4596] [cursor=pointer]:
+          - generic [ref=e4597]: octo/aiclosed
+          - generic [ref=e4599]: b26545b9
+          - generic [ref=e4600]: 2026-06-23 19:42:17 · 7KB
+        - generic [ref=e4601] [cursor=pointer]:
+          - generic [ref=e4602]: blinkbrosai/blinkfinclosed114 sub
+          - generic [ref=e4604]: 5b860ab0
+          - generic [ref=e4605]: 2026-06-23 19:39:56 · 97124KB
+        - generic [ref=e4606] [cursor=pointer]:
+          - generic [ref=e4607]: octo/aiclosed24 sub
+          - generic [ref=e4609]: 172fd244
+          - generic [ref=e4610]: 2026-06-23 19:39:54 · 12753KB
+        - generic [ref=e4611] [cursor=pointer]:
+          - generic [ref=e4612]: wt/EuvehCclosed
+          - generic [ref=e4614]: 01bd562d
+          - generic [ref=e4615]: 2026-06-23 10:07:16 · 120KB
+        - generic [ref=e4616] [cursor=pointer]:
+          - generic [ref=e4617]: wt/GvHdjmclosed
+          - generic [ref=e4619]: 88a4d169
+          - generic [ref=e4620]: 2026-06-22 22:51:08 · 67KB
+        - generic [ref=e4621] [cursor=pointer]:
+          - generic [ref=e4622]: claude/dsclosed
+          - generic [ref=e4624]: db30d10f
+          - generic [ref=e4625]: 2026-06-22 22:29:47 · 1518KB
+        - generic [ref=e4626] [cursor=pointer]:
+          - generic [ref=e4627]: wt/533Shvclosed
+          - generic [ref=e4629]: 3d5a61d9
+          - generic [ref=e4630]: 2026-06-22 22:27:25 · 151KB
+        - generic [ref=e4631] [cursor=pointer]:
+          - generic [ref=e4632]: tmp/clidtestclosed
+          - generic [ref=e4634]: 70b7ce1d
+          - generic [ref=e4635]: 2026-06-22 22:22:12 · 9KB
+        - generic [ref=e4636] [cursor=pointer]:
+          - generic [ref=e4637]: tmp/clidtestclosed
+          - generic [ref=e4639]: 3cb11778
+          - generic [ref=e4640]: 2026-06-22 22:19:43 · 9KB
+        - generic [ref=e4641] [cursor=pointer]:
+          - generic [ref=e4642]: private/tmpclosed
+          - generic [ref=e4644]: 2a56f835
+          - generic [ref=e4645]: 2026-06-22 22:17:21 · 23KB
+        - generic [ref=e4646] [cursor=pointer]:
+          - generic [ref=e4647]: wt/NYbsf8closed
+          - generic [ref=e4649]: f1a1f464
+          - generic [ref=e4650]: 2026-06-22 22:16:34 · 226KB
+        - generic [ref=e4651] [cursor=pointer]:
+          - generic [ref=e4652]: wt/BTu2PPclosed
+          - generic [ref=e4654]: 7ec7cbfd
+          - generic [ref=e4655]: 2026-06-22 22:04:42 · 161KB
+        - generic [ref=e4656] [cursor=pointer]:
+          - generic [ref=e4657]: wt/mUNyttclosed
+          - generic [ref=e4659]: "81766060"
+          - generic [ref=e4660]: 2026-06-22 20:56:08 · 110KB
+        - generic [ref=e4661] [cursor=pointer]:
+          - generic [ref=e4662]: wt/uf5rOGclosed
+          - generic [ref=e4664]: 09c27440
+          - generic [ref=e4665]: 2026-06-22 20:36:34 · 56KB
+        - generic [ref=e4666] [cursor=pointer]:
+          - generic [ref=e4667]: wt/MUAUcnclosed
+          - generic [ref=e4669]: "26989511"
+          - generic [ref=e4670]: 2026-06-22 20:20:13 · 94KB
+        - generic [ref=e4671] [cursor=pointer]:
+          - generic [ref=e4672]: wt/yxAKmdclosed
+          - generic [ref=e4674]: 63cafe15
+          - generic [ref=e4675]: 2026-06-22 19:59:57 · 105KB
+        - generic [ref=e4676] [cursor=pointer]:
+          - generic [ref=e4677]: blink/coworkclosed194 sub
+          - generic [ref=e4679]: 601764c4
+          - generic [ref=e4680]: 2026-06-22 12:07:49 · 6778KB
+        - generic [ref=e4681] [cursor=pointer]:
+          - generic [ref=e4682]: blink/coworkclosed51 sub
+          - generic [ref=e4684]: a4d62575
+          - generic [ref=e4685]: 2026-06-22 12:07:47 · 6604KB
+        - generic [ref=e4686] [cursor=pointer]:
+          - generic [ref=e4687]: wt/5CHtNYclosed6 sub
+          - generic [ref=e4689]: 5d576759
+          - generic [ref=e4690]: 2026-06-22 12:04:52 · 276KB
+        - generic [ref=e4691] [cursor=pointer]:
+          - generic [ref=e4692]: edit/chatclosed
+          - generic [ref=e4694]: 052a1b8b
+          - generic [ref=e4695]: 2026-06-22 11:07:05 · 69KB
+        - generic [ref=e4696] [cursor=pointer]:
+          - generic [ref=e4697]: edit/chatclosed
+          - generic [ref=e4699]: ec4ee89f
+          - generic [ref=e4700]: 2026-06-22 10:57:05 · 66KB
+        - generic [ref=e4701] [cursor=pointer]:
+          - generic [ref=e4702]: wt/RNU8s1closed19 sub
+          - generic [ref=e4704]: d871495c
+          - generic [ref=e4705]: 2026-06-21 21:23:59 · 621KB
+        - generic [ref=e4706] [cursor=pointer]:
+          - generic [ref=e4707]: wt/hJQgLsclosed18 sub
+          - generic [ref=e4709]: 73614b7a
+          - generic [ref=e4710]: 2026-06-21 21:03:30 · 820KB
+        - generic [ref=e4711] [cursor=pointer]:
+          - generic [ref=e4712]: wt/lX3A8Xclosed7 sub
+          - generic [ref=e4714]: 7b57eaa3
+          - generic [ref=e4715]: 2026-06-21 20:53:27 · 149KB
+        - generic [ref=e4716] [cursor=pointer]:
+          - generic [ref=e4717]: wt/hQ9AQnclosed9 sub
+          - generic [ref=e4719]: 1121d09c
+          - generic [ref=e4720]: 2026-06-21 20:25:02 · 1143KB
+        - generic [ref=e4721] [cursor=pointer]:
+          - generic [ref=e4722]: wt/Je0MURclosed4 sub
+          - generic [ref=e4724]: 8dec50d4
+          - generic [ref=e4725]: 2026-06-21 19:48:05 · 318KB
+        - generic [ref=e4726] [cursor=pointer]:
+          - generic [ref=e4727]: octo/aiclosed
+          - generic [ref=e4729]: 3ea0540a
+          - generic [ref=e4730]: 2026-06-21 17:46:23 · 324KB
+        - generic [ref=e4731] [cursor=pointer]:
+          - generic [ref=e4732]: wt/bGjsCNclosed9 sub
+          - generic [ref=e4734]: 32b1cbcf
+          - generic [ref=e4735]: 2026-06-21 14:38:15 · 443KB
+        - generic [ref=e4736] [cursor=pointer]:
+          - generic [ref=e4737]: claude/dsclosed
+          - generic [ref=e4739]: 9bd07e88
+          - generic [ref=e4740]: 2026-06-21 14:33:14 · 100KB
+        - generic [ref=e4741] [cursor=pointer]:
+          - generic [ref=e4742]: claude/dsclosed
+          - generic [ref=e4744]: 279fd613
+          - generic [ref=e4745]: 2026-06-21 14:32:45 · 37KB
+        - generic [ref=e4746] [cursor=pointer]:
+          - generic [ref=e4747]: edit/chatclosed
+          - generic [ref=e4749]: 31f46ea5
+          - generic [ref=e4750]: 2026-06-21 14:17:10 · 76KB
+        - generic [ref=e4751] [cursor=pointer]:
+          - generic [ref=e4752]: edit/chatclosed1 sub
+          - generic [ref=e4754]: bffd996b
+          - generic [ref=e4755]: 2026-06-21 08:22:08 · 76KB
+        - generic [ref=e4756] [cursor=pointer]:
+          - generic [ref=e4757]: spec/writerclosed
+          - generic [ref=e4759]: 16e2f5ab
+          - generic [ref=e4760]: 2026-06-21 08:20:31 · 87KB
+        - generic [ref=e4761] [cursor=pointer]:
+          - generic [ref=e4762]: spec/writerclosed
+          - generic [ref=e4764]: "988e6006"
+          - generic [ref=e4765]: 2026-06-21 07:45:26 · 78KB
+        - generic [ref=e4766] [cursor=pointer]:
+          - generic [ref=e4767]: spec/writerclosed
+          - generic [ref=e4769]: f6944bff
+          - generic [ref=e4770]: 2026-06-21 07:43:49 · 132KB
+        - generic [ref=e4771] [cursor=pointer]:
+          - generic [ref=e4772]: spec/writerclosed
+          - generic [ref=e4774]: 78e4c432
+          - generic [ref=e4775]: 2026-06-21 07:42:50 · 125KB
+        - generic [ref=e4776] [cursor=pointer]:
+          - generic [ref=e4777]: edit/chatclosed
+          - generic [ref=e4779]: b3219ce4
+          - generic [ref=e4780]: 2026-06-21 07:17:30 · 47KB
+        - generic [ref=e4781] [cursor=pointer]:
+          - generic [ref=e4782]: edit/chatclosed
+          - generic [ref=e4784]: 61a19609
+          - generic [ref=e4785]: 2026-06-21 07:16:54 · 43KB
+        - generic [ref=e4786] [cursor=pointer]:
+          - generic [ref=e4787]: edit/chatclosed
+          - generic [ref=e4789]: "3e525934"
+          - generic [ref=e4790]: 2026-06-21 07:16:20 · 43KB
+        - generic [ref=e4791] [cursor=pointer]:
+          - generic [ref=e4792]: edit/chatclosed
+          - generic [ref=e4794]: ea26ed9d
+          - generic [ref=e4795]: 2026-06-20 23:36:59 · 43KB
+        - generic [ref=e4796] [cursor=pointer]:
+          - generic [ref=e4797]: claude/dsclosed
+          - generic [ref=e4799]: b4c217b1
+          - generic [ref=e4800]: 2026-06-20 23:14:34 · 524KB
+        - generic [ref=e4801] [cursor=pointer]:
+          - generic [ref=e4802]: blink/coworkclosed
+          - generic [ref=e4804]: 06b6ac43
+          - generic [ref=e4805]: 2026-06-20 23:10:51 · 503KB
+        - generic [ref=e4806] [cursor=pointer]:
+          - generic [ref=e4807]: blink/coworkclosed2 sub
+          - generic [ref=e4809]: 211e7f76
+          - generic [ref=e4810]: 2026-06-20 22:37:56 · 367KB
+        - generic [ref=e4811] [cursor=pointer]:
+          - generic [ref=e4812]: claude/dsclosed1 sub
+          - generic [ref=e4814]: d43713e3
+          - generic [ref=e4815]: 2026-06-20 22:01:09 · 339KB
+        - generic [ref=e4816] [cursor=pointer]:
+          - generic [ref=e4817]: social/mediaclosed5 sub
+          - generic [ref=e4819]: 8da6d83d
+          - generic [ref=e4820]: 2026-06-20 22:01:07 · 1603KB
+        - generic [ref=e4821] [cursor=pointer]:
+          - generic [ref=e4822]: edit/chatclosed
+          - generic [ref=e4824]: 2625d895
+          - generic [ref=e4825]: 2026-06-20 20:10:53 · 43KB
+        - generic [ref=e4826] [cursor=pointer]:
+          - generic [ref=e4827]: wt/g4U6RLclosed1 sub
+          - generic [ref=e4829]: 0188af4e
+          - generic [ref=e4830]: 2026-06-20 19:24:40 · 66KB
+        - generic [ref=e4831] [cursor=pointer]:
+          - generic [ref=e4832]: edit/chatclosed
+          - generic [ref=e4834]: 557d9302
+          - generic [ref=e4835]: 2026-06-20 19:21:35 · 42KB
+        - generic [ref=e4836] [cursor=pointer]:
+          - generic [ref=e4837]: edit/chatclosed
+          - generic [ref=e4839]: 1e3b569f
+          - generic [ref=e4840]: 2026-06-20 19:07:59 · 37KB
+        - generic [ref=e4841] [cursor=pointer]:
+          - generic [ref=e4842]: edit/chatclosed
+          - generic [ref=e4844]: 18ef511a
+          - generic [ref=e4845]: 2026-06-20 19:06:00 · 37KB
+        - generic [ref=e4846] [cursor=pointer]:
+          - generic [ref=e4847]: apps/webclosed
+          - generic [ref=e4849]: 87bb5309
+          - generic [ref=e4850]: 2026-06-20 19:05:39 · 190KB
+        - generic [ref=e4851] [cursor=pointer]:
+          - generic [ref=e4852]: wt/52EWclclosed
+          - generic [ref=e4854]: d60e2fae
+          - generic [ref=e4855]: 2026-06-20 19:04:14 · 66KB
+        - generic [ref=e4856] [cursor=pointer]:
+          - generic [ref=e4857]: edit/chatclosed
+          - generic [ref=e4859]: c8175e8e
+          - generic [ref=e4860]: 2026-06-20 18:12:00 · 35KB
+        - generic [ref=e4861] [cursor=pointer]:
+          - generic [ref=e4862]: edit/chatclosed
+          - generic [ref=e4864]: d49a8b77
+          - generic [ref=e4865]: 2026-06-20 15:08:17 · 34KB
+        - generic [ref=e4866] [cursor=pointer]:
+          - generic [ref=e4867]: blink/coworkclosed
+          - generic [ref=e4869]: 3fa6454a
+          - generic [ref=e4870]: 2026-06-20 14:46:49 · 70KB
+        - generic [ref=e4871] [cursor=pointer]:
+          - generic [ref=e4872]: agent/a14ab4e6a6f9e8282closed
+          - generic [ref=e4874]: "30226e44"
+          - generic [ref=e4875]: 2026-06-20 12:58:08 · 49KB
+        - generic [ref=e4876] [cursor=pointer]:
+          - generic [ref=e4877]: blinkbrosai/blinkfinclosed24 sub
+          - generic [ref=e4879]: 68c8a2ca
+          - generic [ref=e4880]: 2026-06-20 10:19:10 · 3845KB
+        - generic [ref=e4881] [cursor=pointer]:
+          - generic [ref=e4882]: spec/writerclosed
+          - generic [ref=e4884]: e12ada7b
+          - generic [ref=e4885]: 2026-06-20 08:22:42 · 42KB
+        - generic [ref=e4886] [cursor=pointer]:
+          - generic [ref=e4887]: spec/writerclosed
+          - generic [ref=e4889]: 02066cc4
+          - generic [ref=e4890]: 2026-06-20 08:04:21 · 38KB
+        - generic [ref=e4891] [cursor=pointer]:
+          - generic [ref=e4892]: blink/coworkclosed30 sub
+          - generic [ref=e4894]: cffea4b2
+          - generic [ref=e4895]: 2026-06-20 06:19:36 · 2573KB
+        - generic [ref=e4896] [cursor=pointer]:
+          - generic [ref=e4897]: blinkbrosai/blinkfinclosed
+          - generic [ref=e4899]: de04bc08
+          - generic [ref=e4900]: 2026-06-20 06:08:49 · 563KB
+        - generic [ref=e4901] [cursor=pointer]:
+          - generic [ref=e4902]: spec/writerclosed
+          - generic [ref=e4904]: addf0d48
+          - generic [ref=e4905]: 2026-06-20 00:06:50 · 37KB
+        - generic [ref=e4906] [cursor=pointer]:
+          - generic [ref=e4907]: spec/writerclosed
+          - generic [ref=e4909]: d5186d2b
+          - generic [ref=e4910]: 2026-06-20 00:05:52 · 59KB
+        - generic [ref=e4911] [cursor=pointer]:
+          - generic [ref=e4912]: core/srcclosed
+          - generic [ref=e4914]: dac15771
+          - generic [ref=e4915]: 2026-06-19 23:17:17 · 175KB
+        - generic [ref=e4916] [cursor=pointer]:
+          - generic [ref=e4917]: blinkfin/androidclosed
+          - generic [ref=e4919]: 82b328cc
+          - generic [ref=e4920]: 2026-06-19 22:49:09 · 670KB
+        - generic [ref=e4921] [cursor=pointer]:
+          - generic [ref=e4922]: blinkfin/iosclosed
+          - generic [ref=e4924]: 78f2c975
+          - generic [ref=e4925]: 2026-06-19 22:48:03 · 675KB
+        - generic [ref=e4926] [cursor=pointer]:
+          - generic [ref=e4927]: blinkbrosai/blinkfinclosed
+          - generic [ref=e4929]: 9e730af9
+          - generic [ref=e4930]: 2026-06-19 22:47:28 · 1031KB
+        - generic [ref=e4931] [cursor=pointer]:
+          - generic [ref=e4932]: wt/rcX4Q1closed
+          - generic [ref=e4934]: 79b2523b
+          - generic [ref=e4935]: 2026-06-19 22:45:07 · 69KB
+        - generic [ref=e4936] [cursor=pointer]:
+          - generic [ref=e4937]: agent/a20172499dde1400aclosed
+          - generic [ref=e4939]: 94c8fd3f
+          - generic [ref=e4940]: 2026-06-19 22:41:30 · 88KB
+        - generic [ref=e4941] [cursor=pointer]:
+          - generic [ref=e4942]: octo/aiclosed
+          - generic [ref=e4944]: 4fd8007b
+          - generic [ref=e4945]: 2026-06-19 22:34:15 · 421KB
+        - generic [ref=e4946] [cursor=pointer]:
+          - generic [ref=e4947]: blinkbrosai/blinkfinclosed2 sub
+          - generic [ref=e4949]: b3bc53dd
+          - generic [ref=e4950]: 2026-06-19 21:49:56 · 1013KB
+        - generic [ref=e4951] [cursor=pointer]:
+          - generic [ref=e4952]: blinkbrosai/blinkfinclosed22 sub
+          - generic [ref=e4954]: b56ffd23
+          - generic [ref=e4955]: 2026-06-19 21:20:09 · 10023KB
+        - generic [ref=e4956] [cursor=pointer]:
+          - generic [ref=e4957]: claude/dsclosed
+          - generic [ref=e4959]: 9dd47a72
+          - generic [ref=e4960]: 2026-06-19 21:19:53 · 5047KB
+        - generic [ref=e4961] [cursor=pointer]:
+          - generic [ref=e4962]: social/mediaclosed
+          - generic [ref=e4964]: f97b8745
+          - generic [ref=e4965]: 2026-06-19 20:58:54 · 74KB
+        - generic [ref=e4966] [cursor=pointer]:
+          - generic [ref=e4967]: claude/dsclosed
+          - generic [ref=e4969]: 61d6d628
+          - generic [ref=e4970]: 2026-06-19 16:04:31 · 44KB
+        - generic [ref=e4971] [cursor=pointer]:
+          - generic [ref=e4972]: demo/i0PO1Dclosed
+          - generic [ref=e4974]: f687fc28
+          - generic [ref=e4975]: 2026-06-19 16:00:46 · 28KB
+        - generic [ref=e4976] [cursor=pointer]:
+          - generic [ref=e4977]: test/rPkiW3closed
+          - generic [ref=e4979]: f4e6989a
+          - generic [ref=e4980]: 2026-06-19 15:57:57 · 24KB
+        - generic [ref=e4981] [cursor=pointer]:
+          - generic [ref=e4982]: claude/dsclosed
+          - generic [ref=e4984]: ed8040c8
+          - generic [ref=e4985]: 2026-06-19 15:57:36 · 10KB
+        - generic [ref=e4986] [cursor=pointer]:
+          - generic [ref=e4987]: blink/coworkclosed5 sub
+          - generic [ref=e4989]: c7c646d1
+          - generic [ref=e4990]: 2026-06-19 12:31:00 · 763KB
+        - generic [ref=e4991] [cursor=pointer]:
+          - generic [ref=e4992]: blink/coworkclosed22 sub
+          - generic [ref=e4994]: ac2d4d3b
+          - generic [ref=e4995]: 2026-06-19 11:30:58 · 3006KB
+        - generic [ref=e4996] [cursor=pointer]:
+          - generic [ref=e4997]: private/tmpclosed
+          - generic [ref=e4999]: 6fb1974f
+          - generic [ref=e5000]: 2026-06-19 10:29:16 · 14KB
+        - generic [ref=e5001] [cursor=pointer]:
+          - generic [ref=e5002]: private/tmpclosed
+          - generic [ref=e5004]: 5c52fcf6
+          - generic [ref=e5005]: 2026-06-19 10:29:16 · 14KB
+        - generic [ref=e5006] [cursor=pointer]:
+          - generic [ref=e5007]: private/tmpclosed
+          - generic [ref=e5009]: e72828c9
+          - generic [ref=e5010]: 2026-06-19 10:29:16 · 14KB
+        - generic [ref=e5011] [cursor=pointer]:
+          - generic [ref=e5012]: private/tmpclosed
+          - generic [ref=e5014]: 9ae94698
+          - generic [ref=e5015]: 2026-06-19 10:29:16 · 14KB
+        - generic [ref=e5016] [cursor=pointer]:
+          - generic [ref=e5017]: private/tmpclosed
+          - generic [ref=e5019]: b49de993
+          - generic [ref=e5020]: 2026-06-19 10:29:15 · 14KB
+        - generic [ref=e5021] [cursor=pointer]:
+          - generic [ref=e5022]: private/tmpclosed
+          - generic [ref=e5024]: 8e557ccd
+          - generic [ref=e5025]: 2026-06-19 10:29:14 · 14KB
+        - generic [ref=e5026] [cursor=pointer]:
+          - generic [ref=e5027]: private/tmpclosed
+          - generic [ref=e5029]: cb862418
+          - generic [ref=e5030]: 2026-06-19 10:29:14 · 14KB
+        - generic [ref=e5031] [cursor=pointer]:
+          - generic [ref=e5032]: private/tmpclosed
+          - generic [ref=e5034]: 1c2b44cf
+          - generic [ref=e5035]: 2026-06-19 10:29:13 · 14KB
+        - generic [ref=e5036] [cursor=pointer]:
+          - generic [ref=e5037]: claude/dsclosed
+          - generic [ref=e5039]: dceb135a
+          - generic [ref=e5040]: 2026-06-19 10:24:50 · 14KB
+        - generic [ref=e5041] [cursor=pointer]:
+          - generic [ref=e5042]: claude/dsclosed
+          - generic [ref=e5044]: e031f8f9
+          - generic [ref=e5045]: 2026-06-19 10:03:35 · 14KB
+        - generic [ref=e5046] [cursor=pointer]:
+          - generic [ref=e5047]: octo/aiclosed
+          - generic [ref=e5049]: 764d50d4
+          - generic [ref=e5050]: 2026-06-19 09:53:09 · 4631KB
+        - generic [ref=e5051] [cursor=pointer]:
+          - generic [ref=e5052]: octo/aiclosed6 sub
+          - generic [ref=e5054]: d19c38d1
+          - generic [ref=e5055]: 2026-06-19 08:53:07 · 2507KB
+        - generic [ref=e5056] [cursor=pointer]:
+          - generic [ref=e5057]: claude/dsclosed
+          - generic [ref=e5059]: 6bfbdb5e
+          - generic [ref=e5060]: 2026-06-19 07:13:06 · 14KB
+        - generic [ref=e5061] [cursor=pointer]:
+          - generic [ref=e5062]: claude/dsclosed
+          - generic [ref=e5064]: 18ee8386
+          - generic [ref=e5065]: 2026-06-19 07:12:16 · 14KB
+        - generic [ref=e5066] [cursor=pointer]:
+          - generic [ref=e5067]: claude/dsclosed
+          - generic [ref=e5069]: 52991bf9
+          - generic [ref=e5070]: 2026-06-19 07:11:26 · 14KB
+        - generic [ref=e5071] [cursor=pointer]:
+          - generic [ref=e5072]: claude/dsclosed
+          - generic [ref=e5074]: 4d32f169
+          - generic [ref=e5075]: 2026-06-19 07:08:09 · 11KB
+        - generic [ref=e5076] [cursor=pointer]:
+          - generic [ref=e5077]: claude/dsclosed
+          - generic [ref=e5079]: 4c52a9f5
+          - generic [ref=e5080]: 2026-06-19 07:07:50 · 14KB
+        - generic [ref=e5081] [cursor=pointer]:
+          - generic [ref=e5082]: deffix/uqdP1vclosed
+          - generic [ref=e5084]: 664a5796
+          - generic [ref=e5085]: 2026-06-19 00:48:29 · 18KB
+        - generic [ref=e5086] [cursor=pointer]:
+          - generic [ref=e5087]: rofix/dpuXdzclosed
+          - generic [ref=e5089]: f9968ddb
+          - generic [ref=e5090]: 2026-06-19 00:48:21 · 16KB
+        - generic [ref=e5091] [cursor=pointer]:
+          - generic [ref=e5092]: ro2/Qt3SFuclosed
+          - generic [ref=e5094]: f1be851c
+          - generic [ref=e5095]: 2026-06-19 00:46:19 · 68KB
+        - generic [ref=e5096] [cursor=pointer]:
+          - generic [ref=e5097]: ro/T7TVizclosed6 sub
+          - generic [ref=e5099]: 07b08e82
+          - generic [ref=e5100]: 2026-06-19 00:43:48 · 40KB
+        - generic [ref=e5101] [cursor=pointer]:
+          - generic [ref=e5102]: private/tmpclosed
+          - generic [ref=e5104]: d4afb9cf
+          - generic [ref=e5105]: 2026-06-19 00:36:10 · 47KB
+        - generic [ref=e5106] [cursor=pointer]:
+          - generic [ref=e5107]: private/tmpclosed
+          - generic [ref=e5109]: 8c1a35b8
+          - generic [ref=e5110]: 2026-06-19 00:34:27 · 19KB
+        - generic [ref=e5111] [cursor=pointer]:
+          - generic [ref=e5112]: private/tmpclosed
+          - generic [ref=e5114]: f61c3401
+          - generic [ref=e5115]: 2026-06-19 00:32:19 · 20KB
+        - generic [ref=e5116] [cursor=pointer]:
+          - generic [ref=e5117]: multi/rAvDGwclosed
+          - generic [ref=e5119]: a24451e3
+          - generic [ref=e5120]: 2026-06-19 00:31:41 · 40KB
+        - generic [ref=e5121] [cursor=pointer]:
+          - generic [ref=e5122]: private/tmpclosed
+          - generic [ref=e5124]: 2140f910
+          - generic [ref=e5125]: 2026-06-19 00:30:12 · 24KB
+        - generic [ref=e5126] [cursor=pointer]:
+          - generic [ref=e5127]: private/tmpclosed
+          - generic [ref=e5129]: 0054b5ff
+          - generic [ref=e5130]: 2026-06-19 00:29:53 · 16KB
+        - generic [ref=e5131] [cursor=pointer]:
+          - generic [ref=e5132]: private/tmpclosed
+          - generic [ref=e5134]: e11d77a0
+          - generic [ref=e5135]: 2026-06-19 00:29:52 · 16KB
+        - generic [ref=e5136] [cursor=pointer]:
+          - generic [ref=e5137]: private/tmpclosed
+          - generic [ref=e5139]: 7a94627a
+          - generic [ref=e5140]: 2026-06-19 00:28:33 · 16KB
+        - generic [ref=e5141] [cursor=pointer]:
+          - generic [ref=e5142]: private/tmpclosed
+          - generic [ref=e5144]: 7ec1f95e
+          - generic [ref=e5145]: 2026-06-19 00:27:58 · 17KB
+        - generic [ref=e5146] [cursor=pointer]:
+          - generic [ref=e5147]: private/tmpclosed
+          - generic [ref=e5149]: "3e356657"
+          - generic [ref=e5150]: 2026-06-19 00:27:32 · 18KB
+        - generic [ref=e5151] [cursor=pointer]:
+          - generic [ref=e5152]: agentic2/KGaNh2closed
+          - generic [ref=e5154]: 240dd32b
+          - generic [ref=e5155]: 2026-06-19 00:20:22 · 21KB
+        - generic [ref=e5156] [cursor=pointer]:
+          - generic [ref=e5157]: claude/dsclosed
+          - generic [ref=e5159]: a7d9893d
+          - generic [ref=e5160]: 2026-06-19 00:17:27 · 21KB
+        - generic [ref=e5161] [cursor=pointer]:
+          - generic [ref=e5162]: claude/dsclosed
+          - generic [ref=e5164]: 2b1a52ba
+          - generic [ref=e5165]: 2026-06-19 00:15:48 · 24KB
+        - generic [ref=e5166] [cursor=pointer]:
+          - generic [ref=e5167]: wt/Izyf80closed12 sub
+          - generic [ref=e5169]: de925953
+          - generic [ref=e5170]: 2026-06-18 22:46:01 · 528KB
+        - generic [ref=e5171] [cursor=pointer]:
+          - generic [ref=e5172]: wt/EAqUdoclosed3 sub
+          - generic [ref=e5174]: 92213b94
+          - generic [ref=e5175]: 2026-06-18 21:34:52 · 162KB
+        - generic [ref=e5176] [cursor=pointer]:
+          - generic [ref=e5177]: social/mediaclosed
+          - generic [ref=e5179]: 1ef3bd01
+          - generic [ref=e5180]: 2026-06-18 20:51:40 · 659KB
+        - generic [ref=e5181] [cursor=pointer]:
+          - generic [ref=e5182]: Users/rbinarclosed
+          - generic [ref=e5184]: bcf23936
+          - generic [ref=e5185]: 2026-06-18 20:32:35 · 5KB
+        - generic [ref=e5186] [cursor=pointer]:
+          - generic [ref=e5187]: Users/rbinarclosed
+          - generic [ref=e5189]: fbdf1852
+          - generic [ref=e5190]: 2026-06-18 20:31:45 · 2KB
+        - generic [ref=e5191] [cursor=pointer]:
+          - generic [ref=e5192]: claude/dsclosed
+          - generic [ref=e5194]: 9747aac6
+          - generic [ref=e5195]: 2026-06-18 17:02:28 · 221KB
+        - generic [ref=e5196] [cursor=pointer]:
+          - generic [ref=e5197]: private/tmpclosed
+          - generic [ref=e5199]: 632220ab
+          - generic [ref=e5200]: 2026-06-18 16:07:14 · 158KB
+        - generic [ref=e5201] [cursor=pointer]:
+          - generic [ref=e5202]: private/tmpclosed
+          - generic [ref=e5204]: f7f0bc14
+          - generic [ref=e5205]: 2026-06-18 16:04:47 · 31KB
+        - generic [ref=e5206] [cursor=pointer]:
+          - generic [ref=e5207]: private/tmpclosed
+          - generic [ref=e5209]: c7be768b
+          - generic [ref=e5210]: 2026-06-18 16:00:48 · 30KB
+        - generic [ref=e5211] [cursor=pointer]:
+          - generic [ref=e5212]: blinkbrosai/blinkfinclosed
+          - generic [ref=e5214]: ced100c4
+          - generic [ref=e5215]: 2026-06-18 14:40:40 · 3611KB
+        - generic [ref=e5216] [cursor=pointer]:
+          - generic [ref=e5217]: blink/coworkclosed
+          - generic [ref=e5219]: "1e361414"
+          - generic [ref=e5220]: 2026-06-18 13:02:34 · 343KB
+        - generic [ref=e5221] [cursor=pointer]:
+          - generic [ref=e5222]: blink/coworkclosed
+          - generic [ref=e5224]: 5b2e8c13
+          - generic [ref=e5225]: 2026-06-18 13:01:52 · 159KB
+        - generic [ref=e5226] [cursor=pointer]:
+          - generic [ref=e5227]: claude/dsclosed
+          - generic [ref=e5229]: 7ab93121
+          - generic [ref=e5230]: 2026-06-18 13:00:17 · 327KB
+        - generic [ref=e5231] [cursor=pointer]:
+          - generic [ref=e5232]: blink/coworkclosed
+          - generic [ref=e5234]: f06e3cdb
+          - generic [ref=e5235]: 2026-06-18 12:57:44 · 103KB
+        - generic [ref=e5236] [cursor=pointer]:
+          - generic [ref=e5237]: blinkbrosai/blinkfinclosed3 sub
+          - generic [ref=e5239]: 3ce4dc04
+          - generic [ref=e5240]: 2026-06-18 12:03:37 · 2121KB
+        - generic [ref=e5241] [cursor=pointer]:
+          - generic [ref=e5242]: blink/coworkclosed
+          - generic [ref=e5244]: 805f09c8
+          - generic [ref=e5245]: 2026-06-18 11:00:16 · 31KB
+        - generic [ref=e5246] [cursor=pointer]:
+          - generic [ref=e5247]: blink/coworkclosed
+          - generic [ref=e5249]: 9caeadce
+          - generic [ref=e5250]: 2026-06-18 10:02:13 · 7KB
+        - generic [ref=e5251] [cursor=pointer]:
+          - generic [ref=e5252]: blink/coworkclosed
+          - generic [ref=e5254]: 2c9dbc6b
+          - generic [ref=e5255]: 2026-06-18 10:01:29 · 73KB
+        - generic [ref=e5256] [cursor=pointer]:
+          - generic [ref=e5257]: blinkbrosai/blinkfinclosed
+          - generic [ref=e5259]: 579cb6e4
+          - generic [ref=e5260]: 2026-06-18 08:52:59 · 4KB
+        - generic [ref=e5261] [cursor=pointer]:
+          - generic [ref=e5262]: blinkbrosai/blinkfinclosed33 sub
+          - generic [ref=e5264]: "23120648"
+          - generic [ref=e5265]: 2026-06-18 08:16:13 · 33661KB
+        - generic [ref=e5266] [cursor=pointer]:
+          - generic [ref=e5267]: blink/coworkclosed4 sub
+          - generic [ref=e5269]: 943c462e
+          - generic [ref=e5270]: 2026-06-18 07:44:24 · 3638KB
+        - generic [ref=e5271] [cursor=pointer]:
+          - generic [ref=e5272]: private/tmpclosed
+          - generic [ref=e5274]: e726003d
+          - generic [ref=e5275]: 2026-06-17 22:03:46 · 16KB
+        - generic [ref=e5276] [cursor=pointer]:
+          - generic [ref=e5277]: private/tmpclosed
+          - generic [ref=e5279]: f3de1e05
+          - generic [ref=e5280]: 2026-06-17 22:02:24 · 16KB
+        - generic [ref=e5281] [cursor=pointer]:
+          - generic [ref=e5282]: ui/dsclosed
+          - generic [ref=e5284]: bdde9a66
+          - generic [ref=e5285]: 2026-06-17 21:58:16 · 142KB
+        - generic [ref=e5286] [cursor=pointer]:
+          - generic [ref=e5287]: ds/sandboxclosed
+          - generic [ref=e5289]: 91dada8b
+          - generic [ref=e5290]: 2026-06-17 21:50:09 · 31KB
+        - generic [ref=e5291] [cursor=pointer]:
+          - generic [ref=e5292]: private/tmpclosed
+          - generic [ref=e5294]: f107cf2f
+          - generic [ref=e5295]: 2026-06-17 21:46:52 · 17KB
+        - generic [ref=e5296] [cursor=pointer]:
+          - generic [ref=e5297]: octo/aiclosed3 sub
+          - generic [ref=e5299]: 2f9074d7
+          - generic [ref=e5300]: 2026-06-17 13:01:56 · 1585KB
+        - generic [ref=e5301] [cursor=pointer]:
+          - generic [ref=e5302]: blink/coworkclosed39 sub
+          - generic [ref=e5304]: 36b025a9
+          - generic [ref=e5305]: 2026-06-17 11:43:15 · 7949KB
+        - generic [ref=e5306] [cursor=pointer]:
+          - generic [ref=e5307]: octo/aiclosed42 sub
+          - generic [ref=e5309]: 84b2ec4d
+          - generic [ref=e5310]: 2026-06-16 22:16:40 · 20037KB
+        - generic [ref=e5311] [cursor=pointer]:
+          - generic [ref=e5312]: blink/coworkclosed24 sub
+          - generic [ref=e5314]: bbb3dbf5
+          - generic [ref=e5315]: 2026-06-16 20:02:35 · 6379KB
+        - generic [ref=e5316] [cursor=pointer]:
+          - generic [ref=e5317]: blinkbrosai/blinkfinclosed
+          - generic [ref=e5319]: dfd50c08
+          - generic [ref=e5320]: 2026-06-16 14:19:40 · 3KB
+        - generic [ref=e5321] [cursor=pointer]:
+          - generic [ref=e5322]: blinkbrosai/blinkfinclosed
+          - generic [ref=e5324]: d6dd6382
+          - generic [ref=e5325]: 2026-06-16 14:17:58 · 1593KB
+        - generic [ref=e5326] [cursor=pointer]:
+          - generic [ref=e5327]: blinkbrosai/blinkfinclosed20 sub
+          - generic [ref=e5329]: dc5c31b2
+          - generic [ref=e5330]: 2026-06-16 11:24:24 · 13349KB
+        - generic [ref=e5331] [cursor=pointer]:
+          - generic [ref=e5332]: blink/coworkclosed12 sub
+          - generic [ref=e5334]: 22dc1306
+          - generic [ref=e5335]: 2026-06-15 21:41:49 · 1819KB
+        - generic [ref=e5336] [cursor=pointer]:
+          - generic [ref=e5337]: blink/coworkclosed
+          - generic [ref=e5339]: e386bcaa
+          - generic [ref=e5340]: 2026-06-15 20:52:02 · 2KB
+        - generic [ref=e5341] [cursor=pointer]:
+          - generic [ref=e5342]: blink/coworkclosed3 sub
+          - generic [ref=e5344]: b3fadf45
+          - generic [ref=e5345]: 2026-06-15 20:49:59 · 511KB
+        - generic [ref=e5346] [cursor=pointer]:
+          - generic [ref=e5347]: octo/aiclosed
+          - generic [ref=e5349]: 0ec015ed
+          - generic [ref=e5350]: 2026-06-15 17:46:24 · 32KB
+        - generic [ref=e5351] [cursor=pointer]:
+          - generic [ref=e5352]: octo/aiclosed31 sub
+          - generic [ref=e5354]: 9b4eedcb
+          - generic [ref=e5355]: 2026-06-15 17:33:31 · 2297KB
+        - generic [ref=e5356] [cursor=pointer]:
+          - generic [ref=e5357]: blink/coworkclosed71 sub
+          - generic [ref=e5359]: 271bcf24
+          - generic [ref=e5360]: 2026-06-15 16:09:24 · 8904KB
+        - generic [ref=e5361] [cursor=pointer]:
+          - generic [ref=e5362]: blinkbrosai/blinkfinclosed332 sub
+          - generic [ref=e5364]: 3346d37c
+          - generic [ref=e5365]: 2026-06-15 16:02:06 · 81024KB
+        - generic [ref=e5366] [cursor=pointer]:
+          - generic [ref=e5367]: octo/aiclosed23 sub
+          - generic [ref=e5369]: 6d68bdcc
+          - generic [ref=e5370]: 2026-06-15 12:10:58 · 5806KB
+        - generic [ref=e5371] [cursor=pointer]:
+          - generic [ref=e5372]: plan/generatorclosed
+          - generic [ref=e5374]: f9ec09c5
+          - generic [ref=e5375]: 2026-06-14 06:36:17 · 100KB
+        - generic [ref=e5376] [cursor=pointer]:
+          - generic [ref=e5377]: mac/powertoysclosed58 sub
+          - generic [ref=e5379]: 5f95e740
+          - generic [ref=e5380]: 2026-06-14 06:29:21 · 3812KB
+        - generic [ref=e5381] [cursor=pointer]:
+          - generic [ref=e5382]: plan/chatclosed
+          - generic [ref=e5384]: 63d5af25
+          - generic [ref=e5385]: 2026-06-13 21:51:53 · 17KB
+        - generic [ref=e5386] [cursor=pointer]:
+          - generic [ref=e5387]: octo/aiclosed
+          - generic [ref=e5389]: "39923815"
+          - generic [ref=e5390]: 2026-06-13 20:50:30 · 7KB
+        - generic [ref=e5391] [cursor=pointer]:
+          - generic [ref=e5392]: mac/powertoysclosed
+          - generic [ref=e5394]: e210bac2
+          - generic [ref=e5395]: 2026-06-13 20:17:45 · 7KB
+        - generic [ref=e5396] [cursor=pointer]:
+          - generic [ref=e5397]: blink/coworkclosed1 sub
+          - generic [ref=e5399]: 3b54adae
+          - generic [ref=e5400]: 2026-06-12 20:31:08 · 378KB
+        - generic [ref=e5401] [cursor=pointer]:
+          - generic [ref=e5402]: octo/aiclosed11 sub
+          - generic [ref=e5404]: e30bbc23
+          - generic [ref=e5405]: 2026-06-12 20:30:15 · 3959KB
+        - generic [ref=e5406] [cursor=pointer]:
+          - generic [ref=e5407]: octo/aiclosed
+          - generic [ref=e5409]: 8551f10f
+          - generic [ref=e5410]: 2026-06-12 20:30:12 · 2KB
+        - generic [ref=e5411] [cursor=pointer]:
+          - generic [ref=e5412]: octo/aiclosed
+          - generic [ref=e5414]: 85e0929d
+          - generic [ref=e5415]: 2026-06-12 20:19:15 · 190KB
+        - generic [ref=e5416] [cursor=pointer]:
+          - generic [ref=e5417]: blink/coworkclosed1603 sub
+          - generic [ref=e5419]: c2779841
+          - generic [ref=e5420]: 2026-06-12 17:16:16 · 259485KB
+        - generic [ref=e5421] [cursor=pointer]:
+          - generic [ref=e5422]: octo/aiclosed1 sub
+          - generic [ref=e5424]: 34b5adc5
+          - generic [ref=e5425]: 2026-06-12 12:26:03 · 1264KB
+        - generic [ref=e5426] [cursor=pointer]:
+          - generic [ref=e5427]: octopus/allclosed
+          - generic [ref=e5429]: "14087e21"
+          - generic [ref=e5430]: 2026-06-12 11:15:45 · 155KB
+        - generic [ref=e5431] [cursor=pointer]:
+          - generic [ref=e5432]: octo/aiclosed
+          - generic [ref=e5434]: 2144153e
+          - generic [ref=e5435]: 2026-06-12 09:00:16 · 494KB
+        - generic [ref=e5436] [cursor=pointer]:
+          - generic [ref=e5437]: octo/aiclosed20 sub
+          - generic [ref=e5439]: 1b63f49d
+          - generic [ref=e5440]: 2026-06-12 01:08:59 · 1900KB
+        - generic [ref=e5441] [cursor=pointer]:
+          - generic [ref=e5442]: blink/coworkclosed2 sub
+          - generic [ref=e5444]: 36a8cc1a
+          - generic [ref=e5445]: 2026-06-10 15:23:50 · 287KB
+        - generic [ref=e5446] [cursor=pointer]:
+          - generic [ref=e5447]: blinkbrosai/blinkfinclosed40 sub
+          - generic [ref=e5449]: 31acb2cb
+          - generic [ref=e5450]: 2026-06-07 19:49:27 · 11207KB
+        - generic [ref=e5451] [cursor=pointer]:
+          - generic [ref=e5452]: data/codebaseclosed
+          - generic [ref=e5454]: 2bc171fa
+          - generic [ref=e5455]: 2026-06-07 19:40:25 · 63KB
+        - generic [ref=e5456] [cursor=pointer]:
+          - generic [ref=e5457]: data/codebaseclosed
+          - generic [ref=e5459]: c076df09
+          - generic [ref=e5460]: 2026-06-07 19:29:18 · 81KB
+        - generic [ref=e5461] [cursor=pointer]:
+          - generic [ref=e5462]: data/codebaseclosed
+          - generic [ref=e5464]: 1f6443ec
+          - generic [ref=e5465]: 2026-06-07 19:28:36 · 10KB
+        - generic [ref=e5466] [cursor=pointer]:
+          - generic [ref=e5467]: data/codebaseclosed
+          - generic [ref=e5469]: 540d1227
+          - generic [ref=e5470]: 2026-06-07 12:46:23 · 24KB
+        - generic [ref=e5471] [cursor=pointer]:
+          - generic [ref=e5472]: data/codebaseclosed
+          - generic [ref=e5474]: 58253d78
+          - generic [ref=e5475]: 2026-06-07 12:43:56 · 10KB
+        - generic [ref=e5476] [cursor=pointer]:
+          - generic [ref=e5477]: data/codebaseclosed
+          - generic [ref=e5479]: 8d14fcab
+          - generic [ref=e5480]: 2026-06-07 02:18:48 · 16KB
+        - generic [ref=e5481] [cursor=pointer]:
+          - generic [ref=e5482]: data/codebaseclosed
+          - generic [ref=e5484]: bff939ba
+          - generic [ref=e5485]: 2026-06-07 01:07:35 · 107KB
+        - generic [ref=e5486] [cursor=pointer]:
+          - generic [ref=e5487]: data/codebaseclosed
+          - generic [ref=e5489]: 1da5bac4
+          - generic [ref=e5490]: 2026-06-07 00:55:29 · 59KB
+        - generic [ref=e5491] [cursor=pointer]:
+          - generic [ref=e5492]: slack/botclosed
+          - generic [ref=e5494]: 0a072fed
+          - generic [ref=e5495]: 2026-06-07 00:32:13 · 40KB
+        - generic [ref=e5496] [cursor=pointer]:
+          - generic [ref=e5497]: dev/playgroundclosed
+          - generic [ref=e5499]: 13f40a89
+          - generic [ref=e5500]: 2026-06-05 23:33:32 · 501KB
+        - generic [ref=e5501] [cursor=pointer]:
+          - generic [ref=e5502]: dev/playgroundclosed
+          - generic [ref=e5504]: 1b7f43e1
+          - generic [ref=e5505]: 2026-06-05 22:57:28 · 279KB
+        - generic [ref=e5506] [cursor=pointer]:
+          - generic [ref=e5507]: dev/playgroundclosed
+          - generic [ref=e5509]: 8be82722
+          - generic [ref=e5510]: 2026-06-05 22:55:07 · 249KB
+        - generic [ref=e5511] [cursor=pointer]:
+          - generic [ref=e5512]: dev/playgroundclosed
+          - generic [ref=e5514]: 162bd2b5
+          - generic [ref=e5515]: 2026-06-05 22:53:22 · 272KB
+        - generic [ref=e5516] [cursor=pointer]:
+          - generic [ref=e5517]: dev/playgroundclosed
+          - generic [ref=e5519]: f08e1499
+          - generic [ref=e5520]: 2026-06-05 22:52:17 · 292KB
+        - generic [ref=e5521] [cursor=pointer]:
+          - generic [ref=e5522]: dev/playgroundclosed1 sub
+          - generic [ref=e5524]: a003e829
+          - generic [ref=e5525]: 2026-06-05 22:50:47 · 360KB
+        - generic [ref=e5526] [cursor=pointer]:
+          - generic [ref=e5527]: dev/playgroundclosed1 sub
+          - generic [ref=e5529]: 07a21fb1
+          - generic [ref=e5530]: 2026-06-05 22:48:09 · 199KB
+        - generic [ref=e5531] [cursor=pointer]:
+          - generic [ref=e5532]: dev/playgroundclosed
+          - generic [ref=e5534]: d71394a0
+          - generic [ref=e5535]: 2026-06-05 22:45:43 · 278KB
+        - generic [ref=e5536] [cursor=pointer]:
+          - generic [ref=e5537]: dev/playgroundclosed
+          - generic [ref=e5539]: cc82dedb
+          - generic [ref=e5540]: 2026-06-05 22:43:59 · 285KB
+        - generic [ref=e5541] [cursor=pointer]:
+          - generic [ref=e5542]: blink/coworkclosed1 sub
+          - generic [ref=e5544]: 453074b3
+          - generic [ref=e5545]: 2026-06-05 22:43:34 · 2369KB
+        - generic [ref=e5546] [cursor=pointer]:
+          - generic [ref=e5547]: octopus/analyzersclosed
+          - generic [ref=e5549]: eb72d656
+          - generic [ref=e5550]: 2026-06-05 22:34:31 · 226KB
+        - generic [ref=e5551] [cursor=pointer]:
+          - generic [ref=e5552]: santsg/maestroclosed
+          - generic [ref=e5554]: 963d0852
+          - generic [ref=e5555]: 2026-06-05 17:31:14 · 351KB
+        - generic [ref=e5556] [cursor=pointer]:
+          - generic [ref=e5557]: dev/playgroundclosed
+          - generic [ref=e5559]: 9b0888a5
+          - generic [ref=e5560]: 2026-06-05 17:29:55 · 358KB
+        - generic [ref=e5561] [cursor=pointer]:
+          - generic [ref=e5562]: octopus/landingclosed
+          - generic [ref=e5564]: aa43097d
+          - generic [ref=e5565]: 2026-06-05 17:26:47 · 236KB
+        - generic [ref=e5566] [cursor=pointer]:
+          - generic [ref=e5567]: santsg/maestroclosed
+          - generic [ref=e5569]: e4af44e0
+          - generic [ref=e5570]: 2026-06-05 15:45:29 · 28KB
+        - generic [ref=e5571] [cursor=pointer]:
+          - generic [ref=e5572]: santsg/routerclosed
+          - generic [ref=e5574]: "68858748"
+          - generic [ref=e5575]: 2026-06-04 23:37:08 · 34KB
+        - generic [ref=e5576] [cursor=pointer]:
+          - generic [ref=e5577]: query/persistclosed
+          - generic [ref=e5579]: e54f0411
+          - generic [ref=e5580]: 2026-06-04 23:36:44 · 38KB
+        - generic [ref=e5581] [cursor=pointer]:
+          - generic [ref=e5582]: santsg/queryclosed
+          - generic [ref=e5584]: cdea1a09
+          - generic [ref=e5585]: 2026-06-04 23:36:19 · 37KB
+        - generic [ref=e5586] [cursor=pointer]:
+          - generic [ref=e5587]: octopus/testclosed
+          - generic [ref=e5589]: 7ac835f9
+          - generic [ref=e5590]: 2026-06-04 23:35:39 · 33KB
+        - generic [ref=e5591] [cursor=pointer]:
+          - generic [ref=e5592]: octopus/sharedclosed
+          - generic [ref=e5594]: b84cb5fd
+          - generic [ref=e5595]: 2026-06-04 23:34:56 · 41KB
+        - generic [ref=e5596] [cursor=pointer]:
+          - generic [ref=e5597]: octopus/postmanclosed
+          - generic [ref=e5599]: 2d276ebb
+          - generic [ref=e5600]: 2026-06-04 23:30:29 · 94KB
+        - generic [ref=e5601] [cursor=pointer]:
+          - generic [ref=e5602]: octopus/iconsclosed
+          - generic [ref=e5604]: b29b5dea
+          - generic [ref=e5605]: 2026-06-04 23:29:49 · 41KB
+        - generic [ref=e5606] [cursor=pointer]:
+          - generic [ref=e5607]: app/visaclosed
+          - generic [ref=e5609]: 77bd2ce3
+          - generic [ref=e5610]: 2026-06-04 23:29:17 · 44KB
+        - generic [ref=e5611] [cursor=pointer]:
+          - generic [ref=e5612]: app/transferclosed
+          - generic [ref=e5614]: bd6ad16b
+          - generic [ref=e5615]: 2026-06-04 23:28:03 · 48KB
+        - generic [ref=e5616] [cursor=pointer]:
+          - generic [ref=e5617]: app/operationclosed
+          - generic [ref=e5619]: d48ecb27
+          - generic [ref=e5620]: 2026-06-04 23:26:06 · 32KB
+        - generic [ref=e5621] [cursor=pointer]:
+          - generic [ref=e5622]: app/hotelclosed
+          - generic [ref=e5624]: 65a260e3
+          - generic [ref=e5625]: 2026-06-04 23:23:07 · 32KB
+        - generic [ref=e5626] [cursor=pointer]:
+          - generic [ref=e5627]: app/handlingclosed
+          - generic [ref=e5629]: 28fe567c
+          - generic [ref=e5630]: 2026-06-04 23:22:50 · 32KB
+        - generic [ref=e5631] [cursor=pointer]:
+          - generic [ref=e5632]: app/flightclosed
+          - generic [ref=e5634]: 3c70884f
+          - generic [ref=e5635]: 2026-06-04 23:21:57 · 33KB
+        - generic [ref=e5636] [cursor=pointer]:
+          - generic [ref=e5637]: app/excursionclosed
+          - generic [ref=e5639]: 6ebd8cf5
+          - generic [ref=e5640]: 2026-06-04 23:21:41 · 31KB
+        - generic [ref=e5641] [cursor=pointer]:
+          - generic [ref=e5642]: app/commonclosed
+          - generic [ref=e5644]: 73fc1fcd
+          - generic [ref=e5645]: 2026-06-04 23:20:58 · 33KB
+        - generic [ref=e5646] [cursor=pointer]:
+          - generic [ref=e5647]: app/bookingclosed
+          - generic [ref=e5649]: e4ce7047
+          - generic [ref=e5650]: 2026-06-04 23:18:22 · 31KB
+        - generic [ref=e5651] [cursor=pointer]:
+          - generic [ref=e5652]: app/authclosed
+          - generic [ref=e5654]: 2ec62a78
+          - generic [ref=e5655]: 2026-06-04 23:13:42 · 33KB
+        - generic [ref=e5656] [cursor=pointer]:
+          - generic [ref=e5657]: app/aiclosed
+          - generic [ref=e5659]: 3a3857e7
+          - generic [ref=e5660]: 2026-06-04 23:13:15 · 34KB
+        - generic [ref=e5661] [cursor=pointer]:
+          - generic [ref=e5662]: santsg/octopusclosed
+          - generic [ref=e5664]: 305d8567
+          - generic [ref=e5665]: 2026-06-04 23:12:51 · 37KB
+        - generic [ref=e5666] [cursor=pointer]:
+          - generic [ref=e5667]: santsg/lightboxclosed
+          - generic [ref=e5669]: 69ca05ee
+          - generic [ref=e5670]: 2026-06-04 23:03:28 · 35KB
+        - generic [ref=e5671] [cursor=pointer]:
+          - generic [ref=e5672]: santsg/i18nclosed
+          - generic [ref=e5674]: 984bfc77
+          - generic [ref=e5675]: 2026-06-04 23:03:02 · 43KB
+        - generic [ref=e5676] [cursor=pointer]:
+          - generic [ref=e5677]: santsg/apiclosed
+          - generic [ref=e5679]: 0a320320
+          - generic [ref=e5680]: 2026-06-04 23:01:31 · 70KB
+        - generic [ref=e5681] [cursor=pointer]:
+          - generic [ref=e5682]: octopus/infraclosed
+          - generic [ref=e5684]: edeee4da
+          - generic [ref=e5685]: 2026-06-04 22:56:44 · 46KB
+        - generic [ref=e5686] [cursor=pointer]:
+          - generic [ref=e5687]: google/mapclosed
+          - generic [ref=e5689]: eaf15396
+          - generic [ref=e5690]: 2026-06-04 12:50:04 · 36KB
+        - generic [ref=e5691] [cursor=pointer]:
+          - generic [ref=e5692]: dev/playgroundclosed
+          - generic [ref=e5694]: "60082308"
+          - generic [ref=e5695]: 2026-06-04 12:49:40 · 28KB
+        - generic [ref=e5696] [cursor=pointer]:
+          - generic [ref=e5697]: santsg/configclosed
+          - generic [ref=e5699]: c9b2ebb0
+          - generic [ref=e5700]: 2026-06-04 12:49:10 · 43KB
+        - generic [ref=e5701] [cursor=pointer]:
+          - generic [ref=e5702]: santsg/commonclosed
+          - generic [ref=e5704]: 8dc711bf
+          - generic [ref=e5705]: 2026-06-04 12:48:43 · 41KB
+        - generic [ref=e5706] [cursor=pointer]:
+          - generic [ref=e5707]: santsg/cliclosed
+          - generic [ref=e5709]: 21ca9540
+          - generic [ref=e5710]: 2026-06-04 12:48:02 · 29KB
+        - generic [ref=e5711] [cursor=pointer]:
+          - generic [ref=e5712]: build/i18nclosed
+          - generic [ref=e5714]: 8b6dd182
+          - generic [ref=e5715]: 2026-06-04 12:46:46 · 43KB
+        - generic [ref=e5716] [cursor=pointer]:
+          - generic [ref=e5717]: santsg/authclosed
+          - generic [ref=e5719]: 72f65098
+          - generic [ref=e5720]: 2026-06-04 12:46:26 · 53KB
+        - generic [ref=e5721] [cursor=pointer]:
+          - generic [ref=e5722]: api/visaclosed
+          - generic [ref=e5724]: f3c3171a
+          - generic [ref=e5725]: 2026-06-04 12:46:01 · 50KB
+        - generic [ref=e5726] [cursor=pointer]:
+          - generic [ref=e5727]: api/userclosed
+          - generic [ref=e5729]: f2065990
+          - generic [ref=e5730]: 2026-06-04 12:45:32 · 47KB
+        - generic [ref=e5731] [cursor=pointer]:
+          - generic [ref=e5732]: transfer/defclosed
+          - generic [ref=e5734]: 328a27b7
+          - generic [ref=e5735]: 2026-06-04 12:45:01 · 31KB
+        - generic [ref=e5736] [cursor=pointer]:
+          - generic [ref=e5737]: static/dataclosed
+          - generic [ref=e5739]: ca023482
+          - generic [ref=e5740]: 2026-06-04 12:44:35 · 34KB
+        - generic [ref=e5741] [cursor=pointer]:
+          - generic [ref=e5742]: api/paymentclosed
+          - generic [ref=e5744]: 9c7d11b9
+          - generic [ref=e5745]: 2026-06-04 12:43:54 · 43KB
+        - generic [ref=e5746] [cursor=pointer]:
+          - generic [ref=e5747]: api/organizationclosed
+          - generic [ref=e5749]: cec75973
+          - generic [ref=e5750]: 2026-06-04 12:43:27 · 72KB
+        - generic [ref=e5751] [cursor=pointer]:
+          - generic [ref=e5752]: api/operationclosed
+          - generic [ref=e5754]: bfa3b822
+          - generic [ref=e5755]: 2026-06-04 12:42:52 · 30KB
+        - generic [ref=e5756] [cursor=pointer]:
+          - generic [ref=e5757]: api/notificationclosed
+          - generic [ref=e5759]: eea237d4
+          - generic [ref=e5760]: 2026-06-04 12:42:02 · 32KB
+        - generic [ref=e5761] [cursor=pointer]:
+          - generic [ref=e5762]: api/newclosed
+          - generic [ref=e5764]: c12029c3
+          - generic [ref=e5765]: 2026-06-04 12:41:36 · 40KB
+        - generic [ref=e5766] [cursor=pointer]:
+          - generic [ref=e5767]: api/localizationclosed
+          - generic [ref=e5769]: 7a5e02a9
+          - generic [ref=e5770]: 2026-06-04 12:40:10 · 38KB
+        - generic [ref=e5771] [cursor=pointer]:
+          - generic [ref=e5772]: api/licensingclosed
+          - generic [ref=e5774]: 4554da62
+          - generic [ref=e5775]: 2026-06-04 12:39:48 · 43KB
+        - generic [ref=e5776] [cursor=pointer]:
+          - generic [ref=e5777]: api/iamclosed
+          - generic [ref=e5779]: a257e9a9
+          - generic [ref=e5780]: 2026-06-04 12:39:22 · 37KB
+        - generic [ref=e5781] [cursor=pointer]:
+          - generic [ref=e5782]: hotel/searchclosed
+          - generic [ref=e5784]: 99ca85a5
+          - generic [ref=e5785]: 2026-06-04 12:38:51 · 48KB
+        - generic [ref=e5786] [cursor=pointer]:
+          - generic [ref=e5787]: hotel/defclosed
+          - generic [ref=e5789]: 916d8d92
+          - generic [ref=e5790]: 2026-06-04 12:38:21 · 36KB
+        - generic [ref=e5791] [cursor=pointer]:
+          - generic [ref=e5792]: api/handlingclosed
+          - generic [ref=e5794]: 464b73b3
+          - generic [ref=e5795]: 2026-06-04 12:36:59 · 43KB
+        - generic [ref=e5796] [cursor=pointer]:
+          - generic [ref=e5797]: flight/defclosed
+          - generic [ref=e5799]: 1bb7033b
+          - generic [ref=e5800]: 2026-06-04 12:36:29 · 37KB
+        - generic [ref=e5801] [cursor=pointer]:
+          - generic [ref=e5802]: excursion/defclosed
+          - generic [ref=e5804]: "274e8608"
+          - generic [ref=e5805]: 2026-06-04 12:36:05 · 33KB
+        - generic [ref=e5806] [cursor=pointer]:
+          - generic [ref=e5807]: api/currencyclosed
+          - generic [ref=e5809]: 7bbf0d23
+          - generic [ref=e5810]: 2026-06-04 12:35:33 · 39KB
+        - generic [ref=e5811] [cursor=pointer]:
+          - generic [ref=e5812]: booking/importclosed
+          - generic [ref=e5814]: 427f00d8
+          - generic [ref=e5815]: 2026-06-04 12:35:06 · 28KB
+        - generic [ref=e5816] [cursor=pointer]:
+          - generic [ref=e5817]: api/auditingclosed
+          - generic [ref=e5819]: 3f4fa55d
+          - generic [ref=e5820]: 2026-06-04 12:34:44 · 38KB
+        - generic [ref=e5821] [cursor=pointer]:
+          - generic [ref=e5822]: api/accountingclosed
+          - generic [ref=e5824]: 1acb3aa1
+          - generic [ref=e5825]: 2026-06-04 12:34:20 · 44KB
+        - generic [ref=e5826] [cursor=pointer]:
+          - generic [ref=e5827]: octopus/tyeclosed
+          - generic [ref=e5829]: 74e98be3
+          - generic [ref=e5830]: 2026-06-04 12:28:09 · 45KB
+        - generic [ref=e5831] [cursor=pointer]:
+          - generic [ref=e5832]: terraform/testclosed
+          - generic [ref=e5834]: e42193fb
+          - generic [ref=e5835]: 2026-06-04 12:27:26 · 45KB
+        - generic [ref=e5836] [cursor=pointer]:
+          - generic [ref=e5837]: octopus/terraformclosed
+          - generic [ref=e5839]: d7b2fe8c
+          - generic [ref=e5840]: 2026-06-04 12:26:49 · 49KB
+        - generic [ref=e5841] [cursor=pointer]:
+          - generic [ref=e5842]: octopus/releaseclosed
+          - generic [ref=e5844]: 85b1f09d
+          - generic [ref=e5845]: 2026-06-04 12:22:22 · 59KB
+        - generic [ref=e5846] [cursor=pointer]:
+          - generic [ref=e5847]: octo/aiclosed
+          - generic [ref=e5849]: 7efc8aa3
+          - generic [ref=e5850]: 2026-06-04 12:21:32 · 60KB
+        - generic [ref=e5851] [cursor=pointer]:
+          - generic [ref=e5852]: octopus/landingclosed
+          - generic [ref=e5854]: de84c143
+          - generic [ref=e5855]: 2026-06-04 12:20:58 · 32KB
+        - generic [ref=e5856] [cursor=pointer]:
+          - generic [ref=e5857]: octopus/kustomizeclosed
+          - generic [ref=e5859]: 6981b505
+          - generic [ref=e5860]: 2026-06-04 12:20:27 · 45KB
+        - generic [ref=e5861] [cursor=pointer]:
+          - generic [ref=e5862]: infra/modulesclosed
+          - generic [ref=e5864]: 27363cbb
+          - generic [ref=e5865]: 2026-06-04 12:19:44 · 29KB
+        - generic [ref=e5866] [cursor=pointer]:
+          - generic [ref=e5867]: infra/aiclosed
+          - generic [ref=e5869]: 32e8fcc5
+          - generic [ref=e5870]: 2026-06-04 12:19:07 · 64KB
+        - generic [ref=e5871] [cursor=pointer]:
+          - generic [ref=e5872]: octopus/infraclosed
+          - generic [ref=e5874]: a3f97c46
+          - generic [ref=e5875]: 2026-06-04 12:18:21 · 60KB
+        - generic [ref=e5876] [cursor=pointer]:
+          - generic [ref=e5877]: octopus/helmfileclosed
+          - generic [ref=e5879]: 2f64c6c8
+          - generic [ref=e5880]: 2026-06-04 12:17:02 · 45KB
+        - generic [ref=e5881] [cursor=pointer]:
+          - generic [ref=e5882]: octopus/cliclosed
+          - generic [ref=e5884]: 4cda3e62
+          - generic [ref=e5885]: 2026-06-04 12:16:18 · 32KB
+        - generic [ref=e5886] [cursor=pointer]:
+          - generic [ref=e5887]: api/workersclosed
+          - generic [ref=e5889]: 441b2bdb
+          - generic [ref=e5890]: 2026-06-04 12:15:45 · 41KB
+        - generic [ref=e5891] [cursor=pointer]:
+          - generic [ref=e5892]: api/visaclosed
+          - generic [ref=e5894]: 7269f3ca
+          - generic [ref=e5895]: 2026-06-04 12:13:14 · 47KB
+        - generic [ref=e5896] [cursor=pointer]:
+          - generic [ref=e5897]: api/userclosed
+          - generic [ref=e5899]: ad8f5366
+          - generic [ref=e5900]: 2026-06-04 12:12:08 · 56KB
+        - generic [ref=e5901] [cursor=pointer]:
+          - generic [ref=e5902]: transfer/searchclosed
+          - generic [ref=e5904]: 878c6826
+          - generic [ref=e5905]: 2026-06-04 12:11:43 · 58KB
+        - generic [ref=e5906] [cursor=pointer]:
+          - generic [ref=e5907]: transfer/definitionclosed
+          - generic [ref=e5909]: 33e1edee
+          - generic [ref=e5910]: 2026-06-04 12:09:49 · 50KB
+        - generic [ref=e5911] [cursor=pointer]:
+          - generic [ref=e5912]: api/testdotnetappclosed
+          - generic [ref=e5914]: 8af58da9
+          - generic [ref=e5915]: 2026-06-04 12:05:23 · 39KB
+        - generic [ref=e5916] [cursor=pointer]:
+          - generic [ref=e5917]: api/staticdataclosed
+          - generic [ref=e5919]: 33bd3d85
+          - generic [ref=e5920]: 2026-06-04 12:04:53 · 64KB
+        - generic [ref=e5921] [cursor=pointer]:
+          - generic [ref=e5922]: octo/aiclosed
+          - generic [ref=e5924]: c7f2cef9
+          - generic [ref=e5925]: 2026-06-04 10:04:18 · 16KB
+        - generic [ref=e5926] [cursor=pointer]:
+          - generic [ref=e5927]: octo/aiclosed
+          - generic [ref=e5929]: 4a1b6544
+          - generic [ref=e5930]: 2026-06-04 10:02:47 · 20KB
+        - generic [ref=e5931] [cursor=pointer]:
+          - generic [ref=e5932]: octo/aiclosed
+          - generic [ref=e5934]: c59efbd5
+          - generic [ref=e5935]: 2026-06-04 10:02:19 · 16KB
+        - generic [ref=e5936] [cursor=pointer]:
+          - generic [ref=e5937]: octo/aiclosed
+          - generic [ref=e5939]: 0547248c
+          - generic [ref=e5940]: 2026-06-04 10:01:26 · 38KB
+        - generic [ref=e5941] [cursor=pointer]:
+          - generic [ref=e5942]: result/playgroundclosed
+          - generic [ref=e5944]: fb90f61d
+          - generic [ref=e5945]: 2026-06-04 09:44:46 · 46KB
+        - generic [ref=e5946] [cursor=pointer]:
+          - generic [ref=e5947]: api/iamclosed
+          - generic [ref=e5949]: b226f1bb
+          - generic [ref=e5950]: 2026-06-04 09:42:57 · 55KB
+        - generic [ref=e5951] [cursor=pointer]:
+          - generic [ref=e5952]: api/reportingclosed
+          - generic [ref=e5954]: 0e16216c
+          - generic [ref=e5955]: 2026-06-04 00:41:50 · 65KB
+        - generic [ref=e5956] [cursor=pointer]:
+          - generic [ref=e5957]: report/engineclosed
+          - generic [ref=e5959]: 0fe57a96
+          - generic [ref=e5960]: 2026-06-04 00:36:56 · 49KB
+        - generic [ref=e5961] [cursor=pointer]:
+          - generic [ref=e5962]: api/paymentclosed
+          - generic [ref=e5964]: ba91646f
+          - generic [ref=e5965]: 2026-06-04 00:35:08 · 48KB
+        - generic [ref=e5966] [cursor=pointer]:
+          - generic [ref=e5967]: visa/messagecontractsclosed
+          - generic [ref=e5969]: 48f2e803
+          - generic [ref=e5970]: 2026-06-04 00:31:40 · 31KB
+        - generic [ref=e5971] [cursor=pointer]:
+          - generic [ref=e5972]: users/messagecontractsclosed
+          - generic [ref=e5974]: 901ad25e
+          - generic [ref=e5975]: 2026-06-04 00:31:17 · 37KB
+        - generic [ref=e5976] [cursor=pointer]:
+          - generic [ref=e5977]: packages/unitofworkclosed
+          - generic [ref=e5979]: e0b87edf
+          - generic [ref=e5980]: 2026-06-04 00:30:52 · 38KB
+        - generic [ref=e5981] [cursor=pointer]:
+          - generic [ref=e5982]: search/messagecontractsclosed
+          - generic [ref=e5984]: 203b028b
+          - generic [ref=e5985]: 2026-06-04 00:30:26 · 38KB
+        - generic [ref=e5986] [cursor=pointer]:
+          - generic [ref=e5987]: definition/messagecontractsclosed
+          - generic [ref=e5989]: 60b89ea4
+          - generic [ref=e5990]: 2026-06-04 00:30:02 · 61KB
+        - generic [ref=e5991] [cursor=pointer]:
+          - generic [ref=e5992]: staticdata/messagecontractsclosed
+          - generic [ref=e5994]: f4d04206
+          - generic [ref=e5995]: 2026-06-04 00:29:30 · 32KB
+        - generic [ref=e5996] [cursor=pointer]:
+          - generic [ref=e5997]: staticdata/clientclosed
+          - generic [ref=e5999]: 8c8f0175
+          - generic [ref=e6000]: 2026-06-04 00:29:02 · 27KB
+        - generic [ref=e6001] [cursor=pointer]:
+          - generic [ref=e6002]: packages/specificationclosed
+          - generic [ref=e6004]: 00c4e912
+          - generic [ref=e6005]: 2026-06-04 00:28:38 · 39KB
+        - generic [ref=e6006] [cursor=pointer]:
+          - generic [ref=e6007]: packages/sortingclosed
+          - generic [ref=e6009]: f9fcf849
+          - generic [ref=e6010]: 2026-06-04 00:28:13 · 52KB
+        - generic [ref=e6011] [cursor=pointer]:
+          - generic [ref=e6012]: packages/resultsclosed
+          - generic [ref=e6014]: f72f440a
+          - generic [ref=e6015]: 2026-06-04 00:27:37 · 31KB
+        - generic [ref=e6016] [cursor=pointer]:
+          - generic [ref=e6017]: result/playgroundclosed
+          - generic [ref=e6019]: deb766ef
+          - generic [ref=e6020]: 2026-06-04 00:26:59 · 32KB
+        - generic [ref=e6021] [cursor=pointer]:
+          - generic [ref=e6022]: packages/repositoryclosed
+          - generic [ref=e6024]: 0478bb74
+          - generic [ref=e6025]: 2026-06-04 00:26:21 · 34KB
+        - generic [ref=e6026] [cursor=pointer]:
+          - generic [ref=e6027]: reporting/messagecontractsclosed
+          - generic [ref=e6029]: c1dca1b0
+          - generic [ref=e6030]: 2026-06-04 00:25:49 · 34KB
+        - generic [ref=e6031] [cursor=pointer]:
+          - generic [ref=e6032]: engine/messagecontractsclosed
+          - generic [ref=e6034]: 55c4acd0
+          - generic [ref=e6035]: 2026-06-04 00:25:25 · 36KB
+        - generic [ref=e6036] [cursor=pointer]:
+          - generic [ref=e6037]: packages/rediscacheclosed
+          - generic [ref=e6039]: "15e19104"
+          - generic [ref=e6040]: 2026-06-04 00:24:58 · 42KB
+        - generic [ref=e6041] [cursor=pointer]:
+          - generic [ref=e6042]: presentation/extensionsclosed
+          - generic [ref=e6044]: fee6c2c7
+          - generic [ref=e6045]: 2026-06-04 00:24:29 · 56KB
+        - generic [ref=e6046] [cursor=pointer]:
+          - generic [ref=e6047]: permissions/messagecontractsclosed
+          - generic [ref=e6049]: 728e060f
+          - generic [ref=e6050]: 2026-06-04 00:23:49 · 33KB
+        - generic [ref=e6051] [cursor=pointer]:
+          - generic [ref=e6052]: packages/permissionsclosed
+          - generic [ref=e6054]: 9331ae6c
+          - generic [ref=e6055]: 2026-06-04 00:23:27 · 28KB
+        - generic [ref=e6056] [cursor=pointer]:
+          - generic [ref=e6057]: payment/messagecontractsclosed
+          - generic [ref=e6059]: 90d42b33
+          - generic [ref=e6060]: 2026-06-04 00:23:02 · 35KB
+        - generic [ref=e6061] [cursor=pointer]:
+          - generic [ref=e6062]: organizations/messagecontractsclosed
+          - generic [ref=e6064]: d2b74b40
+          - generic [ref=e6065]: 2026-06-04 00:22:28 · 44KB
+        - generic [ref=e6066] [cursor=pointer]:
+          - generic [ref=e6067]: transfer/messagecontractsclosed
+          - generic [ref=e6069]: 5c68ac18
+          - generic [ref=e6070]: 2026-06-04 00:21:50 · 46KB
+        - generic [ref=e6071] [cursor=pointer]:
+          - generic [ref=e6072]: infococktail/messagecontractsclosed
+          - generic [ref=e6074]: 0f8fcda3
+          - generic [ref=e6075]: 2026-06-04 00:20:55 · 44KB
+        - generic [ref=e6076] [cursor=pointer]:
+          - generic [ref=e6077]: import/messagecontractsclosed
+          - generic [ref=e6079]: db870de8
+          - generic [ref=e6080]: 2026-06-04 00:20:31 · 31KB
+        - generic [ref=e6081] [cursor=pointer]:
+          - generic [ref=e6082]: offers/transfersclosed
+          - generic [ref=e6084]: 7b48d396
+          - generic [ref=e6085]: 2026-06-04 00:20:01 · 36KB
+        - generic [ref=e6086] [cursor=pointer]:
+          - generic [ref=e6087]: offers/hotelsclosed
+          - generic [ref=e6089]: b10550af
+          - generic [ref=e6090]: 2026-06-04 00:19:35 · 34KB
+        - generic [ref=e6091] [cursor=pointer]:
+          - generic [ref=e6092]: offers/excursionsclosed
+          - generic [ref=e6094]: da5e1056
+          - generic [ref=e6095]: 2026-06-04 00:19:12 · 72KB
+        - generic [ref=e6096] [cursor=pointer]:
+          - generic [ref=e6097]: offers/abstractionsclosed
+          - generic [ref=e6099]: 2e2804a3
+          - generic [ref=e6100]: 2026-06-04 00:18:32 · 36KB
+        - generic [ref=e6101] [cursor=pointer]:
+          - generic [ref=e6102]: notification/messagecontractsclosed
+          - generic [ref=e6104]: "99712428"
+          - generic [ref=e6105]: 2026-06-04 00:18:02 · 33KB
+        - generic [ref=e6106] [cursor=pointer]:
+          - generic [ref=e6107]: middleware/exceptionhandlerclosed
+          - generic [ref=e6109]: 37fb640e
+          - generic [ref=e6110]: 2026-06-04 00:17:33 · 33KB
+        - generic [ref=e6111] [cursor=pointer]:
+          - generic [ref=e6112]: messagebroker/daprclosed
+          - generic [ref=e6114]: 4032a12b
+          - generic [ref=e6115]: 2026-06-04 00:17:08 · 40KB
+        - generic [ref=e6116] [cursor=pointer]:
+          - generic [ref=e6117]: packages/messagebrokerclosed
+          - generic [ref=e6119]: 1061623c
+          - generic [ref=e6120]: 2026-06-04 00:16:44 · 36KB
+        - generic [ref=e6121] [cursor=pointer]:
+          - generic [ref=e6122]: mediatr/handlerclosed
+          - generic [ref=e6124]: 8a8cbbd1
+          - generic [ref=e6125]: 2026-06-04 00:16:19 · 40KB
+        - generic [ref=e6126] [cursor=pointer]:
+          - generic [ref=e6127]: mail/playgroundclosed
+          - generic [ref=e6129]: 523528ff
+          - generic [ref=e6130]: 2026-06-04 00:15:53 · 39KB
+        - generic [ref=e6131] [cursor=pointer]:
+          - generic [ref=e6132]: packages/mailclosed
+          - generic [ref=e6134]: 102d6d93
+          - generic [ref=e6135]: 2026-06-04 00:15:28 · 34KB
+        - generic [ref=e6136] [cursor=pointer]:
+          - generic [ref=e6137]: lookup/messagecontractsclosed
+          - generic [ref=e6139]: 2894315d
+          - generic [ref=e6140]: 2026-06-04 00:14:59 · 76KB
+        - generic [ref=e6141] [cursor=pointer]:
+          - generic [ref=e6142]: packages/lookupclosed
+          - generic [ref=e6144]: 7e53fad2
+          - generic [ref=e6145]: 2026-06-04 00:14:13 · 54KB
+        - generic [ref=e6146] [cursor=pointer]:
+          - generic [ref=e6147]: logging/attributesclosed
+          - generic [ref=e6149]: a1b3629f
+          - generic [ref=e6150]: 2026-06-04 00:13:30 · 45KB
+        - generic [ref=e6151] [cursor=pointer]:
+          - generic [ref=e6152]: packages/loggingclosed
+          - generic [ref=e6154]: c845e235
+          - generic [ref=e6155]: 2026-06-04 00:13:05 · 36KB
+        - generic [ref=e6156] [cursor=pointer]:
+          - generic [ref=e6157]: localization/messagecontractsclosed
+          - generic [ref=e6159]: c9e4ce1b
+          - generic [ref=e6160]: 2026-06-04 00:12:42 · 42KB
+        - generic [ref=e6161] [cursor=pointer]:
+          - generic [ref=e6162]: packages/localizationclosed
+          - generic [ref=e6164]: 7500b523
+          - generic [ref=e6165]: 2026-06-04 00:12:18 · 62KB
+        - generic [ref=e6166] [cursor=pointer]:
+          - generic [ref=e6167]: licensing/messagecontractsclosed
+          - generic [ref=e6169]: ec986023
+          - generic [ref=e6170]: 2026-06-04 00:11:47 · 38KB
+        - generic [ref=e6171] [cursor=pointer]:
+          - generic [ref=e6172]: infococktail/messagecontractsclosed
+          - generic [ref=e6174]: f917c459
+          - generic [ref=e6175]: 2026-06-04 00:11:25 · 29KB
+        - generic [ref=e6176] [cursor=pointer]:
+          - generic [ref=e6177]: iam/messagecontractsclosed
+          - generic [ref=e6179]: 9a0db047
+          - generic [ref=e6180]: 2026-06-04 00:11:02 · 41KB
+        - generic [ref=e6181] [cursor=pointer]:
+          - generic [ref=e6182]: iam/messagecontractsclosed
+          - generic [ref=e6184]: e3329fa0
+          - generic [ref=e6185]: 2026-06-03 23:51:48 · 32KB
+        - generic [ref=e6186] [cursor=pointer]:
+          - generic [ref=e6187]: search/messagecontractsclosed
+          - generic [ref=e6189]: 19e0dd2a
+          - generic [ref=e6190]: 2026-06-03 23:51:27 · 38KB
+        - generic [ref=e6191] [cursor=pointer]:
+          - generic [ref=e6192]: definition/messagecontractsclosed
+          - generic [ref=e6194]: 0534eb33
+          - generic [ref=e6195]: 2026-06-03 23:51:02 · 64KB
+        - generic [ref=e6196] [cursor=pointer]:
+          - generic [ref=e6197]: contract/criteriaclosed
+          - generic [ref=e6199]: 8e4eb0a2
+          - generic [ref=e6200]: 2026-06-03 23:49:58 · 44KB
+        - generic [ref=e6201] [cursor=pointer]:
+          - generic [ref=e6202]: calculator/instantclosed
+          - generic [ref=e6204]: 42d491e9
+          - generic [ref=e6205]: 2026-06-03 23:49:33 · 40KB
+        - generic [ref=e6206] [cursor=pointer]:
+          - generic [ref=e6207]: hotel/contractclosed
+          - generic [ref=e6209]: 5281675d
+          - generic [ref=e6210]: 2026-06-03 23:48:50 · 33KB
+        - generic [ref=e6211] [cursor=pointer]:
+          - generic [ref=e6212]: packages/healthcheckclosed
+          - generic [ref=e6214]: 317f1a94
+          - generic [ref=e6215]: 2026-06-03 23:48:27 · 33KB
+        - generic [ref=e6216] [cursor=pointer]:
+          - generic [ref=e6217]: handling/messagecontractsclosed
+          - generic [ref=e6219]: 5097dfa3
+          - generic [ref=e6220]: 2026-06-03 23:48:05 · 41KB
+        - generic [ref=e6221] [cursor=pointer]:
+          - generic [ref=e6222]: definition/messagecontractsclosed
+          - generic [ref=e6224]: 0bca535d
+          - generic [ref=e6225]: 2026-06-03 23:47:38 · 35KB
+        - generic [ref=e6226] [cursor=pointer]:
+          - generic [ref=e6227]: filestorage/messagecontractsclosed
+          - generic [ref=e6229]: e1d5cb08
+          - generic [ref=e6230]: 2026-06-03 23:47:12 · 47KB
+        - generic [ref=e6231] [cursor=pointer]:
+          - generic [ref=e6232]: abacus/clientclosed
+          - generic [ref=e6234]: 8c80afed
+          - generic [ref=e6235]: 2026-06-03 23:46:46 · 38KB
+        - generic [ref=e6236] [cursor=pointer]:
+          - generic [ref=e6237]: search/messagecontractsclosed
+          - generic [ref=e6239]: 0856e5db
+          - generic [ref=e6240]: 2026-06-03 23:46:21 · 43KB
+        - generic [ref=e6241] [cursor=pointer]:
+          - generic [ref=e6242]: definition/messagecontractsclosed
+          - generic [ref=e6244]: 9fa58440
+          - generic [ref=e6245]: 2026-06-03 23:45:56 · 46KB
+        - generic [ref=e6246] [cursor=pointer]:
+          - generic [ref=e6247]: packages/exceptionclosed
+          - generic [ref=e6249]: 7cf836ea
+          - generic [ref=e6250]: 2026-06-03 23:45:10 · 44KB
+        - generic [ref=e6251] [cursor=pointer]:
+          - generic [ref=e6252]: packages/entitiesclosed
+          - generic [ref=e6254]: e3fe45fe
+          - generic [ref=e6255]: 2026-06-03 23:44:43 · 32KB
+        - generic [ref=e6256] [cursor=pointer]:
+          - generic [ref=e6257]: document/messagecontractsclosed
+          - generic [ref=e6259]: 95775b07
+          - generic [ref=e6260]: 2026-06-03 23:44:16 · 43KB
+        - generic [ref=e6261] [cursor=pointer]:
+          - generic [ref=e6262]: datetime/extensionsclosed
+          - generic [ref=e6264]: ec758716
+          - generic [ref=e6265]: 2026-06-03 23:43:49 · 55KB
+        - generic [ref=e6266] [cursor=pointer]:
+          - generic [ref=e6267]: packages/daprcacheclosed
+          - generic [ref=e6269]: 58ceb6b4
+          - generic [ref=e6270]: 2026-06-03 23:43:15 · 42KB
+        - generic [ref=e6271] [cursor=pointer]:
+          - generic [ref=e6272]: currencies/clientclosed
+          - generic [ref=e6274]: 23537f35
+          - generic [ref=e6275]: 2026-06-03 23:42:46 · 54KB
+        - generic [ref=e6276] [cursor=pointer]:
+          - generic [ref=e6277]: packages/contractsclosed
+          - generic [ref=e6279]: 3d9cdb74
+          - generic [ref=e6280]: 2026-06-03 23:42:14 · 34KB
+        - generic [ref=e6281] [cursor=pointer]:
+          - generic [ref=e6282]: packages/clientclosed
+          - generic [ref=e6284]: a48e4057
+          - generic [ref=e6285]: 2026-06-03 23:41:49 · 38KB
+        - generic [ref=e6286] [cursor=pointer]:
+          - generic [ref=e6287]: packages/cacheproviderclosed
+          - generic [ref=e6289]: 79e64a89
+          - generic [ref=e6290]: 2026-06-03 23:41:25 · 44KB
+        - generic [ref=e6291] [cursor=pointer]:
+          - generic [ref=e6292]: booking/messagecontractsclosed
+          - generic [ref=e6294]: 6afecc2a
+          - generic [ref=e6295]: 2026-06-03 23:40:56 · 34KB
+        - generic [ref=e6296] [cursor=pointer]:
+          - generic [ref=e6297]: import/messagecontractsclosed
+          - generic [ref=e6299]: 9590e88d
+          - generic [ref=e6300]: 2026-06-03 23:40:18 · 49KB
+        - generic [ref=e6301] [cursor=pointer]:
+          - generic [ref=e6302]: packages/behaviorsclosed
+          - generic [ref=e6304]: "69245916"
+          - generic [ref=e6305]: 2026-06-03 23:39:46 · 33KB
+        - generic [ref=e6306] [cursor=pointer]:
+          - generic [ref=e6307]: auth/playgroundclosed
+          - generic [ref=e6309]: e0778d96
+          - generic [ref=e6310]: 2026-06-03 23:39:19 · 34KB
+        - generic [ref=e6311] [cursor=pointer]:
+          - generic [ref=e6312]: packages/authclosed
+          - generic [ref=e6314]: c4bfec22
+          - generic [ref=e6315]: 2026-06-03 23:37:51 · 43KB
+        - generic [ref=e6316] [cursor=pointer]:
+          - generic [ref=e6317]: auditing/messagecontractsclosed
+          - generic [ref=e6319]: 62a86a22
+          - generic [ref=e6320]: 2026-06-03 23:37:12 · 51KB
+        - generic [ref=e6321] [cursor=pointer]:
+          - generic [ref=e6322]: packages/auditingclosed
+          - generic [ref=e6324]: dba2972b
+          - generic [ref=e6325]: 2026-06-03 23:36:44 · 33KB
+        - generic [ref=e6326] [cursor=pointer]:
+          - generic [ref=e6327]: application/extensionsclosed
+          - generic [ref=e6329]: 9b70a41c
+          - generic [ref=e6330]: 2026-06-03 23:36:18 · 42KB
+        - generic [ref=e6331] [cursor=pointer]:
+          - generic [ref=e6332]: airlabs/messagecontractsclosed
+          - generic [ref=e6334]: a108ce00
+          - generic [ref=e6335]: 2026-06-03 23:29:27 · 43KB
+        - generic [ref=e6336] [cursor=pointer]:
+          - generic [ref=e6337]: accounting/messagecontractsclosed
+          - generic [ref=e6339]: e382d1c3
+          - generic [ref=e6340]: 2026-06-03 23:29:01 · 29KB
+        - generic [ref=e6341] [cursor=pointer]:
+          - generic [ref=e6342]: abacus/messagecontractsclosed
+          - generic [ref=e6344]: e39764d9
+          - generic [ref=e6345]: 2026-06-03 23:28:13 · 33KB
+        - generic [ref=e6346] [cursor=pointer]:
+          - generic [ref=e6347]: api/organizationsclosed
+          - generic [ref=e6349]: 3168ab90
+          - generic [ref=e6350]: 2026-06-03 23:27:47 · 74KB
+        - generic [ref=e6351] [cursor=pointer]:
+          - generic [ref=e6352]: api/operationclosed
+          - generic [ref=e6354]: ab220ce9
+          - generic [ref=e6355]: 2026-06-03 23:26:19 · 54KB
+        - generic [ref=e6356] [cursor=pointer]:
+          - generic [ref=e6357]: api/notificationclosed
+          - generic [ref=e6359]: 7e298a46
+          - generic [ref=e6360]: 2026-06-03 23:21:32 · 54KB
+        - generic [ref=e6361] [cursor=pointer]:
+          - generic [ref=e6362]: mcp/serverclosed
+          - generic [ref=e6364]: 6f0afe1b
+          - generic [ref=e6365]: 2026-06-03 23:19:38 · 43KB
+        - generic [ref=e6366] [cursor=pointer]:
+          - generic [ref=e6367]: api/localizationclosed
+          - generic [ref=e6369]: 7478dca7
+          - generic [ref=e6370]: 2026-06-03 23:19:05 · 48KB
+        - generic [ref=e6371] [cursor=pointer]:
+          - generic [ref=e6372]: api/licensingclosed
+          - generic [ref=e6374]: d3077223
+          - generic [ref=e6375]: 2026-06-03 23:16:50 · 42KB
+        - generic [ref=e6376] [cursor=pointer]:
+          - generic [ref=e6377]: api/infococktailclosed
+          - generic [ref=e6379]: c606851b
+          - generic [ref=e6380]: 2026-06-03 23:16:22 · 60KB
+        - generic [ref=e6381] [cursor=pointer]:
+          - generic [ref=e6382]: hotel/searchclosed
+          - generic [ref=e6384]: 2ac634c1
+          - generic [ref=e6385]: 2026-06-03 23:10:53 · 54KB
+        - generic [ref=e6386] [cursor=pointer]:
+          - generic [ref=e6387]: hotel/definitionclosed
+          - generic [ref=e6389]: a9046afa
+          - generic [ref=e6390]: 2026-06-03 23:08:47 · 38KB
+        - generic [ref=e6391] [cursor=pointer]:
+          - generic [ref=e6392]: api/handlingclosed
+          - generic [ref=e6394]: 3d25b3fd
+          - generic [ref=e6395]: 2026-06-03 22:55:27 · 58KB
+        - generic [ref=e6396] [cursor=pointer]:
+          - generic [ref=e6397]: flight/definitionclosed
+          - generic [ref=e6399]: a2ca8b52
+          - generic [ref=e6400]: 2026-06-03 22:54:21 · 61KB
+        - generic [ref=e6401] [cursor=pointer]:
+          - generic [ref=e6402]: api/filestorageclosed
+          - generic [ref=e6404]: 5d48cd79
+          - generic [ref=e6405]: 2026-06-03 22:52:22 · 50KB
+        - generic [ref=e6406] [cursor=pointer]:
+          - generic [ref=e6407]: excursion/searchclosed
+          - generic [ref=e6409]: ec849aad
+          - generic [ref=e6410]: 2026-06-03 22:51:17 · 76KB
+        - generic [ref=e6411] [cursor=pointer]:
+          - generic [ref=e6412]: excursion/definitionclosed
+          - generic [ref=e6414]: 08dc79c9
+          - generic [ref=e6415]: 2026-06-03 22:47:53 · 42KB
+        - generic [ref=e6416] [cursor=pointer]:
+          - generic [ref=e6417]: api/documentclosed
+          - generic [ref=e6419]: 4793faaf
+          - generic [ref=e6420]: 2026-06-03 22:47:13 · 48KB
+        - generic [ref=e6421] [cursor=pointer]:
+          - generic [ref=e6422]: development/kongclosed
+          - generic [ref=e6424]: 7e78c026
+          - generic [ref=e6425]: 2026-06-03 22:46:48 · 75KB
+        - generic [ref=e6426] [cursor=pointer]:
+          - generic [ref=e6427]: development/kitclosed
+          - generic [ref=e6429]: 413842d4
+          - generic [ref=e6430]: 2026-06-03 22:46:01 · 53KB
+        - generic [ref=e6431] [cursor=pointer]:
+          - generic [ref=e6432]: development/aspireclosed
+          - generic [ref=e6434]: 0339bedb
+          - generic [ref=e6435]: 2026-06-03 22:45:29 · 44KB
+        - generic [ref=e6436] [cursor=pointer]:
+          - generic [ref=e6437]: api/currenciesclosed
+          - generic [ref=e6439]: cfbd37c9
+          - generic [ref=e6440]: 2026-06-03 22:44:59 · 42KB
+        - generic [ref=e6441] [cursor=pointer]:
+          - generic [ref=e6442]: api/costexplorerclosed
+          - generic [ref=e6444]: 5c7e4e1d
+          - generic [ref=e6445]: 2026-06-03 22:43:07 · 39KB
+        - generic [ref=e6446] [cursor=pointer]:
+          - generic [ref=e6447]: booking/importclosed
+          - generic [ref=e6449]: 3919c43c
+          - generic [ref=e6450]: 2026-06-03 22:42:41 · 73KB
+        - generic [ref=e6451] [cursor=pointer]:
+          - generic [ref=e6452]: api/bookingclosed
+          - generic [ref=e6454]: 5c3dc011
+          - generic [ref=e6455]: 2026-06-03 22:41:52 · 51KB
+        - generic [ref=e6456] [cursor=pointer]:
+          - generic [ref=e6457]: octopus/analyzersclosed
+          - generic [ref=e6459]: e90324a1
+          - generic [ref=e6460]: 2026-06-03 15:06:03 · 453KB
+        - generic [ref=e6461] [cursor=pointer]:
+          - generic [ref=e6462]: spec/writerclosed
+          - generic [ref=e6464]: ce9848dc
+          - generic [ref=e6465]: 2026-06-03 15:00:46 · 40KB
+        - generic [ref=e6466] [cursor=pointer]:
+          - generic [ref=e6467]: blinkbrosai/blinkcoworkclosed
+          - generic [ref=e6469]: 14a8342a
+          - generic [ref=e6470]: 2026-06-03 08:53:43 · 571KB
+        - generic [ref=e6471] [cursor=pointer]:
+          - generic [ref=e6472]: agent/a9251f8374b1f02a3closed
+          - generic [ref=e6474]: 8205fbc4
+          - generic [ref=e6475]: 2026-06-03 01:54:22 · 46KB
+        - generic [ref=e6476] [cursor=pointer]:
+          - generic [ref=e6477]: agent/a9251f8374b1f02a3closed
+          - generic [ref=e6479]: 1627910f
+          - generic [ref=e6480]: 2026-06-03 01:54:21 · 34KB
+        - generic [ref=e6481] [cursor=pointer]:
+          - generic [ref=e6482]: agent/a9251f8374b1f02a3closed
+          - generic [ref=e6484]: e9591c57
+          - generic [ref=e6485]: 2026-06-03 01:54:21 · 32KB
+        - generic [ref=e6486] [cursor=pointer]:
+          - generic [ref=e6487]: p0/p1closed
+          - generic [ref=e6489]: 128968eb
+          - generic [ref=e6490]: 2026-06-02 22:08:14 · 75KB
+        - generic [ref=e6491] [cursor=pointer]:
+          - generic [ref=e6492]: p0/p1closed
+          - generic [ref=e6494]: db4145d6
+          - generic [ref=e6495]: 2026-06-02 22:08:14 · 117KB
+        - generic [ref=e6496] [cursor=pointer]:
+          - generic [ref=e6497]: p0/p1closed
+          - generic [ref=e6499]: c7b4ac5c
+          - generic [ref=e6500]: 2026-06-02 22:08:04 · 105KB
+        - generic [ref=e6501] [cursor=pointer]:
+          - generic [ref=e6502]: octopus/analyzersclosed1 sub
+          - generic [ref=e6504]: ec0dd134
+          - generic [ref=e6505]: 2026-06-02 08:02:08 · 103KB
+        - generic [ref=e6506] [cursor=pointer]:
+          - generic [ref=e6507]: octopus/analyzersclosed
+          - generic [ref=e6509]: 51388c70
+          - generic [ref=e6510]: 2026-06-02 08:00:43 · 262KB
+        - generic [ref=e6511] [cursor=pointer]:
+          - generic [ref=e6512]: api/accountingclosed1 sub
+          - generic [ref=e6514]: 475ee638
+          - generic [ref=e6515]: 2026-06-01 09:33:31 · 112KB
+        - generic [ref=e6516] [cursor=pointer]:
+          - generic [ref=e6517]: api/accountingclosed2 sub
+          - generic [ref=e6519]: 51dbdacc
+          - generic [ref=e6520]: 2026-06-01 09:30:23 · 224KB
+        - generic [ref=e6521] [cursor=pointer]:
+          - generic [ref=e6522]: api/accountingclosed1 sub
+          - generic [ref=e6524]: 77d5d934
+          - generic [ref=e6525]: 2026-06-01 09:26:45 · 176KB
+        - generic [ref=e6526] [cursor=pointer]:
+          - generic [ref=e6527]: api/accountingclosed2 sub
+          - generic [ref=e6529]: dcaac93c
+          - generic [ref=e6530]: 2026-06-01 09:23:00 · 195KB
+        - generic [ref=e6531] [cursor=pointer]:
+          - generic [ref=e6532]: api/accountingclosed2 sub
+          - generic [ref=e6534]: b086b5ac
+          - generic [ref=e6535]: 2026-06-01 09:17:52 · 152KB
+        - generic [ref=e6536] [cursor=pointer]:
+          - generic [ref=e6537]: api/accountingclosed1 sub
+          - generic [ref=e6539]: 341f33c3
+          - generic [ref=e6540]: 2026-06-01 08:56:01 · 230KB
+        - generic [ref=e6541] [cursor=pointer]:
+          - generic [ref=e6542]: api/aiclosed
+          - generic [ref=e6544]: 3f92fe38
+          - generic [ref=e6545]: 2026-06-01 01:33:05 · 275KB
+        - generic [ref=e6546] [cursor=pointer]:
+          - generic [ref=e6547]: api/aiclosed
+          - generic [ref=e6549]: 60a86d7b
+          - generic [ref=e6550]: 2026-06-01 01:32:01 · 421KB
+        - generic [ref=e6551] [cursor=pointer]:
+          - generic [ref=e6552]: api/aiclosed
+          - generic [ref=e6554]: 76cd6c84
+          - generic [ref=e6555]: 2026-06-01 01:30:31 · 360KB
+        - generic [ref=e6556] [cursor=pointer]:
+          - generic [ref=e6557]: api/accountingclosed1 sub
+          - generic [ref=e6559]: 3bc7c3c7
+          - generic [ref=e6560]: 2026-06-01 01:29:11 · 407KB
+        - generic [ref=e6561] [cursor=pointer]:
+          - generic [ref=e6562]: api/accountingclosed2 sub
+          - generic [ref=e6564]: 8259c36e
+          - generic [ref=e6565]: 2026-06-01 01:24:42 · 184KB
+        - generic [ref=e6566] [cursor=pointer]:
+          - generic [ref=e6567]: api/accountingclosed
+          - generic [ref=e6569]: "14621745"
+          - generic [ref=e6570]: 2026-06-01 01:21:19 · 676KB
+        - generic [ref=e6571] [cursor=pointer]:
+          - generic [ref=e6572]: octopus/analyzersclosed1 sub
+          - generic [ref=e6574]: d9c085e2
+          - generic [ref=e6575]: 2026-06-01 01:19:33 · 95KB
+        - generic [ref=e6576] [cursor=pointer]:
+          - generic [ref=e6577]: octopus/analyzersclosed
+          - generic [ref=e6579]: 5a628a82
+          - generic [ref=e6580]: 2026-06-01 01:18:14 · 258KB
+        - generic [ref=e6581] [cursor=pointer]:
+          - generic [ref=e6582]: octopus/analyzersclosed1 sub
+          - generic [ref=e6584]: 2e59a13d
+          - generic [ref=e6585]: 2026-06-01 01:17:26 · 222KB
+        - generic [ref=e6586] [cursor=pointer]:
+          - generic [ref=e6587]: spec/writerclosed
+          - generic [ref=e6589]: 7c5ac783
+          - generic [ref=e6590]: 2026-05-31 19:20:53 · 40KB
+        - generic [ref=e6591] [cursor=pointer]:
+          - generic [ref=e6592]: api/accountingclosed5 sub
+          - generic [ref=e6594]: 9bdc4e88
+          - generic [ref=e6595]: 2026-05-31 14:02:32 · 529KB
+        - generic [ref=e6596] [cursor=pointer]:
+          - generic [ref=e6597]: api/accountingclosed2 sub
+          - generic [ref=e6599]: f09fbd67
+          - generic [ref=e6600]: 2026-05-31 13:19:10 · 308KB
+        - generic [ref=e6601] [cursor=pointer]:
+          - generic [ref=e6602]: octopus/analyzersclosed
+          - generic [ref=e6604]: e4a23c2a
+          - generic [ref=e6605]: 2026-05-31 01:47:59 · 274KB
+        - generic [ref=e6606] [cursor=pointer]:
+          - generic [ref=e6607]: octopus/analyzersclosed
+          - generic [ref=e6609]: be280f18
+          - generic [ref=e6610]: 2026-05-31 01:44:34 · 38KB
+        - generic [ref=e6611] [cursor=pointer]:
+          - generic [ref=e6612]: web/codebaseclosed1 sub
+          - generic [ref=e6614]: "29993725"
+          - generic [ref=e6615]: 2026-05-31 01:31:00 · 124KB
+        - generic [ref=e6616] [cursor=pointer]:
+          - generic [ref=e6617]: web/codebaseclosed2 sub
+          - generic [ref=e6619]: 41b79b4d
+          - generic [ref=e6620]: 2026-05-31 01:23:18 · 397KB
+        - generic [ref=e6621] [cursor=pointer]:
+          - generic [ref=e6622]: apps/webclosed3 sub
+          - generic [ref=e6624]: d66870cd
+          - generic [ref=e6625]: 2026-05-31 01:11:59 · 140KB
+        - generic [ref=e6626] [cursor=pointer]:
+          - generic [ref=e6627]: octopus/analyzersclosed1 sub
+          - generic [ref=e6629]: 3dda7659
+          - generic [ref=e6630]: 2026-05-31 01:07:12 · 149KB
+        - generic [ref=e6631] [cursor=pointer]:
+          - generic [ref=e6632]: octopus/analyzersclosed
+          - generic [ref=e6634]: 58768b82
+          - generic [ref=e6635]: 2026-05-31 00:59:05 · 209KB
+        - generic [ref=e6636] [cursor=pointer]:
+          - generic [ref=e6637]: octopus/analyzersclosed
+          - generic [ref=e6639]: c540e4b6
+          - generic [ref=e6640]: 2026-05-31 00:56:14 · 216KB
+        - generic [ref=e6641] [cursor=pointer]:
+          - generic [ref=e6642]: octopus/analyzersclosed1 sub
+          - generic [ref=e6644]: 2415794a
+          - generic [ref=e6645]: 2026-05-31 00:47:07 · 145KB
+    - generic [ref=e11]:
+      - generic [ref=e12]: sessions › 9ba84398 (busy)
+      - generic [ref=e13]:
+        - generic [ref=e6646]:
+          - generic [ref=e6647] [cursor=pointer]: "cli-dispatch:ag-runner: A9 events endpoint + A6 rename backend (ag-runner: sonnet+antigravity)"
+          - generic [ref=e6648] [cursor=pointer]: "claude: T1 ChatRequest.language + router (sonnet) ·d2"
+          - generic [ref=e6649] [cursor=pointer]: "dev-coordinator: #1733 auto-resume backend (opus)"
+          - generic [ref=e6650] [cursor=pointer]: "Explore: Research crypto universe + gainers (#1736) ·d2"
+          - generic [ref=e6651] [cursor=pointer]: "cli-dispatch:cx-runner: #1735 BistAI narration-leak streaming fix (cx-runner: sonnet+codex)"
+          - generic [ref=e6652] [cursor=pointer]: "general-purpose: chatService.ts language field ekleme ·d2"
+          - generic [ref=e6653] [cursor=pointer]: "general-purpose: #1697 financial stamp prompt draft (sonnet)"
+          - generic [ref=e6654] [cursor=pointer]: "cli-dispatch:ag-runner: A10+A12 backend: quality-notes + email filter (ag-runner: sonnet+antigravity)"
+          - generic [ref=e6655] [cursor=pointer]: "Explore: Research agent_api chart_context prompt (sonnet) ·d2"
+          - generic [ref=e6656] [cursor=pointer]: "dev-coordinator: #1736+#1737 screener relevance+perf (opus)"
+          - generic [ref=e6657] [cursor=pointer]: "cli-dispatch:cx-runner: A11+A5+A1 prod-gate security (cx-runner: sonnet+codex)"
+          - generic [ref=e6658] [cursor=pointer]: "general-purpose: T2: Wire deps + access-log INSERT into admin_router transcript endpoint ·d2"
+          - generic [ref=e6659] [cursor=pointer]: "dev-coordinator: #1734 sunum revizyon (opus)"
+          - generic [ref=e6660] [cursor=pointer]: "general-purpose: A11: admin_access_log migration SQL ·d2"
+          - generic [ref=e6661] [cursor=pointer]: "dev-reviewer: SPK-judge 11 çıktı (opus)"
+          - generic [ref=e6662] [cursor=pointer]: "cli-dispatch:cx-runner: B3 free→paid trend RPC (cx-runner: sonnet+codex)"
+          - generic [ref=e6663] [cursor=pointer]: "cli-dispatch:ds-runner: A9 #1060 spike + AC draft (ds-runner: sonnet+deepseek)"
+          - generic [ref=e6664] [cursor=pointer]: "cli-dispatch:cx-runner: #1735 direct_stream narration leak fix (cx-runner: sonnet+codex)"
+          - generic [ref=e6665] [cursor=pointer]: "dev-coordinator: A11+A5+A1 prod-gate security (opus)"
+          - generic [ref=e6666] [cursor=pointer]: "claude: emtia prompt + graceful guardrail - branch + PR (sonnet) ·d2"
+          - generic [ref=e6667] [cursor=pointer]: "cli-dispatch:ds-runner: A9 events cap (ds-runner: sonnet+deepseek)"
+          - generic [ref=e6668] [cursor=pointer]: "cli-dispatch:ds-runner: #1774 tool-result leak fix impl (ds-runner: sonnet+deepseek)"
+          - generic [ref=e6669] [cursor=pointer]: "cli-dispatch:cx-runner: A3+A4 admin Sorular tab + transcript UI (cx-runner: sonnet+codex)"
+          - generic [ref=e6670] [cursor=pointer]: "dev-coordinator: blinkfin-api emtia kapsam+tip (opus)"
+          - generic [ref=e6671] [cursor=pointer]: "Explore: Map agent_api streaming code"
+          - generic [ref=e6672] [cursor=pointer]: "general-purpose: SE1: cache bypass in conversation_service + share_service ·d2"
+          - generic [ref=e6673] [cursor=pointer]: "cli-dispatch:ds-runner: A7 #1754 streak (ds-runner: sonnet+deepseek)"
+          - generic [ref=e6674] [cursor=pointer]: "cli-dispatch:cx-runner: A10+A12 frontend: quality-mark + email filter (cx-runner: sonnet+codex)"
+          - generic [ref=e6675] [cursor=pointer]: "dev-coordinator: #1726 doviz.com direct entegrasyon (opus)"
+          - generic [ref=e6676] [cursor=pointer]: "general-purpose: T1 blinkfin-ui chart symbol sync (opus) ·d2"
+          - generic [ref=e6677] [cursor=pointer]: "cli-dispatch:ag-runner: Production AAB build (ag-runner: sonnet+antigravity)"
+          - generic [ref=e6678] [cursor=pointer]: "general-purpose: use-chat-messages.ts language gönder ·d2"
+          - generic [ref=e6679] [cursor=pointer]: "dev-security: Security SPK/uyum değerlendirme (opus)"
+          - generic [ref=e6680] [cursor=pointer]: "dev-coordinator: #1740 backend dil+drain (opus)"
+          - generic [ref=e6681] [cursor=pointer]: "Explore: Research Stage 1 timeout/LLM (#1737) ·d2"
+          - generic [ref=e6682] [cursor=pointer]: "general-purpose: reasoning-box.tsx fallback temizle ·d2"
+          - generic [ref=e6683] [cursor=pointer]: "cli-dispatch:ag-runner: #1774 tool-result leak investigation (ag-runner: sonnet+antigravity)"
+          - generic [ref=e6684] [cursor=pointer]: "Explore: Map BistAI financial data source"
+          - generic [ref=e6685] [cursor=pointer]: "Explore: Research UI chart snapshot (sonnet) ·d2"
+          - generic [ref=e6686] [cursor=pointer]: "dev-tech-lead: Tech-lead değerlendirme (opus)"
+          - generic [ref=e6687] [cursor=pointer]: "claude: Implement #1736 crypto gainers (opus) ·d2"
+          - generic [ref=e6688] [cursor=pointer]: "dev-coordinator: #1738 chart panel farkındalığı (opus)"
+          - generic [ref=e6689] [cursor=pointer]: "fork: Confirm canlidoviz commodity item IDs ·d2"
+          - generic [ref=e6690] [cursor=pointer]: "dev-coordinator: #1740 UI dil+fallback (sonnet)"
+          - generic [ref=e6691] [cursor=pointer]: "cli-dispatch:cx-runner: A8 route-based admin nav refactor (cx-runner: sonnet+codex)"
+          - generic [ref=e6692] [cursor=pointer]: "cli-dispatch:cx-runner: B6 Conversion panel UI (cx-runner: sonnet+codex)"
+          - generic [ref=e6693] [cursor=pointer]: "general-purpose: Fetch GitHub issue 1696 ·d2"
+          - generic [ref=e6694] [cursor=pointer]: "Explore: Map BistAI subagent architecture ·d2"
+          - generic [ref=e6695] [cursor=pointer]: "cli-dispatch:cx-runner: A9 debug panel + A6 rename frontend (cx-runner: sonnet+codex)"
+          - generic [ref=e6696] [cursor=pointer]: "dev-coordinator: Implement emtia canlidoviz direct (opus) ·d2"
+          - generic [ref=e6697] [cursor=pointer]: "general-purpose: BistAI brifing fiyat tutarlilik DB fix + SQL file + PR (sonnet) ·d2"
+          - generic [ref=e6698] [cursor=pointer]: "cli-dispatch:ds-runner: B5 feature-gate events (ds-runner: sonnet+deepseek)"
+          - generic [ref=e6699] [cursor=pointer]: "claude: T2 chat_service dil+drain (opus) ·d2"
+          - generic [ref=e6700] [cursor=pointer]: "general-purpose: A5: add require_chat_access to dependencies.py ·d2"
+          - generic [ref=e6701] [cursor=pointer]: "dev-coordinator: A11+A5+A1 prod-gate security (sonnet)"
+          - generic [ref=e6702] [cursor=pointer]: "cli-dispatch:ag-runner: B6 backend conversion/attribution endpoints (ag-runner: sonnet+antigravity)"
+          - generic [ref=e6703] [cursor=pointer]: "general-purpose: T2 agent_api chart symbol fix (opus) ·d2"
+          - generic [ref=e6704] [cursor=pointer]: "dev-coordinator: agent_api emtia graceful prompt (sonnet)"
+          - generic [ref=e6705] [cursor=pointer]: "cli-dispatch:cx-runner: #1773 DSML tool-call leak parser fix (cx-runner: sonnet+codex)"
+          - generic [ref=e6706] [cursor=pointer]: "cli-dispatch:ag-runner: B1+B2 quota/paywall funnel events (ag-runner: sonnet+antigravity)"
+          - generic [ref=e6707] [cursor=pointer]: "general-purpose: dokploy.sh deploy durum scripti (sonnet)"
+          - generic [ref=e6708] [cursor=pointer]: "claude: Implement #1737 Stage 1 timeout (opus) ·d2"
+          - generic [ref=e6709] [cursor=pointer]: "dev-critic: Critic risk sınama (opus)"
+          - generic [ref=e6710] [cursor=pointer]: "dev-coordinator: #1739 brifing fiyat fix (sonnet)"
+          - generic [ref=e6711] [cursor=pointer]: "cli-dispatch:ds-runner: A1 #1750 404 fix (ds-runner: sonnet+deepseek)"
+          - generic [ref=e6712] [cursor=pointer]: "dev-reviewer: SPK-judge re-run 5 (opus)"
+          - generic [ref=e6713] [cursor=pointer]: "general-purpose: #1697 financial stamp prompt draft (opus)"
+          - generic [ref=e6714] [cursor=pointer]: "cli-dispatch:cx-runner: #1735 finalize narration-strip backstop (cx-runner: sonnet+codex)"
+        - generic [ref=e6715]:
+          - text: "⏺ mcp__plugin_playwright_playwright__browser_evaluate function=\"() => {\\n const ta=document.querySelector('textarea');\\n if(!ta) return {ok:false};\\n const notes='<tr-TR>\\\\nB…"
+          - generic [ref=e6716]: "⎿ ok ### Result { \"ok\": true, \"len\": 264 } ### Ran Playwright code ```js await page.evaluate('() => {\\n const ta=document.querySelector(\\'textarea\\');\\n if(!ta) retu…"
+        - generic [ref=e6717]: "⏺ Sürüm adı \"7 (1.0.3)\" otomatik dolu ✅. Release-notes textarea'da template var — gerçek notla değiştireyim (tr-TR; finansal-uyumlu). Set + Angular input event:"
+        - generic [ref=e6718]:
+          - text: "⏺ mcp__plugin_playwright_playwright__browser_evaluate function=\"() => {\\n const inputs=[...document.querySelectorAll('input')].map(i=>({type:i.type, val:(i.value||'').slice(0…"
+          - generic [ref=e6719]: "⎿ ok ### Result { \"inputs\": [ { \"type\": \"text\", \"val\": \"7 (1.0.3)\", \"ph\": \"\" }, { \"type\": \"radio\", \"val\": \"on\", \"ph\": \"\" }, { \"type\": \"radio\", \"val\": \"on\", \"ph\": \"\" …"
+        - generic [ref=e6720]: "⏺ Sürüm notları alanı (dil-etiketli textarea) + \"Sürüm adı *\" var. Önce alanların durumunu inceleyeyim (release name dolu mu, kaç textarea):"
+        - generic [ref=e6721]:
+          - text: "⏺ mcp__plugin_playwright_playwright__browser_evaluate function=\"() => { window.scrollTo(0, document.body.scrollHeight); const t=document.body.innerText; const lines=t.split('…"
+          - generic [ref=e6722]: "⎿ ok ### Result { \"rel\": [ \"Sürüm adı *\", \"Sürüm notları\", \"0 dil için sürüm notları sağlandı\", \"Kullanıcıların sürümünüzde ne olduğunu bilmelerine izin verin. Dil e…"
+        - generic [ref=e6723]: "⏺ ✅ **\"1 uygulama paketi yüklendi\"** — blinkfin-prod-v1.0.3-vc7.aab Üretim taslağına yüklendi. Şimdi sürüm notları + taslak kaydet. Aşağı kaydır (release notes alanı):"
+        - generic [ref=e6724]:
+          - text: ⏺ Read /Users/rbinar/Documents/Repos/blinkbrosai/blinkfin/play-aab-uploaded.png
+          - generic [ref=e6725]: ⎿ ok
+        - generic [ref=e6726]:
+          - text: ⏺ mcp__plugin_playwright_playwright__browser_take_screenshot type="png"
+          - generic [ref=e6727]: "⎿ ok ### Result - [Screenshot of full page](./play-aab-uploaded.png) ### Ran Playwright code ```js // Screenshot full page and save it as ./play-aab-uploaded.png awa…"
+        - generic [ref=e6728]:
+          - text: ⏺ mcp__plugin_playwright_playwright__browser_wait_for time=20
+          - generic [ref=e6729]: "⎿ ok ### Result Waited for 20 ### Ran Playwright code ```js await new Promise(f => setTimeout(f, 20 * 1000)); ``` ### Open tabs - 0: (current) [Sürümü hazırlayın | B…"
+        - generic [ref=e6730]: "⏺ AAB seçildi, işleniyor (Play AAB'yi işler ~30-60s). Bekle + doğrula:"
+        - generic [ref=e6731]:
+          - text: ⏺ mcp__plugin_playwright_playwright__browser_file_upload paths=["/Users/rbinar/Documents/Repos/blinkbrosai/blinkfin/blinkfin-prod-v1.0.3-vc7.aab"]
+          - generic [ref=e6732]: "⎿ ok ### Ran Playwright code ```js await fileChooser.setFiles([\"/Users/rbinar/Documents/Repos/blinkbrosai/blinkfin/blinkfin-prod-v1.0.3-vc7.aab\"]) ``` ### Open tabs …"
+        - generic [ref=e6733]: "⏺ File chooser açıldı. AAB'yi yükle:"
+        - generic [ref=e6734]:
+          - text: "⏺ mcp__plugin_playwright_playwright__browser_evaluate function=\"() => { const b=[...document.querySelectorAll('button,a,span')].find(e=>e.textContent.trim()==='Yükle'); if(b)…"
+          - generic [ref=e6735]: "⎿ ok ### Result { \"clicked\": true } ### Ran Playwright code ```js await page.evaluate('() => { const b=[...document.querySelectorAll(\\'button,a,span\\')].find(e=>e.te…"
+        - generic [ref=e6736]: "⏺ ref gerekiyormuş. \"Yükle\"yi evaluate ile tıklayıp file chooser'ı tetikleyeyim, sonra dosyayı veririm:"
+        - generic [ref=e6737]:
+          - text: ⏺ mcp__plugin_playwright_playwright__browser_click element="Yükle button (upload app bundle)"
+          - generic [ref=e6738]: "⎿ error ### Error Invalid arguments for tool \"browser_click\": ✖ Invalid input: expected string, received undefined → at target"
+        - generic [ref=e6739]: "⏺ Yüklendi! \"Üretim sürümü oluşturma\" — Play App Signing aktif ✅. \"Yükle\" butonu var. AAB'yi yükleyeyim — \"Yükle\"ye tıkla (file chooser açılır):"
+        - generic [ref=e6740]:
+          - text: ⏺ Read /Users/rbinar/Documents/Repos/blinkbrosai/blinkfin/play-prepare3.png
+          - generic [ref=e6741]: ⎿ ok
+        - generic [ref=e6742]:
+          - text: ⏺ mcp__plugin_playwright_playwright__browser_take_screenshot type="png"
+          - generic [ref=e6743]: "⎿ ok ### Result - [Screenshot of viewport](./play-prepare3.png) ### Ran Playwright code ```js // Screenshot viewport and save it as ./play-prepare3.png await page.sc…"
+        - generic [ref=e6744]:
+          - text: ⏺ mcp__plugin_playwright_playwright__browser_wait_for time=7
+          - generic [ref=e6745]: "⎿ ok ### Result Waited for 7 ### Ran Playwright code ```js await new Promise(f => setTimeout(f, 7 * 1000)); ``` ### Open tabs - 0: (current) [Sürümü hazırlayın | Bli…"
+        - generic [ref=e6746]:
+          - text: ⏺ mcp__plugin_playwright_playwright__browser_navigate https://play.google.com/console/u/0/developers/6876534663968370885/app/4975824425589675847/tracks/4697497325882603019/re…
+          - generic [ref=e6747]: "⎿ ok ### Ran Playwright code ```js await page.goto('https://play.google.com/console/u/0/developers/6876534663968370885/app/4975824425589675847/tracks/469749732588260…"
+        - generic [ref=e6748]: "⏺ Aynı hata: **\"Beklenmeyen bir hata oluştu (6FCB503B)\"** + sonsuz spinner. Release-hazırlama sayfası (AAB upload burada) bu Playwright oturumunda yüklenmiyor (daha önce 7AB6F927 da). Bir kez reload deneyeyim:"
+        - generic [ref=e6749]:
+          - text: ⏺ Read /Users/rbinar/Documents/Repos/blinkbrosai/blinkfin/play-prepare2.png
+          - generic [ref=e6750]: ⎿ ok
+        - generic [ref=e6751]:
+          - text: ⏺ mcp__plugin_playwright_playwright__browser_take_screenshot type="png"
+          - generic [ref=e6752]: "⎿ ok ### Result - [Screenshot of viewport](./play-prepare2.png) ### Ran Playwright code ```js // Screenshot viewport and save it as ./play-prepare2.png await page.sc…"
+        - generic [ref=e6753]: "⏺ 4 console error. Sayfa hata veriyor (önceki 7AB6F927 gibi). Screenshot + console kontrol:"
+        - generic [ref=e6754]:
+          - text: ⏺ mcp__plugin_playwright_playwright__browser_wait_for time=6
+          - generic [ref=e6755]: "⎿ ok ### Result Waited for 6 ### Ran Playwright code ```js await new Promise(f => setTimeout(f, 6 * 1000)); ``` ### Open tabs - 0: (current) [Sürümü hazırlayın | Bli…"
+        - generic [ref=e6756]: "⏺ İçerik boş (yükleniyor/spinner, 2 console error). Biraz daha bekle + tekrar:"
+        - generic [ref=e6757]:
+          - text: ⏺ Read /Users/rbinar/Documents/Repos/blinkbrosai/blinkfin/play-prepare-release.png
+          - generic [ref=e6758]: ⎿ ok
+        - generic [ref=e6759]:
+          - text: ⏺ mcp__plugin_playwright_playwright__browser_take_screenshot type="png"
+          - generic [ref=e6760]: "⎿ ok ### Result - [Screenshot of full page](./play-prepare-release.png) ### Ran Playwright code ```js // Screenshot full page and save it as ./play-prepare-release.p…"
+        - generic [ref=e6761]:
+          - text: ⏺ mcp__plugin_playwright_playwright__browser_wait_for time=4
+          - generic [ref=e6762]: "⎿ ok ### Result Waited for 4 ### Ran Playwright code ```js await new Promise(f => setTimeout(f, 4 * 1000)); ``` ### Open tabs - 0: (current) [Sürümü hazırlayın | Bli…"
+        - generic [ref=e6763]: "⏺ \"Sürümü hazırlayın\" sayfası. Wait + screenshot (upload alanı + form):"
+        - generic [ref=e6764]:
+          - text: "⏺ mcp__plugin_playwright_playwright__browser_evaluate function=\"() => { const b=[...document.querySelectorAll('button,a')].find(e=>/Yeni sürüm oluştur/i.test(e.textContent));…"
+          - generic [ref=e6765]: "⎿ ok ### Result { \"clicked\": true } ### Ran Playwright code ```js await page.evaluate('() => { const b=[...document.querySelectorAll(\\'button,a\\')].find(e=>/Yeni sür…"
+        - generic [ref=e6766]: "⏺ Üretim track açık, \"Yeni sürüm oluştur\" var. Tıklıyorum:"
+        - generic [ref=e6767]:
+          - text: ⏺ Read /Users/rbinar/Documents/Repos/blinkbrosai/blinkfin/play-prod-track.png
+          - generic [ref=e6768]: ⎿ ok
+        - generic [ref=e6769]:
+          - text: ⏺ mcp__plugin_playwright_playwright__browser_take_screenshot type="png"
+          - generic [ref=e6770]: "⎿ ok ### Result - [Screenshot of viewport](./play-prod-track.png) ### Ran Playwright code ```js // Screenshot viewport and save it as ./play-prod-track.png await pag…"
+        - generic [ref=e6771]:
+          - text: ⏺ mcp__plugin_playwright_playwright__browser_wait_for time=4
+          - generic [ref=e6772]: "⎿ ok ### Result Waited for 4 ### Ran Playwright code ```js await new Promise(f => setTimeout(f, 4 * 1000)); ``` ### Open tabs - 0: (current) [Üretim | BlinkFin](http…"
+        - generic [ref=e6773]:
+          - text: ⏺ mcp__plugin_playwright_playwright__browser_navigate https://play.google.com/console/u/0/developers/6876534663968370885/app/4975824425589675847/tracks/production
+          - generic [ref=e6774]: "⎿ ok ### Ran Playwright code ```js await page.goto('https://play.google.com/console/u/0/developers/6876534663968370885/app/4975824425589675847/tracks/production'); `…"
+        - generic [ref=e6775]: "⏺ **AAB yükle + taslak release** onaylandı (kaydet, GÖNDERME). Üretim track'ine gidiyorum — her adımda screenshot'la doğrulayıp \"yayınla/sun\"dan ÖNCE duracağım:"
+        - generic [ref=e6776]:
+          - text: "⏺ AskUserQuestion questions=[{\"question\":\"Playwright senin GERÇEK production Play Console'unda işlem yapacak. Hukuki beyanları doldurmam /…"
+          - generic [ref=e6777]: "⎿ ok Your questions have been answered: \"Playwright senin GERÇEK production Play Console'unda işlem yapacak. Hukuki beyanları doldurmam / 'yayınla'ya basmam doğru ol…"
+        - generic [ref=e6778]: "⏺ İçtenlikle: **hepsini \"yap\"amam** — birkaçı hukuki/geri-dönüşsüz, senin/Çağlayan'ın yetkisinde: - **Uyum beyanları** (veri güvenliği formu, finansal-hizmet beyanı, içerik derecelendirme): bunlar **hukuki taahhüt** — BlinkFin'in hangi veriyi topladığı/paylaştığı, finansal lisans, derecelendirme cevapları. Yanlış beyan = politika ihlali/hukuki risk. Senin adına doğrulayamadığım şeyleri beyan etmem d…"
+        - generic [ref=e6779]: ▸ playwright ile açip bunları yap benim için
+        - generic [ref=e6780]: "⏺ #1735 kapalı (yorum eklendi). ## 🔗 Senin yapman gereken Play sayfaları (kendi tarayıcında aç) **1. Üretim track — AAB yükle + sürüm oluştur (ASIL İŞ):** https://play.google.com/console/u/0/developers/6876534663968370885/app/4975824425589675847/tracks/production → \"Yeni sürüm oluştur\" → gönderdiğim `blinkfin-prod-v1.0.3-vc7.aab`'yi yükle → release notu → incelemeye gönder. **2. Uygulama içeriği (u…"
+        - generic [ref=e6781]:
+          - text: ⏺ Bash cd /Users/rbinar/Documents/Repos/blinkbrosai/blinkfin/blinkbrosai-services-py gh issue comment 1735 --repo blinkbrosai/b…
+          - generic [ref=e6782]: ⎿ ok https://github.com/blinkbrosai/blinkbrosai-services-py/issues/1735#issuecomment-4822331976 ! Issue blinkbrosai/blinkbrosai-services-py#1735 ([BistAI][streaming]…
+        - generic [ref=e6783]: "⏺ ✅ **#1735 narration DOĞRULANDI:** PERSISTED mesaj (debug logs) narration = **0** (live'da 1 — un-emittable transient). Üç katman (buffered #1769 + direct-stream #1771 + finalize-strip #1772) → kaydedilen/geçmiş mesaj temiz. #1735'i kapatıyorum + Play URL'lerini veriyorum:"
+        - generic [ref=e6784]:
+          - text: ⏺ Bash cd /private/tmp/claude-501/-Users-rbinar-Documents-Repos-blinkbrosai-blinkfin/9ba84398-5a50-4f4c-9680-f0776221c984/scrat…
+          - generic [ref=e6785]: ⎿ ok EREGL re-run (narration persisted check) conv=d3a84fba-1066-4ac8-9788-387164e17e6f stream done lines= 26128 === PERSISTED mesajı /debug/logs'tan çek === persist…
+        - generic [ref=e6786]: "⏺ #1776 merged (bf69cdf). Deploy-verify de bitti — EREGL persisted narration sonucunu kontrol:"
+        - generic [ref=e6787]:
+          - text: ⏺ Bash cd /Users/rbinar/Documents/Repos/blinkbrosai/blinkfin/blinkbrosai-services-py git fetch origin >/dev/null 2>&1 git show …
+          - generic [ref=e6788]: "⎿ ok 0 ok 1 files +43 -15 bf69cdf fix(chat): clean fallback messages — no raw tool-result JSON/instructions to user (#1774) (#1776)"
+        - generic [ref=e6789]: "⏺ App content: **\"Tamamlanmayı bekleyen beyan yok\"** — yani politika beyanları (gizlilik/veri güvenliği/derecelendirme/hedef kitle) **büyük ölçüde tamam** (iç/kapalı test için doldurulmuş). Asıl kalan = production release (AAB upload). #1776 (#1774 fix) merge edip URL'leri vereyim:"
+        - generic [ref=e6790]:
+          - text: "⏺ mcp__plugin_playwright_playwright__browser_evaluate function=\"() => {\\n const links=[...document.querySelectorAll('a[href]')];\\n const want=/data-safety|content-rating|targ…"
+          - generic [ref=e6791]: "⎿ ok ### Result { \"subLinks\": { \"arrow_drop_downUygulama içeriği\": \"/console/u/0/developers/6876534663968370885/app/4975824425589675847/app-content/overview\", \"Gizli…"
+        - generic [ref=e6792]: "⏺ #1774 fix → PR #1776 (6/6 test pass). Şimdi App content sayfasındayım — screenshot (durum) + alt-link'leri çıkar:"
+        - generic [ref=e6793]:
+          - text: ⏺ mcp__plugin_playwright_playwright__browser_wait_for time=4
+          - generic [ref=e6794]: "⎿ ok ### Result Waited for 4 ### Ran Playwright code ```js await new Promise(f => setTimeout(f, 4 * 1000)); ``` ### Open tabs - 0: (current) [Uygulama içeriği | Blin…"
+        - generic [ref=e6795]:
+          - text: ⏺ mcp__plugin_playwright_playwright__browser_navigate https://play.google.com/console/u/0/developers/6876534663968370885/app/4975824425589675847/app-content/overview
+          - generic [ref=e6796]: "⎿ ok ### Ran Playwright code ```js await page.goto('https://play.google.com/console/u/0/developers/6876534663968370885/app/4975824425589675847/app-content/overview')…"
+        - generic [ref=e6797]: "⏺ Ana linkler alındı. App content alt-sayfalarını (veri güvenliği/derecelendirme/finansal/gizlilik) + durumu çıkarayım — app-content/overview'a git:"
+        - generic [ref=e6798]:
+          - text: "⏺ mcp__plugin_playwright_playwright__browser_evaluate function=\"() => {\\n // expand any \\\"Görevleri görüntüle\\\" / task dropdowns first\\n [...document.querySelectorAll('button…"
+          - generic [ref=e6799]: "⎿ ok ### Result { \"rocket_launchTest edin ve yayınlayın\": \"/console/u/0/developers/6876534663968370885/app/4975824425589675847/test-and-release\", \"arrow_rightEn yeni…"
+        - generic [ref=e6800]:
+          - text: ⏺ mcp__plugin_playwright_playwright__browser_navigate https://play.google.com/console/u/0/developers/6876534663968370885/app/4975824425589675847/app-dashboard
+          - generic [ref=e6801]: "⎿ ok ### Ran Playwright code ```js await page.goto('https://play.google.com/console/u/0/developers/6876534663968370885/app/4975824425589675847/app-dashboard'); ``` #…"
+        - generic [ref=e6802]: "⏺ app-content direkt URL redirect oldu. Doğru URL'leri toplamak için dashboard'dan ilgili linkleri (uyum/release/listing) hreflerini çıkarayım:"
+        - generic [ref=e6803]:
+          - text: ⏺ mcp__plugin_playwright_playwright__browser_wait_for time=4
+          - generic [ref=e6804]: "⎿ ok ### Result Waited for 4 ### Ran Playwright code ```js await new Promise(f => setTimeout(f, 4 * 1000)); ``` ### Open tabs - 0: (current) [Ana Sayfa](https://play…"
+        - generic [ref=e6805]:
+          - text: ⏺ mcp__plugin_playwright_playwright__browser_navigate https://play.google.com/console/u/0/developers/6876534663968370885/app/4975824425589675847/app-content
+          - generic [ref=e6806]: "⎿ ok ### Ran Playwright code ```js await page.goto('https://play.google.com/console/u/0/developers/6876534663968370885/app/4975824425589675847/app-content'); ``` ###…"
+        - generic [ref=e6807]: "⏺ Playwright tarayıcısı senin ekranında değil (ayrı instance) — sayfayı orada açmak sana görünmez. Onun yerine: gerekli sayfaların **direkt linklerini** vereyim (kendi tarayıcında aç) + uyum-hub'ının (App content) durum screenshot'ını çıkarıp ne eksik göstereyim. App content'e gidiyorum:"
+        - generic [ref=e6808]: ▸ benim yapmam gereken yerlerin sayfasını aç
+        - generic [ref=e6809]: "⏺ ## 📦 Özet — bu turda biten + akıştakiler **✅ BİTEN:** - **Epic #1749 KAPATILDI** (v1, 18/18 child) - **apns:** prod'da AÇIK (push çalışıyor) - **Play production AAB:** vc7/1.0.3, imzalı+doğrulanmış → sana gönderildi; PR #361 merged - **Store-listing taslağı:** sana gönderildi - **DSML fix #1775** + **narration finalize-strip #1772** merged - Share bug'ları için **#1773/#1774** issue açıldı **🔄 A…"
+        - generic [ref=e6810]:
+          - text: ⏺ SendUserFile files=["/Users/rbinar/Documents/Repos/blinkbrosai/blinkfin/blinkfin-prod-v1.0.3-vc7.aab"]
+          - generic [ref=e6811]: "⎿ ok 1 file delivered to user. /Users/rbinar/Documents/Repos/blinkbrosai/blinkfin/blinkfin-prod-v1.0.3-vc7.aab → file_uuid: a1e02cd3-c21a-4546-8a9e-3a6c957ae9ef"
+        - generic [ref=e6812]: "⏺ **AAB hazır + stabil yere kopyalandı:** `blinkfin-prod-v1.0.3-vc7.aab` (9.26MB, imza re-doğrulandı: SHA256 193C35.. / CN=BlinkFin QA). #361 (vc bump) merged. Dosyayı sana veriyorum:"
+        - generic [ref=e6813]:
+          - text: ⏺ Bash WT=/private/tmp/claude-501/-Users-rbinar-Documents-Repos-blinkbrosai-blinkfin/9ba84398-5a50-4f4c-9680-f0776221c984/scrat…
+          - generic [ref=e6814]: ⎿ ok === AAB hala var mı === 9265199 /private/tmp/claude-501/-Users-rbinar-Documents-Repos-blinkbrosai-blinkfin/9ba84398-5a50-4f4c-9680-f0776221c984/scratchpad/ag-an…
+        - generic [ref=e6815]: "⏺ **AAB build BAŞARILI ✅** (ag-runner): 8.8MB, **signature SHA-256 = 193C35... → blinkfin-qa upload-key DOĞRULANDI** (CN=BlinkFin QA), vc7/1.0.3, PR #361. ⚠️ AAB worktree-içinde (scratchpad) — temizlenmeden stabil yere kopyalayayım + #361 merge:"
+        - generic [ref=e6816]:
+          - text: "⏺ Agent → #1774 tool-result leak fix impl (ds-runner: sonnet+deepseek)"
+          - generic [ref=e6817]: "⎿ ok Async agent launched successfully. agentId: a4b10c12f3da7534b (internal ID - do not mention to user. Use SendMessage with to: 'a4b10c12f3da7534b', summary: '<5-…"
+        - generic [ref=e6818]:
+          - text: ⏺ Bash cd /private/tmp/claude-501/-Users-rbinar-Documents-Repos-blinkbrosai-blinkfin/9ba84398-5a50-4f4c-9680-f0776221c984/scrat…
+          - generic [ref=e6819]: "⎿ ok Command running in background with ID: b5kiirdv7. Output is being written to: /private/tmp/claude-501/-Users-rbinar-Documents-Repos-blinkbrosai-blinkfin/40364c8…"
+        - generic [ref=e6820]: "⏺ Listing taslağı sana gönderildi. Şimdi kalan iki şey paralel: **(a)** #1772+#1775 deploy-verify, **(b)** #1774 fix implementasyonu (ag-runner planını ds-runner uygulasın). İkisini başlatıyorum:"
+        - generic [ref=e6821]:
+          - text: ⏺ SendUserFile files=["/Users/rbinar/Documents/Repos/blinkbrosai/blinkfin/play-store-listing-draft.md"]
+          - generic [ref=e6822]: "⎿ ok 1 file delivered to user. /Users/rbinar/Documents/Repos/blinkbrosai/blinkfin/play-store-listing-draft.md → file_uuid: 91f42f59-8506-4e26-8254-31e4ffdc9198"
+        - generic [ref=e6823]:
+          - text: ⏺ Write /Users/rbinar/Documents/Repos/blinkbrosai/blinkfin/play-store-listing-draft.md
+          - generic [ref=e6824]: "⎿ ok File created successfully at: /Users/rbinar/Documents/Repos/blinkbrosai/blinkfin/play-store-listing-draft.md (file state is current in your context — no need to…"
+        - generic [ref=e6825]: "⏺ #1775 merged (a62e798, +253 incl test, pure-addition). Epic kapandı + DSML fix in. Şimdi Play **store-listing taslağı** (senin seçtiğin scope — benim kısmım). Finansal-app uyumlu (getiri vaadi yok, \"yatırım tavsiyesi değil\"). Dosyaya yazıp özetini vereyim:"
+        - generic [ref=e6826]:
+          - text: "⏺ Bash cd /Users/rbinar/Documents/Repos/blinkbrosai/blinkfin/blinkbrosai-services-py echo \"=== #1775 diff sanity (pure-addition…"
+          - generic [ref=e6827]: "⎿ ok === #1775 diff sanity (pure-addition?) === agent_api/app/services/chat_service.py | 71 +++++++++++++ agent_api/tests/test_dsml_parser.py | 182 +++++++++++++++++…"
+        - generic [ref=e6828]: "⏺ ✅ **Epic #1749 KAPATILDI** (kapanış özeti + closed + board Done). Memory güncelle + #1775 (DSML, senin flag'lediğin #1773 fix) merge:"
+        - generic [ref=e6829]:
+          - text: ⏺ Bash cd /Users/rbinar/Documents/Repos/blinkbrosai/blinkfin/blinkbrosai-services-py gh issue comment 1749 --repo blinkbrosai/b…
+          - generic [ref=e6830]: ⎿ ok https://github.com/blinkbrosai/blinkbrosai-services-py/issues/1749#issuecomment-4822266367 ✓ Closed issue blinkbrosai/blinkbrosai-services-py#1749 ([EPIC] Admin…
+        - generic [ref=e6831]: "⏺ ✅ **18/18 child CLOSED** (9 services-py + 9 ui). Epic v1 tam bitti. Kapanış özeti + kapat + board Done:"
+        - generic [ref=e6832]:
+          - text: ⏺ Bash cd /Users/rbinar/Documents/Repos/blinkbrosai/blinkfin/blinkbrosai-services-py echo "=== services-py child'lar ===" for n…
+          - generic [ref=e6833]: "⎿ ok === services-py child'lar === #1750 CLOSED #1751 CLOSED #1752 CLOSED #1753 CLOSED #1754 CLOSED #1755 CLOSED #1756 CLOSED #1757 CLOSED #1758 CLOSED === ui child'…"
+        - generic [ref=e6834]: "⏺ Epic body checklist'i hiç işaretlenmemiş ama child'lar kapalı (A6/A9 CLOSED doğrulandı, memory 18/18). Kapatmadan önce tüm child'ların kapalı olduğunu teyit edeyim:"
+        - generic [ref=e6835]:
+          - text: "⏺ Bash cd /Users/rbinar/Documents/Repos/blinkbrosai/blinkfin/blinkbrosai-services-py echo \"=== #1749 epic durum ===\" gh issue v…"
+          - generic [ref=e6836]: "⎿ ok === #1749 epic durum === #1749 OPEN - [EPIC] Admin Dashboard — Soru/Cevap Görünürlüğü + Dönüşüm Ölçümü --- body checklist/child refs --- - [ ] **A1** #1750 🔴 —…"
+        - generic [ref=e6837]: "⏺ AAB build → ag-runner çalışıyor. Şimdi epic #1749'u bitirelim. Önce durumu + açık child'ları kontrol (memory: v1 18/18 closed ama epic + A6/A9 housekeeping durumu netlensin):"
+        - generic [ref=e6838]:
+          - text: "⏺ Agent → Production AAB build (ag-runner: sonnet+antigravity)"
+          - generic [ref=e6839]: "⎿ ok Async agent launched successfully. agentId: a694c955ae5ae4a97 (internal ID - do not mention to user. Use SendMessage with to: 'a694c955ae5ae4a97', summary: '<5-…"
+        - generic [ref=e6840]: "⏺ Signing cert sayfası bulunamadı (console redirect'leri). Karar: **blinkfin-qa.jks ile build** (tek key, QA cert'iyle eşleşiyor, tüm prior build'leri + internal-test'i imzaladı → yüksek olasılıkla Play upload-key). Upload sırasında sen Play App-Signing'de SHA `193c35..` eşleşmesini teyit edersin (mismatch olursa Play net reddeder). **AAB build → ag-runner** (sen istedin) + **listing taslağını** ben…"
+        - generic [ref=e6841]:
+          - text: ⏺ Read /Users/rbinar/Documents/Repos/blinkbrosai/blinkfin/play-signing.png
+          - generic [ref=e6842]: ⎿ ok
+        - generic [ref=e6843]: "⏺ Signing sayfası \"protect-with-play\"e yönlendi (cert SHA görünmüyor). Aldığım screenshot'ta var mı bakayım:"
+        - generic [ref=e6844]:
+          - text: "⏺ mcp__plugin_playwright_playwright__browser_evaluate function=\"() => {\\n const t = document.body.innerText;\\n // grab lines mentioning SHA / certificate / upload / signing\\n…"
+          - generic [ref=e6845]: "⎿ ok ### Result { \"rel\": [ \"keyboard_backspace\", \"Resmi olmayan yüklemeleri önleyin. Daha fazla bilgi\", \"Google Play yüklemeleri\", \"keyboard_arrow_left\", \"keyboard_a…"
+        - generic [ref=e6846]:
+          - text: ⏺ mcp__plugin_playwright_playwright__browser_take_screenshot type="png"
+          - generic [ref=e6847]: "⎿ ok ### Result - [Screenshot of full page](./play-signing.png) ### Ran Playwright code ```js // Screenshot full page and save it as ./play-signing.png await page.sc…"
+        - generic [ref=e6848]: "⏺ \"Google Play ile korunanlar\" sayfası (app signing burada). Screenshot — upload-key SHA-256 oku:"
+        - generic [ref=e6849]:
+          - text: ⏺ mcp__plugin_playwright_playwright__browser_wait_for time=4
+          - generic [ref=e6850]: "⎿ ok ### Result Waited for 4 ### Ran Playwright code ```js await new Promise(f => setTimeout(f, 4 * 1000)); ``` ### Open tabs - 0: (current) [Google Play ile korunan…"
+        - generic [ref=e6851]:
+          - text: ⏺ mcp__plugin_playwright_playwright__browser_navigate https://play.google.com/console/u/0/developers/6876534663968370885/app/4975824425589675847/app-integrity/overview
+          - generic [ref=e6852]: "⎿ ok ### Ran Playwright code ```js await page.goto('https://play.google.com/console/u/0/developers/6876534663968370885/app/4975824425589675847/app-integrity/overview…"
+        - generic [ref=e6853]:
+          - text: "⏺ mcp__plugin_playwright_playwright__browser_evaluate function=\"() => {\\n const links = [...document.querySelectorAll('a')];\\n const el = links.find(a => /Uygulama bütünlüğü|…"
+          - generic [ref=e6854]: "⎿ ok ### Result { \"clicked\": true, \"href\": \"/console/u/0/developers/6876534663968370885/app/4975824425589675847/app-integrity/overview\" } ### Ran Playwright code ```…"
+        - generic [ref=e6855]:
+          - text: ⏺ mcp__plugin_playwright_playwright__browser_navigate https://play.google.com/console/u/0/developers/6876534663968370885/app/4975824425589675847/test-and-release
+          - generic [ref=e6856]: "⎿ ok ### Ran Playwright code ```js await page.goto('https://play.google.com/console/u/0/developers/6876534663968370885/app/4975824425589675847/test-and-release'); ``…"
+        - generic [ref=e6857]: "⏺ Direkt URL redirect ediyor. test-and-release'e gidip nav'dan tıklayayım:"
+        - generic [ref=e6858]:
+          - text: ⏺ mcp__plugin_playwright_playwright__browser_navigate https://play.google.com/console/u/0/developers/6876534663968370885/app/4975824425589675847/app-integrity/integrity
+          - generic [ref=e6859]: "⎿ ok ### Ran Playwright code ```js await page.goto('https://play.google.com/console/u/0/developers/6876534663968370885/app/4975824425589675847/app-integrity/integrit…"
+        - generic [ref=e6860]: "⏺ app-integrity URL redirect oldu. Nav'dan gideyim — test-and-release + \"Uygulama bütünlüğü\" tıkla:"
+        - generic [ref=e6861]:
+          - text: ⏺ mcp__plugin_playwright_playwright__browser_navigate https://play.google.com/console/u/0/developers/6876534663968370885/app/4975824425589675847/app-integrity
+          - generic [ref=e6862]: "⎿ ok ### Ran Playwright code ```js await page.goto('https://play.google.com/console/u/0/developers/6876534663968370885/app/4975824425589675847/app-integrity'); ``` #…"
+        - generic [ref=e6863]: "⏺ Local keystore SHA256 = `19:3C:35:60...` (memory ile eşleşiyor). Şimdi Play upload-key ile karşılaştır — App integrity sayfasına git:"
+        - generic [ref=e6864]:
+          - text: ⏺ Bash cd /Users/rbinar/Documents/Repos/blinkbrosai/blinkfin/blinkfin-android echo "=== keystore.properties + jks var mı ===" c…
+          - generic [ref=e6865]: ⎿ ok === keystore.properties + jks var mı === storeFile=/Users/rbinar/blinkfin-qa-signing/blinkfin-qa.jks storePassword=<gizli> keyAlias=blinkfin-qa keyPassword=<giz…
+        - generic [ref=e6866]: "⏺ versionCode=6/1.0.2 (repo) ama Play internal vc1/1.0.0 (QA build'leri Play'e değil Supabase'e gitmiş). **Kritik:** Play upload-key = QA keystore (blinkfin-qa.jks, SHA 193c35..) mı? Yanlış key = red. Local keystore SHA + Play signing sayfasını karşılaştırayım. Local key:"
+        - generic [ref=e6867]:
+          - text: ⏺ Bash cd /Users/rbinar/Documents/Repos/blinkbrosai/blinkfin/blinkfin-android echo "=== build.gradle versionCode/versionName + …
+          - generic [ref=e6868]: ⎿ ok === build.gradle versionCode/versionName + signingConfigs === ./build.gradle.kts ./app/build.gradle.kts app/build.gradle.kts:19:val hasReleaseSigning = listOf("…
+        - generic [ref=e6869]: "⏺ **AAB + listing taslak** onaylandı. (#1773 sıraya — fix PR #1775 hazır, AAB'den sonra bakacağım.) Production AAB için önce imzalama/versionCode/Play-upload-key durumunu netleştirmeliyim (yanlış key = Play reddeder). Android signing config + versionCode + memory'deki keystore'u kontrol:"
+        - generic [ref=e6870]:
+          - text: "⏺ AskUserQuestion questions=[{\"question\":\"Production Play yayını çok-adımlı + uyum-ağırlıklı (finansal app beyanı + KVKK veri-güvenliği + …"
+          - generic [ref=e6871]: "⎿ ok Your questions have been answered: \"Production Play yayını çok-adımlı + uyum-ağırlıklı (finansal app beyanı + KVKK veri-güvenliği + 'yayınla' = halka-açık geri-…"
+        - generic [ref=e6872]: "⏺ Dashboard: **Üretim = \"Etkin değil\"** (production kurulumu başlamamış). Her iki runner da bitti (#1773→PR #1775, #1774→kök+fix planı hazır) — onları sırada tutuyorum. ## Production yayını — durum + gerçekler **Şu an:** sadece Dahili test (1.0.0) yayında. Production track boş, app-setup checklist tamamlanmamış. **Production yayını için zorunlu (iç-test'in atladığı) — çoğu İNSAN/HUKUK:** - **Gizlili…"
+        - generic [ref=e6873]:
+          - text: ⏺ Read /Users/rbinar/Documents/Repos/blinkbrosai/blinkfin/play-dashboard.png
+          - generic [ref=e6874]: ⎿ ok
+        - generic [ref=e6875]: "⏺ #1773 DSML fix → PR #1775 (parse+execute + strip, 4 test pass). Sıraya — önce Play dashboard'u okuyayım (production eksikleri):"
+        - generic [ref=e6876]:
+          - text: ⏺ mcp__plugin_playwright_playwright__browser_take_screenshot type="png"
+          - generic [ref=e6877]: "⎿ ok ### Result - [Screenshot of full page](./play-dashboard.png) ### Ran Playwright code ```js // Screenshot full page and save it as ./play-dashboard.png await pag…"
+        - generic [ref=e6878]: (showing last 103 of 769)

@@ -1,0 +1,12 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]: cli-dispatch
+    - generic [ref=e4]: dashboard
+    - generic [ref=e5]: · read-only · localhost
+  - generic [ref=e6]:
+    - generic [ref=e8]:
+      - generic [ref=e9] [cursor=pointer]: Claude Code
+      - generic [ref=e10] [cursor=pointer]: cli-dispatch workers
+    - generic [ref=e11]:
+      - generic [ref=e12]: Select a session…
+      - generic [ref=e13]: ←
