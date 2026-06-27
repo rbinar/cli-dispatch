@@ -98,7 +98,8 @@ AG_MODEL=""
 CODEX_API_KEY=""
 # Default model for the codex worker. Blank = codex's own default (varies by version).
 # Override per-call with `cx-agent --model <name>`. Env var read by cx-stream: CX_MODEL
-# (with CODEX_MODEL as fallback). Example: CX_MODEL="o4-mini"
+# (with CODEX_MODEL as fallback). Current models: gpt-5.5 (default), gpt-5.4,
+# gpt-5.4-mini (fast/cheap, subagents), gpt-5.3-codex-spark. Example: CX_MODEL="gpt-5.4-mini"
 CX_MODEL=""
 # Sandbox: default workspace-write (files can be written in --cwd).
 # Pass cx-agent --read-only for a REAL OS-level no-writes guarantee (macOS Seatbelt /

@@ -47,10 +47,13 @@ cx-agent --read-only -q "$ARGUMENTS"   # stdout = final answer; progress in stat
 
 **Model selection:**
 ```bash
-cx-agent --model o4-mini --read-only -q "$ARGUMENTS"
+cx-agent --model gpt-5.4-mini --read-only -q "$ARGUMENTS"
 ```
-Omit `--model` to use codex's own default (or the `CX_MODEL` config value). Check available
-models with `codex models`.
+Omit `--model` to use codex's own default (or the `CX_MODEL` config value). Current Codex
+models (`--model <name>`): `gpt-5.5` (default, frontier coding), `gpt-5.4` (flagship),
+`gpt-5.4-mini` (fast/cheap — lighter tasks & subagents), `gpt-5.3-codex-spark` (ChatGPT Pro
+research preview). `gpt-5.2` / `gpt-5.3-codex` are deprecated. List live with `/model`
+inside codex; names move fast, so trust codex's picker over this list.
 
 **Follow-up / fix** (continue the same Codex thread):
 ```bash
