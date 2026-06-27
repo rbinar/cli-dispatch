@@ -10,7 +10,7 @@ Claude Code's built-in `Agent`/subagent tool only supports Anthropic models (son
 
 > 📝 **Write-up (Turkish):** [cli-dispatch: a plugin that makes Claude the boss and DeepSeek the worker](https://medium.com/@rbinar/cli-dispatch-claudea-patron-deepseek-e-i%CC%87%C5%9F%C3%A7i-rol%C3%BC-veren-bir-plugin-b232803581fc) — Medium
 
-![cli-dispatch demo — delegating a read-only task to each worker (DeepSeek / Antigravity / Codex), then the unified session view](assets/demo.gif)
+![cli-dispatch demo — install and use entirely inside Claude Code: add marketplace, install, /cli-dispatch:setup, delegate a task, check usage](assets/demo.gif)
 
 ## Install
 
@@ -66,6 +66,22 @@ For the **Antigravity (Gemini)** backend, setup installs `ag-agent`/`ag-stream` 
 For the **Codex (OpenAI Codex CLI)** backend, setup installs `cx-agent`/`cx-stream`. It needs the `codex` CLI (≥ 0.142.3: `npm i -g @openai/codex`, `brew install --cask codex`, or `curl -fsSL https://chatgpt.com/codex/install.sh | sh`) plus `node`; auth is via `codex login` (ChatGPT/OAuth — no API key needed for personal use) or `CODEX_API_KEY` (takes precedence) or `OPENAI_API_KEY`. Select a model with `cx-agent --model <name>` (or the `CX_MODEL` config default; blank = codex's own default): `gpt-5.5` (default), `gpt-5.4`, `gpt-5.4-mini` (fast/cheap, subagents), `gpt-5.3-codex-spark` (run `/model` inside codex for the live list). **Key advantage:** `cx-agent --read-only` activates codex's **real OS-level sandbox** (macOS Seatbelt / Linux bwrap+seccomp) — a kernel-enforced hard-block on all file writes, not just tool-layer restriction.
 
 Requirements: the `claude` CLI installed and `~/.local/bin` on PATH. DeepSeek key: https://platform.deepseek.com/api_keys
+
+## Updating
+
+Update the plugin from inside Claude Code, then reload (run one at a time):
+
+```text
+/plugin update cli-dispatch
+/reload-plugins
+```
+
+`/plugin update` fetches the newest version from the marketplace; `/reload-plugins` applies it
+to the running session (without a full restart). Verify with `/cli-dispatch:status`.
+
+<video src="https://github.com/rbinar/cli-dispatch/raw/main/assets/update.mp4" controls width="820"></video>
+
+> ▶️ [Watch the update demo (mp4)](assets/update.mp4) — `/plugin update` then `/reload-plugins` inside Claude Code.
 
 ## Usage
 
