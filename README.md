@@ -136,6 +136,38 @@ Valuable for long/agentic work, verification, or several jobs in parallel; for a
 
 The Codex backend has its own parallel subagent: **`cx-runner`**. It works identically to `ds-runner` — picks the mode, isolates the work in a git worktree when needed, **verifies** (build/test for repo tasks), and returns a short result — but the worker is always Codex. The headline advantage over the other backends is Mode A: `--read-only` activates a **real OS-level sandbox** (macOS Seatbelt / Linux bwrap+seccomp), a kernel-enforced hard-block on all file writes — no worktree needed for a genuine no-writes guarantee. Inside Claude Code, say "do this task with cx-runner" or use `Agent(subagent_type="cx-runner", ...)`.
 
+## Usage & quota — native, no third-party tool
+
+"How much of my limit is left?" — answered for **every** backend without installing anything
+extra. Each `*-balance` command reverse-engineers data the CLI already keeps locally; nothing
+new is sent over the network on your behalf.
+
+| Backend | Command | Where the number comes from |
+|---|---|---|
+| **DeepSeek** | `/cli-dispatch:ds-balance` | DeepSeek's official REST balance API (`/user/balance`), using your `DEEPSEEK_API_KEY`. |
+| **Codex** | `/cli-dispatch:cx-balance` | Codex **persists** the backend's rate-limit payload into its own session records (`~/.codex/sessions/**/*.jsonl`). The command reads the newest `token_count` record's `rate_limits` → `primary` (5h) + `secondary` (7d) windows as **% left** + reset. No network. |
+| **Antigravity** | `/cli-dispatch:ag-balance` | The local Antigravity **language server** (the one the IDE/`agy` already run) exposes a Connect-RPC `GetUserStatus` endpoint. The command finds the running `language_server` process, reads its `--csrf_token` arg + listening port, then `POST`s `GetUserStatus` → plan + **per-model `remainingFraction`** + reset. |
+
+How the two reverse-engineered ones work, concretely:
+
+```bash
+# Codex — newest rate_limits snapshot on disk (same numbers as /status in the TUI):
+#   ~/.codex/sessions/**/*.jsonl  →  payload.rate_limits.{primary(5h),secondary(7d)}
+#   used_percent → 100-used = % left ; resets_at (epoch) → reset time
+
+# Antigravity — query the local language server directly (needs it running):
+PID=$(ps aux | grep -i language_server | grep -i antigravity | grep -v grep | awk '{print $2}' | head -1)
+CSRF=$(ps -ww -o command= -p "$PID" | sed -E 's/.*--csrf_token[ =]([^ ]+).*/\1/')
+PORT=$(lsof -nP -iTCP -sTCP:LISTEN -a -p "$PID" | awk 'NR>1{print $9}' | sed -E 's/.*:([0-9]+)$/\1/' | head -1)
+curl -sk -X POST "https://127.0.0.1:$PORT/exa.language_server_pb.LanguageServerService/GetUserStatus" \
+  -H 'Content-Type: application/json' -H 'Connect-Protocol-Version: 1' \
+  -H "X-Codeium-Csrf-Token: $CSRF" --data '{}'    # → userStatus.cascadeModelConfigData...quotaInfo
+```
+
+Caveats: Codex's figure is as fresh as the **last interactive turn** (`-q`/exec runs report
+`rate_limits:null`); Antigravity's command needs the **language server running** (IDE open or
+an `agy` session) — otherwise it prints a hint. Neither adds a dependency.
+
 ## Under the hood (advanced)
 
 The plugin installs portable CLIs that Claude Code **invokes via Bash** into `~/.local/bin` — normally **you don't call these**, Claude Code manages them:
