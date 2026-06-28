@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.12.0] — 2026-06-28
+
+### Added
+- **Dashboard: Markdown rendering for message/prompt text in the flow.** Assistant messages and prompts (which workers emit as Markdown) now render headings, **bold**/*italic*, `inline code`, fenced code blocks, lists, and links — instead of raw text. Tool lines stay plain. The renderer is a tiny **XSS-safe** one (no deps, stdlib-only ethos): it escapes ALL input first, then applies a fixed whitelist of transforms and never passes raw HTML through; link `href`s are sanitised (only `http(s)`/relative — `javascript:` etc. become `#`). Verified: `<script>` is escaped, `javascript:` links are neutralised.
+
 ## [3.11.2] — 2026-06-28
 
 ### Changed

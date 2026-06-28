@@ -424,6 +424,11 @@ header b{color:var(--acc)} .grow{flex:1}
 .step.tool{border-color:var(--acc)}.step.prompt{border-color:var(--lnk)}.step.message{border-color:#444c56}
 .step.thinking{border-color:#373e47;color:var(--dim)}.step.log{border-color:#373e47}
 .k{color:var(--acc)}.ok{color:var(--g)}.err{color:#f85149}
+.md{display:inline}.md>div{margin:1px 0}.md-h{font-weight:700;color:var(--fg);margin:6px 0 2px}
+.md-ul{margin:2px 0;padding-left:18px}.md-ul li{margin:1px 0}
+.md-code{background:#1f2630;border:1px solid var(--bd);border-radius:4px;padding:0 4px;font-size:12px}
+.md-pre{background:#0b0f14;border:1px solid var(--bd);border-radius:6px;padding:8px 10px;margin:4px 0;overflow:auto;white-space:pre-wrap;color:#cdd9e5}
+.md a{color:var(--lnk)}.md strong{color:var(--fg)}
 .sa{display:inline-block;margin:3px 6px 3px 0;padding:3px 8px;border:1px solid var(--bd);border-radius:6px;cursor:pointer;color:var(--lnk)}
 .sa:hover{background:#1f2630}.empty{color:var(--dim);padding:20px}
 .panel{border:1px solid var(--bd);border-radius:8px;margin-bottom:10px;background:#11161d}
@@ -467,6 +472,39 @@ function watchDetail(spec, fn){
 }
 const E=(h)=>{const d=document.createElement('div');d.innerHTML=h;return d.firstChild}
 const esc=(s)=>String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))
+// Minimal, XSS-safe Markdown renderer (escape-FIRST, then a whitelist of transforms; never
+// passes raw HTML through). Used only for message/prompt/result text. BT avoids literal
+// backticks (this whole page is a backtick template on the server side).
+const BT=String.fromCharCode(96)
+function mdInline(x){
+  const cs=[]; const ps=x.split(BT); let r=''
+  for(let i=0;i<ps.length;i++){ if(i%2===1){cs.push(ps[i]); r+=' C'+(cs.length-1)+' '} else r+=ps[i] }
+  r=r.replace(/\\*\\*([^*]+)\\*\\*/g,'<strong>$1</strong>')
+  r=r.replace(/\\*([^*]+)\\*/g,'<em>$1</em>')
+  r=r.replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g,(m,tt,u)=>{const safe=/^(https?:\\/\\/|\\/)/.test(u)?u:'#';return '<a href="'+safe+'" target="_blank" rel="noopener">'+tt+'</a>'})
+  r=r.replace(/ C(\\d+) /g,(m,i)=>'<code class="md-code">'+cs[+i]+'</code>')
+  return r
+}
+function md(t){
+  if(!t) return ''
+  let s=esc(t)
+  const blocks=[]; const parts=s.split(BT+BT+BT); s=''
+  for(let i=0;i<parts.length;i++){ if(i%2===1){blocks.push(parts[i]); s+=' B'+(blocks.length-1)+' '} else s+=parts[i] }
+  const lines=s.split('\\n'); const out=[]; let inList=false
+  for(let ln of lines){
+    if(/^ B\\d+ \\s*$/.test(ln)){ if(inList){out.push('</ul>');inList=false} out.push(ln); continue }
+    let mh=ln.match(/^(#{1,4})\\s+(.*)$/)
+    if(mh){ if(inList){out.push('</ul>');inList=false} out.push('<div class="md-h">'+mdInline(mh[2])+'</div>'); continue }
+    let ml=ln.match(/^\\s*[-*]\\s+(.*)$/)
+    if(ml){ if(!inList){out.push('<ul class="md-ul">');inList=true} out.push('<li>'+mdInline(ml[1])+'</li>'); continue }
+    if(inList){out.push('</ul>');inList=false}
+    if(ln.trim()==='') out.push('<br>'); else out.push('<div>'+mdInline(ln)+'</div>')
+  }
+  if(inList) out.push('</ul>')
+  s=out.join('')
+  s=s.replace(/ B(\\d+) /g,(m,i)=>'<pre class="md-pre">'+blocks[+i]+'</pre>')
+  return s
+}
 // Times come from disk as UTC ISO; render in the viewer's local timezone.
 const fmtTime=(iso)=>{const d=iso?new Date(iso):null;return d&&!isNaN(d)?d.toLocaleTimeString([],{hour12:false}):''}
 const fmtDT=(iso)=>{const d=iso?new Date(iso):null;return d&&!isNaN(d)?d.toLocaleString([],{hour12:false}).replace(',',''):''}
@@ -508,8 +546,8 @@ function renderFlow(steps){
       if(s.spawnsAgent) head='⏺ <span class="k">'+esc(s.name)+'</span> <a class="agentlink" onclick="openSub(\\''+s.spawnsAgent+'\\')">→ '+esc(s.summary||'subagent')+'</a>'
       return '<div class="step tool">'+head+(st?'<div class="small">'+st+' '+esc(s.result||'')+'</div>':'')+'</div>'
     }
-    if(s.kind==='prompt') return '<div class="step prompt">▸ '+esc(s.text)+'</div>'
-    if(s.kind==='message') return '<div class="step message">⏺ '+esc(s.text)+'</div>'
+    if(s.kind==='prompt') return '<div class="step prompt">▸ <span class="md">'+md(s.text)+'</span></div>'
+    if(s.kind==='message') return '<div class="step message">⏺ <span class="md">'+md(s.text)+'</span></div>'
     if(s.kind==='thinking') return '<div class="step thinking">✻ '+esc(s.text)+'</div>'
     return '<div class="step log">'+esc(s.text)+'</div>'
   }).join('')
