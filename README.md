@@ -14,6 +14,8 @@ Claude Code's built-in `Agent`/subagent tool only supports Anthropic models (son
 
 ![cli-dispatch dashboard — live session list, subagent drill-down (ds/ag/cx-runner), worker session trace per backend](assets/dashboard.gif)
 
+> **Dashboard** (`/cli-dispatch:dashboard`) — live view of all Claude Code sessions, subagents (ds/ag/cx-runner), and the worker CLI sessions they spawned. Shows status, task, and per-backend trace in real time.
+
 ## Install
 
 > ⚠️ These commands are **slash commands** and must be run **from inside the Claude Code CLI** (not in a normal terminal/shell). First type `claude` to start a Claude Code session, then enter the commands at that session's prompt.

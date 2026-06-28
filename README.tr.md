@@ -14,6 +14,8 @@ Claude Code'un yerleşik `Agent`/subagent tool'u yalnızca Anthropic modellerini
 
 ![cli-dispatch dashboard — canlı session listesi, subagent detayı (ds/ag/cx-runner), backend başına işçi session izi](assets/dashboard.gif)
 
+> **Dashboard** (`/cli-dispatch:dashboard`) — tüm Claude Code session'larını, subagent'leri (ds/ag/cx-runner) ve bunların başlattığı işçi CLI session'larını canlı gösterir. Durum, görev ve backend başına iz gerçek zamanlı izlenir.
+
 ## Kurulum
 
 > ⚠️ Bu komutlar **slash komutudur** ve **Claude Code CLI'ın içinden** çalıştırılmalıdır (normal terminal/shell'de değil). Önce `claude` yazıp Claude Code oturumunu başlat, komutları o oturumun prompt'una gir.
