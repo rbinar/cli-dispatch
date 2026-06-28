@@ -121,6 +121,7 @@ claude-ds'i **Claude Code'un içinden** kullanırsın — iki yol:
 | `/cli-dispatch:sessions` | Geçmiş/aktif session'ları listele (tüm backend'ler; `backend` kolonu) |
 | `/cli-dispatch:ds-sessions` / `ag-sessions` / `cx-sessions` | Aynı liste, yalnızca DeepSeek / Antigravity / Codex'e filtreli |
 | `/cli-dispatch:watch <id>` | Bir session'ın canlı durumunu göster (maliyet-odaklı) |
+| `/cli-dispatch:clean` | Stale worker dizinlerini (`running` ama ölü) temizle; varsayılan dry-run, `--remove` ile siler |
 | `/cli-dispatch:status` | Tüm backend'ler için kurulum/key/CLI durumunu kontrol et |
 | `/cli-dispatch:ds-status` / `ag-status` / `cx-status` | Aynı kontrol, yalnızca DeepSeek / Antigravity / Codex kapsamında |
 | `/cli-dispatch:balance` | Toplu — DeepSeek bakiyesi + Antigravity kotası + Codex rate limit, hepsi bir arada |
