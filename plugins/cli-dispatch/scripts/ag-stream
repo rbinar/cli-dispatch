@@ -249,6 +249,7 @@ SESSIONS_ROOT="${CLI_DISPATCH_SESSIONS_DIR:-${CLAUDE_DS_SESSIONS_DIR:-}}"
 [ -n "$SESSIONS_ROOT" ] || { _c="${XDG_CACHE_HOME:-$HOME/.cache}"; SESSIONS_ROOT="$_c/cli-dispatch/sessions"; [ -d "$SESSIONS_ROOT" ] || [ ! -d "$_c/claude-ds/sessions" ] || SESSIONS_ROOT="$_c/claude-ds/sessions"; }
 SESSION_DIR="$SESSIONS_ROOT/$CID"
 mkdir -p "$SESSION_DIR"
+printf '%s' "$PROMPT" > "$SESSION_DIR/prompt.txt" 2>/dev/null || true
 DONEFILE="$SESSION_DIR/.agy.done"; rm -f "$DONEFILE"
 BRANCH="$(git -C "$CWD" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
 

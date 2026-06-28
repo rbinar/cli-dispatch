@@ -132,6 +132,7 @@ New-Item -ItemType Directory -Force -Path $sessionsRoot | Out-Null
 if ($resume -eq 1) { $sid = $resumeId } else { $sid = "cx-" + [int][double]::Parse((Get-Date -UFormat %s)) + "-" + $PID }
 $sessionDir = Join-Path $sessionsRoot $sid
 New-Item -ItemType Directory -Force -Path $sessionDir | Out-Null
+Set-Content -Path (Join-Path $sessionDir 'prompt.txt') -Value $prompt -NoNewline -Encoding UTF8
 $branch = (git -C $cwd rev-parse --abbrev-ref HEAD 2>$null)
 
 [Console]::Error.WriteLine("cx-stream -> Codex (OpenAI Codex CLI) worker")

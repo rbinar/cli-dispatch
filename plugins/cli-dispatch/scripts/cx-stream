@@ -153,6 +153,7 @@ else
 fi
 SESSION_DIR="$SESSIONS_ROOT/$SESSION_ID"
 mkdir -p "$SESSION_DIR"
+printf '%s' "$PROMPT" > "$SESSION_DIR/prompt.txt" 2>/dev/null || true
 BRANCH="$(git -C "$CWD" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
 
 # ---- process helpers (defined before launch; the watchdog reuses them) ----

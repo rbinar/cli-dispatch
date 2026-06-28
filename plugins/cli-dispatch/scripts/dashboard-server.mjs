@@ -273,7 +273,10 @@ function workerFlow(id) {
     for (const l of lines(readTail(log, 256 * 1024)).slice(-FLOW_CAP)) steps.push({ kind: 'log', text: clip(l, 300) })
   }
   const s = readJSON(path.join(dir, 'status.json')) || {}
-  return { steps, state: s.state || '?', finalResultPreview: clip(s.finalResultPreview, 600) }
+  const m = readJSON(path.join(dir, 'meta.json')) || {}
+  let prompt = m.promptPreview || ''
+  try { const pf = path.join(dir, 'prompt.txt'); if (fs.existsSync(pf)) { const full = fs.readFileSync(pf, 'utf8'); if (full.trim()) prompt = full } } catch {}
+  return { steps, state: s.state || '?', prompt, model: m.model || '', cwd: m.cwd || '', startedAt: m.startedAt || '', finalResultPreview: clip(s.finalResultPreview, 600) }
 }
 
 // ---- routing ----
@@ -589,7 +592,9 @@ async function openWorker(w){
   document.getElementById('crumb').innerHTML='<a onclick="back()">workers</a> › '+esc(w.backend)+' '+esc(w.id.slice(0,12))+' <span class="muted">('+esc(w.state)+')</span>'
   const v=document.getElementById('view'); v.className=''; v.innerHTML='loading…'
   const flow=await j('/api/worker/'+w.id+'/flow')
-  let h=renderFlow(flow.steps)
+  let h=''
+  if(flow.prompt) h+='<details class="panel act" open><summary>Görev / talimat</summary><div class="sabody"><div class="md">'+md(flow.prompt)+'</div></div></details>'
+  h+=renderFlow(flow.steps)
   if(flow.finalResultPreview) h+='<div class="step message" style="margin-top:10px">⏺ <b>result:</b> '+esc(flow.finalResultPreview)+'</div>'
   v.innerHTML=h; loadList()
   watchDetail((w.state==='running'&&!w.stale)?'worker:'+w.id:null, ()=>openWorker(w))

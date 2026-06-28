@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.13.0] — 2026-06-28
+
+### Added
+- **Dashboard: the worker's task/instruction is pinned at the top of its page.** A worker detail page rendered only the flow (newest-first), so the original instruction was buried or off-screen. It now shows a pinned **"Görev / talimat"** panel (Markdown-rendered) above the flow, always first regardless of flow order. `/api/worker/:id/flow` now returns `prompt` (+ `model`/`cwd`/`startedAt`).
+- **The pinned instruction is the FULL prompt — no truncation.** Previously only `meta.json`'s 120-char `promptPreview` existed. The stream wrappers (`cx-stream`, `claude-ds-stream`, `ag-stream` + the `.ps1` variants) now write the complete prompt to `prompt.txt` in the session dir; the dashboard serves that in full, falling back to the 120-char preview for older sessions that predate this.
+
 ## [3.12.0] — 2026-06-28
 
 ### Added

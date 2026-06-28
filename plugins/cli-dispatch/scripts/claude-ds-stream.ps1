@@ -103,6 +103,7 @@ if (-not [string]::IsNullOrEmpty($resumeId)) {
 }
 $sessionDir = Join-Path $sessionsRoot $sid
 New-Item -ItemType Directory -Force -Path $sessionDir | Out-Null
+Set-Content -Path (Join-Path $sessionDir 'prompt.txt') -Value $prompt -NoNewline -Encoding UTF8
 
 $branch = (git -C $cwd rev-parse --abbrev-ref HEAD 2>$null)
 $model = if ($cfg["DS_MODEL"]) { $cfg["DS_MODEL"] } else { "deepseek-v4-pro" }

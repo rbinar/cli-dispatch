@@ -115,6 +115,7 @@ else
 fi
 SESSION_DIR="$SESSIONS_ROOT/$SID"
 mkdir -p "$SESSION_DIR"
+printf '%s' "$PROMPT" > "$SESSION_DIR/prompt.txt" 2>/dev/null || true
 
 BRANCH="$(git -C "$CWD" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
 MODEL="${DS_MODEL:-deepseek-v4-pro}"
