@@ -56,6 +56,12 @@ Set-Content -Path (Join-Path $BinDir "cli-dispatch-dashboard.cmd") -Value (New-S
 Copy-Item -Force (Join-Path $ScriptDir "dashboard-server.mjs") (Join-Path $LibExecDir "dashboard-server.mjs")
 Write-Host "Installed dashboard -> $BinDir\cli-dispatch-dashboard.ps1 (+ .cmd shim; server -> $LibExecDir\dashboard-server.mjs)"
 
+# Cleanup tool (backend-agnostic; always installed).
+Copy-Item -Force (Join-Path $ScriptDir "cli-dispatch-clean.ps1") (Join-Path $BinDir "cli-dispatch-clean.ps1")
+Set-Content -Path (Join-Path $BinDir "cli-dispatch-clean.cmd") -Value (New-Shim "cli-dispatch-clean") -Encoding ASCII
+Copy-Item -Force (Join-Path $ScriptDir "cli-dispatch-clean.mjs") (Join-Path $LibExecDir "cli-dispatch-clean.mjs")
+Write-Host "Installed cleaner -> $BinDir\cli-dispatch-clean.ps1 (+ .cmd shim; engine -> $LibExecDir\cli-dispatch-clean.mjs)"
+
 # ---- DeepSeek backend (claude-ds family) ----
 if ($wantDS) {
   Copy-Item -Force (Join-Path $ScriptDir "claude-ds.ps1") (Join-Path $BinDir "claude-ds.ps1")

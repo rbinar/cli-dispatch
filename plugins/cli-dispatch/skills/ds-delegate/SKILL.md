@@ -226,6 +226,7 @@ does the work; you = orchestrator + reviewer + git/merge owner. Don't trust any 
 - `/cli-dispatch:sessions` — list past/active sessions (all backends; shows a `backend` column). Per-backend: `ds-sessions` / `ag-sessions` / `cx-sessions`.
 - `/cli-dispatch:watch <id>` — show a session's compact live status (cost-conscious).
 - `/cli-dispatch:clean` — remove stale worker dirs (a `running` session whose process died before finalize, so `status.json` is stuck). Dry-run by default; `--remove` deletes, `--older-than DAYS` also prunes old finished sessions.
+- `/cli-dispatch:clean-schedule` — register a daily OS-level auto-clean (launchd/cron/Scheduled Tasks) that runs `cli-dispatch-clean --remove` in the background; `status` / `uninstall` actions too.
 - `/cli-dispatch:status` — check installation/key/CLI status for all backends. Per-backend: `ds-status` / `ag-status` / `cx-status`.
 - `/cli-dispatch:balance` — aggregate: DeepSeek balance + Antigravity quota + Codex rate limits at once.
 - `/cli-dispatch:ds-balance` — show the DeepSeek account balance.
