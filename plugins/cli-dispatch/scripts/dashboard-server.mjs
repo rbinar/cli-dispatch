@@ -432,6 +432,7 @@ header b{color:var(--acc)} .grow{flex:1}
 .md-code{background:#1f2630;border:1px solid var(--bd);border-radius:4px;padding:0 4px;font-size:12px}
 .md-pre{background:#0b0f14;border:1px solid var(--bd);border-radius:6px;padding:8px 10px;margin:4px 0;overflow:auto;white-space:pre-wrap;color:#cdd9e5}
 .md a{color:var(--lnk)}.md strong{color:var(--fg)}
+.panel.task .md{max-height:38vh;overflow:auto}.panel.task .sabody{padding-top:4px}
 .sa{display:inline-block;margin:3px 6px 3px 0;padding:3px 8px;border:1px solid var(--bd);border-radius:6px;cursor:pointer;color:var(--lnk)}
 .sa:hover{background:#1f2630}.empty{color:var(--dim);padding:20px}
 .panel{border:1px solid var(--bd);border-radius:8px;margin-bottom:10px;background:#11161d}
@@ -593,7 +594,7 @@ async function openWorker(w){
   const v=document.getElementById('view'); v.className=''; v.innerHTML='loading…'
   const flow=await j('/api/worker/'+w.id+'/flow')
   let h=''
-  if(flow.prompt) h+='<details class="panel act" open><summary>Görev / talimat</summary><div class="sabody"><div class="md">'+md(flow.prompt)+'</div></div></details>'
+  if(flow.prompt) h+='<details class="panel task" open><summary>Görev / talimat</summary><div class="sabody"><div class="md">'+md(flow.prompt)+'</div></div></details>'
   h+=renderFlow(flow.steps)
   if(flow.finalResultPreview) h+='<div class="step message" style="margin-top:10px">⏺ <b>result:</b> '+esc(flow.finalResultPreview)+'</div>'
   v.innerHTML=h; loadList()

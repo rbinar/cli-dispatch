@@ -79,6 +79,10 @@ Update the plugin from inside Claude Code, then reload (run one at a time):
 `/plugin update` fetches the newest version from the marketplace; `/reload-plugins` applies it
 to the running session (without a full restart). Verify with `/cli-dispatch:status`.
 
+> ℹ️ `/plugin update` refreshes the **commands/skills** only — it does **not** reinstall the
+> worker wrappers in `~/.local/bin`. After an update that changes a wrapper (e.g. a new
+> on-disk field), re-run **`/cli-dispatch:setup`** once to reinstall them.
+
 <video src="https://github.com/rbinar/cli-dispatch/raw/main/assets/update.mp4" controls width="820"></video>
 
 > ▶️ [Watch the update demo (mp4)](assets/update.mp4) — `/plugin update` then `/reload-plugins` inside Claude Code.
