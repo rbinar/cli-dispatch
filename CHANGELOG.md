@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.11.0] — 2026-06-28
+
+### Added
+- **`/cli-dispatch:clean-schedule` — automatic daily cleanup of stale worker dirs.** Registers an **OS-level** scheduled job (launchd on macOS, cron on Linux/WSL, Scheduled Tasks on Windows) that runs `cli-dispatch-clean --remove` in the background — so stale `running`-but-dead dirs are pruned automatically even when Claude Code isn't open. No cloud agent, no tokens. Actions: `install` (default), `status`, `uninstall`; options `--time HH:MM` (default `03:00`) and `--older-than DAYS`. Logs to `~/.cache/cli-dispatch/clean.log`.
+- **Shared cleanup engine + CLI.** The `/cli-dispatch:clean` logic is now a reusable `cli-dispatch-clean.mjs` engine behind a `cli-dispatch-clean` wrapper (bash + `.ps1`), installed to `~/.local/bin` (backend-agnostic, like the dashboard). Both the manual command and the scheduled job use it. Default DRY-RUN; `--remove` deletes; a genuinely-running worker (recent write) is never touched.
+
 ## [3.10.0] — 2026-06-28
 
 ### Added

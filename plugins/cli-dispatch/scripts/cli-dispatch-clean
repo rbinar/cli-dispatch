@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# cli-dispatch-clean — remove stale worker session dirs (running-but-dead). Resolves the
+# shared engine cli-dispatch-clean.mjs (installed share dir → legacy claude-ds → next to this
+# script) and runs it. Default is a DRY-RUN; pass --remove to delete. Used both by hand and by
+# the scheduled auto-clean (/cli-dispatch:clean-schedule).
+#   cli-dispatch-clean [--remove] [--stale-secs N] [--older-than DAYS] [--quiet]
+set -euo pipefail
+
+command -v node >/dev/null 2>&1 || { echo "cli-dispatch-clean: 'node' not found in PATH (required)." >&2; exit 1; }
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENGINE="${CLI_DISPATCH_CLEAN_ENGINE:-}"
+if [ -z "$ENGINE" ]; then
+  for cand in "$HOME/.local/share/cli-dispatch/cli-dispatch-clean.mjs" "$HOME/.local/share/claude-ds/cli-dispatch-clean.mjs" "$SCRIPT_DIR/cli-dispatch-clean.mjs"; do
+    if [ -f "$cand" ]; then ENGINE="$cand"; break; fi
+  done
+fi
+[ -n "$ENGINE" ] && [ -f "$ENGINE" ] || { echo "cli-dispatch-clean: cli-dispatch-clean.mjs not found (run /cli-dispatch:setup)." >&2; exit 1; }
+
+exec node "$ENGINE" "$@"

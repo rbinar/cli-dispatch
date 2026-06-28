@@ -52,6 +52,11 @@ install -m 0755 "$SCRIPT_DIR/cli-dispatch-dashboard" "$BIN_DIR/cli-dispatch-dash
 install -m 0644 "$SCRIPT_DIR/dashboard-server.mjs"   "$LIBEXEC_DIR/dashboard-server.mjs"
 echo "Installed dashboard -> cli-dispatch-dashboard (server -> $LIBEXEC_DIR/dashboard-server.mjs); open it with /cli-dispatch:dashboard"
 
+# ---- Cleanup tool (backend-agnostic; always installed) ---------------------
+install -m 0755 "$SCRIPT_DIR/cli-dispatch-clean"     "$BIN_DIR/cli-dispatch-clean"
+install -m 0644 "$SCRIPT_DIR/cli-dispatch-clean.mjs" "$LIBEXEC_DIR/cli-dispatch-clean.mjs"
+echo "Installed cleaner -> cli-dispatch-clean (engine -> $LIBEXEC_DIR/cli-dispatch-clean.mjs); use /cli-dispatch:clean or schedule it with /cli-dispatch:clean-schedule"
+
 # ---- DeepSeek backend (claude-ds family) -----------------------------------
 if [ "$WANT_DS" -eq 1 ]; then
   install -m 0755 "$SCRIPT_DIR/claude-ds"        "$BIN_DIR/claude-ds"
