@@ -265,6 +265,19 @@ function workerFlow(id) {
 }
 
 // ---- routing ----
+// Heuristic link: a Claude Code subagent/session that delegated to a cli-dispatch worker
+// prints the worker's session id to stderr (e.g. "dir: …/sessions/<id>"), which lands in the
+// transcript. Scan the transcript for any known worker id → linkable ds/ag/cx worker sessions.
+function linkedWorkers(file) {
+  let txt = ''; try { txt = readTail(file, 2 * 1024 * 1024) } catch { return [] }
+  if (!txt) return []
+  const out = [], seen = new Set()
+  for (const w of listWorkers()) {
+    if (w.id && !seen.has(w.id) && txt.includes(w.id)) { seen.add(w.id); out.push({ id: w.id, backend: w.backend, state: w.state, prompt: w.prompt }) }
+  }
+  return out
+}
+
 function send(res, code, obj) {
   const body = JSON.stringify(obj)
   res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
@@ -328,7 +341,7 @@ const server = http.createServer((req, res) => {
     if ((m = p.match(/^\/api\/session\/([^/]+)\/flow$/))) {
       const id = decodeURIComponent(m[1]); if (!okId(id)) return send(res, 400, { error: 'bad id' })
       const sess = findSession(id); if (!sess) return send(res, 404, { error: 'not found' })
-      return send(res, 200, mapFlow(sess.file))
+      const f = mapFlow(sess.file); f.linkedWorkers = linkedWorkers(sess.file); return send(res, 200, f)
     }
     if ((m = p.match(/^\/api\/session\/([^/]+)\/subagents$/))) {
       const id = decodeURIComponent(m[1]); if (!okId(id)) return send(res, 400, { error: 'bad id' })
@@ -342,7 +355,7 @@ const server = http.createServer((req, res) => {
       const jl = path.join(subagentDir(sess), 'agent-' + aid + '.jsonl')
       const rp = path.resolve(jl)
       if (!rp.startsWith(path.resolve(subagentDir(sess)) + path.sep)) return send(res, 400, { error: 'bad path' })
-      return send(res, 200, mapFlow(jl))
+      const f = mapFlow(jl); f.linkedWorkers = linkedWorkers(jl); return send(res, 200, f)
     }
     if ((m = p.match(/^\/api\/worker\/([^/]+)\/flow$/))) {
       const id = decodeURIComponent(m[1]); if (!okId(id)) return send(res, 400, { error: 'bad id' })
@@ -410,6 +423,8 @@ header b{color:var(--acc)} .grow{flex:1}
 .sabody{padding:2px 8px 8px}
 .panel.act{border-color:var(--g);background:#101a12}
 .panel.act>summary{color:var(--g)}
+.panel.wk{border-color:var(--lnk);background:#0e1626}
+.panel.wk>summary{color:var(--lnk)}
 .sa.act{border-color:var(--g);color:var(--g)}
 .live{color:var(--g)}
 a.agentlink{color:var(--lnk);cursor:pointer}
@@ -484,6 +499,9 @@ function renderFlow(steps){
     return '<div class="step log">'+esc(s.text)+'</div>'
   }).join('')
 }
+function workerPanelHtml(lw){ if(!lw||!lw.length) return ''
+  return '<details class="panel wk" open><summary>Worker sessions (ds/ag/cx) <span class="badge">'+lw.length+'</span></summary><div class="sabody">'+lw.map(w=>'<span class="sa" onclick="openWorkerById(\\''+w.id+'\\')">'+esc(w.backend)+': '+esc(w.prompt||w.id.slice(0,12))+' <span class="c">'+esc(w.state)+'</span></span>').join('')+'</div></details>' }
+function openWorkerById(id){ fetch('/api/workers').then(r=>r.json()).then(ws=>{const w=ws.find(x=>x.id===id); if(!w) return; mode='w'; document.getElementById('tabW').classList.add('on'); document.getElementById('tabCC').classList.remove('on'); openWorker(w)}) }
 function chipHtml(a){const t=fmtTime(a.startedAt);return '<span class="sa'+(a.active?' act':'')+'" onclick="openSub(\\''+a.agentId+'\\','+(a.active?'true':'false')+')">'+(a.active?'● ':'')+esc(a.agentType)+': '+esc(a.description||a.agentId.slice(0,8))+(a.spawnDepth>1?' ·d'+a.spawnDepth:'')+(t?' <span class="c">'+t+'</span>':'')+'</span>'}
 async function openSession(s){
   sel=s.id; mode='cc'
@@ -498,6 +516,7 @@ async function openSession(s){
     if(act.length) h+='<details class="panel act" open><summary>Active subagents <span class="badge">'+act.length+'</span></summary><div class="sabody">'+act.map(chipHtml).join('')+'</div></details>'
     if(rest.length) h+='<details class="panel restpanel"'+(subsOpen?' open':'')+'><summary>Subagents <span class="badge">'+rest.length+'</span></summary><div class="sabody">'+rest.map(chipHtml).join('')+'</div></details>'
   }
+  h+=workerPanelHtml(flow.linkedWorkers)
   h+=renderFlow(flow.steps)+(flow.truncated?'<div class="small muted">(showing last '+flow.steps.length+' of '+flow.total+')</div>':'')
   v.innerHTML=h; loadList()
   watchDetail(s.status==='busy'?'session:'+s.id:null, ()=>openSession(s))
@@ -509,7 +528,7 @@ async function openSub(aid,active){
   const v=document.getElementById('view'); v.className=''; if(!v.querySelector('.step')) v.innerHTML='loading…'
   const flow=await j('/api/subagent/'+sid+'/'+aid+'/flow')
   window._cur={type:'sub',sid:sid,aid:aid}
-  v.innerHTML=renderFlow(flow.steps)+(flow.truncated?'<div class="small muted">(last '+flow.steps.length+' of '+flow.total+')</div>':'')
+  v.innerHTML=workerPanelHtml(flow.linkedWorkers)+renderFlow(flow.steps)+(flow.truncated?'<div class="small muted">(last '+flow.steps.length+' of '+flow.total+')</div>':'')
   watchDetail(active?'subagent:'+sid+':'+aid:null, ()=>openSub(aid,true))
 }
 async function openWorker(w){

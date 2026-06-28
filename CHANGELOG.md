@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.8.0] — 2026-06-28
+
+### Added
+- **Dashboard: jump from a Claude Code session/subagent to the cli-dispatch worker it spawned.** A runner subagent (ds/ag/cx-runner) that delegated to a worker prints the worker's session id into its transcript; the dashboard now scans for known worker ids and shows a blue **"Worker sessions (ds/ag/cx)"** panel — click a worker to open its real DeepSeek/Antigravity/Codex session flow. `/api/session/:id/flow` and `/api/subagent/:sid/:aid/flow` now include a `linkedWorkers` array. (Heuristic correlation by id occurrence; no false-positive parent tracking required.)
+
 ## [3.7.1] — 2026-06-28
 
 ### Fixed
