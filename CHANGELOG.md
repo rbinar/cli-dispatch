@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.9.1] — 2026-06-28
+
+### Fixed
+- **Dashboard: a worker interrupted before finalize no longer shows a green "running" dot forever.** When a worker (codex/ds/ag) is killed mid-run (Ctrl-C, CLI closed, crash) its `status.json` stays stuck at `state:"running"` — the dashboard trusted that blindly and painted it green/active. `listWorkers()` now derives a `stale` flag from the `status.json` mtime (no write for >90s while `running` ⇒ dead); the UI renders stale workers with an idle dot + a `stale` badge and stops SSE-subscribing to them. (Same liveness heuristic already used for subagents; threshold is generous so a genuinely-running-but-quiet turn isn't misflagged.)
+
 ## [3.9.0] — 2026-06-28
 
 ### Added
