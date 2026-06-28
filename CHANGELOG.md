@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.13.2] — 2026-06-28
+
+### Changed
+- **Dashboard: the pinned task/instruction panel scrolls instead of burying the flow.** Full prompts can be large (5k–25k+ chars); the "Görev / talimat" panel now caps at ~38vh and scrolls, so the flow stays reachable.
+
+### Docs
+- **Updating note:** `/plugin update` refreshes commands/skills only — it does **not** reinstall the worker wrappers in `~/.local/bin`. After an update that changes a wrapper (e.g. the new `prompt.txt` field from 3.13.0), re-run `/cli-dispatch:setup` once. (README EN+TR.)
+
 ## [3.13.1] — 2026-06-28
 
 ### Docs
