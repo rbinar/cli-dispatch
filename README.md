@@ -121,6 +121,7 @@ You use claude-ds **from inside Claude Code** — two ways:
 | `/cli-dispatch:sessions` | List past/active sessions (all backends; shows a `backend` column) |
 | `/cli-dispatch:ds-sessions` / `ag-sessions` / `cx-sessions` | Same list, filtered to just DeepSeek / Antigravity / Codex |
 | `/cli-dispatch:watch <id>` | Show a session's live status (cost-aware; any backend) |
+| `/cli-dispatch:clean` | Remove stale worker dirs (`running`-but-dead); dry-run by default, `--remove` to delete |
 | `/cli-dispatch:status` | Check install/key/CLI status for all backends |
 | `/cli-dispatch:ds-status` / `ag-status` / `cx-status` | Same check, scoped to just DeepSeek / Antigravity / Codex |
 | `/cli-dispatch:balance` | Aggregate — DeepSeek balance + Antigravity quota + Codex rate limits, all at once |

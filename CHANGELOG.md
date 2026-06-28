@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.10.0] — 2026-06-28
+
+### Added
+- **`/cli-dispatch:clean` — remove stale worker session dirs.** A worker killed before it finalized (Ctrl-C, parent CLI closed mid-run, crash, watchdog kill, or a codex provisional `cx-<ts>-<pid>` dir that never relocated) leaves `status.json` stuck at `state:"running"` forever; these accumulate under `~/.cache/cli-dispatch/sessions` and clutter `sessions`/the dashboard. The command finds them by `status.json` mtime (`running` + idle > `--stale-secs`, default 600 s — larger than the dashboard's 90 s so a live-but-quiet turn is never deleted) and, with `--remove`, deletes them. **Dry-run by default.** `--older-than DAYS` additionally prunes finished (`done`/`error`) sessions older than DAYS. A genuinely-running worker (recent write) is never touched. Bash + PowerShell.
+
 ## [3.9.1] — 2026-06-28
 
 ### Fixed

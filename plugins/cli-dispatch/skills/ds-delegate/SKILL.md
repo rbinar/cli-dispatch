@@ -225,6 +225,7 @@ does the work; you = orchestrator + reviewer + git/merge owner. Don't trust any 
 - `/cli-dispatch:cx-run <task>` — delegate to the **Codex (OpenAI)** worker (real read-only sandbox; same workflow).
 - `/cli-dispatch:sessions` — list past/active sessions (all backends; shows a `backend` column). Per-backend: `ds-sessions` / `ag-sessions` / `cx-sessions`.
 - `/cli-dispatch:watch <id>` — show a session's compact live status (cost-conscious).
+- `/cli-dispatch:clean` — remove stale worker dirs (a `running` session whose process died before finalize, so `status.json` is stuck). Dry-run by default; `--remove` deletes, `--older-than DAYS` also prunes old finished sessions.
 - `/cli-dispatch:status` — check installation/key/CLI status for all backends. Per-backend: `ds-status` / `ag-status` / `cx-status`.
 - `/cli-dispatch:balance` — aggregate: DeepSeek balance + Antigravity quota + Codex rate limits at once.
 - `/cli-dispatch:ds-balance` — show the DeepSeek account balance.
