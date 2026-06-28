@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.9.0] — 2026-06-28
+
+### Added
+- **Codex on native Windows.** New `cx-stream.ps1` + `cx-agent.ps1` PowerShell wrappers (faithful ports of the bash `cx-stream`/`cx-agent`: provisional→thread-id session-dir relocation, watchdog runtime/idle caps, real `-s read-only` sandbox, `-o` clean-answer capture, turn-level error propagation). `install.ps1` now takes `-Backends deepseek,codex|all` and installs the Codex backend (+ `.cmd` shims). Antigravity stays WSL-only (needs a pseudo-TTY). Closes the Windows gap where `codex` runs natively but had no wrappers.
+- **Aggregate `/cli-dispatch:balance`.** One command shows DeepSeek account balance + Antigravity per-model quota + Codex 5h/7d rate limits side by side — the balance twin of the aggregate `sessions`/`status`/`watch`. Read-only, no third-party tools; unconfigured/offline backends print a note instead of failing.
+- **Worktree helpers for Antigravity & Codex.** `ag-worktree-run.sh`, `cx-worktree-run.sh` (+ `cx-worktree-run.ps1`) mirror `ds-worktree-run.sh`: create a worktree off `origin/main`, symlink `node_modules`, run the session-tracked stream worker in it, print the cleanup command. `ag-run`/`cx-run` skills now reference them. (No `ag-worktree-run.ps1` — Antigravity isn't supported on native Windows.)
+
+### Notes
+- Backend symmetry audit: all per-backend commands (`*-run`, `*-sessions`, `*-status`, `*-balance`) and runner agents already existed for ds/ag/cx; this release closes the remaining script-level gaps (Windows Codex, worktree helpers) and adds the aggregate balance view.
+
 ## [3.8.0] — 2026-06-28
 
 ### Added

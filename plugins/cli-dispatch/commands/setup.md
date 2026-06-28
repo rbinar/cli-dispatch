@@ -34,10 +34,11 @@ Follow these steps:
      ```bash
      bash "${CLAUDE_PLUGIN_ROOT}/scripts/install.sh" --backends <comma-list|all>
      ```
-   - **Native Windows (PowerShell)** — *DeepSeek only for now*; the Antigravity backend
-     needs a pseudo-TTY (`script`) not present on native Windows, so install it under WSL:
+   - **Native Windows (PowerShell)** — supports **DeepSeek and Codex** (both run natively).
+     The Antigravity backend needs a pseudo-TTY (`script`) not present on native Windows, so
+     install it under WSL instead. Pass `-Backends` (default `deepseek`; `all` = both):
      ```powershell
-     powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/install.ps1"
+     powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/install.ps1" -Backends <deepseek,codex|all>
      ```
    Wrappers go to `~/.local/bin`; parsers to `~/.local/share/cli-dispatch/`. A shared config
    skeleton is created at `~/.config/cli-dispatch/config` if missing (existing configs are

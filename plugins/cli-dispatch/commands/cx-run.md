@@ -30,6 +30,12 @@ Prerequisite: `cx-agent` / `cx-stream` installed (`/cli-dispatch:setup`, Codex b
    The sandbox defaults to `workspace-write` so file edits land in the worktree. Add
    `--sandbox read-only` or `--sandbox danger-full-access` (valid values: `read-only` |
    `workspace-write` | `danger-full-access`) as needed.
+   Or use the bundled helper, which creates the worktree off `origin/main`, symlinks
+   `node_modules`, runs `cx-stream` in it, and prints the cleanup command:
+   ```bash
+   "${CLAUDE_PLUGIN_ROOT}/scripts/cx-worktree-run.sh" <repo-path> cx-run-<branch-name> <brief-file>
+   # Windows: powershell -File "${CLAUDE_PLUGIN_ROOT}/scripts/cx-worktree-run.ps1" <repo> <branch> <brief>
+   ```
 3. **Monitor (cost-conscious):** capture the thread-id from stderr, then check progress via
    `/cli-dispatch:watch <thread-id>` (`state: running→done`). Do NOT tight-loop tail.
 4. When done, **review** the diff (`git -C "$WORKTREE" diff`), verify independently (build/test).

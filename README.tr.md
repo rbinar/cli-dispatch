@@ -123,6 +123,7 @@ claude-ds'i **Claude Code'un içinden** kullanırsın — iki yol:
 | `/cli-dispatch:watch <id>` | Bir session'ın canlı durumunu göster (maliyet-odaklı) |
 | `/cli-dispatch:status` | Tüm backend'ler için kurulum/key/CLI durumunu kontrol et |
 | `/cli-dispatch:ds-status` / `ag-status` / `cx-status` | Aynı kontrol, yalnızca DeepSeek / Antigravity / Codex kapsamında |
+| `/cli-dispatch:balance` | Toplu — DeepSeek bakiyesi + Antigravity kotası + Codex rate limit, hepsi bir arada |
 | `/cli-dispatch:ds-balance` | DeepSeek hesap bakiyesini göster |
 | `/cli-dispatch:cx-balance` | Codex kullanım / rate limit (5h + haftalık kalan %) — native, codex'in kendi disk session kayıtlarından |
 | `/cli-dispatch:ag-balance` | Antigravity kotası (model başına kalan % + plan) — native, local language-server `GetUserStatus` RPC ile |
@@ -246,13 +247,16 @@ Bayraklar (cx-agent / cx-stream): `--read-only`, `--sandbox <mod>`, `--cwd <dir>
 
 ## Windows
 
-Native Windows'ta (WSL kullanmıyorsan) PowerShell varyantları devreye girer:
+Native Windows'ta (WSL kullanmıyorsan) PowerShell varyantları devreye girer. **DeepSeek ve Codex** native çalışır; Antigravity bir pseudo-TTY gerektirdiğinden WSL altında kurulmalı.
 
-- `/cli-dispatch:setup` → `install.ps1` çalışır: `claude-ds.ps1` + `claude-ds-stream.ps1` ve `.cmd` shim'lerini `~/.local/bin`'e, stream parser'ını (`ds-stream-parse.mjs`) `~/.local/share/cli-dispatch`'e kurar (böylece `claude-ds` / `claude-ds-stream` cmd/PowerShell'den çağrılır), config'i `~/.config/cli-dispatch/config`'e yazar.
-- Repo görevleri: `ds-worktree-run.ps1` — `node_modules` için symlink yerine **junction** (`New-Item -ItemType Junction`; admin/developer-mode gerektirmez) kullanır.
+- `/cli-dispatch:setup` → `install.ps1 -Backends <deepseek,codex|all>` çalışır (varsayılan `deepseek`):
+  - **DeepSeek**: `claude-ds.ps1` + `claude-ds-stream.ps1` + `ds-agent.ps1` ve `.cmd` shim'lerini `~/.local/bin`'e, parser'ı (`ds-stream-parse.mjs`) `~/.local/share/cli-dispatch`'e kurar.
+  - **Codex**: `cx-stream.ps1` + `cx-agent.ps1` + `.cmd` shim'leri ve parser'ı (`cx-stream-parse.mjs`) kurar. Auth: `codex login` (ya da config'te `CODEX_API_KEY`). Gerçek `-s read-only` sandbox dahil.
+  - Dashboard her zaman kurulur; config `~/.config/cli-dispatch/config`'e yazılır.
+- Repo görevleri: `ds-worktree-run.ps1` / `cx-worktree-run.ps1` — `node_modules` için symlink yerine **junction** (`New-Item -ItemType Junction`; admin/developer-mode gerektirmez) kullanır.
 - WSL ya da Git Bash varsa Unix `.sh` scriptleri de çalışır.
 
-Gereksinim: PowerShell 5.1+ veya pwsh 7+, ve `claude` CLI PATH'te.
+Gereksinim: PowerShell 5.1+ veya pwsh 7+; DeepSeek için `claude`, Codex için `codex` PATH'te.
 
 ## Kaldırma (Uninstall)
 

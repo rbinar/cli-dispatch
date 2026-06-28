@@ -19,8 +19,11 @@ backend) and `agy` signed in (run `agy` once) or `GEMINI_API_KEY` set.
 
 **If it's a real repo task** (file changes needed) — isolate in a git worktree (this also
 avoids agy's per-workspace conversation-id race):
-1. Open a worktree off `origin/main` (e.g. via the bundled `ds-worktree-run.sh` pattern, or
-   `git worktree add`).
+1. Open a worktree off `origin/main` — either `git worktree add` by hand, or the bundled
+   helper (creates the worktree, runs `ag-stream` in it, prints the cleanup command):
+   ```bash
+   "${CLAUDE_PLUGIN_ROOT}/scripts/ag-worktree-run.sh" <repo-path> ag-run-<branch-name> <brief-file>
+   ```
 2. Run it (as a background task), pointing the worker at the worktree:
    ```bash
    ag-agent --cwd <worktree> --max-runtime 600 "$ARGUMENTS"

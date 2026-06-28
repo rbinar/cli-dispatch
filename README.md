@@ -123,6 +123,7 @@ You use claude-ds **from inside Claude Code** — two ways:
 | `/cli-dispatch:watch <id>` | Show a session's live status (cost-aware; any backend) |
 | `/cli-dispatch:status` | Check install/key/CLI status for all backends |
 | `/cli-dispatch:ds-status` / `ag-status` / `cx-status` | Same check, scoped to just DeepSeek / Antigravity / Codex |
+| `/cli-dispatch:balance` | Aggregate — DeepSeek balance + Antigravity quota + Codex rate limits, all at once |
 | `/cli-dispatch:ds-balance` | Show DeepSeek account balance |
 | `/cli-dispatch:cx-balance` | Show Codex usage / rate limits (5h + weekly % left) — native, from codex's own on-disk session records |
 | `/cli-dispatch:ag-balance` | Show Antigravity quota (% left per model + plan) — native, via the local language-server `GetUserStatus` RPC |
@@ -180,8 +181,11 @@ The Codex backend has its own parallel subagent: **`cx-runner`**. It works ident
 extra. Each `*-balance` command reverse-engineers data the CLI already keeps locally; nothing
 new is sent over the network on your behalf.
 
+Use `/cli-dispatch:balance` to see all three at once, or a single `*-balance` command per backend.
+
 | Backend | Command | Where the number comes from |
 |---|---|---|
+| **All** | `/cli-dispatch:balance` | Runs the three below in one go and summarizes each headline number side by side. |
 | **DeepSeek** | `/cli-dispatch:ds-balance` | DeepSeek's official REST balance API (`/user/balance`), using your `DEEPSEEK_API_KEY`. |
 | **Codex** | `/cli-dispatch:cx-balance` | Codex **persists** the backend's rate-limit payload into its own session records (`~/.codex/sessions/**/*.jsonl`). The command reads the newest `token_count` record's `rate_limits` → `primary` (5h) + `secondary` (7d) windows as **% left** + reset. No network. |
 | **Antigravity** | `/cli-dispatch:ag-balance` | The local Antigravity **language server** (the one the IDE/`agy` already run) exposes a Connect-RPC `GetUserStatus` endpoint. The command finds the running `language_server` process, reads its `--csrf_token` arg + listening port, then `POST`s `GetUserStatus` → plan + **per-model `remainingFraction`** + reset. |
@@ -239,13 +243,16 @@ Flags (cx-agent / cx-stream): `--read-only`, `--sandbox <mode>`, `--cwd <dir>`, 
 
 ## Windows
 
-On native Windows (if you're not using WSL) the PowerShell variants kick in:
+On native Windows (if you're not using WSL) the PowerShell variants kick in. **DeepSeek and Codex** run natively; Antigravity needs a pseudo-TTY, so install it under WSL.
 
-- `/cli-dispatch:setup` → runs `install.ps1`: installs `claude-ds.ps1` + `claude-ds-stream.ps1` and `.cmd` shims into `~/.local/bin`, and the stream parser (`ds-stream-parse.mjs`) into `~/.local/share/cli-dispatch` (so `claude-ds` / `claude-ds-stream` are callable from cmd/PowerShell), and writes the config to `~/.config/cli-dispatch/config`.
-- Repo tasks: `ds-worktree-run.ps1` — uses a **junction** instead of a symlink for `node_modules` (`New-Item -ItemType Junction`; doesn't require admin/developer-mode).
+- `/cli-dispatch:setup` → runs `install.ps1 -Backends <deepseek,codex|all>` (default `deepseek`):
+  - **DeepSeek**: `claude-ds.ps1` + `claude-ds-stream.ps1` + `ds-agent.ps1` and `.cmd` shims into `~/.local/bin`, parser (`ds-stream-parse.mjs`) into `~/.local/share/cli-dispatch`.
+  - **Codex**: `cx-stream.ps1` + `cx-agent.ps1` + `.cmd` shims and parser (`cx-stream-parse.mjs`). Auth: `codex login` (or `CODEX_API_KEY` in the config). Real `-s read-only` sandbox included.
+  - The dashboard is always installed; the config is written to `~/.config/cli-dispatch/config`.
+- Repo tasks: `ds-worktree-run.ps1` / `cx-worktree-run.ps1` — use a **junction** instead of a symlink for `node_modules` (`New-Item -ItemType Junction`; doesn't require admin/developer-mode).
 - If WSL or Git Bash is present, the Unix `.sh` scripts also work.
 
-Requirements: PowerShell 5.1+ or pwsh 7+, and the `claude` CLI on PATH.
+Requirements: PowerShell 5.1+ or pwsh 7+; `claude` for DeepSeek, `codex` for Codex, on PATH.
 
 ## Uninstall
 
