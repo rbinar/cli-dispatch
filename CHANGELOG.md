@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.13.3] — 2026-06-28
+
+### Changed
+- **Dashboard: the worker "Görev / talimat" panel now starts collapsed** (click to expand), matching the Subagents/Worker-sessions panels.
+
 ## [3.13.2] — 2026-06-28
 
 ### Changed

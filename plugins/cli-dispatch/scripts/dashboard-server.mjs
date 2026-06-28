@@ -594,7 +594,7 @@ async function openWorker(w){
   const v=document.getElementById('view'); v.className=''; v.innerHTML='loading…'
   const flow=await j('/api/worker/'+w.id+'/flow')
   let h=''
-  if(flow.prompt) h+='<details class="panel task" open><summary>Görev / talimat</summary><div class="sabody"><div class="md">'+md(flow.prompt)+'</div></div></details>'
+  if(flow.prompt) h+='<details class="panel task"><summary>Görev / talimat</summary><div class="sabody"><div class="md">'+md(flow.prompt)+'</div></div></details>'
   h+=renderFlow(flow.steps)
   if(flow.finalResultPreview) h+='<div class="step message" style="margin-top:10px">⏺ <b>result:</b> '+esc(flow.finalResultPreview)+'</div>'
   v.innerHTML=h; loadList()
