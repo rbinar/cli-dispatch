@@ -234,10 +234,22 @@ function listWorkers() {
     const dir = path.join(WORKERS_ROOT, d); if (!isDir(dir)) continue
     const m = readJSON(path.join(dir, 'meta.json')) || {}
     const s = readJSON(path.join(dir, 'status.json')) || {}
+    // A worker interrupted before finalize (Ctrl-C, killed CLI, crash) leaves status.json
+    // stuck at state:"running" forever. Detect that with the file's own mtime: if nothing has
+    // been written for a while, the worker is no longer live — surface it as "stale" so the UI
+    // doesn't show it green. (Same liveness heuristic as subagents; threshold is generous so a
+    // genuinely-running-but-quiet turn isn't misflagged.) Workers write status.json on every
+    // event, so a >90s gap reliably means dead.
+    let mtime = 0
+    try { mtime = fs.statSync(path.join(dir, 'status.json')).mtimeMs } catch {}
+    const rawState = s.state || m.state || '?'
+    const stale = rawState === 'running' && mtime > 0 && (Date.now() - mtime > 90000)
     out.push({
       id: d,
       backend: s.backend || m.backend || 'deepseek',
-      state: s.state || m.state || '?',
+      state: rawState,
+      stale,
+      mtime,
       started: m.startedAt || '',
       cwd: m.cwd || '',
       model: m.model || '',
@@ -479,7 +491,10 @@ async function loadList(){
     const ws=await j('/api/workers')
     document.getElementById('meta').textContent=ws.length+' workers'
     ws.forEach(w=>{
-      const it=E('<div class="item'+(sel===w.id?' sel':'')+'"><div><span class="dot '+(w.state==='running'?'busy':w.state==='done'?'closed':'idle')+'"></span>'+esc(w.backend)+'<span class="badge">'+esc(w.state)+'</span></div><div class="small muted">'+esc(w.prompt||w.id.slice(0,8))+'</div><div class="small muted">'+esc(fmtDT(w.started))+(w.lastTool?' · '+esc(w.lastTool):'')+'</div></div>')
+      const live=w.state==='running'&&!w.stale
+      const dot=live?'busy':w.state==='done'?'closed':'idle'
+      const badge=w.stale?'stale':w.state
+      const it=E('<div class="item'+(sel===w.id?' sel':'')+'"><div><span class="dot '+dot+'"></span>'+esc(w.backend)+'<span class="badge">'+esc(badge)+'</span></div><div class="small muted">'+esc(w.prompt||w.id.slice(0,8))+'</div><div class="small muted">'+esc(fmtDT(w.started))+(w.lastTool?' · '+esc(w.lastTool):'')+'</div></div>')
       it.onclick=()=>openWorker(w); el.appendChild(it)
     })
   }
@@ -500,7 +515,7 @@ function renderFlow(steps){
   }).join('')
 }
 function workerPanelHtml(lw){ if(!lw||!lw.length) return ''
-  return '<details class="panel wk" open><summary>Worker sessions (ds/ag/cx) <span class="badge">'+lw.length+'</span></summary><div class="sabody">'+lw.map(w=>'<span class="sa" onclick="openWorkerById(\\''+w.id+'\\')">'+esc(w.backend)+': '+esc(w.prompt||w.id.slice(0,12))+' <span class="c">'+esc(w.state)+'</span></span>').join('')+'</div></details>' }
+  return '<details class="panel wk" open><summary>Worker sessions (ds/ag/cx) <span class="badge">'+lw.length+'</span></summary><div class="sabody">'+lw.map(w=>'<span class="sa" onclick="openWorkerById(\\''+w.id+'\\')">'+esc(w.backend)+': '+esc(w.prompt||w.id.slice(0,12))+' <span class="c">'+esc(w.stale?'stale':w.state)+'</span></span>').join('')+'</div></details>' }
 function openWorkerById(id){ fetch('/api/workers').then(r=>r.json()).then(ws=>{const w=ws.find(x=>x.id===id); if(!w) return; mode='w'; document.getElementById('tabW').classList.add('on'); document.getElementById('tabCC').classList.remove('on'); openWorker(w)}) }
 function chipHtml(a){const t=fmtTime(a.startedAt);return '<span class="sa'+(a.active?' act':'')+'" onclick="openSub(\\''+a.agentId+'\\','+(a.active?'true':'false')+')">'+(a.active?'● ':'')+esc(a.agentType)+': '+esc(a.description||a.agentId.slice(0,8))+(a.spawnDepth>1?' ·d'+a.spawnDepth:'')+(t?' <span class="c">'+t+'</span>':'')+'</span>'}
 async function openSession(s){
@@ -539,7 +554,7 @@ async function openWorker(w){
   let h=renderFlow(flow.steps)
   if(flow.finalResultPreview) h+='<div class="step message" style="margin-top:10px">⏺ <b>result:</b> '+esc(flow.finalResultPreview)+'</div>'
   v.innerHTML=h; loadList()
-  watchDetail(w.state==='running'?'worker:'+w.id:null, ()=>openWorker(w))
+  watchDetail((w.state==='running'&&!w.stale)?'worker:'+w.id:null, ()=>openWorker(w))
 }
 function reopen(sid){ fetch('/api/sessions').then(r=>r.json()).then(ss=>{const s=ss.find(x=>x.id===sid); if(s) openSession(s)}) }
 function back(){ watchDetail(null); sel=null; window._cur=null; document.getElementById('crumb').textContent='Select a session…'; document.getElementById('view').className='empty'; document.getElementById('view').innerHTML='←'; loadList() }
