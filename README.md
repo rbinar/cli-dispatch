@@ -2,15 +2,15 @@
 
 > 🌐 **Languages:** **English** · [Türkçe](README.tr.md)
 
-A Claude Code plugin that **delegates a task to the right worker CLI** — a multi-backend delegation hub. Backends: **DeepSeek-powered Claude Code** (`claude-ds`), **Antigravity / Gemini** (`agy`, via `ag-agent`), and **OpenAI Codex CLI** (`codex`, via `cx-agent`).
+**Use DeepSeek, Gemini, or OpenAI Codex as delegated workers inside Claude Code.** Claude Code's built-in subagent tool only supports Anthropic models — cli-dispatch adds portable wrappers so you can hand tasks to any of the three from inside your existing `claude` session.
 
 > ℹ️ **Multi-backend delegation hub.** Three worker backends today — **DeepSeek** (commands `/cli-dispatch:ds-*`), **Antigravity/Gemini** (`/cli-dispatch:ag-run`, wrappers `ag-agent`/`ag-stream`), and **Codex** (`/cli-dispatch:cx-run`, wrappers `cx-agent`/`cx-stream`). You pick which to install at setup. All three write to the same session layout, so `sessions`/`watch` work across all. The DeepSeek wrapper/config paths keep the `claude-ds` name (that backend's name).
-
-Claude Code's built-in `Agent`/subagent tool only supports Anthropic models (sonnet/opus/haiku) — it can't hand work to DeepSeek, Gemini, or OpenAI's Codex. cli-dispatch installs portable wrappers that drive each worker CLI (Claude Code against DeepSeek's API; the Antigravity CLI for Gemini; the OpenAI Codex CLI), so you can hand tasks to any of them as a **delegated worker**.
 
 > 📝 **Write-up (Turkish):** [cli-dispatch: a plugin that makes Claude the boss and DeepSeek the worker](https://medium.com/@rbinar/cli-dispatch-claudea-patron-deepseek-e-i%CC%87%C5%9F%C3%A7i-rol%C3%BC-veren-bir-plugin-b232803581fc) — Medium
 
 ![cli-dispatch demo — start Claude Code in your project, then: install, /cli-dispatch:setup, delegate via /cli-dispatch:ds-run and the ds/ag/cx-runner subagents, check usage](assets/demo.gif)
+
+> **Demo** — install the plugin, run `/cli-dispatch:setup` to pick and configure your backend(s), then delegate tasks with `/cli-dispatch:ds-run` / `ag-run` / `cx-run` or the `ds-/ag-/cx-runner` subagents. The worker generates; Claude Code watches live and verifies.
 
 ![cli-dispatch dashboard — live session list, subagent drill-down (ds/ag/cx-runner), worker session trace per backend](assets/dashboard.gif)
 
@@ -19,6 +19,11 @@ Claude Code's built-in `Agent`/subagent tool only supports Anthropic models (son
 ## Install
 
 > ⚠️ These commands are **slash commands** and must be run **from inside the Claude Code CLI** (not in a normal terminal/shell). First type `claude` to start a Claude Code session, then enter the commands at that session's prompt.
+
+**Before you start — you need:**
+- `claude` CLI installed and on your `PATH`
+- `~/.local/bin` on your `PATH` — check: `echo $PATH | grep -q local && echo ok || echo 'add: export PATH="$HOME/.local/bin:$PATH" to ~/.zshrc'`
+- API key for your backend: DeepSeek ([platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys)) · Antigravity uses Google OAuth (`agy` login, no key) · Codex uses ChatGPT OAuth (`codex login`, no key)
 
 Run the commands **one at a time, in order** — don't paste them all at once. Send each command, wait for the result, then move to the next:
 
@@ -69,7 +74,7 @@ For the **Antigravity (Gemini)** backend, setup installs `ag-agent`/`ag-stream` 
 
 For the **Codex (OpenAI Codex CLI)** backend, setup installs `cx-agent`/`cx-stream`. It needs the `codex` CLI (≥ 0.142.3: `npm i -g @openai/codex`, `brew install --cask codex`, or `curl -fsSL https://chatgpt.com/codex/install.sh | sh`) plus `node`; auth is via `codex login` (ChatGPT/OAuth — no API key needed for personal use) or `CODEX_API_KEY` (takes precedence) or `OPENAI_API_KEY`. Select a model with `cx-agent --model <name>` (or the `CX_MODEL` config default; blank = codex's own default): `gpt-5.5` (default), `gpt-5.4`, `gpt-5.4-mini` (fast/cheap, subagents), `gpt-5.3-codex-spark` (run `/model` inside codex for the live list). **Key advantage:** `cx-agent --read-only` activates codex's **real OS-level sandbox** (macOS Seatbelt / Linux bwrap+seccomp) — a kernel-enforced hard-block on all file writes, not just tool-layer restriction.
 
-Requirements: the `claude` CLI installed and `~/.local/bin` on PATH. DeepSeek key: https://platform.deepseek.com/api_keys
+DeepSeek key: https://platform.deepseek.com/api_keys
 
 ## Updating
 
@@ -129,6 +134,8 @@ You use cli-dispatch **from inside Claude Code** — two ways:
 | `/cli-dispatch:sessions` | List past/active sessions (all backends; shows a `backend` column) |
 | `/cli-dispatch:ds-sessions` / `ag-sessions` / `cx-sessions` | Same list, filtered to just DeepSeek / Antigravity / Codex |
 | `/cli-dispatch:watch <id>` | Show a session's live status (cost-aware; any backend) |
+| `/cli-dispatch:resume <id> <prompt>` | Continue a worker session with a follow-up prompt (auto-detects backend) |
+| `/cli-dispatch:kill <id>` | Stop a running worker session (SIGTERM + state → killed) |
 | `/cli-dispatch:clean` | Remove stale worker dirs (`running`-but-dead); dry-run by default, `--remove` to delete |
 | `/cli-dispatch:clean-schedule` | Schedule a daily auto-clean via the OS scheduler (launchd / cron / Scheduled Tasks); `status` / `uninstall` too |
 | `/cli-dispatch:status` | Check install/key/CLI status for all backends |
@@ -137,6 +144,8 @@ You use cli-dispatch **from inside Claude Code** — two ways:
 | `/cli-dispatch:ds-balance` | Show DeepSeek account balance |
 | `/cli-dispatch:cx-balance` | Show Codex usage / rate limits (5h + weekly % left) — native, from codex's own on-disk session records |
 | `/cli-dispatch:ag-balance` | Show Antigravity quota (% left per model + plan) — native, via the local language-server `GetUserStatus` RPC |
+| `/cli-dispatch:doctor` | Health check for all backends — PATH, API keys, CLI auth ✓/✗ |
+| `/cli-dispatch:help` | One-screen command reference cheat sheet |
 
 ## Features
 
@@ -188,6 +197,10 @@ Valuable for long/agentic work, verification, or several jobs in parallel; for a
 ## cx-runner subagent (Codex twin — keep context clean)
 
 The Codex backend has its own parallel subagent: **`cx-runner`**. It works identically to `ds-runner` — picks the mode, isolates the work in a git worktree when needed, **verifies** (build/test for repo tasks), and returns a short result — but the worker is always Codex. The headline advantage over the other backends is Mode A: `--read-only` activates a **real OS-level sandbox** (macOS Seatbelt / Linux bwrap+seccomp), a kernel-enforced hard-block on all file writes — no worktree needed for a genuine no-writes guarantee. Inside Claude Code, say "do this task with cx-runner" or use `Agent(subagent_type="cx-runner", ...)`.
+
+## ag-runner subagent (Antigravity twin — keep context clean)
+
+The Antigravity backend has its own parallel subagent: **`ag-runner`**. It works identically to `ds-runner` — picks the mode, isolates the work in a git worktree when needed, **verifies** (build/test for repo tasks), and returns a short result — but the worker is always Antigravity (via `agy` / `ag-agent`). agy proxies multiple model families (Gemini, Claude, GPT — run `agy models` for the current list), so you can switch models without changing your delegation flow. Inside Claude Code, say "do this task with ag-runner" or use `Agent(subagent_type="ag-runner", ...)`.
 
 ## Usage & quota — native, no third-party tool
 

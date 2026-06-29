@@ -2,15 +2,15 @@
 
 > 🌐 **Diller:** **Türkçe** · [English](README.md)
 
-**Bir görevi uygun işçi CLI'ya delege eden** bir Claude Code plugin'i — çok-backend delege hub'ı. Backend'ler: **DeepSeek destekli Claude Code** (`claude-ds`), **Antigravity / Gemini** (`agy`, `ag-agent` ile) ve **OpenAI Codex CLI** (`codex`, `cx-agent` ile).
+**DeepSeek, Gemini veya OpenAI Codex'i Claude Code içinden delege işçi olarak kullan.** Claude Code'un yerleşik subagent aracı yalnızca Anthropic modellerini destekler — cli-dispatch, mevcut `claude` oturumundan bu üç backend'e görev delege edebilmen için taşınabilir wrapper'lar kurar.
 
 > ℹ️ **Çok-backend delege hub'ı.** Bugün üç işçi backend'i var — **DeepSeek** (komutlar `/cli-dispatch:ds-*`), **Antigravity/Gemini** (`/cli-dispatch:ag-run`, wrapper'lar `ag-agent`/`ag-stream`) ve **Codex** (`/cli-dispatch:cx-run`, wrapper'lar `cx-agent`/`cx-stream`). Hangisini kuracağını setup'ta seçersin. Üçü de aynı session düzenine yazar; `sessions`/`watch` hepsinde çalışır. DeepSeek wrapper/config yolları `claude-ds` adını korur (o backend'in adı).
-
-Claude Code'un yerleşik `Agent`/subagent tool'u yalnızca Anthropic modellerini (sonnet/opus/haiku) destekler — DeepSeek'e, Gemini'ye ya da OpenAI Codex'e iş veremez. cli-dispatch her işçi CLI'ı süren taşınabilir wrapper'lar kurar (Claude Code'u DeepSeek API'siyle; Gemini için Antigravity CLI'ı; OpenAI Codex CLI'ı); böylece görevleri herhangi birine **delege işçi** olarak verebilirsin.
 
 > 📝 **Yazı:** [cli-dispatch: Claude'a patron, DeepSeek'e işçi rolü veren bir plugin](https://medium.com/@rbinar/cli-dispatch-claudea-patron-deepseek-e-i%CC%87%C5%9F%C3%A7i-rol%C3%BC-veren-bir-plugin-b232803581fc) — Medium
 
 ![cli-dispatch demo — projende Claude Code başlat, sonra: install, /cli-dispatch:setup, /cli-dispatch:ds-run ve ds/ag/cx-runner subagent ile delege et, kullanımı gör](assets/demo.gif)
+
+> **Demo** — plugin'i kur, `/cli-dispatch:setup` ile backend(ler)ini seç ve yapılandır, ardından `/cli-dispatch:ds-run` / `ag-run` / `cx-run` veya `ds-/ag-/cx-runner` subagent'ları ile görev delege et. İşçi üretir; Claude Code canlı izler ve doğrular.
 
 ![cli-dispatch dashboard — canlı session listesi, subagent detayı (ds/ag/cx-runner), backend başına işçi session izi](assets/dashboard.gif)
 
@@ -19,6 +19,11 @@ Claude Code'un yerleşik `Agent`/subagent tool'u yalnızca Anthropic modellerini
 ## Kurulum
 
 > ⚠️ Bu komutlar **slash komutudur** ve **Claude Code CLI'ın içinden** çalıştırılmalıdır (normal terminal/shell'de değil). Önce `claude` yazıp Claude Code oturumunu başlat, komutları o oturumun prompt'una gir.
+
+**Başlamadan önce — gerekenler:**
+- `claude` CLI kurulu ve `PATH`'te
+- `~/.local/bin` `PATH`'te — kontrol: `echo $PATH | grep -q local && echo tamam || echo 'ekle: export PATH="$HOME/.local/bin:$PATH" → ~/.zshrc'`
+- Seçtiğin backend için API key: DeepSeek ([platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys)) · Antigravity Google OAuth kullanır (`agy` girişi, key gerekmez) · Codex ChatGPT OAuth kullanır (`codex login`, key gerekmez)
 
 Komutları **tek tek, sırayla** çalıştır — hepsini aynı anda yapıştırma. Her komutu gönder, sonucu bekle, sonra bir sonrakine geç:
 
@@ -69,7 +74,7 @@ DS_FLASH_MODEL="deepseek-v4-flash"
 
 **Codex (OpenAI Codex CLI)** backend'i için setup `cx-agent`/`cx-stream` kurar. `codex` CLI'ı (≥ 0.142.3: `npm i -g @openai/codex`, `brew install --cask codex` veya `curl -fsSL https://chatgpt.com/codex/install.sh | sh`) + `node` gerekir; auth `codex login` (ChatGPT/OAuth — kişisel kullanım için API key gerekmez) veya `CODEX_API_KEY` (öncelikli) ya da `OPENAI_API_KEY` ile. Model seçimi: `cx-agent --model <ad>` (veya `CX_MODEL` config default; boş = codex'in kendi default'u). **Öne çıkan özellik:** `cx-agent --read-only` codex'in **gerçek OS-düzey sandbox'ını** aktive eder (macOS Seatbelt / Linux bwrap+seccomp) — yalnızca tool-katman kısıtlaması değil, kernel düzeyinde sert yazma engeli.
 
-Gereksinim: `claude` CLI kurulu ve `~/.local/bin` PATH'te olmalı. DeepSeek key'i: https://platform.deepseek.com/api_keys
+DeepSeek key'i: https://platform.deepseek.com/api_keys
 
 ## Güncelleme
 
@@ -129,6 +134,8 @@ cli-dispatch'i **Claude Code'un içinden** kullanırsın — iki yol:
 | `/cli-dispatch:sessions` | Geçmiş/aktif session'ları listele (tüm backend'ler; `backend` kolonu) |
 | `/cli-dispatch:ds-sessions` / `ag-sessions` / `cx-sessions` | Aynı liste, yalnızca DeepSeek / Antigravity / Codex'e filtreli |
 | `/cli-dispatch:watch <id>` | Bir session'ın canlı durumunu göster (maliyet-odaklı) |
+| `/cli-dispatch:resume <id> <prompt>` | Bir worker session'a follow-up göndererek devam et (backend otomatik tespit) |
+| `/cli-dispatch:kill <id>` | Çalışan worker session'ı durdur (SIGTERM + state → killed) |
 | `/cli-dispatch:clean` | Stale worker dizinlerini (`running` ama ölü) temizle; varsayılan dry-run, `--remove` ile siler |
 | `/cli-dispatch:clean-schedule` | OS zamanlayıcısıyla günlük otomatik temizlik kur (launchd / cron / Scheduled Tasks); `status` / `uninstall` da var |
 | `/cli-dispatch:status` | Tüm backend'ler için kurulum/key/CLI durumunu kontrol et |
@@ -137,6 +144,8 @@ cli-dispatch'i **Claude Code'un içinden** kullanırsın — iki yol:
 | `/cli-dispatch:ds-balance` | DeepSeek hesap bakiyesini göster |
 | `/cli-dispatch:cx-balance` | Codex kullanım / rate limit (5h + haftalık kalan %) — native, codex'in kendi disk session kayıtlarından |
 | `/cli-dispatch:ag-balance` | Antigravity kotası (model başına kalan % + plan) — native, local language-server `GetUserStatus` RPC ile |
+| `/cli-dispatch:doctor` | Tüm backend'ler için sağlık kontrolü — PATH, API key'ler, CLI auth ✓/✗ |
+| `/cli-dispatch:help` | Tek ekranda komut referans tablosu |
 
 ## Özellikler
 
@@ -194,6 +203,10 @@ doğrudan `/cli-dispatch:ds-run` yeter.
 ## cx-runner subagent (Codex ikizi — bağlamı temiz tut)
 
 Codex backend'inin kendi paralel subagent'ı vardır: **`cx-runner`**. `ds-runner` ile aynı şekilde çalışır — modu seçer, gerektiğinde işi git worktree'de izole eder, **doğrular** (repo görevinde build/test) ve kısa bir sonuç döndürür — ancak işçi her zaman Codex'tir. Diğer backend'lere göre öne çıkan avantajı Mod A'dır: `--read-only`, **gerçek bir OS-düzey sandbox** (macOS Seatbelt / Linux bwrap+seccomp) aktive eder; kernel düzeyinde sert yazma engeli — gerçek bir yazma garantisi için worktree gerekmez. Claude Code içinde "şu görevi cx-runner ile yap" dersin veya `Agent(subagent_type="cx-runner", ...)` kullanırsın.
+
+## ag-runner subagent (Antigravity ikizi — bağlamı temiz tut)
+
+Antigravity backend'inin kendi paralel subagent'ı vardır: **`ag-runner`**. `ds-runner` ile aynı şekilde çalışır — modu seçer, gerektiğinde işi git worktree'de izole eder, **doğrular** (repo görevinde build/test) ve kısa bir sonuç döndürür — ancak işçi her zaman Antigravity'dir (`agy` / `ag-agent` ile). agy birden çok model ailesi proxy'ler (Gemini, Claude, GPT — güncel liste için `agy models`), bu sayede delege akışını değiştirmeden işçiyi değiştirebilirsin. Claude Code içinde "şu görevi ag-runner ile yap" dersin veya `Agent(subagent_type="ag-runner", ...)` kullanırsın.
 
 ## Kullanım & kota — native, üçüncü-parti araç yok
 
