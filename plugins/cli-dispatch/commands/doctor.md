@@ -20,8 +20,9 @@ chk claude
 chk node
 
 echo "── DeepSeek ────────────────────────────────────────────"
-chk ds-agent
+chk claude-ds
 chk claude-ds-stream
+chk ds-agent
 if [ -f "$CFG" ]; then
   ( . "$CFG"; [ -n "${DEEPSEEK_API_KEY:-}" ] && ok "DEEPSEEK_API_KEY set" || bad "DEEPSEEK_API_KEY missing — add to $CFG" )
 else
@@ -31,6 +32,7 @@ fi
 echo "── Antigravity / Gemini ─── optional ──────────────────"
 if command -v ag-agent >/dev/null 2>&1; then
   ok "ag-agent on PATH"
+  chk ag-stream
   chk agy
   command -v script >/dev/null 2>&1 && ok "script (pseudo-tty) found" || bad "script missing (ag backend needs it)"
   [ -f "$CFG" ] && ( . "$CFG"; [ -n "${GEMINI_API_KEY:-}" ] && ok "GEMINI_API_KEY set" || ok "no GEMINI_API_KEY — using Google sign-in (run 'agy' once if not signed in)" )
@@ -41,6 +43,7 @@ fi
 echo "── Codex / OpenAI ─────────── optional ─────────────────"
 if command -v cx-agent >/dev/null 2>&1; then
   ok "cx-agent on PATH"
+  chk cx-stream
   if command -v codex >/dev/null 2>&1; then
     ok "codex CLI found"
     [ -f "$CFG" ] && ( . "$CFG"

@@ -47,7 +47,7 @@ if [ -z "${TASK//[[:space:]]/}" ]; then echo "cx-agent: empty task — nothing t
 
 STREAM="$(command -v cx-stream 2>/dev/null || true)"
 [ -z "$STREAM" ] && STREAM="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cx-stream"
-[ -x "$STREAM" ] || { echo "cx-agent: cx-stream not found (run /cli-dispatch:ds-setup)." >&2; exit 1; }
+[ -x "$STREAM" ] || { echo "cx-agent: cx-stream not found (run /cli-dispatch:setup)." >&2; exit 1; }
 
 if [ "$QUIET" -eq 0 ]; then
   echo "▶ cx-agent → Codex (OpenAI Codex CLI) worker" >&2

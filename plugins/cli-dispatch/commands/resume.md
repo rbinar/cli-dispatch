@@ -29,11 +29,14 @@ if [ ! -d "$DIR" ]; then
   exit 1
 fi
 
-BACKEND=$(node -e "
+BACKEND=$(CLI_DISPATCH_SESSION_DIR="$DIR" node -e "
 const fs=require('fs');
+const d=process.env.CLI_DISPATCH_SESSION_DIR;
 const read=p=>{try{return JSON.parse(fs.readFileSync(p,'utf8'))}catch{return{}}};
-const s=read('$DIR/status.json'), m=read('$DIR/meta.json');
-process.stdout.write(s.backend||m.backend||'deepseek');
+const s=read(d+'/status.json'), m=read(d+'/meta.json');
+const b=s.backend||m.backend;
+if(!b){process.stderr.write('warning: no backend field in session metadata, assuming deepseek\n');}
+process.stdout.write(b||'deepseek');
 " 2>/dev/null)
 
 echo "session: $SID  backend: $BACKEND"

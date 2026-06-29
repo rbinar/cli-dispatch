@@ -21,14 +21,14 @@ if [ ! -d "$DIR" ]; then
   exit 1
 fi
 
-STATE=$(node -e "try{process.stdout.write(JSON.parse(require('fs').readFileSync('$DIR/status.json','utf8')).state||'')}catch{}" 2>/dev/null)
+STATE=$(CLI_DISPATCH_SESSION_DIR="$DIR" node -e "try{process.stdout.write(JSON.parse(require('fs').readFileSync(process.env.CLI_DISPATCH_SESSION_DIR+'/status.json','utf8')).state||'')}catch{}" 2>/dev/null)
 if [ "$STATE" != "running" ]; then
   echo "session $SID is not running (state: ${STATE:-unknown}) — nothing to kill"
   exit 0
 fi
 
 # Find the process owning this session by its id in argv
-PID=$(pgrep -f "$SID" 2>/dev/null | grep -v "^$$\$" | head -1)
+PID=$(pgrep -f "$SID" 2>/dev/null | grep -v "^$$" | head -1)
 
 if [ -n "$PID" ]; then
   kill -TERM "$PID" 2>/dev/null && echo "sent SIGTERM to PID $PID" || echo "process $PID already exited"
@@ -36,9 +36,9 @@ else
   echo "process not found in process table — may have already exited; updating state"
 fi
 
-node -e "
+CLI_DISPATCH_SESSION_DIR="$DIR" node -e "
 const fs = require('fs');
-const p = '$DIR/status.json';
+const p = process.env.CLI_DISPATCH_SESSION_DIR + '/status.json';
 try {
   const s = JSON.parse(fs.readFileSync(p, 'utf8'));
   s.state = 'killed';

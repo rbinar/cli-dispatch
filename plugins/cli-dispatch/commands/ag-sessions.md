@@ -44,4 +44,4 @@ EOF
 ```
 
 To see a session's detail/live status: `/cli-dispatch:watch <id>`.
-To send a follow-up (continue the same session): `ag-stream --resume <id> -p "<follow-up>"`.
+To send a follow-up (continue the same session): `/cli-dispatch:resume <id> <follow-up>`.

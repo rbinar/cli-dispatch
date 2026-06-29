@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.14.1] — 2026-06-29
+
+### Fixed
+- **kill.md / resume.md: shell injection via `$DIR` in `node -e` string.** Session dir path was interpolated bare into single-quoted JS string literals (`'$DIR/status.json'`); a session ID containing a single quote could break out of the string. Fixed by passing via `CLI_DISPATCH_SESSION_DIR` env var and reading `process.env.CLI_DISPATCH_SESSION_DIR` inside the script.
+- **kill.md: `pgrep` self-exclusion regex typo.** `grep -v "^$$\$"` had a trailing `\$` causing the pattern to include a literal `$`. Fixed to `grep -v "^$$"`.
+- **resume.md: missing warning on metadata fallback.** When neither `status.json` nor `meta.json` has a `backend` field the command silently routed to DeepSeek. Now emits a warning before assuming `deepseek`.
+- **cx-worktree-run.sh: missing `trap _cleanup ERR INT TERM`.** Unlike the ds and ag variants, the cx worktree script had no cleanup trap — a Codex crash left a stale worktree on disk. Added `_cleanup` + `trap`, mirroring the fix applied to ds/ag in 3.14.0. Also removed `|| true` from the `cx-stream` call so worker crashes propagate to the babysitter.
+- **ag-agent / cx-agent: wrong error message on missing CLI.** The "not found" message referenced `/cli-dispatch:ds-setup` (DeepSeek-specific); corrected to `/cli-dispatch:setup`.
+- **sessions.md / ds-sessions.md / ag-sessions.md / cx-sessions.md: stale or wrong follow-up hints.** The resume-hint at the bottom of all four session commands referenced backend-specific CLI flags directly (`claude-ds-stream --resume`, `ag-stream --resume`, `cx-stream --resume`). `ag-stream` and `cx-stream` have no `--resume` flag — those hints were actively wrong. All four now point to `/cli-dispatch:resume <id> <follow-up>`.
+- **doctor.md: incomplete CLI checks.** DeepSeek section checked `ds-agent` + `claude-ds-stream` but not `claude-ds` (all three are installed by setup). Antigravity section checked `ag-agent` but not `ag-stream`. Codex section checked `cx-agent` but not `cx-stream`. All three gaps filled.
+- **watch.md: no guard for empty `$ARGUMENTS`.** Calling `/cli-dispatch:watch` with no argument would produce confusing output (checks the session root as if it were a session dir). Added a usage hint + early exit when `$ARGUMENTS` is empty.
+
 ## [3.14.0] — 2026-06-29
 
 ### Added

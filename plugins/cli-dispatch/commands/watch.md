@@ -13,6 +13,11 @@ run, call this ONCE per orchestration step.
 
 ```bash
 SID="$ARGUMENTS"
+if [ -z "$SID" ]; then
+  echo "usage: /cli-dispatch:watch <session-id>"
+  echo "tip:   /cli-dispatch:sessions  to list session ids"
+  exit 1
+fi
 ROOT="${CLI_DISPATCH_SESSIONS_DIR:-${CLAUDE_DS_SESSIONS_DIR:-}}"; [ -n "$ROOT" ] || { _c="${XDG_CACHE_HOME:-$HOME/.cache}"; ROOT="$_c/cli-dispatch/sessions"; [ -d "$ROOT" ] || [ ! -d "$_c/claude-ds/sessions" ] || ROOT="$_c/claude-ds/sessions"; }
 DIR="$ROOT/$SID"
 if [ ! -d "$DIR" ]; then
