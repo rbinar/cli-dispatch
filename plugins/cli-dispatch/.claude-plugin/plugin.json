@@ -1,6 +1,6 @@
 {
   "name": "cli-dispatch",
-  "version": "3.14.1",
+  "version": "3.14.4",
   "description": "Delegate tasks to the right worker CLI — multi-backend delegation hub. Backends: DeepSeek-powered Claude Code (claude-ds), Antigravity / Gemini (agy, ag-agent), and OpenAI Codex CLI (codex, cx-agent). Setup-time backend selection, ds/ag/cx-runner subagents (babysitter+reviewer), single-command ds/ag/cx-agent, session tracking (live monitoring + resume), read-only mode, global MCP isolation, runtime/idle timeout safety net, fully-agentic tasks in isolated worktrees.",
   "author": { "name": "rbinar", "url": "https://github.com/rbinar" },
   "homepage": "https://github.com/rbinar/cli-dispatch",

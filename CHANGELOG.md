@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.14.4] — 2026-07-01
+
+### Added
+- **Dashboard: worker model display.** The Workers tab now shows the model name next to the backend in the list (e.g. `deepseek deepseek-v4-pro`, `codex gpt-4.1`), in the crumb when a worker is open, and in the linked-workers panel inside Claude Code session detail. Source: `meta.json` → `model` field (written by the parser at session start from `CLAUDE_DS_MODEL` / `AG_MODEL` / `CX_MODEL` env vars).
+- **Dashboard: Workers tab state filter.** The Workers tab now shows `all / running / done / error` filter chips (identical UX to the Claude Code sessions filter). Filter resets to `all` on each tab switch.
+
+## [3.14.3] — 2026-07-01
+
+### Changed
+- **Extract `stream-utils.sh`.** `mtime_of`, `kill_tree`, `proc_tree`, `kill_worker`, `source_config`, and `resolve_sessions_root` were duplicated across `ag-stream`, `cx-stream`, and `claude-ds-stream`. Moved to a single `scripts/stream-utils.sh`; each stream script now sources it. Net: ~160 lines deleted.
+- **Extract `parse-utils.mjs`.** `createStatusWriter`, `openSessionFiles`, `writeMetaFile`, `humanSize`, and `clip` were duplicated across `ag-transcript-parse.mjs`, `cx-stream-parse.mjs`, and `ds-stream-parse.mjs`. Moved to `scripts/parse-utils.mjs`; each parser now imports from it. Net: ~80 lines deleted.
+
+### Fixed
+- **`ag-worktree-run.sh` / `cx-worktree-run.sh` / `ds-worktree-run.sh`: TOCTOU race on worktree path claim.** The `mktemp -d … && rmdir` + `git worktree add` sequence has a window where another process can claim the same path. Added a retry: if `git worktree add` fails, generate a fresh `mktemp` path and retry once.
+
+## [3.14.2] — 2026-07-01
+
+### Fixed
+- **`ag-stream`: dead `RAWLOG` tempfile.** `RAWLOG` was created via `mktemp` and passed to `run_agy_bg()` as a redirect target, but never read. Removed; redirected the pty output to `/dev/null 2>&1` instead. Three `rm -f "$RAWLOG"` sites in the cleanup/exit paths updated accordingly.
+- **`ag-transcript-parse.mjs`: `finalize()` reports success on non-zero exit.** The previous condition `finalText ? (isErr && !/^\d+$/.test(done) ? 'error' : 'done') : 'error'` treated a numeric done-string (e.g. `"1"`) as success when `finalText` was present. Replaced with `finalText && (done === '0' || done === '') ? 'done' : 'error'` — any non-zero exit now forces `'error'` regardless of done-string format.
+- **`claude-ds-stream`: orphan DS processes on timeout.** The watchdog used `kill_tree "$pid" -TERM; sleep 5; kill_tree "$pid" -KILL`, which misses processes that reparented to init between the two calls. Replaced with `kill_worker` (snapshot-first pattern from `ag-stream`/`cx-stream`): capture the full subtree before the first kill, then TERM and KILL the captured set. Added an `EXIT` trap (`cleanup`) so the worker is also killed on unexpected script exit.
+- **`cx-stream`: dead `RC_FILE` tempfile.** `RC_FILE` was created via `mktemp` but never written; exit code is captured via `wait` instead. Removed creation and all `rm -f "$RC_FILE"` references. Removed the redundant `[ "${CX_PROGRESS_STDERR:-0}" = "1" ] && export CX_PROGRESS_STDERR` re-export (variable is already exported by `cx-agent` before spawning `cx-stream`).
+- **`dashboard-server.mjs`: XSS in onclick attribute insertions.** Four places inserted dynamic values (agent IDs, session IDs, worker IDs) bare into `onclick="openSub('...')"` / `openWorkerById('...')` / `reopen('...')` attributes. Added `escAttr()` helper (escapes `& < > " '` → HTML entities); all four insertion sites now wrapped. Also escaped the URL in `mdInline` href construction (`safe.replace(/"/g,'&quot;')`).
+- **`cx-agent`: stale audit-prefix comment.** Removed `# M1:` prefix from the `${FWD[@]+"${FWD[@]}"}` comment.
+- **`ds-stream-parse.mjs`: missing `return` in `handleEvent()`.** The `'result'` branch set `finalText` but fell through instead of returning, making all subsequent branches reachable when a result event was processed. Added `return` to match all other branches.
+
 ## [3.14.1] — 2026-06-29
 
 ### Fixed
