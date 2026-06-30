@@ -461,8 +461,9 @@ a.agentlink{color:var(--lnk);cursor:pointer}
  <div class="main"><div class="crumb" id="crumb">Select a session…</div><div id="view" class="empty">←</div></div>
 </div>
 <script>
-let mode='cc', sel=null, flt='all'
+let mode='cc', sel=null, flt='all', wFlt='all'
 function setFilter(k){ flt=k; loadList() }
+function setWFilter(k){ wFlt=k; loadList() }
 // Live updates via Server-Sent Events. One detail stream for the open item; it
 // pushes a 'change' event whenever the watched file/dir changes (fs.watch).
 let detailES=null, detailSpec=null
@@ -530,14 +531,18 @@ async function loadList(){
       it.onclick=()=>openSession(s); el.appendChild(it)
     })
   }else{
-    fb.style.display='none'
     const ws=await j('/api/workers')
+    const wCounts={all:ws.length,running:0,done:0,error:0}
+    ws.forEach(w=>{ const k=w.stale||w.state==='error'?'error':w.state==='running'?'running':w.state==='done'?'done':'error'; wCounts[k]=(wCounts[k]||0)+1 })
+    fb.style.display='flex'
+    fb.innerHTML=[['all',wCounts.all],['running',wCounts.running],['done',wCounts.done],['error',wCounts.error]].map(([k,n])=>'<span class="fchip'+(wFlt===k?' on':'')+'" onclick="setWFilter(\''+k+'\')">'+k+'<span class="c">'+n+'</span></span>').join('')
     document.getElementById('meta').textContent=ws.length+' workers'
-    ws.forEach(w=>{
+    const shown=wFlt==='all'?ws:ws.filter(w=>{ const k=w.stale||w.state==='error'?'error':w.state==='running'?'running':w.state==='done'?'done':'error'; return k===wFlt })
+    shown.forEach(w=>{
       const live=w.state==='running'&&!w.stale
       const dot=live?'busy':w.state==='done'?'closed':'idle'
       const badge=w.stale?'stale':w.state
-      const it=E('<div class="item'+(sel===w.id?' sel':'')+'"><div><span class="dot '+dot+'"></span>'+esc(w.backend)+'<span class="badge">'+esc(badge)+'</span></div><div class="small muted">'+esc(w.prompt||w.id.slice(0,8))+'</div><div class="small muted">'+esc(fmtDT(w.started))+(w.lastTool?' · '+esc(w.lastTool):'')+'</div></div>')
+      const it=E('<div class="item'+(sel===w.id?' sel':'')+'"><div><span class="dot '+dot+'"></span>'+esc(w.backend)+(w.model?' <span class="c">'+esc(w.model)+'</span>':'')+' <span class="badge">'+esc(badge)+'</span></div><div class="small muted">'+esc(w.prompt||w.id.slice(0,8))+'</div><div class="small muted">'+esc(fmtDT(w.started))+(w.lastTool?' · '+esc(w.lastTool):'')+'</div></div>')
       it.onclick=()=>openWorker(w); el.appendChild(it)
     })
   }
@@ -558,7 +563,7 @@ function renderFlow(steps){
   }).join('')
 }
 function workerPanelHtml(lw){ if(!lw||!lw.length) return ''
-  return '<details class="panel wk"><summary>Worker sessions (ds/ag/cx) <span class="badge">'+lw.length+'</span></summary><div class="sabody">'+lw.map(w=>'<span class="sa" onclick="openWorkerById(\\''+escAttr(w.id)+'\\')">'+esc(w.backend)+': '+esc(w.prompt||w.id.slice(0,12))+' <span class="c">'+esc(w.stale?'stale':w.state)+'</span></span>').join('')+'</div></details>' }
+  return '<details class="panel wk"><summary>Worker sessions (ds/ag/cx) <span class="badge">'+lw.length+'</span></summary><div class="sabody">'+lw.map(w=>'<span class="sa" onclick="openWorkerById(\\''+escAttr(w.id)+'\\')">'+esc(w.backend)+(w.model?' ('+esc(w.model)+')':'')+': '+esc(w.prompt||w.id.slice(0,12))+' <span class="c">'+esc(w.stale?'stale':w.state)+'</span></span>').join('')+'</div></details>' }
 function openWorkerById(id){ fetch('/api/workers').then(r=>r.json()).then(ws=>{const w=ws.find(x=>x.id===id); if(!w) return; mode='w'; document.getElementById('tabW').classList.add('on'); document.getElementById('tabCC').classList.remove('on'); openWorker(w)}) }
 function chipHtml(a){const t=fmtTime(a.startedAt);return '<span class="sa'+(a.active?' act':'')+'" onclick="openSub(\\''+escAttr(a.agentId)+'\\','+(a.active?'true':'false')+')">'+(a.active?'● ':'')+esc(a.agentType)+': '+esc(a.description||a.agentId.slice(0,8))+(a.spawnDepth>1?' ·d'+a.spawnDepth:'')+(t?' <span class="c">'+t+'</span>':'')+'</span>'}
 async function openSession(s){
@@ -591,7 +596,7 @@ async function openSub(aid,active){
 }
 async function openWorker(w){
   sel=w.id;
-  document.getElementById('crumb').innerHTML='<a onclick="back()">workers</a> › '+esc(w.backend)+' '+esc(w.id.slice(0,12))+' <span class="muted">('+esc(w.state)+')</span>'
+  document.getElementById('crumb').innerHTML='<a onclick="back()">workers</a> › '+esc(w.backend)+(w.model?' <span class="c">'+esc(w.model)+'</span>':'')+' '+esc(w.id.slice(0,12))+' <span class="muted">('+esc(w.state)+')</span>'
   const v=document.getElementById('view'); v.className=''; v.innerHTML='loading…'
   const flow=await j('/api/worker/'+w.id+'/flow')
   let h=''
@@ -604,7 +609,7 @@ async function openWorker(w){
 function reopen(sid){ fetch('/api/sessions').then(r=>r.json()).then(ss=>{const s=ss.find(x=>x.id===sid); if(s) openSession(s)}) }
 function back(){ watchDetail(null); sel=null; window._cur=null; document.getElementById('crumb').textContent='Select a session…'; document.getElementById('view').className='empty'; document.getElementById('view').innerHTML='←'; loadList() }
 document.getElementById('tabCC').onclick=()=>{mode='cc';document.getElementById('tabCC').classList.add('on');document.getElementById('tabW').classList.remove('on');back()}
-document.getElementById('tabW').onclick=()=>{mode='w';document.getElementById('tabW').classList.add('on');document.getElementById('tabCC').classList.remove('on');back()}
+document.getElementById('tabW').onclick=()=>{mode='w';wFlt='all';document.getElementById('tabW').classList.add('on');document.getElementById('tabCC').classList.remove('on');back()}
 loadList()
 // Live list: SSE pushes a change whenever sessions/workers state changes (busy/idle flips, new runs).
 const listES=new EventSource('/api/stream?watch=sessions')
