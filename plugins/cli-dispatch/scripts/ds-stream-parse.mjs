@@ -215,6 +215,7 @@ function handleEvent(ev) {
 
   if (ev.type === 'result' && typeof ev.result === 'string') {
     finalText = ev.result
+    return
   }
 }
 

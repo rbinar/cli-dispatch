@@ -175,6 +175,23 @@ kill_tree() {
   kill "$sig" "$pid" 2>/dev/null || true
 }
 
+# Snapshot a pid + all descendants before killing (avoids missing reparented children).
+proc_tree() {
+  local pid="$1" child
+  for child in $(pgrep -P "$pid" 2>/dev/null); do proc_tree "$child"; done
+  printf '%s\n' "$pid"
+}
+
+# Hard-kill the worker subtree: snapshot first, TERM, then KILL the same captured pids
+# so reparented processes are not missed (mirrors ag-stream / cx-stream).
+kill_worker() {
+  local root="$1" tree p
+  tree="$(proc_tree "$root")"
+  for p in $tree; do kill -TERM "$p" 2>/dev/null || true; done
+  sleep 3
+  for p in $tree; do kill -KILL "$p" 2>/dev/null || true; done
+}
+
 watchdog() {
   local start now pid m
   start=$(date +%s)
@@ -186,17 +203,26 @@ watchdog() {
     now=$(date +%s)
     if [ "$MAX_RUNTIME" -gt 0 ] && [ "$((now - start))" -ge "$MAX_RUNTIME" ]; then
       printf 'runtime %ss' "$MAX_RUNTIME" > "$TIMEOUT_FILE"
-      kill_tree "$pid" -TERM; sleep 5; kill_tree "$pid" -KILL; return 0
+      kill_worker "$pid"; return 0
     fi
     if [ "$IDLE_TIMEOUT" -gt 0 ]; then
       m="$(mtime_of "$SESSION_DIR/transcript.jsonl")"; m="${m:-$start}"
       if [ "$((now - m))" -ge "$IDLE_TIMEOUT" ]; then
         printf 'idle %ss' "$IDLE_TIMEOUT" > "$TIMEOUT_FILE"
-        kill_tree "$pid" -TERM; sleep 5; kill_tree "$pid" -KILL; return 0
+        kill_worker "$pid"; return 0
       fi
     fi
   done
 }
+
+# Safety net: kill the worker and watchdog on any exit (normal, signal, or error).
+cleanup() {
+  local _pid
+  [ -n "${WATCHDOG_PID:-}" ] && kill_tree "$WATCHDOG_PID" -TERM 2>/dev/null || true
+  _pid="$(cat "$PIDFILE" 2>/dev/null || true)"
+  [ -n "$_pid" ] && kill_worker "$_pid" 2>/dev/null || true
+}
+trap cleanup EXIT
 
 WATCHDOG_PID=""
 if [ "$MAX_RUNTIME" -gt 0 ] || [ "$IDLE_TIMEOUT" -gt 0 ]; then

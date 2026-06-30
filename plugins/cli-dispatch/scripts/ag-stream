@@ -147,16 +147,15 @@ fi
 [ "${#PASS_ARGS[@]}" -gt 0 ] && AGY_ARGS+=("${PASS_ARGS[@]}")
 
 # ---- run agy under a pseudo-TTY (OS-specific `script` syntax) ----
-RAWLOG="$(mktemp -t ag-raw-XXXXXX)"
 PIDFILE="$(mktemp -t ag-pid-XXXXXX)"; rm -f "$PIDFILE"
-run_agy_bg() { # backgrounds agy under a pty, writes its PID to $PIDFILE, output to $RAWLOG
+run_agy_bg() { # backgrounds agy under a pty, writes its PID to $PIDFILE
   case "$(uname -s)" in
     Darwin|*BSD)
-      ( cd "$CWD" && exec script -q /dev/null agy "${AGY_ARGS[@]}" ) >"$RAWLOG" 2>&1 &
+      ( cd "$CWD" && exec script -q /dev/null agy "${AGY_ARGS[@]}" ) >/dev/null 2>&1 &
       ;;
     *) # Linux/util-linux: command must be a single -c string; -e propagates exit code.
       local q="" a; for a in agy "${AGY_ARGS[@]}"; do q+="$(printf '%q ' "$a")"; done
-      ( cd "$CWD" && exec script -qec "$q" /dev/null ) >"$RAWLOG" 2>&1 &
+      ( cd "$CWD" && exec script -qec "$q" /dev/null ) >/dev/null 2>&1 &
       ;;
   esac
   echo $! > "$PIDFILE"
@@ -207,7 +206,7 @@ echo "  cwd:    $CWD" >&2
 
 run_agy_bg
 AGY_PID="$(cat "$PIDFILE" 2>/dev/null || true)"
-[ -n "$AGY_PID" ] || { echo "ag-stream: failed to launch agy." >&2; rm -f "$RAWLOG" "$PIDFILE"; exit 1; }
+[ -n "$AGY_PID" ] || { echo "ag-stream: failed to launch agy." >&2; rm -f "$PIDFILE"; exit 1; }
 
 # ---- discover the conversation-id this run created (or use the resume id) ----
 discover_cid() {
@@ -240,7 +239,7 @@ if [ -z "$CID" ]; then
   # so kill the subtree, reap it, and bail.
   kill_worker "$AGY_PID"
   wait "$AGY_PID" 2>/dev/null || true
-  rm -f "$RAWLOG" "$PIDFILE"
+  rm -f "$PIDFILE"
   exit 1
 fi
 
@@ -319,5 +318,5 @@ else
 fi
 
 wait "$PARSER_PID" 2>/dev/null || true
-rm -f "$RAWLOG" "$PIDFILE" "$SESSION_DIR/.timeout"
+rm -f "$PIDFILE" "$SESSION_DIR/.timeout"
 exit "$AGY_RC"

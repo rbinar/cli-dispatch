@@ -194,8 +194,6 @@ echo "  status:  $SESSION_DIR/status.json" >&2
 # ---- launch codex; pipe its JSONL stdout through the parser ----
 # codex stdout (JSONL) → parser; codex stderr → our stderr. The parser writes status.json
 # and prints the last agent_message on ITS stdout (captured as the fallback answer).
-[ "${CX_PROGRESS_STDERR:-0}" = "1" ] && export CX_PROGRESS_STDERR
-
 PARSER_OUT="$(mktemp -t cx-parsed-XXXXXX)"
 DONEFILE="$SESSION_DIR/.cx.done"; rm -f "$DONEFILE" "$SESSION_DIR/.timeout"
 
@@ -212,15 +210,14 @@ DONEFILE="$SESSION_DIR/.cx.done"; rm -f "$DONEFILE" "$SESSION_DIR/.timeout"
 # The parser writes its session files, prints the fallback answer to PARSER_OUT, and on exit
 # touches PARSER_DONE so we can synchronize on it (a process-substitution child isn't a job we
 # can `wait` on directly).
-RC_FILE="$(mktemp -t cx-rc-XXXXXX)"   # reserved (kept for the cleanup trap); rc now via `wait`
 PARSER_DONE="$(mktemp -u -t cx-pdone-XXXXXX)"
 
-# M2: clean up ALL temp files + reap the watchdog (and the codex worker) on ANY exit path —
+# Clean up ALL temp files + reap the watchdog (and the codex worker) on ANY exit path —
 # normal, error, or signal (Ctrl-C) — so nothing leaks and the watchdog can't outlive us.
 cleanup() {
   [ -n "${WATCHDOG_PID:-}" ] && kill "$WATCHDOG_PID" 2>/dev/null || true
   [ -n "${CODEX_PID:-}" ] && kill -TERM "$CODEX_PID" 2>/dev/null || true
-  rm -f "$OUTFILE" "$PARSER_OUT" "$RC_FILE" "$PARSER_DONE" 2>/dev/null || true
+  rm -f "$OUTFILE" "$PARSER_OUT" "$PARSER_DONE" 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -343,5 +340,5 @@ elif [ -s "$PARSER_OUT" ]; then
 fi
 
 rm -f "$SESSION_DIR/.timeout" 2>/dev/null || true
-# Temp files (OUTFILE/PARSER_OUT/PIDFILE/RC_FILE/FIFO) are removed by the EXIT trap.
+# Temp files (OUTFILE/PARSER_OUT/PARSER_DONE) are removed by the EXIT trap.
 exit "$CODEX_RC"

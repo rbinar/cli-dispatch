@@ -55,7 +55,7 @@ if [ "$QUIET" -eq 0 ]; then
 fi
 
 set +e
-# M1: on macOS bash 3.2 under `set -u`, expanding an EMPTY "${FWD[@]}" is an unbound-variable
+# On macOS bash 3.2 under `set -u`, expanding an EMPTY "${FWD[@]}" is an unbound-variable
 # error — which would break the common no-flags `cx-agent "task"` call. The ${arr[@]+...}
 # idiom expands to nothing when FWD is empty and to the quoted elements otherwise.
 "$STREAM" ${FWD[@]+"${FWD[@]}"} -p "$TASK"

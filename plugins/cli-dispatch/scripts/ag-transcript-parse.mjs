@@ -193,7 +193,7 @@ function finalize() {
   let done = ''
   try { done = readFileSync(doneFile, 'utf8').trim() } catch { /* ignore */ }
   const isErr = done !== '0' && done !== ''
-  status.state = finalText ? (isErr && !/^\d+$/.test(done) ? 'error' : 'done') : 'error'
+  status.state = finalText && (done === '0' || done === '') ? 'done' : 'error'
   if (isErr && !finalText) status.error = done
   status.finalResultPreview = clip(finalText, 300)
   status.lastActivityAt = new Date().toISOString()
