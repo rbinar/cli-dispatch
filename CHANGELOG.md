@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.15.3] — 2026-07-02
+
+### Changed
+- **Worker model mandate extended to all runner agents (follow-up to 3.15.2's `ag-runner` hardening).** `cx-runner` gains a "Worker model selection" section (it had none): if the task names a model, `--model <slug>` is MANDATORY, with the codex-specific caveat that an invalid slug fails loudly with an API error (no silent fallback like agy) and the default otherwise comes from `~/.codex/config.toml` / `CX_MODEL`. `oc-runner`'s existing section is hardened the same way (mandatory when requested, bare OpenRouter slug, loud failure on invalid slug). `ds-runner` gets the inverse note: `ds-agent` has NO `--model` flag — the model is fixed by `DS_MODEL` / `DS_FLASH_MODEL`, so a per-task model request must be bounced back to the orchestrator as a backend choice, never improvised. All three add the post-run `meta.json` verification step and a `model:` line in both return formats, matching `ag-runner`.
+- **`oc-runner`: stale resume-semantics TODO removed.** The `--session <id> --continue` behavior was verified live in 3.15.1 (resumes the *named* session); the agent brief still carried the "unverified" TODO block — replaced with the verified statement.
+
 ## [3.15.2] — 2026-07-02
 
 ### Changed

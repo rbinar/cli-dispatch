@@ -50,6 +50,15 @@ leaves the diff **uncommitted**. The session id is printed on stderr.
 
 **C) File-producing but non-repo** (e.g. scaffold in a scratch dir): `ds-agent --cwd <tmpdir> "<task>"`.
 
+## Worker model — fixed, no per-task selection
+
+`ds-agent` has NO `--model` flag — do not attempt to pass one. The worker model is fixed by
+the config's `DS_MODEL` (default `deepseek-v4-pro`; subagents run `DS_FLASH_MODEL`, default
+`deepseek-v4-flash`). If your task asks for a different worker model, say so and stop — that
+is an orchestrator-level backend choice (ag-runner / cx-runner / oc-runner support per-task
+models), not something you can satisfy here. Report the model from the session's `meta.json`
+in your result.
+
 ## Verify (mode B only — MANDATORY)
 
 Never trust DeepSeek's self-report on a code task. In the worktree:
@@ -67,10 +76,11 @@ loop per step, not tight polling.
 
 ## Return format (concise)
 
-- **Mode A:** the final answer (verbatim), then one line: `mode=read-only`.
+- **Mode A:** the final answer (verbatim), then one line: `mode=read-only model=<from meta.json>`.
 - **Mode B:** a short verdict —
   ```
   status: verified ✓ (or: FAILED — <why>)
+  model: <worker model from meta.json>
   worktree: <path>  branch: <name>
   changed: <N files> — <one-line summary>
   checks: <tsc/build/test results>

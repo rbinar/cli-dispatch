@@ -7,6 +7,12 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.15.3] — 2026-07-02
+
+### Değişti
+- **Worker model zorunluluğu tüm runner ajanlarına genişletildi (3.15.2'deki `ag-runner` sertleştirmesinin devamı).** `cx-runner`'a "Worker model selection" bölümü eklendi (hiç yoktu): görev bir model adlandırıyorsa `--model <slug>` ZORUNLU; codex'e özgü fark, geçersiz slug'ın sessiz fallback yerine API hatasıyla yüksek sesle patlaması ve varsayılanın `~/.codex/config.toml` / `CX_MODEL`'den gelmesi. `oc-runner`'ın mevcut bölümü aynı şekilde sertleştirildi (istendiğinde zorunlu, çıplak OpenRouter slug'ı, geçersiz slug'da gürültülü hata). `ds-runner`'a ters yönde not eklendi: `ds-agent`'ta `--model` bayrağı YOK — model `DS_MODEL` / `DS_FLASH_MODEL` ile sabit; göreve özel model isteği doğaçlanmadan orkestratöre backend seçimi olarak geri gönderilmeli. Üçüne de koşu sonrası `meta.json` doğrulama adımı ve her iki dönüş formatına `model:` satırı eklendi — `ag-runner` ile aynı.
+- **`oc-runner`: bayat resume-semantiği TODO'su kaldırıldı.** `--session <id> --continue` davranışı 3.15.1'de canlı doğrulanmıştı (*adlandırılan* oturumu devam ettiriyor); ajan talimatı hâlâ "doğrulanmadı" TODO bloğunu taşıyordu — doğrulanmış ifadeyle değiştirildi.
+
 ## [3.15.2] — 2026-07-02
 
 ### Değişti

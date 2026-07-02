@@ -75,6 +75,30 @@ DeepSeek backend (tool-layer restriction) and the Antigravity backend (no write-
 - Mode B: use a git worktree with default `workspace-write` so the worker can actually write.
 - Other modes: pass `--sandbox <mode>` to cx-agent for full control (valid values: `read-only` | `workspace-write` | `danger-full-access`).
 
+## Worker model selection
+
+**If your task names a worker model, passing `--model` is MANDATORY.** Omitting it silently
+runs whatever `~/.codex/config.toml` (or the config's `CX_MODEL`) defaults to — running the
+default when a model was requested counts as FAILING the task.
+
+1. Pass the model slug verbatim (codex has no list command; unlike agy, an invalid slug
+   fails LOUDLY with an API error instead of silently falling back — if that happens,
+   report the error, don't guess a different model):
+   ```bash
+   cx-agent --model gpt-5.5 --cwd "$WORKTREE" "<task>"
+   ```
+2. Confirm after the run — check the session's `meta.json` (the session id is printed on
+   stderr; sessions live under `~/.cache/cli-dispatch/sessions/<session-id>/` unless
+   `CLI_DISPATCH_SESSIONS_DIR` overrides it):
+   ```bash
+   grep -o '"model": *"[^"]*"' ~/.cache/cli-dispatch/sessions/<session-id>/meta.json
+   ```
+   An empty value (`""`) means the flag never reached codex → rerun with `--model`.
+   Always report the model actually used.
+
+Omit `--model` ONLY when the orchestrator did not specify a worker model (the codex
+config default then applies).
+
 ## Resume gotcha
 
 The `resume` subcommand does NOT support `--cwd` (codex limitation). Resume reuses the thread's
@@ -102,10 +126,11 @@ loop per step, not tight polling.
 
 ## Return format (concise)
 
-- **Mode A:** the final answer (verbatim), then one line: `mode=read-only (kernel-enforced)`.
+- **Mode A:** the final answer (verbatim), then one line: `mode=read-only (kernel-enforced) model=<model or "codex default">`.
 - **Mode B:** a short verdict —
   ```
   status: verified ✓ (or: FAILED — <why>)
+  model: <worker model from meta.json, or "codex default">
   worktree: <path>  branch: <name>
   changed: <N files> — <one-line summary>
   checks: <tsc/build/test results>

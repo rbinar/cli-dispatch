@@ -73,21 +73,35 @@ review is your real safety boundary — not a mode flag.
 
 ## Model selection
 
+**If your task names a worker model, passing `--model` is MANDATORY.** Omitting it silently
+runs the config's `OC_MODEL` default — running the default when a model was requested counts
+as FAILING the task.
+
 ```bash
 oc-agent --model <slug-without-openrouter-prefix> --cwd "$WORKTREE" "<task>"
 ```
 `oc-stream` prepends the `openrouter/` prefix automatically, so pass just the bare slug (e.g.
-`google/gemma-4-31b-it:free`), not `openrouter/google/gemma-4-31b-it:free`. Omit `--model` to
-use the config's `OC_MODEL` default.
+`google/gemma-4-31b-it:free`), not `openrouter/google/gemma-4-31b-it:free`. An invalid slug
+fails loudly with an OpenRouter API error — report it, don't guess a different model.
+
+Confirm after the run — check the session's `meta.json` (the session id is printed on stderr;
+sessions live under `~/.cache/cli-dispatch/sessions/<session-id>/` unless
+`CLI_DISPATCH_SESSIONS_DIR` overrides it):
+```bash
+grep -o '"model": *"[^"]*"' ~/.cache/cli-dispatch/sessions/<session-id>/meta.json
+```
+An empty value (`""`) means the flag never reached opencode → rerun with `--model`. Always
+report the model actually used.
+
+Omit `--model` ONLY when the orchestrator did not specify a worker model.
 
 ## Resume
 
 ```bash
 oc-agent --resume <session-id> "<follow-up>"
 ```
-# TODO: resume semantics (`--session <id> --continue`) unverified — whether this reliably
-resumes the NAMED session or just "continues the last session" has not been tested with a
-live key.
+Resume semantics verified live (3.15.1): `--session <id> --continue` resumes the NAMED
+session, not just "the last one".
 
 ## Verify (mode B only — MANDATORY)
 
@@ -106,10 +120,11 @@ loop per step, not tight polling.
 
 ## Return format (concise)
 
-- **Mode A:** the final answer (verbatim), then one line: `mode=generation (no sandbox)`.
+- **Mode A:** the final answer (verbatim), then one line: `mode=generation (no sandbox) model=<model or "OC_MODEL default">`.
 - **Mode B:** a short verdict —
   ```
   status: verified ✓ (or: FAILED — <why>)
+  model: <worker model from meta.json, or "OC_MODEL default">
   worktree: <path>  branch: <name>
   changed: <N files> — <one-line summary>
   checks: <tsc/build/test results>
