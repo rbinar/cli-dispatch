@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.17.0] — 2026-07-02
+
+### Added
+- **`--effort low|medium|high` — per-task reasoning-effort selection on three backends** (agent + stream wrappers):
+  - **antigravity**: agy exposes effort only through the model display-name suffix, so `--effort` composes it — `--model "Gemini 3.5 Flash" --effort low` → `"Gemini 3.5 Flash (Low)"` (an existing suffix is replaced); without `--model` it picks the first `agy models` entry at that effort. The composed name flows through the existing unknown-model validation. Verified live: session recorded `Gemini 3.5 Flash (Low)`.
+  - **codex**: maps to `codex exec -c model_reasoning_effort=<level>` (both fresh and resume arg paths). The session's model label records it, e.g. `gpt-5.5 (low)` — verified live.
+  - **deepseek**: sets the worker's thinking budget via `MAX_THINKING_TOKENS` (low=1024, medium=8192, high=31999). Verified live: the run's transcript contains thinking blocks and the session records `deepseek-v4-pro (high)`. Documented as best-effort (the API owns whether the budget applies).
+  - **opencode**: `--effort` is **rejected** with a clear message (exit 2) — the opencode CLI exposes no reasoning-effort control.
+  - Runner briefs updated: ag/cx/ds get the same MANDATE as `--model` (task names an effort → passing `--effort` is required); ds's is flagged best-effort; oc-runner bounces effort requests back to the orchestrator. Invalid levels fail loudly (exit 2). Env fallbacks: `AG_EFFORT` / `CX_EFFORT` / `CLAUDE_DS_EFFORT`.
+
 ## [3.16.0] — 2026-07-02
 
 ### Added

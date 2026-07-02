@@ -116,7 +116,9 @@ function handleEvent(ev) {
   if (ev.type === 'system' && typeof ev.session_id === 'string') {
     meta.sessionId = ev.session_id
     status.sessionId = ev.session_id
-    if (typeof ev.model === 'string' && ev.model) meta.model = ev.model
+    // Don't clobber a wrapper label that already embeds the stream's model (e.g.
+    // "deepseek-v4-pro (high)" from --effort); only correct a genuine mismatch.
+    if (typeof ev.model === 'string' && ev.model && !(meta.model || '').startsWith(ev.model)) meta.model = ev.model
     writeMeta()
   }
 

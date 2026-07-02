@@ -13,7 +13,7 @@
 # for a no-writes run, or point --cwd at an isolated/throwaway directory.
 set -euo pipefail
 
-usage() { echo 'usage: ds-agent [--read-only] [--cwd <dir>] [--resume <id>] [--max-runtime <s>] [--idle-timeout <s>] [-q] "<task>"' >&2; }
+usage() { echo 'usage: ds-agent [--read-only] [--cwd <dir>] [--resume <id>] [--effort low|medium|high] [--max-runtime <s>] [--idle-timeout <s>] [-q] "<task>"' >&2; }
 
 QUIET=0
 AGENTIC=1
@@ -26,6 +26,7 @@ while [ "$#" -gt 0 ]; do
     --read-only)      AGENTIC=0; FWD+=(--read-only); shift;;
     --cwd)            need_val --cwd "$#"; FWD+=(--cwd "$2"); shift 2;;
     --resume)         need_val --resume "$#"; FWD+=(--resume "$2"); shift 2;;
+    --effort)         need_val --effort "$#"; FWD+=(--effort "$2"); shift 2;;
     --max-runtime)    need_val --max-runtime "$#"; FWD+=(--max-runtime "$2"); shift 2;;
     --idle-timeout)   need_val --idle-timeout "$#"; FWD+=(--idle-timeout "$2"); shift 2;;
     -q|--quiet)       QUIET=1; shift;;

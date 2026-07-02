@@ -7,6 +7,16 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.17.0] — 2026-07-02
+
+### Eklendi
+- **`--effort low|medium|high` — üç backend'de görev-başına reasoning-effort seçimi** (agent + stream wrapper'ları):
+  - **antigravity**: agy effort'u yalnızca model görünen-adının suffix'iyle sunar; `--effort` bunu birleştirir — `--model "Gemini 3.5 Flash" --effort low` → `"Gemini 3.5 Flash (Low)"` (mevcut suffix değiştirilir); `--model`'siz, `agy models`'ın o effort'taki ilk kaydı seçilir. Birleştirilen ad mevcut bilinmeyen-model doğrulamasından geçer. Canlı doğrulandı: oturum `Gemini 3.5 Flash (Low)` kaydetti.
+  - **codex**: `codex exec -c model_reasoning_effort=<seviye>`'ye eşlenir (hem yeni hem resume arg yolları). Oturumun model etiketi kaydeder, ör. `gpt-5.5 (low)` — canlı doğrulandı.
+  - **deepseek**: worker'ın thinking bütçesini `MAX_THINKING_TOKENS` ile ayarlar (low=1024, medium=8192, high=31999). Canlı doğrulandı: koşunun transcript'i thinking blokları içeriyor ve oturum `deepseek-v4-pro (high)` kaydetti. Best-effort olarak dokümante edildi (bütçenin uygulanması API'ye ait).
+  - **opencode**: `--effort` net mesajla **reddedilir** (exit 2) — opencode CLI reasoning-effort kontrolü sunmuyor.
+  - Runner brief'leri güncellendi: ag/cx/ds `--model` ile aynı ZORUNLULUĞU alır (görev effort adlandırıyorsa `--effort` geçmek şart); ds'inki best-effort işaretli; oc-runner effort isteklerini orkestratöre geri gönderir. Geçersiz seviyeler gürültülü patlar (exit 2). Env fallback'leri: `AG_EFFORT` / `CX_EFFORT` / `CLAUDE_DS_EFFORT`.
+
 ## [3.16.0] — 2026-07-02
 
 ### Eklendi

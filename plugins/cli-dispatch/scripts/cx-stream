@@ -14,7 +14,8 @@
 #
 # Usage:
 #   cx-stream [--cwd <dir>] [--resume <session-id>] [--read-only] [--sandbox <mode>] \
-#             [--model <m>] [--max-runtime <s>] [--idle-timeout <s>] -p "<prompt>" [extra codex flags]
+#             [--model <m>] [--effort low|medium|high] [--max-runtime <s>] [--idle-timeout <s>] \
+#             -p "<prompt>" [extra codex flags]
 #   echo "<prompt>" | cx-stream [--cwd <dir>]
 #
 # Session directory: ${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<thread-id>/ (legacy: claude-ds)
@@ -58,6 +59,7 @@ HAVE_PROMPT=0
 READ_ONLY=0
 SANDBOX=""                       # explicit --sandbox passthrough (overrides default/--read-only)
 MODEL="${CX_MODEL:-${CODEX_MODEL:-}}"
+EFFORT="${CX_EFFORT:-}"
 MAX_RUNTIME="${CX_MAX_RUNTIME:-0}"
 IDLE_TIMEOUT="${CX_IDLE_TIMEOUT:-0}"
 PASS_ARGS=()
@@ -70,6 +72,8 @@ while [ "$#" -gt 0 ]; do
     --resume=*)       RESUME_ID="${1#*=}"; shift;;
     --model)          need_val --model "$#";  MODEL="$2"; shift 2;;
     --model=*)        MODEL="${1#*=}"; shift;;
+    --effort)         need_val --effort "$#"; EFFORT="$2"; shift 2;;
+    --effort=*)       EFFORT="${1#*=}"; shift;;
     --sandbox)        need_val --sandbox "$#"; SANDBOX="$2"; shift 2;;
     --sandbox=*)      SANDBOX="${1#*=}"; shift;;
     -p|--prompt)      need_val "$1" "$#";     PROMPT="$2"; HAVE_PROMPT=1; shift 2;;
@@ -125,18 +129,26 @@ SANDBOX_MODE="workspace-write"
 # the config override `-c sandbox_mode=<mode>` instead of `-s`, and cwd/color are dropped
 # (resume reuses the existing thread + its recorded cwd; a cwd override isn't supported on
 # the resume subcommand).
+# --effort low|medium|high → codex's model_reasoning_effort config override.
+if [ -n "$EFFORT" ]; then
+  EFFORT="$(printf '%s' "$EFFORT" | tr '[:upper:]' '[:lower:]')"
+  case "$EFFORT" in low|medium|high) ;; *) echo "cx-stream: --effort must be low|medium|high (got \"$EFFORT\")." >&2; exit 2;; esac
+fi
+
 OUTFILE="$(mktemp -t cx-out-XXXXXX)"
 RESUME=0
 if [ -n "$RESUME_ID" ]; then
   RESUME=1
   CODEX_ARGS=(exec resume --json -o "$OUTFILE" --skip-git-repo-check)
   [ -n "$MODEL" ] && CODEX_ARGS+=(-m "$MODEL")
+  [ -n "$EFFORT" ] && CODEX_ARGS+=(-c "model_reasoning_effort=$EFFORT")
   CODEX_ARGS+=(-c "sandbox_mode=$SANDBOX_MODE")
   [ "${#PASS_ARGS[@]}" -gt 0 ] && CODEX_ARGS+=("${PASS_ARGS[@]}")
   CODEX_ARGS+=("$RESUME_ID" "$PROMPT")
 else
   CODEX_ARGS=(exec --json -o "$OUTFILE" --skip-git-repo-check --color never -C "$CWD" -s "$SANDBOX_MODE")
   [ -n "$MODEL" ] && CODEX_ARGS+=(-m "$MODEL")
+  [ -n "$EFFORT" ] && CODEX_ARGS+=(-c "model_reasoning_effort=$EFFORT")
   [ "${#PASS_ARGS[@]}" -gt 0 ] && CODEX_ARGS+=("${PASS_ARGS[@]}")
   CODEX_ARGS+=("$PROMPT")
 fi
@@ -215,7 +227,7 @@ codex "${CODEX_ARGS[@]}" </dev/null > >(
   CX_PROMPT_PREVIEW="$(printf '%.120s' "$PROMPT")" \
   CX_CWD="$CWD" \
   CX_BRANCH="$BRANCH" \
-  CX_MODEL="${MODEL:-$META_MODEL}" \
+  CX_MODEL="${MODEL:-$META_MODEL}${EFFORT:+ ($EFFORT)}" \
   CX_THREAD_ID="$([ "$RESUME" -eq 1 ] && printf '%s' "$RESUME_ID" || true)" \
   CX_RESUME="$RESUME" \
     node "$PARSER" > "$PARSER_OUT"

@@ -96,6 +96,10 @@ successful run means that model actually ran.) Always report it.
 
 Omit `--model` ONLY when the orchestrator did not specify a worker model.
 
+**No reasoning-effort control:** `--effort` is rejected by the oc-* CLIs (the opencode CLI
+exposes no such knob). If the task demands an effort level, say so and stop — that is an
+orchestrator-level backend choice (ag/cx/ds support `--effort`).
+
 ## Resume
 
 ```bash

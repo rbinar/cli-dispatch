@@ -29,6 +29,7 @@ while [ "$#" -gt 0 ]; do
     --cwd)            need_val --cwd "$#";    FWD+=(--cwd "$2"); shift 2;;
     --resume)         need_val --resume "$#"; FWD+=(--resume "$2"); shift 2;;
     --model)          need_val --model "$#";  FWD+=(--model "$2"); shift 2;;
+    --effort|--effort=*) echo "oc-agent: --effort is not supported by the OpenCode backend (the opencode CLI exposes no reasoning-effort control). Use ag-agent/cx-agent/ds-agent for effort selection." >&2; exit 2;;
     --max-runtime)    need_val --max-runtime "$#";  FWD+=(--max-runtime "$2"); shift 2;;
     --idle-timeout)   need_val --idle-timeout "$#"; FWD+=(--idle-timeout "$2"); shift 2;;
     -q|--quiet)       QUIET=1; shift;;

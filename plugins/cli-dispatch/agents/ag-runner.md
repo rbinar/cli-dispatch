@@ -106,6 +106,11 @@ Procedure:
 
 Omit `--model` ONLY when the orchestrator did not specify a worker model.
 
+**Reasoning effort:** if the task names a thinking/effort level, pass `--effort low|medium|high`
+— it composes the display-name suffix for you (`--model "Gemini 3.5 Flash" --effort low` →
+`"Gemini 3.5 Flash (Low)"`; without `--model` it picks the first `agy models` entry at that
+effort). Same mandate as `--model`: requested but not passed = failed task.
+
 ## Verify (mode B only — MANDATORY)
 
 Never trust the agy worker's self-report on a code task. In the worktree:

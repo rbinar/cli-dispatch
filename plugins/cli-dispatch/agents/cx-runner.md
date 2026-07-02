@@ -100,6 +100,11 @@ default when a model was requested counts as FAILING the task.
 Omit `--model` ONLY when the orchestrator did not specify a worker model (the codex
 config default then applies).
 
+**Reasoning effort:** if the task names a thinking/effort level, pass `--effort low|medium|high`
+(maps to codex's `model_reasoning_effort`; omitted = the config.toml default, currently often
+`high`). Same mandate as `--model`: requested but not passed = failed task. The effort is
+recorded in `meta.json`'s model label, e.g. `gpt-5.5 (low)`.
+
 ## Resume gotcha
 
 The `resume` subcommand does NOT support `--cwd` (codex limitation). Resume reuses the thread's

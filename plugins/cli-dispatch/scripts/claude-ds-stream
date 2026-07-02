@@ -7,13 +7,16 @@
 # final text to stdout.
 #
 # Usage:
-#   claude-ds-stream [--cwd <dir>] [--resume <id>] [--read-only] \
+#   claude-ds-stream [--cwd <dir>] [--resume <id>] [--read-only] [--effort low|medium|high] \
 #                    [--max-runtime <s>] [--idle-timeout <s>] -p "<prompt>" [extra claude flags]
 #   echo "<prompt>" | claude-ds-stream [--cwd <dir>]
 #
 # --max-runtime <s>   kill the worker after <s> seconds total (0 = off, default)
 # --idle-timeout <s>  kill the worker after <s> seconds with no new output (0 = off)
 #   (env fallbacks: CLAUDE_DS_MAX_RUNTIME, CLAUDE_DS_IDLE_TIMEOUT)
+# --effort <level>    thinking budget via MAX_THINKING_TOKENS (low=1024, medium=8192,
+#                     high=31999). Best-effort: applied only if the DeepSeek
+#                     Anthropic-compatible API honors the thinking budget.
 #
 # NOTE: by default the worker runs with --permission-mode bypassPermissions (the CLI
 # can't prompt in non-interactive --print mode), so it CAN write files and run bash
@@ -58,6 +61,7 @@ RESUME_ID=""
 PROMPT=""
 HAVE_PROMPT=0
 READ_ONLY=0
+EFFORT="${CLAUDE_DS_EFFORT:-}"
 MAX_RUNTIME="${CLAUDE_DS_MAX_RUNTIME:-0}"     # seconds; 0 = no overall runtime cap
 IDLE_TIMEOUT="${CLAUDE_DS_IDLE_TIMEOUT:-0}"   # seconds; 0 = no idle (no-output) cap
 PASS_ARGS=()
@@ -74,6 +78,8 @@ while [ "$#" -gt 0 ]; do
     -p=*)         PROMPT="${1#*=}"; HAVE_PROMPT=1; shift;;
     --prompt=*)   PROMPT="${1#*=}"; HAVE_PROMPT=1; shift;;
     --read-only)  READ_ONLY=1; shift;;
+    --effort)     need_val --effort "$#"; EFFORT="$2"; shift 2;;
+    --effort=*)   EFFORT="${1#*=}"; shift;;
     --max-runtime)    need_val --max-runtime "$#";  MAX_RUNTIME="$2"; shift 2;;
     --max-runtime=*)  MAX_RUNTIME="${1#*=}"; shift;;
     --idle-timeout)   need_val --idle-timeout "$#"; IDLE_TIMEOUT="$2"; shift 2;;
@@ -114,6 +120,20 @@ printf '%s' "$PROMPT" > "$SESSION_DIR/prompt.txt" 2>/dev/null || true
 
 BRANCH="$(git -C "$CWD" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
 MODEL="${DS_MODEL:-deepseek-v4-pro}"
+
+# --effort low|medium|high → thinking budget via MAX_THINKING_TOKENS. Best-effort:
+# claude honors the env; whether DeepSeek's Anthropic-compatible API applies the
+# thinking budget is up to the API (a no-op there degrades gracefully).
+THINK=""
+if [ -n "$EFFORT" ]; then
+  EFFORT="$(printf '%s' "$EFFORT" | tr '[:upper:]' '[:lower:]')"
+  case "$EFFORT" in
+    low)    THINK=1024;;
+    medium) THINK=8192;;
+    high)   THINK=31999;;
+    *) echo "claude-ds-stream: --effort must be low|medium|high (got \"$EFFORT\")." >&2; exit 2;;
+  esac
+fi
 
 echo "claude-ds session: $SID" >&2
 echo "  cwd:    $CWD" >&2
@@ -213,6 +233,7 @@ set +e
     ANTHROPIC_DEFAULT_SONNET_MODEL="${DS_MODEL:-deepseek-v4-pro}" \
     ANTHROPIC_DEFAULT_HAIKU_MODEL="${DS_FLASH_MODEL:-deepseek-v4-flash}" \
     CLAUDE_CODE_SUBAGENT_MODEL="${DS_FLASH_MODEL:-deepseek-v4-flash}" \
+    ${THINK:+MAX_THINKING_TOKENS="$THINK"} \
     claude "${CLAUDE_ARGS[@]}" < <(printf '%s' "$PROMPT") &
   CPID=$!
   echo "$CPID" > "$PIDFILE"
@@ -221,7 +242,7 @@ set +e
     CLAUDE_DS_PROMPT_PREVIEW="$(printf '%.120s' "$PROMPT")" \
     CLAUDE_DS_CWD="$CWD" \
     CLAUDE_DS_BRANCH="$BRANCH" \
-    CLAUDE_DS_MODEL="$MODEL" \
+    CLAUDE_DS_MODEL="$MODEL${THINK:+ (${EFFORT})}" \
     CLAUDE_DS_RESUME="$RESUME" \
     node "$PARSER"
 # PIPESTATUS: [0]=claude subshell (via wait), [1]=node parser. We want claude's exit.

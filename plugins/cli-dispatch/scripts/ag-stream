@@ -10,7 +10,8 @@
 #
 # Usage:
 #   ag-stream [--cwd <dir>] [--resume <conv-id>] [--read-only] [--model <m>] \
-#             [--max-runtime <s>] [--idle-timeout <s>] -p "<prompt>" [extra agy flags]
+#             [--effort low|medium|high] [--max-runtime <s>] [--idle-timeout <s>] \
+#             -p "<prompt>" [extra agy flags]
 #   echo "<prompt>" | ag-stream [--cwd <dir>]
 #
 # Session directory: ${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<conv-id>/ (legacy: claude-ds)
@@ -50,6 +51,7 @@ PROMPT=""
 HAVE_PROMPT=0
 READ_ONLY=0
 MODEL="${AG_MODEL:-}"
+EFFORT="${AG_EFFORT:-}"
 MAX_RUNTIME="${AG_MAX_RUNTIME:-0}"
 IDLE_TIMEOUT="${AG_IDLE_TIMEOUT:-0}"
 PASS_ARGS=()
@@ -62,6 +64,8 @@ while [ "$#" -gt 0 ]; do
     --resume=*)       RESUME_ID="${1#*=}"; shift;;
     --model)          need_val --model "$#";  MODEL="$2"; shift 2;;
     --model=*)        MODEL="${1#*=}"; shift;;
+    --effort)         need_val --effort "$#"; EFFORT="$2"; shift 2;;
+    --effort=*)       EFFORT="${1#*=}"; shift;;
     -p|--prompt)      need_val "$1" "$#";     PROMPT="$2"; HAVE_PROMPT=1; shift 2;;
     -p=*)             PROMPT="${1#*=}"; HAVE_PROMPT=1; shift;;
     --prompt=*)       PROMPT="${1#*=}"; HAVE_PROMPT=1; shift;;
@@ -97,6 +101,24 @@ CWD="$(cd "$CWD" 2>/dev/null && pwd)" || { echo "ag-stream: bad --cwd" >&2; exit
 AG_HOME="$HOME/.gemini/antigravity-cli"
 LC="$AG_HOME/cache/last_conversations.json"
 BRAIN="$AG_HOME/brain"
+
+# --effort low|medium|high: agy exposes reasoning effort only through the model display
+# name's suffix ("Gemini 3.5 Flash (High)"), so compose the name here. With --model, the
+# existing parenthesized suffix (if any) is replaced; without it, pick the first model
+# `agy models` lists at that effort (falling back to the known default family). The
+# composed name then goes through the same unknown-model validation below.
+if [ -n "$EFFORT" ]; then
+  case "$(printf '%s' "$EFFORT" | tr '[:upper:]' '[:lower:]')" in
+    low) SUF="Low";; medium) SUF="Medium";; high) SUF="High";;
+    *) echo "ag-stream: --effort must be low|medium|high (got \"$EFFORT\")." >&2; exit 2;;
+  esac
+  if [ -n "$MODEL" ]; then
+    MODEL="$(printf '%s' "$MODEL" | sed -E 's/ *\([A-Za-z]+\)$//') ($SUF)"
+  else
+    MODEL="$(agy models 2>/dev/null | grep -m1 "($SUF)\$" || true)"
+    [ -n "$MODEL" ] || MODEL="Gemini 3.5 Flash ($SUF)"
+  fi
+fi
 
 # Validate --model against `agy models`. agy SILENTLY falls back to its default for an
 # unknown model (no error), so a typo would quietly run the wrong model — warn instead.

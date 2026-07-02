@@ -59,6 +59,10 @@ is an orchestrator-level backend choice (ag-runner / cx-runner / oc-runner suppo
 models), not something you can satisfy here. Report the model from the session's `meta.json`
 in your result.
 
+**Reasoning effort:** `ds-agent --effort low|medium|high` sets the worker's thinking budget
+(`MAX_THINKING_TOKENS` 1024/8192/31999). Best-effort — applied only if DeepSeek's
+Anthropic-compatible API honors the thinking budget; treat it as a hint, not a guarantee.
+
 ## Verify (mode B only — MANDATORY)
 
 Never trust DeepSeek's self-report on a code task. In the worktree:
