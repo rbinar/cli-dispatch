@@ -7,6 +7,16 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.16.0] — 2026-07-02
+
+### Eklendi
+- **Dashboard artık her worker'ın GERÇEKTE kullandığı modeli backend bazında gösteriyor.** `meta.json`'daki `model` alanı yalnızca istenen `--model` bayrağının / config defaultunun echo'suydu — model açıkça geçilmediğinde antigravity/codex/opencode için boştu; Workers listesi çoğu oturumda model göstermiyordu. Artık:
+  - **antigravity**: parser, transcript'in `USER_INPUT` ayar-değişikliği bloğundan (``changed setting `Model Selection` … to Gemini 3.5 Flash (High)``) *gözlemlenen* modeli kazır ve istenen değeri ezmesine izin verir — gözlemlenen gerçektir; agy bilinmeyen istekte sessizce defaulta düştüğünde bile kayıt doğru olur.
+  - **deepseek**: parser modeli env echo yerine stream'in `system/init` eventinden (API'nin gerçekte bildirdiği) damgalar.
+  - **codex**: `codex exec --json` hiç model alanı taşımıyor (doğrulandı); model istenmediğinde `cx-stream`, codex'in kendi config defaultunu (`~/.codex/config.toml` `model = "…"`) — codex argümanlarına dokunmadan — oturum kaydına yazar.
+  - **opencode**: ileride opencode `part.info.modelID`/`part.modelID` verirse fırsatçı yakalama (bugün no-op; `OC_MODEL` config defaultu alanı zaten dolduruyor).
+  - **dashboard**: model yine de bilinemiyorsa (bu değişiklikten önceki eski oturumlar) liste satırı / crumb / bağlı-worker çipleri hiçlik yerine soluk `default` etiketi gösterir.
+
 ## [3.15.4] — 2026-07-02
 
 Vaad-edilen-vs-teslim-edilen denetimi (README/komutlar/ajan-talimatları/script'ler üzerinde 4 paralel salt-okunur denetçi); bulgular düzeltilmeden önce repro ile doğrulandı.

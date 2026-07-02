@@ -101,6 +101,14 @@ function handleLine(o) {
 
   const src = o.source, type = o.type
   if (type === 'USER_INPUT' || type === 'CONVERSATION_HISTORY' || type === 'CHECKPOINT') {
+    // agy has no structured model field anywhere; the OBSERVED model only appears as prose
+    // in a USER_INPUT settings-change block ("changed setting `Model Selection` from None
+    // to Gemini 3.5 Flash (High)."). Scrape it and let it overwrite the requested model —
+    // observed is ground truth (agy silently falls back to its default on unknown names).
+    if (type === 'USER_INPUT' && typeof o.content === 'string') {
+      const m = o.content.match(/`Model Selection`[^]*?\bto ([^\n]+?)\.(?:\s|$)/)
+      if (m && m[1] && meta.model !== m[1]) { meta.model = m[1]; writeMeta() }
+    }
     // our own prompt / history markers / compaction summaries — not progress
     return
   }

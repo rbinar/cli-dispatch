@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.16.0] — 2026-07-02
+
+### Added
+- **Dashboard now shows the model each worker ACTUALLY used, per backend.** `meta.json`'s `model` field was just an echo of the requested `--model` flag / config default — empty for antigravity/codex/opencode whenever no model was explicitly passed, so the Workers list showed no model at all for most sessions. Now:
+  - **antigravity**: the parser scrapes the *observed* model from the transcript's `USER_INPUT` settings-change block (``changed setting `Model Selection` … to Gemini 3.5 Flash (High)``) and lets it overwrite the requested value — observed is ground truth, so the record is right even when agy silently fell back to its default on an unknown requested name.
+  - **deepseek**: the parser stamps the model from the stream's `system/init` event (what the API actually reports) instead of the env echo.
+  - **codex**: `codex exec --json` carries no model field at all (verified), so when no model was requested `cx-stream` records codex's own config default (`~/.codex/config.toml` `model = "…"`) in the session record — without touching the codex arguments.
+  - **opencode**: opportunistic capture of `part.info.modelID`/`part.modelID` if a future opencode version surfaces it (no-op today; the `OC_MODEL` config default already populates the field).
+  - **dashboard**: when the model is still unknowable (old sessions predating this change), the list row / crumb / linked-worker chips show a muted `default` label instead of nothing.
+
 ## [3.15.4] — 2026-07-02
 
 Promised-vs-shipped audit (4 parallel read-only auditors over README/commands/agent-briefs/scripts), findings verified by repro before fixing.

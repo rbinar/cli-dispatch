@@ -111,10 +111,12 @@ const inputPreview = (input) => {
 const touch = () => { status.lastActivityAt = new Date().toISOString(); status.events++ }
 
 function handleEvent(ev) {
-  // Init/system event: confirm session_id.
+  // Init/system event: confirm session_id + the model the API actually reports
+  // (more honest than the env echo of the requested model).
   if (ev.type === 'system' && typeof ev.session_id === 'string') {
     meta.sessionId = ev.session_id
     status.sessionId = ev.session_id
+    if (typeof ev.model === 'string' && ev.model) meta.model = ev.model
     writeMeta()
   }
 

@@ -125,6 +125,12 @@ function handlePart(type, sessionID, part, topError) {
     writeMeta()
   }
 
+  // Opportunistic: opencode's documented event shapes carry no model field, but if a
+  // future version surfaces one (part.info.modelID / part.modelID), record it so the
+  // dashboard can show the model actually used. No-op otherwise.
+  const mid = part?.info?.modelID ?? part?.modelID
+  if (typeof mid === 'string' && mid && !meta.model) { meta.model = mid; writeMeta() }
+
   switch (type) {
     case 'step_start': {
       // First occurrence captures sessionID (handled above); later occurrences just touch.

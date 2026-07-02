@@ -197,6 +197,15 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# For the session record only: when no model was requested anywhere, surface codex's own
+# config default (~/.codex/config.toml `model = "..."`) so the dashboard can show the model
+# actually used. NOT added to CODEX_ARGS — codex applies this default itself, and its JSON
+# stream carries no model field to learn it from.
+META_MODEL=""
+if [ -z "$MODEL" ]; then
+  META_MODEL="$(sed -n 's/^model *= *"\(.*\)".*/\1/p' "${CODEX_HOME:-$HOME/.codex}/config.toml" 2>/dev/null | head -1)"
+fi
+
 # codex's stdout → parser (process substitution); codex's stderr passes through to our stderr.
 # Prompt-as-arg → redirect stdin from /dev/null (the documented gotcha; without it codex blocks
 # on "Reading additional input from stdin..."). The `{ node ...; touch DONE; }` wrapper lets us
@@ -206,7 +215,7 @@ codex "${CODEX_ARGS[@]}" </dev/null > >(
   CX_PROMPT_PREVIEW="$(printf '%.120s' "$PROMPT")" \
   CX_CWD="$CWD" \
   CX_BRANCH="$BRANCH" \
-  CX_MODEL="$MODEL" \
+  CX_MODEL="${MODEL:-$META_MODEL}" \
   CX_THREAD_ID="$([ "$RESUME" -eq 1 ] && printf '%s' "$RESUME_ID" || true)" \
   CX_RESUME="$RESUME" \
     node "$PARSER" > "$PARSER_OUT"
