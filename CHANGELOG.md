@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.15.1] — 2026-07-02
+
+### Fixed
+- **`oc-stream-parse.mjs`: OpenCode's top-level `error` event was losing its diagnostic message.** OpenCode emits `{"type":"error","error":{"data":{"message":...}}}` on a turn failure (bad model slug, no tool-use-capable endpoint, upstream 5xx) — the payload lives at the event's top level (`ev.error`), not nested under `ev.part` like every other event type. The parser was only reading `part.message`, so real failures always degraded to a generic `"unknown error"` string (the `state:"error"` flag itself was still set correctly — this was a lost-diagnostic bug, not a false-success bug). Confirmed live against a real `OPENROUTER_API_KEY` with two distinct failure modes and fixed. Also empirically confirmed `--session <id> --continue` correctly resumes the *named* OpenCode session, not just "the last one" — the resume-semantics TODO from 3.15.0 is resolved, no fix was needed there.
+
+### Changed
+- Extracted `json_field` / `relocate_session_dir` / `surface_status_error` into `stream-utils.sh`, now shared by `ag-stream` / `cx-stream` / `oc-stream` (behavior-preserved, ~30 duplicated lines removed).
+- `ds-stream-parse.mjs` now uses the shared `clip()` helper instead of an inline reimplementation.
+
+### Removed
+- 5 orphaned dashboard screenshots (972KB, unreferenced anywhere in the repo — README only embeds the GIFs/MP4).
+
 ## [3.15.0] — 2026-07-02
 
 ### Added

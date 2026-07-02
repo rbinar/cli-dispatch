@@ -7,6 +7,18 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.15.1] — 2026-07-02
+
+### Düzeltilenler
+- **`oc-stream-parse.mjs`: OpenCode'un üst-seviye `error` olayı tanı mesajını kaybediyordu.** OpenCode bir turn başarısız olduğunda (kötü model slug'ı, tool-use desteklemeyen endpoint, upstream 5xx) `{"type":"error","error":{"data":{"message":...}}}` yayınlıyor — payload olayın üst seviyesinde (`ev.error`), diğer tüm olay tiplerinin aksine `ev.part` altında değil. Parser yalnızca `part.message`'ı okuyordu, bu yüzden gerçek hatalar her zaman genel bir `"unknown error"` string'ine düşüyordu (`state:"error"` bayrağının kendisi doğru ayarlanıyordu — bu sahte-başarı değil, kaybolan-tanı bug'ıydı). Gerçek bir `OPENROUTER_API_KEY` ile iki farklı hata modunda canlı doğrulanıp düzeltildi. Ayrıca `--session <id> --continue`'un doğru şekilde *adlandırılmış* OpenCode session'ını resume ettiği (sadece "en sonuncusu" değil) ampirik olarak doğrulandı — 3.15.0'daki resume-semantiği TODO'su çözüldü, orada düzeltme gerekmedi.
+
+### Değişenler
+- `json_field` / `relocate_session_dir` / `surface_status_error`, `stream-utils.sh`'e çıkarıldı, artık `ag-stream` / `cx-stream` / `oc-stream` tarafından paylaşılıyor (davranış-korundu, ~30 tekrarlı satır kaldırıldı).
+- `ds-stream-parse.mjs` artık satır-içi yeniden uygulama yerine paylaşılan `clip()` yardımcısını kullanıyor.
+
+### Kaldırılanlar
+- 5 yetim dashboard ekran görüntüsü (972KB, repoda hiçbir yerde referanslanmıyordu — README yalnızca GIF/MP4'leri gömüyor).
+
 ## [3.15.0] — 2026-07-02
 
 ### Eklenenler
