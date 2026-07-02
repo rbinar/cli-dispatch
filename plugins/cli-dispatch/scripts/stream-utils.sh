@@ -68,3 +68,62 @@ resolve_sessions_root() {
   fi
   printf '%s' "$root"
 }
+
+# ---- JSON helpers ----
+
+# json_field <file> <key> — print the top-level string field <key> from the JSON in <file>,
+# or empty on ANY error (missing file, bad JSON, absent/non-string key). <key> is looked up
+# via bracket access (s[key]), so it works for both fixed field names ("state", "error",
+# "threadId") and dynamic keys (e.g. an absolute-path key in last_conversations.json).
+# NOTE: top-level access only — this cannot express nested paths (s.a.b); leave those inline.
+json_field() {
+  node -e 'try{const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(s[process.argv[2]]||"")}catch{}' "$1" "$2" 2>/dev/null
+}
+
+# ---- turn-error surfacing ----
+
+# surface_status_error <session_dir> <fail_message>
+# Read state+error from <session_dir>/status.json. If state == "error", print
+#   "<fail_message>: <error>"   (when an error string is present)
+#   "<fail_message>."           (otherwise)
+# to stderr and return 1 — the signal for the caller to force its OWN exit code non-zero
+# (the caller keeps that forcing, since it knows the name of its exit-code variable).
+# Returns 0 (no surfacing) when status.json is missing or state is not "error".
+surface_status_error() {
+  local dir="$1" msg="$2" state="" err=""
+  if [ -f "$dir/status.json" ]; then
+    state="$(json_field "$dir/status.json" state || true)"
+    err="$(json_field "$dir/status.json" error || true)"
+  fi
+  [ "$state" = "error" ] || return 0
+  [ -n "$err" ] && echo "$msg: $err" >&2 || echo "$msg." >&2
+  return 1
+}
+
+# ---- provisional → real session-dir relocation ----
+
+# relocate_session_dir <sessions_root> <session_dir> <provisional_id> <real_id> \
+#                      <prog> <exists_noun> <found_line_prefix>
+# Best-effort relocation of a provisional session dir to its real backend id. When <real_id>
+# is non-empty and differs from <provisional_id>:
+#   - if <sessions_root>/<real_id> does NOT exist → mv <session_dir> there (updating the dir);
+#   - if it already exists → do NOT clobber; warn "<prog>: <exists_noun> <final> exists;
+#     session left at <session_dir>" on stderr;
+#   - then echo "<found_line_prefix><real_id>" on stderr (the aligned discovered-id line;
+#     the caller passes the exact prefix incl. its column spacing, e.g. "  thread:  ").
+# Prints the resulting session dir to stdout (the new dir if moved, else the original) so the
+# caller can capture it: SESSION_DIR="$(relocate_session_dir ...)". Callers guard the meta.json
+# read with their own RESUME check, so <real_id> is empty on a resumed run → this is a no-op.
+relocate_session_dir() {
+  local root="$1" dir="$2" prov="$3" real="$4" prog="$5" noun="$6" prefix="$7"
+  if [ -n "$real" ] && [ "$real" != "$prov" ]; then
+    local final="$root/$real"
+    if [ ! -e "$final" ]; then
+      mv "$dir" "$final" 2>/dev/null && dir="$final"
+    else
+      echo "$prog: $noun $final exists; session left at $dir" >&2
+    fi
+    echo "$prefix$real" >&2
+  fi
+  printf '%s' "$dir"
+}

@@ -29,6 +29,10 @@
 //   {"type":"text","sessionID":"...","part":{"type":"text","text":"...","time":{...}}}
 //   {"type":"step_finish","sessionID":"...","part":{"reason":"stop"|"tool-calls",
 //     "tokens":{"total":...,"input":...,"output":...},"cost":0}}
+//   {"type":"error","sessionID":"...","error":{"name":"UnknownError"|"APIError",
+//     "data":{"message":"...","ref":"..."}}}    <-- NOTE: error payload is at the EVENT's
+//     top level (ev.error), there is NO "part" field on this event at all (unlike every
+//     other event type above).
 // `text` parts arrived as one complete block (not streaming deltas) in every observed run,
 // so finalText is an OVERWRITE, not a concatenation. If a future run shows incremental delta
 // chunks instead, this overwrite assumption would need revisiting.
@@ -114,7 +118,7 @@ const countTool = (name) => {
   status.toolCounts[name] = (status.toolCounts[name] ?? 0) + 1
 }
 
-function handlePart(type, sessionID, part) {
+function handlePart(type, sessionID, part, topError) {
   if (typeof sessionID === 'string' && sessionID && !meta.threadId) {
     meta.threadId = sessionID
     status.threadId = sessionID
@@ -173,11 +177,25 @@ function handlePart(type, sessionID, part) {
       return
     }
     case 'error': {
-      // TODO: unconfirmed whether OpenCode ever emits a top-level {"type":"error",...} event
-      // (vs. only surfacing failures via tool_use.state.status:"error" or a non-zero exit with
-      // empty stdout). Handle it defensively in case it does; if it never fires, the exit-code
-      // fallback in oc-stream / finalize() below still covers the failure case.
-      const msg = (part && (part.message ?? part.error)) ?? 'unknown error'
+      // Confirmed 2026-07-02 against a live OPENROUTER_API_KEY: OpenCode DOES emit a
+      // top-level {"type":"error","sessionID":"...","error":{"name":...,"data":{"message":
+      // "...","ref":"..."}}} event on a turn failure (bad model slug, no tool-use-capable
+      // endpoint, upstream 5xx, etc). Reproduced with both an invalid model slug
+      // ("UnknownError" / "Unexpected server error...") and a valid model whose OpenRouter
+      // endpoint didn't support tool use ("APIError" / "No endpoints found that support tool
+      // use..."). Critically, the error payload lives at the EVENT's top level (ev.error),
+      // NOT nested under ev.part like every other event type — `part` is undefined here, so
+      // the old `part.message ?? part.error` read always missed it and fell back to the
+      // generic "unknown error" string. state:"error" still got set correctly (not a false
+      // success), but the useful diagnostic was lost. Read topError (ev.error) first, with
+      // the old part-based read kept as a defensive fallback for any other shape.
+      const err = topError && typeof topError === 'object' ? topError : {}
+      const data = err.data && typeof err.data === 'object' ? err.data : {}
+      const msg = (typeof data.message === 'string' && data.message)
+        || (typeof err.message === 'string' && err.message)
+        || (typeof err.name === 'string' && err.name)
+        || (part && (part.message ?? part.error))
+        || 'unknown error'
       errorText = String(msg)
       appendProgress(`✗ ${clip(errorText, 160)}`)
       touch(); writeStatus()
@@ -194,7 +212,9 @@ function handlePart(type, sessionID, part) {
 
 function handleEvent(ev) {
   if (!ev || typeof ev !== 'object') return
-  handlePart(ev.type, ev.sessionID, ev.part)
+  // ev.error is only meaningful for type:"error" events (see the confirmed shape note
+  // above) — handlePart's other cases ignore the extra arg.
+  handlePart(ev.type, ev.sessionID, ev.part, ev.error)
 }
 
 // ---- read stdin line by line ----

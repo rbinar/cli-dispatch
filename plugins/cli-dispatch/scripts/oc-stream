@@ -110,9 +110,14 @@ CWD="$(cd "$CWD" 2>/dev/null && pwd)" || { echo "oc-stream: bad --cwd" >&2; exit
 # write/exec approval. There is no --read-only / --sandbox flag to add here (unlike cx-stream) —
 # OpenCode has no OS-level or tool-level write-deny at all. Safety = git-worktree isolation only.
 #
-# Resume: `--session <id> --continue` per the plan's literal-safe reading (both flags together).
-# TODO: verify resume targets the NAMED session, not just "the last session" — unconfirmed
-# without a live OPENROUTER_API_KEY test (plan flags this as an open TODO).
+# Resume: `--session <id> --continue`. Confirmed 2026-07-02 against a live OPENROUTER_API_KEY:
+# `--session <id>` alone, `--continue` alone, and the two combined all correctly target the
+# NAMED session — verified by creating two sessions (A then B), then resuming A specifically
+# and confirming the recalled value was A's, not B's (B being "the last session" chronologically
+# would have proven a bug; it did not happen). No fix needed here. One caveat observed
+# separately (not a flag-semantics bug): a resume whose --cwd/--dir does not match the
+# original session's directory can take much longer (full-history replay) — always pass the
+# same --cwd used to create the session when resuming it.
 OC_ARGS=(run --format json --auto --dir "$CWD")
 [ -n "$MODEL" ] && OC_ARGS+=(--model "openrouter/$MODEL")
 [ -n "$RESUME_ID" ] && OC_ARGS+=(--session "$RESUME_ID" --continue)
@@ -249,35 +254,21 @@ else
 fi
 
 # ---- H2: consult the parser's result; turn-level errors must propagate ----
-# OpenCode may report a tool-level error (state.status:"error") yet still exit 0, or emit no
-# error signal at all on a bad-model/auth failure (unconfirmed — see parser TODO). The parser
-# records any captured error as status.json state=error (+ error message). Surface the reason
-# on stderr and force a non-zero exit so callers don't see "success" with no output.
-OC_STATE=""; OC_ERR=""
-if [ -f "$SESSION_DIR/status.json" ]; then
-  OC_STATE="$(node -e 'try{const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(s.state||"")}catch{}' "$SESSION_DIR/status.json" 2>/dev/null || true)"
-  OC_ERR="$(node -e 'try{const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(s.error||"")}catch{}' "$SESSION_DIR/status.json" 2>/dev/null || true)"
-fi
-if [ "$OC_STATE" = "error" ]; then
-  [ -n "$OC_ERR" ] && echo "oc-stream: opencode turn failed: $OC_ERR" >&2 \
-                    || echo "oc-stream: opencode turn failed." >&2
+# Confirmed 2026-07-02 against a live OPENROUTER_API_KEY: OpenCode emits a top-level
+# {"type":"error",...} event on a turn failure (bad model slug, no tool-use-capable endpoint,
+# upstream 5xx, etc) — the parser captures it into status.json state=error (+ error message).
+# Surface the reason on stderr and force a non-zero exit so callers don't see "success" with
+# no output.
+if ! surface_status_error "$SESSION_DIR" "oc-stream: opencode turn failed"; then
   [ "$OC_RC" -eq 0 ] && OC_RC=1
 fi
 
 # ---- relocate the provisional session dir to the real sessionID (best-effort) ----
 if [ "$RESUME" -eq 0 ]; then
-  REAL_ID="$(node -e 'try{const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(m.threadId||"")}catch{}' "$SESSION_DIR/meta.json" 2>/dev/null || true)"
-  if [ -n "$REAL_ID" ] && [ "$REAL_ID" != "$SESSION_ID" ]; then
-    FINAL_DIR="$SESSIONS_ROOT/$REAL_ID"
-    if [ ! -e "$FINAL_DIR" ]; then
-      mv "$SESSION_DIR" "$FINAL_DIR" 2>/dev/null && SESSION_DIR="$FINAL_DIR"
-    else
-      # Don't clobber an existing session dir; warn instead of silently leaving the session
-      # stranded in the provisional dir with no trace.
-      echo "oc-stream: session dir $FINAL_DIR exists; session left at $SESSION_DIR" >&2
-    fi
-    echo "  session: $REAL_ID" >&2
-  fi
+  REAL_ID="$(json_field "$SESSION_DIR/meta.json" threadId || true)"
+  # relocate_session_dir warns (not clobbers) if the real session dir already exists, echoes
+  # the discovered "  session: <id>" line, and prints the resulting dir for us to capture.
+  SESSION_DIR="$(relocate_session_dir "$SESSIONS_ROOT" "$SESSION_DIR" "$SESSION_ID" "$REAL_ID" "oc-stream" "session dir" "  session: ")"
 fi
 
 # ---- print ONLY the final answer on stdout ----

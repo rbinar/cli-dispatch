@@ -18,7 +18,7 @@
 
 import { readFileSync, existsSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
-import { writeMetaFile, createStatusWriter, openSessionFiles, humanSize } from './parse-utils.mjs'
+import { writeMetaFile, createStatusWriter, openSessionFiles, humanSize, clip } from './parse-utils.mjs'
 
 const dir = process.env.CLAUDE_DS_SESSION_DIR
 if (!dir) {
@@ -91,9 +91,7 @@ const flushPending = () => {
   const t = pendingText.trim()
   pendingText = ''
   if (!t) return
-  const oneLine = t.replace(/\s+/g, ' ')
-  const clipped = oneLine.length > 200 ? oneLine.slice(0, 200) + '…' : oneLine
-  appendProgress(`· ${clipped}`)
+  appendProgress(`· ${clip(t, 200)}`)
 }
 
 // Derive a short, readable summary from a tool's input.

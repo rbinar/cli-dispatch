@@ -274,31 +274,16 @@ fi
 # codex frequently emits a turn-level error (turn.failed / item.type:"error") yet still
 # exits 0. The parser records that as status.json state=error (+ error message). Surface the
 # reason on stderr and force a non-zero exit so callers don't see "success" with no output.
-CX_STATE=""; CX_ERR=""
-if [ -f "$SESSION_DIR/status.json" ]; then
-  CX_STATE="$(node -e 'try{const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(s.state||"")}catch{}' "$SESSION_DIR/status.json" 2>/dev/null || true)"
-  CX_ERR="$(node -e 'try{const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(s.error||"")}catch{}' "$SESSION_DIR/status.json" 2>/dev/null || true)"
-fi
-if [ "$CX_STATE" = "error" ]; then
-  [ -n "$CX_ERR" ] && echo "cx-stream: codex turn failed: $CX_ERR" >&2 \
-                    || echo "cx-stream: codex turn failed." >&2
+if ! surface_status_error "$SESSION_DIR" "cx-stream: codex turn failed"; then
   [ "$CODEX_RC" -eq 0 ] && CODEX_RC=1
 fi
 
 # ---- relocate the provisional session dir to the real thread id (best-effort) ----
 if [ "$RESUME" -eq 0 ]; then
-  THREAD_ID="$(node -e 'try{const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(m.threadId||"")}catch{}' "$SESSION_DIR/meta.json" 2>/dev/null || true)"
-  if [ -n "$THREAD_ID" ] && [ "$THREAD_ID" != "$SESSION_ID" ]; then
-    FINAL_DIR="$SESSIONS_ROOT/$THREAD_ID"
-    if [ ! -e "$FINAL_DIR" ]; then
-      mv "$SESSION_DIR" "$FINAL_DIR" 2>/dev/null && SESSION_DIR="$FINAL_DIR"
-    else
-      # Don't clobber an existing thread dir; warn instead of silently leaving the session
-      # stranded in the provisional dir with no trace.
-      echo "cx-stream: thread dir $FINAL_DIR exists; session left at $SESSION_DIR" >&2
-    fi
-    echo "  thread:  $THREAD_ID" >&2
-  fi
+  THREAD_ID="$(json_field "$SESSION_DIR/meta.json" threadId || true)"
+  # relocate_session_dir warns (not clobbers) if the real thread dir already exists, echoes
+  # the discovered "  thread:  <id>" line, and prints the resulting dir for us to capture.
+  SESSION_DIR="$(relocate_session_dir "$SESSIONS_ROOT" "$SESSION_DIR" "$SESSION_ID" "$THREAD_ID" "cx-stream" "thread dir" "  thread:  ")"
 fi
 
 # ---- print ONLY the final agent message on stdout ----

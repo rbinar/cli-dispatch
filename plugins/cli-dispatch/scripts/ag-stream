@@ -161,7 +161,7 @@ run_agy_bg() { # backgrounds agy under a pty, writes its PID to $PIDFILE
 # the set of existing brain/ dirs (so the fallback only ever picks a NEWLY-created one and
 # can never attach to an unrelated stale conversation).
 PRE_CID=""
-[ -f "$LC" ] && PRE_CID="$(node -e 'try{const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(m[process.argv[2]]||"")}catch{}' "$LC" "$CWD" 2>/dev/null || true)"
+[ -f "$LC" ] && PRE_CID="$(json_field "$LC" "$CWD" || true)"
 PRE_BRAIN="$(ls "$BRAIN" 2>/dev/null | sort || true)"
 
 # Process helpers: mtime_of, kill_tree, proc_tree, kill_worker — defined in stream-utils.sh
@@ -181,7 +181,7 @@ discover_cid() {
   local cid="" i
   for i in $(seq 1 120); do   # up to ~30s
     if [ -f "$LC" ]; then
-      cid="$(node -e 'try{const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(m[process.argv[2]]||"")}catch{}' "$LC" "$CWD" 2>/dev/null || true)"
+      cid="$(json_field "$LC" "$CWD" || true)"
       if [ -n "$cid" ] && [ "$cid" != "$PRE_CID" ]; then printf '%s' "$cid"; return 0; fi
     fi
     kill -0 "$AGY_PID" 2>/dev/null || break   # agy already exited
