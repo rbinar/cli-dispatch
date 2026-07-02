@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.15.2] — 2026-07-02
+
+### Changed
+- **`ag-runner`: worker model selection is now a hard requirement, not a suggestion.** Session forensics showed the orchestrator asking for "Gemini 3.5 Flash" while most antigravity sessions ran with `model: ""` (agy's default) — the babysitter simply never passed `--model`. The agent brief now makes it explicit: if the task names a worker model, passing `--model` with the EXACT `agy models` display line (reasoning suffix included) is MANDATORY; agy silently falls back to its default on a missing/unknown name, so skipping the flag counts as failing the task. Adds a 3-step procedure (copy exact name → pass verbatim → verify `"model"` in the session's `meta.json` after the run) and a `model:` line in both return formats so the orchestrator always sees which model actually ran.
+
+### Fixed
+- **Dashboard: live refresh no longer flickers.** Every SSE change event used to blank the detail view to `loading…` and rebuild it from scratch (and `loadList()` cleared the rail before its fetch resolved) — on a busy session that meant constant flashing and the scroll position jumping to the top. Now: views render to a string and only touch the DOM when the HTML actually changed (most fs.watch wakeups become no-ops), swaps preserve the scroll position of both the rail and the main pane, change bursts are coalesced client-side to at most one refresh per 600ms, `loading…` only shows when navigating to a *different* item, and the worker "Görev / talimat" panel keeps its open/closed state across refreshes.
+- **Dashboard: Workers filter chips were dead on arrival.** The `setWFilter` onclick used single-backslash escapes (`\'`) inside the server-side template literal, which collapsed to a bare quote in the served page and broke the entire client script with a syntax error. Escaped properly (`\\'`), matching the Claude Code filter line one line above. Caught by a parse test that evaluates the embedded `<script>` exactly as the browser would.
+
 ## [3.15.1] — 2026-07-02
 
 ### Fixed

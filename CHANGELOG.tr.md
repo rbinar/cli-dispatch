@@ -7,6 +7,15 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.15.2] — 2026-07-02
+
+### Değişti
+- **`ag-runner`: worker model seçimi artık öneri değil, zorunluluk.** Oturum kayıtları, orkestratör "Gemini 3.5 Flash" istediği hâlde antigravity oturumlarının çoğunun `model: ""` (agy varsayılanı) ile koştuğunu gösterdi — babysitter `--model` bayrağını hiç geçmiyordu. Ajan talimatı artık açık: görev bir worker modeli adlandırıyorsa, `agy models` çıktısındaki TAM satırla (reasoning eki dâhil) `--model` geçmek ZORUNLU; agy eksik/bilinmeyen isimde sessizce varsayılana düşer, bu yüzden bayrağı atlamak görevi başarısız saymak demektir. 3 adımlı prosedür eklendi (tam ismi kopyala → aynen geç → koşu sonrası oturumun `meta.json`'ındaki `"model"` alanını doğrula) ve her iki dönüş formatına `model:` satırı eklendi — orkestratör hangi modelin gerçekten koştuğunu her zaman görür.
+
+### Düzeltildi
+- **Dashboard: canlı yenileme artık titremiyor (flicker).** Her SSE change event'i detay görünümünü `loading…`'e boşaltıp sıfırdan kuruyordu (`loadList()` de fetch sonuçlanmadan sol rayı temizliyordu) — meşgul bir oturumda bu sürekli flaş ve scroll'un en başa zıplaması demekti. Artık: görünümler string'e render edilir ve HTML gerçekten değiştiyse DOM'a dokunulur (fs.watch uyanmalarının çoğu no-op olur), swap'lerde hem rayın hem ana panelin scroll konumu korunur, change patlamaları istemci tarafında 600ms'de en fazla bir yenilemeye koalese edilir, `loading…` yalnızca *farklı* bir öğeye geçerken gösterilir ve worker "Görev / talimat" paneli yenilemeler arasında açık/kapalı durumunu korur.
+- **Dashboard: Workers filtre çipleri doğuştan ölüydü.** `setWFilter` onclick'i sunucu tarafı template literal içinde tek backslash kaçış (`\'`) kullanıyordu; bu, sunulan sayfada çıplak tırnağa dönüşüp istemci script'inin tamamını syntax hatasıyla kırıyordu. Bir üst satırdaki Claude Code filtresiyle aynı şekilde düzgün kaçışlandı (`\\'`). Gömülü `<script>`'i tarayıcının değerlendirdiği gibi değerlendiren bir parse testiyle yakalandı.
+
 ## [3.15.1] — 2026-07-02
 
 ### Düzeltilenler

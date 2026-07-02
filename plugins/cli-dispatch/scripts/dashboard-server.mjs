@@ -466,14 +466,26 @@ function setFilter(k){ flt=k; loadList() }
 function setWFilter(k){ wFlt=k; loadList() }
 // Live updates via Server-Sent Events. One detail stream for the open item; it
 // pushes a 'change' event whenever the watched file/dir changes (fs.watch).
-let detailES=null, detailSpec=null
+let detailES=null, detailSpec=null, detailTimer=null
 function watchDetail(spec, fn){
   if(spec===detailSpec) return
   if(detailES){ detailES.close(); detailES=null }
+  if(detailTimer){ clearTimeout(detailTimer); detailTimer=null }
   detailSpec=spec||null
   if(!spec) return
   detailES=new EventSource('/api/stream?watch='+encodeURIComponent(spec))
-  detailES.addEventListener('change', fn)
+  // Coalesce change bursts: at most one detail refresh per 600ms.
+  detailES.addEventListener('change', ()=>{ if(detailTimer) return; detailTimer=setTimeout(()=>{ detailTimer=null; fn() },600) })
+}
+// Flicker-free view swap: skip the DOM write entirely when the rendered HTML is unchanged
+// (fs.watch fires for plenty of writes that don't alter what we show), otherwise replace
+// and restore the scroll position so a live refresh doesn't jump the reader to the top.
+function setView(key,h){
+  const v=document.getElementById('view'); v.className=''
+  if(v._k===key&&v._h===h) return
+  const sc=v.parentElement.scrollTop
+  v._k=key; v._h=h; v.innerHTML=h
+  v.parentElement.scrollTop=sc
 }
 const E=(h)=>{const d=document.createElement('div');d.innerHTML=h;return d.firstChild}
 const esc=(s)=>String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))
@@ -517,8 +529,10 @@ const fmtDT=(iso)=>{const d=iso?new Date(iso):null;return d&&!isNaN(d)?d.toLocal
 async function j(u){const r=await fetch(u);return r.json()}
 
 async function loadList(){
-  const el=document.getElementById('list'); el.innerHTML=''
+  const el=document.getElementById('list')
   const fb=document.getElementById('filter')
+  // Build first, swap once at the end — never blank the rail while the fetch is in flight.
+  const frag=document.createDocumentFragment(); const sig=[]
   if(mode==='cc'){
     const ss=await j('/api/sessions')
     const counts={busy:0,idle:0,closed:0}; ss.forEach(s=>counts[s.status]=(counts[s.status]||0)+1)
@@ -527,25 +541,31 @@ async function loadList(){
     document.getElementById('meta').textContent=ss.length+' sessions'
     const shown=flt==='all'?ss:ss.filter(s=>s.status===flt)
     shown.forEach(s=>{
-      const it=E('<div class="item'+(sel===s.id?' sel':'')+'"><div><span class="dot '+s.status+'"></span>'+esc(s.project.replace(/^-/,'').split('-').slice(-2).join('/'))+'<span class="badge">'+s.status+'</span>'+(s.subagentCount?'<span class="badge">'+s.subagentCount+' sub</span>':'')+'</div><div class="small muted">'+esc(s.firstPrompt||s.id.slice(0,8))+'</div><div class="small muted">'+esc(fmtDT(s.lastActivityAt))+' · '+s.sizeKB+'KB</div></div>')
-      it.onclick=()=>openSession(s); el.appendChild(it)
+      const h='<div class="item'+(sel===s.id?' sel':'')+'"><div><span class="dot '+s.status+'"></span>'+esc(s.project.replace(/^-/,'').split('-').slice(-2).join('/'))+'<span class="badge">'+s.status+'</span>'+(s.subagentCount?'<span class="badge">'+s.subagentCount+' sub</span>':'')+'</div><div class="small muted">'+esc(s.firstPrompt||s.id.slice(0,8))+'</div><div class="small muted">'+esc(fmtDT(s.lastActivityAt))+' · '+s.sizeKB+'KB</div></div>'
+      const it=E(h); it.onclick=()=>openSession(s); frag.appendChild(it); sig.push(h)
     })
   }else{
     const ws=await j('/api/workers')
     const wCounts={all:ws.length,running:0,done:0,error:0}
     ws.forEach(w=>{ const k=w.stale||w.state==='error'?'error':w.state==='running'?'running':w.state==='done'?'done':'error'; wCounts[k]=(wCounts[k]||0)+1 })
     fb.style.display='flex'
-    fb.innerHTML=[['all',wCounts.all],['running',wCounts.running],['done',wCounts.done],['error',wCounts.error]].map(([k,n])=>'<span class="fchip'+(wFlt===k?' on':'')+'" onclick="setWFilter(\''+k+'\')">'+k+'<span class="c">'+n+'</span></span>').join('')
+    fb.innerHTML=[['all',wCounts.all],['running',wCounts.running],['done',wCounts.done],['error',wCounts.error]].map(([k,n])=>'<span class="fchip'+(wFlt===k?' on':'')+'" onclick="setWFilter(\\''+k+'\\')">'+k+'<span class="c">'+n+'</span></span>').join('')
     document.getElementById('meta').textContent=ws.length+' workers'
     const shown=wFlt==='all'?ws:ws.filter(w=>{ const k=w.stale||w.state==='error'?'error':w.state==='running'?'running':w.state==='done'?'done':'error'; return k===wFlt })
     shown.forEach(w=>{
       const live=w.state==='running'&&!w.stale
       const dot=live?'busy':w.state==='done'?'closed':'idle'
       const badge=w.stale?'stale':w.state
-      const it=E('<div class="item'+(sel===w.id?' sel':'')+'"><div><span class="dot '+dot+'"></span>'+esc(w.backend)+(w.model?' <span class="c">'+esc(w.model)+'</span>':'')+' <span class="badge">'+esc(badge)+'</span></div><div class="small muted">'+esc(w.prompt||w.id.slice(0,8))+'</div><div class="small muted">'+esc(fmtDT(w.started))+(w.lastTool?' · '+esc(w.lastTool):'')+'</div></div>')
-      it.onclick=()=>openWorker(w); el.appendChild(it)
+      const h='<div class="item'+(sel===w.id?' sel':'')+'"><div><span class="dot '+dot+'"></span>'+esc(w.backend)+(w.model?' <span class="c">'+esc(w.model)+'</span>':'')+' <span class="badge">'+esc(badge)+'</span></div><div class="small muted">'+esc(w.prompt||w.id.slice(0,8))+'</div><div class="small muted">'+esc(fmtDT(w.started))+(w.lastTool?' · '+esc(w.lastTool):'')+'</div></div>'
+      const it=E(h); it.onclick=()=>openWorker(w); frag.appendChild(it); sig.push(h)
     })
   }
+  // Skip the swap when nothing visible changed; otherwise keep the rail's scroll position.
+  const s2=mode+'|'+sig.join('\\n')
+  if(el._sig===s2) return
+  el._sig=s2
+  const rail=el.parentElement; const sc=rail.scrollTop
+  el.replaceChildren(frag); rail.scrollTop=sc
 }
 function renderFlow(steps){
   if(!steps||!steps.length) return '<div class="empty">no steps</div>'
@@ -570,7 +590,9 @@ async function openSession(s){
   sel=s.id; mode='cc'
   document.getElementById('crumb').innerHTML='<a onclick="back()">sessions</a> › '+esc(s.id.slice(0,8))+' <span class="muted">('+esc(s.status)+')</span>'
   const prevPanel=document.querySelector('#view details.restpanel'); const subsOpen=prevPanel?prevPanel.open:false
-  const v=document.getElementById('view'); v.className=''; v.innerHTML='loading…'
+  const key='session:'+s.id
+  const v=document.getElementById('view')
+  if(v._k!==key){ v._k=key; v._h=null; v.className=''; v.innerHTML='loading…' }
   const [flow,subs]=await Promise.all([j('/api/session/'+s.id+'/flow'),j('/api/session/'+s.id+'/subagents')])
   window._cur={type:'session',id:s.id}
   let h=''
@@ -581,33 +603,38 @@ async function openSession(s){
   }
   h+=workerPanelHtml(flow.linkedWorkers)
   h+=renderFlow(flow.steps)+(flow.truncated?'<div class="small muted">(showing last '+flow.steps.length+' of '+flow.total+')</div>':'')
-  v.innerHTML=h; loadList()
+  setView(key,h); loadList()
   watchDetail(s.status==='busy'?'session:'+s.id:null, ()=>openSession(s))
 }
 async function openSub(aid,active){
   const sid=window._cur&&window._cur.type==='session'?window._cur.id:(window._cur&&window._cur.sid)
   if(!sid) return;
   document.getElementById('crumb').innerHTML='<a onclick="back()">sessions</a> › <a onclick="reopen(\\''+escAttr(sid)+'\\')">'+esc(sid.slice(0,8))+'</a> › <span class="k">subagent '+esc(aid.slice(0,8))+'</span>'+(active?' <span class="live">● live</span>':'')
-  const v=document.getElementById('view'); v.className=''; if(!v.querySelector('.step')) v.innerHTML='loading…'
+  const key='sub:'+sid+':'+aid
+  const v=document.getElementById('view')
+  if(v._k!==key){ v._k=key; v._h=null; v.className=''; v.innerHTML='loading…' }
   const flow=await j('/api/subagent/'+sid+'/'+aid+'/flow')
   window._cur={type:'sub',sid:sid,aid:aid}
-  v.innerHTML=workerPanelHtml(flow.linkedWorkers)+renderFlow(flow.steps)+(flow.truncated?'<div class="small muted">(last '+flow.steps.length+' of '+flow.total+')</div>':'')
+  setView(key,workerPanelHtml(flow.linkedWorkers)+renderFlow(flow.steps)+(flow.truncated?'<div class="small muted">(last '+flow.steps.length+' of '+flow.total+')</div>':''))
   watchDetail(active?'subagent:'+sid+':'+aid:null, ()=>openSub(aid,true))
 }
 async function openWorker(w){
   sel=w.id;
   document.getElementById('crumb').innerHTML='<a onclick="back()">workers</a> › '+esc(w.backend)+(w.model?' <span class="c">'+esc(w.model)+'</span>':'')+' '+esc(w.id.slice(0,12))+' <span class="muted">('+esc(w.state)+')</span>'
-  const v=document.getElementById('view'); v.className=''; v.innerHTML='loading…'
+  const taskPanel=document.querySelector('#view details.panel.task'); const taskOpen=taskPanel?taskPanel.open:false
+  const key='worker:'+w.id
+  const v=document.getElementById('view')
+  if(v._k!==key){ v._k=key; v._h=null; v.className=''; v.innerHTML='loading…' }
   const flow=await j('/api/worker/'+w.id+'/flow')
   let h=''
-  if(flow.prompt) h+='<details class="panel task"><summary>Görev / talimat</summary><div class="sabody"><div class="md">'+md(flow.prompt)+'</div></div></details>'
+  if(flow.prompt) h+='<details class="panel task"'+(taskOpen?' open':'')+'><summary>Görev / talimat</summary><div class="sabody"><div class="md">'+md(flow.prompt)+'</div></div></details>'
   h+=renderFlow(flow.steps)
   if(flow.finalResultPreview) h+='<div class="step message" style="margin-top:10px">⏺ <b>result:</b> '+esc(flow.finalResultPreview)+'</div>'
-  v.innerHTML=h; loadList()
+  setView(key,h); loadList()
   watchDetail((w.state==='running'&&!w.stale)?'worker:'+w.id:null, ()=>openWorker(w))
 }
 function reopen(sid){ fetch('/api/sessions').then(r=>r.json()).then(ss=>{const s=ss.find(x=>x.id===sid); if(s) openSession(s)}) }
-function back(){ watchDetail(null); sel=null; window._cur=null; document.getElementById('crumb').textContent='Select a session…'; document.getElementById('view').className='empty'; document.getElementById('view').innerHTML='←'; loadList() }
+function back(){ watchDetail(null); sel=null; window._cur=null; document.getElementById('crumb').textContent='Select a session…'; const v=document.getElementById('view'); v._k=null; v._h=null; v.className='empty'; v.innerHTML='←'; loadList() }
 document.getElementById('tabCC').onclick=()=>{mode='cc';document.getElementById('tabCC').classList.add('on');document.getElementById('tabW').classList.remove('on');back()}
 document.getElementById('tabW').onclick=()=>{mode='w';wFlt='all';document.getElementById('tabW').classList.add('on');document.getElementById('tabCC').classList.remove('on');back()}
 loadList()

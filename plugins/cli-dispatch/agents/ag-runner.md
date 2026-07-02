@@ -75,12 +75,31 @@ safety boundary — not a mode flag.
 
 ## Worker model selection
 
-Pass the exact display name from `agy models` output, including the reasoning suffix if
-applicable (e.g. `"Claude Sonnet 4.6 (Thinking)"`):
-```bash
-ag-agent --model "Claude Sonnet 4.6 (Thinking)" --cwd "$WORKTREE" "<task>"
-```
-Omit `--model` to use agy's default model.
+**If your task names a worker model, passing `--model` is MANDATORY.** Omitting it silently
+runs agy's default model — agy raises NO error for a missing or unknown model name
+(ag-stream only prints a stderr warning), so the task would quietly run on the wrong model.
+Running the default when a model was requested counts as FAILING the task.
+
+Procedure:
+1. Run `agy models` and copy the EXACT display line, including the reasoning suffix
+   (e.g. `Gemini 3.5 Flash (High)`, `Claude Sonnet 4.6 (Thinking)`). Loose names like
+   "gemini 3.5 flash" do NOT match. If the task names a model without a reasoning suffix,
+   prefer the `(High)` variant for code tasks and `(Medium)` otherwise, and state which
+   you picked in your report.
+2. Pass it verbatim:
+   ```bash
+   ag-agent --model "Gemini 3.5 Flash (High)" --cwd "$WORKTREE" "<task>"
+   ```
+3. Confirm after the run — check the session's `meta.json` (the conversation id is printed
+   on stderr; sessions live under `~/.cache/cli-dispatch/sessions/<conv-id>/` unless
+   `CLI_DISPATCH_SESSIONS_DIR` overrides it):
+   ```bash
+   grep -o '"model": *"[^"]*"' ~/.cache/cli-dispatch/sessions/<conv-id>/meta.json
+   ```
+   An empty value (`""`) means the flag never reached agy → rerun with the exact name.
+   Always report the model actually used.
+
+Omit `--model` ONLY when the orchestrator did not specify a worker model.
 
 ## Verify (mode B only — MANDATORY)
 
@@ -99,10 +118,11 @@ loop per step, not tight polling.
 
 ## Return format (concise)
 
-- **Mode A:** the final answer (verbatim), then one line: `mode=generation`.
+- **Mode A:** the final answer (verbatim), then one line: `mode=generation model=<model or "agy default">`.
 - **Mode B:** a short verdict —
   ```
   status: verified ✓ (or: FAILED — <why>)
+  model: <worker model from meta.json, or "agy default">
   worktree: <path>  branch: <name>
   changed: <N files> — <one-line summary>
   checks: <tsc/build/test results>
