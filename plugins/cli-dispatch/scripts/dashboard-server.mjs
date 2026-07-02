@@ -2,7 +2,7 @@
 // dashboard-server.mjs — cli-dispatch dashboard.
 // A self-contained, read-only local web dashboard over data that already lives on disk:
 //   • active Claude Code CLI sessions → their flow → the subagents they spawned → each subagent's flow
-//   • cli-dispatch worker delegations (DeepSeek / Antigravity / Codex)
+//   • cli-dispatch worker delegations (DeepSeek / Antigravity / Codex / OpenCode)
 // Stdlib only (node:http/fs/path/os) — no npm deps, matching the existing parsers.
 // Binds 127.0.0.1 ONLY. Never reads config/secrets. All :id params are path-sanitised.
 //
@@ -282,7 +282,7 @@ function workerFlow(id) {
 // ---- routing ----
 // Heuristic link: a Claude Code subagent/session that delegated to a cli-dispatch worker
 // prints the worker's session id to stderr (e.g. "dir: …/sessions/<id>"), which lands in the
-// transcript. Scan the transcript for any known worker id → linkable ds/ag/cx worker sessions.
+// transcript. Scan the transcript for any known worker id → linkable ds/ag/cx/oc worker sessions.
 function linkedWorkers(file) {
   let txt = ''; try { txt = readTail(file, 2 * 1024 * 1024) } catch { return [] }
   if (!txt) return []
@@ -563,7 +563,7 @@ function renderFlow(steps){
   }).join('')
 }
 function workerPanelHtml(lw){ if(!lw||!lw.length) return ''
-  return '<details class="panel wk"><summary>Worker sessions (ds/ag/cx) <span class="badge">'+lw.length+'</span></summary><div class="sabody">'+lw.map(w=>'<span class="sa" onclick="openWorkerById(\\''+escAttr(w.id)+'\\')">'+esc(w.backend)+(w.model?' ('+esc(w.model)+')':'')+': '+esc(w.prompt||w.id.slice(0,12))+' <span class="c">'+esc(w.stale?'stale':w.state)+'</span></span>').join('')+'</div></details>' }
+  return '<details class="panel wk"><summary>Worker sessions (ds/ag/cx/oc) <span class="badge">'+lw.length+'</span></summary><div class="sabody">'+lw.map(w=>'<span class="sa" onclick="openWorkerById(\\''+escAttr(w.id)+'\\')">'+esc(w.backend)+(w.model?' ('+esc(w.model)+')':'')+': '+esc(w.prompt||w.id.slice(0,12))+' <span class="c">'+esc(w.stale?'stale':w.state)+'</span></span>').join('')+'</div></details>' }
 function openWorkerById(id){ fetch('/api/workers').then(r=>r.json()).then(ws=>{const w=ws.find(x=>x.id===id); if(!w) return; mode='w'; document.getElementById('tabW').classList.add('on'); document.getElementById('tabCC').classList.remove('on'); openWorker(w)}) }
 function chipHtml(a){const t=fmtTime(a.startedAt);return '<span class="sa'+(a.active?' act':'')+'" onclick="openSub(\\''+escAttr(a.agentId)+'\\','+(a.active?'true':'false')+')">'+(a.active?'● ':'')+esc(a.agentType)+': '+esc(a.description||a.agentId.slice(0,8))+(a.spawnDepth>1?' ·d'+a.spawnDepth:'')+(t?' <span class="c">'+t+'</span>':'')+'</span>'}
 async function openSession(s){

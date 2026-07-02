@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# oc-agent — call the OpenCode (via OpenRouter) worker like a subagent: ONE command, live
+# progress, final answer. The OpenCode-backend twin of ds-agent / ag-agent / cx-agent.
+#
+#   oc-agent "<task>"                    # agentic in the current dir; streams tool activity; prints the answer
+#   oc-agent --cwd <dir> "<task>"        # work in <dir>
+#   oc-agent --resume <session-id> "<follow-up>"   # continue an existing opencode session
+#   echo "<task>" | oc-agent             # task via stdin
+#
+# A thin SYNCHRONOUS wrapper over oc-stream: blocks until the worker is done, shows tool
+# activity live on stderr, prints ONLY the final answer on stdout.
+#
+# NO --read-only / --sandbox: OpenCode has no OS-level or tool-level write-deny (unlike
+# codex's real kernel-enforced sandbox). `--auto` (always passed by oc-stream) auto-approves
+# every permission prompt — a functional requirement for headless use, not a safety opt-in.
+# For a no-writes guarantee, isolate via --cwd to a throwaway dir or a git worktree and
+# review the diff yourself (same posture as the Antigravity/agy backend — see oc-runner.md).
+set -euo pipefail
+
+usage() { echo 'usage: oc-agent [--cwd <dir>] [--resume <session-id>] [--model <slug>] [--max-runtime <s>] [--idle-timeout <s>] [-q] "<task>"' >&2; }
+
+QUIET=0
+TASK=""
+HAVE_TASK=0
+FWD=()
+need_val() { [ "$2" -ge 2 ] || { echo "oc-agent: $1 requires a value." >&2; exit 1; }; }
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --cwd)            need_val --cwd "$#";    FWD+=(--cwd "$2"); shift 2;;
+    --resume)         need_val --resume "$#"; FWD+=(--resume "$2"); shift 2;;
+    --model)          need_val --model "$#";  FWD+=(--model "$2"); shift 2;;
+    --max-runtime)    need_val --max-runtime "$#";  FWD+=(--max-runtime "$2"); shift 2;;
+    --idle-timeout)   need_val --idle-timeout "$#"; FWD+=(--idle-timeout "$2"); shift 2;;
+    -q|--quiet)       QUIET=1; shift;;
+    -p|--prompt)      need_val "$1" "$#"; TASK="$2"; HAVE_TASK=1; shift 2;;
+    -h|--help)        usage; exit 0;;
+    -*)               FWD+=("$1"); shift;;
+    *)                TASK="$1"; HAVE_TASK=1; shift;;
+  esac
+done
+
+if [ "$HAVE_TASK" -eq 0 ]; then
+  if [ ! -t 0 ]; then TASK="$(cat)"; else usage; exit 1; fi
+fi
+if [ -z "${TASK//[[:space:]]/}" ]; then echo "oc-agent: empty task — nothing to delegate." >&2; exit 1; fi
+
+STREAM="$(command -v oc-stream 2>/dev/null || true)"
+[ -z "$STREAM" ] && STREAM="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/oc-stream"
+[ -x "$STREAM" ] || { echo "oc-agent: oc-stream not found (run /cli-dispatch:setup)." >&2; exit 1; }
+
+if [ "$QUIET" -eq 0 ]; then
+  echo "▶ oc-agent → OpenCode (OpenRouter) worker" >&2
+  export OC_PROGRESS_STDERR=1
+fi
+
+set +e
+# On macOS bash 3.2 under `set -u`, expanding an EMPTY "${FWD[@]}" is an unbound-variable
+# error — which would break the common no-flags `oc-agent "task"` call. The ${arr[@]+...}
+# idiom expands to nothing when FWD is empty and to the quoted elements otherwise.
+"$STREAM" ${FWD[@]+"${FWD[@]}"} -p "$TASK"
+rc=$?
+set -e
+exit "$rc"

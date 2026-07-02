@@ -38,11 +38,12 @@ while [ "$#" -gt 0 ]; do
     *) echo "install.sh: unknown arg '$1'" >&2; exit 1;;
   esac
 done
-[ "$BACKENDS" = "all" ] && BACKENDS="deepseek,antigravity,codex"
+[ "$BACKENDS" = "all" ] && BACKENDS="deepseek,antigravity,codex,opencode"
 case ",$BACKENDS," in *,deepseek,*) WANT_DS=1;; *) WANT_DS=0;; esac
 case ",$BACKENDS," in *,antigravity,*) WANT_AG=1;; *) WANT_AG=0;; esac
 case ",$BACKENDS," in *,codex,*) WANT_CX=1;; *) WANT_CX=0;; esac
-[ "$WANT_DS" -eq 1 ] || [ "$WANT_AG" -eq 1 ] || [ "$WANT_CX" -eq 1 ] || { echo "install.sh: no known backend in '--backends $BACKENDS' (deepseek,antigravity,codex)" >&2; exit 1; }
+case ",$BACKENDS," in *,opencode,*) WANT_OC=1;; *) WANT_OC=0;; esac
+[ "$WANT_DS" -eq 1 ] || [ "$WANT_AG" -eq 1 ] || [ "$WANT_CX" -eq 1 ] || [ "$WANT_OC" -eq 1 ] || { echo "install.sh: no known backend in '--backends $BACKENDS' (deepseek,antigravity,codex,opencode)" >&2; exit 1; }
 
 mkdir -p "$BIN_DIR" "$LIBEXEC_DIR"
 echo "Backends: $BACKENDS"
@@ -99,6 +100,21 @@ if [ "$WANT_CX" -eq 1 ]; then
   fi
 fi
 
+# ---- OpenCode backend (oc-* family, via OpenRouter) --------------------------
+if [ "$WANT_OC" -eq 1 ]; then
+  install -m 0755 "$SCRIPT_DIR/oc-stream" "$BIN_DIR/oc-stream"
+  install -m 0755 "$SCRIPT_DIR/oc-agent"  "$BIN_DIR/oc-agent"
+  install -m 0644 "$SCRIPT_DIR/oc-stream-parse.mjs" "$LIBEXEC_DIR/oc-stream-parse.mjs"
+  echo "Installed OpenCode backend -> oc-stream, oc-agent (parser -> $LIBEXEC_DIR/oc-stream-parse.mjs)"
+  if command -v opencode >/dev/null 2>&1; then
+    echo "  opencode CLI: found ($(opencode --version 2>/dev/null || echo '?'))"
+  else
+    echo "  WARNING: 'opencode' (OpenCode CLI) not found in PATH. Install it:"
+    echo "    npm i -g opencode-ai"
+    echo "    # auth is OPENROUTER_API_KEY (config below) -- no login/OAuth flow"
+  fi
+fi
+
 # ---- config skeleton (shared; created only if missing — never clobbered) ---
 if [ ! -f "$CONFIG" ]; then
   mkdir -p "$CONFIG_DIR"
@@ -136,6 +152,16 @@ CX_MODEL=""
 # Pass cx-agent --read-only for a REAL OS-level no-writes guarantee (macOS Seatbelt /
 # Linux bwrap+seccomp) — kernel-enforced, unlike other backends.
 # Or pass --sandbox <mode> for other codex sandbox modes.
+
+# --- OpenCode backend (oc-agent / oc-stream, via OpenRouter) --- OPTIONAL.
+# Auth: OpenRouter API key (no OAuth flow) -- https://openrouter.ai/keys
+OPENROUTER_API_KEY=""
+# Default model slug (WITHOUT the "openrouter/" prefix -- oc-stream adds it).
+# List live models with: OPENROUTER_API_KEY=<key> opencode models openrouter
+# Free-tier example: google/gemma-4-31b-it:free
+OC_MODEL=""
+# No sandbox: --auto approves all permissions (required for headless use, not a
+# safety opt-in). Use --cwd + a git worktree for a no-writes guarantee.
 CFG
   chmod 600 "$CONFIG"
   echo "Created config template -> $CONFIG"
@@ -143,11 +169,13 @@ else
   echo "Config already exists -> $CONFIG (left untouched)"
 fi
 
-# Auto-open the config so the user can paste a key — only when the DeepSeek backend is
-# selected AND its key is still empty (Antigravity normally needs no key → no prompt).
+# Auto-open the config so the user can paste a key — only when a raw-key backend (DeepSeek
+# or OpenCode) is selected AND its key is still empty (Antigravity/Codex normally need no
+# key — they use their own sign-in flow — so they don't trigger this prompt).
 # Override the opener via CLI_DISPATCH_EDITOR (legacy CLAUDE_DS_EDITOR still honored), e.g. ="code".
 _EDITOR="${CLI_DISPATCH_EDITOR:-${CLAUDE_DS_EDITOR:-}}"
-if [ "$WANT_DS" -eq 1 ] && grep -q '^DEEPSEEK_API_KEY=""' "$CONFIG" 2>/dev/null; then
+if { [ "$WANT_DS" -eq 1 ] && grep -q '^DEEPSEEK_API_KEY=""' "$CONFIG" 2>/dev/null; } || \
+   { [ "$WANT_OC" -eq 1 ] && grep -q '^OPENROUTER_API_KEY=""' "$CONFIG" 2>/dev/null; }; then
   if [ -n "$_EDITOR" ]; then
     "$_EDITOR" "$CONFIG" >/dev/null 2>&1 && echo "Opened config in \$CLI_DISPATCH_EDITOR -> add your key, then save." || true
   elif command -v open >/dev/null 2>&1; then            # macOS
@@ -168,3 +196,4 @@ echo "Done."
 [ "$WANT_DS" -eq 1 ] && echo "  DeepSeek:    add your key to $CONFIG, then test: claude-ds -p 'Reply with exactly: OK'"
 [ "$WANT_AG" -eq 1 ] && echo "  Antigravity: sign in with 'agy' (or set GEMINI_API_KEY), then test: ag-agent -q 'Reply with exactly: OK'"
 [ "$WANT_CX" -eq 1 ] && echo "  Codex:       run 'codex login' (or set CODEX_API_KEY), then test: cx-agent --read-only -q 'Reply with exactly: OK'"
+[ "$WANT_OC" -eq 1 ] && echo "  OpenCode:    add your OPENROUTER_API_KEY to $CONFIG, then test: oc-agent -q 'Reply with exactly: OK'"

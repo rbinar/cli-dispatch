@@ -1,17 +1,18 @@
 ---
-description: Show usage/balance for all backends at once (DeepSeek + Antigravity + Codex)
+description: Show usage/balance for all backends at once (DeepSeek + Antigravity + Codex + OpenCode)
 allowed-tools: Bash
 ---
 
 # cli-dispatch balance (all backends)
 
 The aggregate view: DeepSeek account balance + Antigravity per-model quota + Codex rate
-limits, side by side. Mirrors the per-backend `/cli-dispatch:ds-balance`,
-`/cli-dispatch:ag-balance`, and `/cli-dispatch:cx-balance`. All read-only, no third-party
-tools; an unconfigured/offline backend prints a short note instead of failing.
+limits + OpenCode (OpenRouter) credit balance, side by side. Mirrors the per-backend
+`/cli-dispatch:ds-balance`, `/cli-dispatch:ag-balance`, `/cli-dispatch:cx-balance`, and
+`/cli-dispatch:oc-balance`. All read-only, no third-party tools; an unconfigured/offline
+backend prints a short note instead of failing.
 **Never print any key VALUE** — only the balance/quota figures.
 
-Run the three sections below and summarize each backend's headline number for the user.
+Run the four sections below and summarize each backend's headline number for the user.
 
 ## DeepSeek (account balance)
 
@@ -92,6 +93,24 @@ console.log('  7d limit: ' + fmt(best.rl.secondary))
 EOF
 ```
 
+## OpenCode (OpenRouter, account-wide paid-credit balance)
+
+```bash
+echo "== OpenCode =="
+CFG="${CLI_DISPATCH_CONFIG:-${CLAUDE_DS_CONFIG:-}}"; [ -n "$CFG" ] || { CFG="$HOME/.config/cli-dispatch/config"; [ -f "$CFG" ] || [ ! -f "$HOME/.config/claude-ds/config" ] || CFG="$HOME/.config/claude-ds/config"; }
+if [ ! -f "$CFG" ]; then echo "config: MISSING ($CFG) — run /cli-dispatch:setup"; else
+  # shellcheck disable=SC1090
+  . "$CFG"
+  if [ -z "${OPENROUTER_API_KEY:-}" ]; then echo "key: not set (skip)"; else
+    curl -sS --max-time 20 https://openrouter.ai/api/v1/credits \
+      -H "Authorization: Bearer $OPENROUTER_API_KEY" -H "Accept: application/json"; echo
+  fi
+fi
+```
+
 Summarize: DeepSeek `total_balance` per currency, Antigravity per-model `% left`, Codex 5h/7d
 `% left`. Note the Codex figure is as fresh as the last interactive codex turn (exec/`-q`
-runs report `rate_limits:null`).
+runs report `rate_limits:null`). OpenCode: `total_credits - total_usage` (paid-credit
+balance only; `:free` models have no quota API — a low/zero number here does NOT mean a
+free-tier user is out of quota; free-tier limits only surface as a 429 from opencode
+itself).

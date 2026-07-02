@@ -2,9 +2,9 @@
 
 > 🌐 **Languages:** **English** · [Türkçe](README.tr.md)
 
-**Use DeepSeek, Gemini, or OpenAI Codex as delegated workers inside Claude Code.** Claude Code's built-in subagent tool only supports Anthropic models — cli-dispatch adds portable wrappers so you can hand tasks to any of the three from inside your existing `claude` session.
+**Use DeepSeek, Gemini, OpenAI Codex, or OpenCode (via OpenRouter) as delegated workers inside Claude Code.** Claude Code's built-in subagent tool only supports Anthropic models — cli-dispatch adds portable wrappers so you can hand tasks to any of the four from inside your existing `claude` session.
 
-> ℹ️ **Multi-backend delegation hub.** Three worker backends today — **DeepSeek** (commands `/cli-dispatch:ds-*`), **Antigravity/Gemini** (`/cli-dispatch:ag-run`, wrappers `ag-agent`/`ag-stream`), and **Codex** (`/cli-dispatch:cx-run`, wrappers `cx-agent`/`cx-stream`). You pick which to install at setup. All three write to the same session layout, so `sessions`/`watch` work across all. The DeepSeek wrapper/config paths keep the `claude-ds` name (that backend's name).
+> ℹ️ **Multi-backend delegation hub.** Four worker backends today — **DeepSeek** (commands `/cli-dispatch:ds-*`), **Antigravity/Gemini** (`/cli-dispatch:ag-run`, wrappers `ag-agent`/`ag-stream`), **Codex** (`/cli-dispatch:cx-run`, wrappers `cx-agent`/`cx-stream`), and **OpenCode** (`/cli-dispatch:oc-run`, wrappers `oc-agent`/`oc-stream`). You pick which to install at setup. All four write to the same session layout, so `sessions`/`watch` work across all. The DeepSeek wrapper/config paths keep the `claude-ds` name (that backend's name).
 
 > 📝 **Write-up (Turkish):** [cli-dispatch: a plugin that makes Claude the boss and DeepSeek the worker](https://medium.com/@rbinar/cli-dispatch-claudea-patron-deepseek-e-i%CC%87%C5%9F%C3%A7i-rol%C3%BC-veren-bir-plugin-b232803581fc) — Medium
 
@@ -23,7 +23,7 @@
 **Before you start — you need:**
 - `claude` CLI installed and on your `PATH`
 - `~/.local/bin` on your `PATH` — check: `echo $PATH | grep -q local && echo ok || echo 'add: export PATH="$HOME/.local/bin:$PATH" to ~/.zshrc'`
-- API key for your backend: DeepSeek ([platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys)) · Antigravity uses Google OAuth (`agy` login, no key) · Codex uses ChatGPT OAuth (`codex login`, no key)
+- API key for your backend: DeepSeek ([platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys)) · Antigravity uses Google OAuth (`agy` login, no key) · Codex uses ChatGPT OAuth (`codex login`, no key) · OpenCode uses an OpenRouter API key (paste yourself — [openrouter.ai/keys](https://openrouter.ai/keys), no OAuth)
 
 Run the commands **one at a time, in order** — don't paste them all at once. Send each command, wait for the result, then move to the next:
 
@@ -59,7 +59,7 @@ The install output says `Run /reload-plugins to apply`. This step is required fo
 /cli-dispatch:setup
 ```
 
-`/cli-dispatch:setup` first **asks which worker backend(s) to install** — DeepSeek, Antigravity (Gemini), Codex, or all (`--backends all` or `--backends deepseek,antigravity,codex`). For **DeepSeek** it installs the wrapper to `~/.local/bin/claude-ds` and creates a `~/.config/cli-dispatch/config` skeleton; if the key is still empty, setup **automatically opens the config in your platform's default editor** (macOS `open`, Linux `xdg-open`, WSL `explorer.exe`, Windows `notepad`). Add your DeepSeek API key **yourself** in the opened file:
+`/cli-dispatch:setup` first **asks which worker backend(s) to install** — DeepSeek, Antigravity (Gemini), Codex, OpenCode, or all (`--backends all` or `--backends deepseek,antigravity,codex,opencode`). For **DeepSeek** it installs the wrapper to `~/.local/bin/claude-ds` and creates a `~/.config/cli-dispatch/config` skeleton; if the key is still empty, setup **automatically opens the config in your platform's default editor** (macOS `open`, Linux `xdg-open`, WSL `explorer.exe`, Windows `notepad`). Add your DeepSeek API key **yourself** in the opened file:
 
 ```bash
 # ~/.config/cli-dispatch/config
@@ -73,6 +73,8 @@ DS_FLASH_MODEL="deepseek-v4-flash"
 For the **Antigravity (Gemini)** backend, setup installs `ag-agent`/`ag-stream` instead. It needs the `agy` CLI (`curl -fsSL https://antigravity.google/cli/install.sh | bash`) plus `script` (pseudo-TTY) and `node`; auth is via Google sign-in (run `agy` once) or a `GEMINI_API_KEY`. Native Windows: DeepSeek only — use WSL for the Antigravity backend. agy proxies **multiple model families** — pick one with `ag-agent --model "<name>"` (or the `AG_MODEL` config default): `Gemini 3.1 Pro (High)`, `Claude Opus 4.6 (Thinking)`, `GPT-OSS 120B (Medium)`, … (run `agy models` for the exact list; default `Gemini 3.5 Flash (High)`).
 
 For the **Codex (OpenAI Codex CLI)** backend, setup installs `cx-agent`/`cx-stream`. It needs the `codex` CLI (≥ 0.142.3: `npm i -g @openai/codex`, `brew install --cask codex`, or `curl -fsSL https://chatgpt.com/codex/install.sh | sh`) plus `node`; auth is via `codex login` (ChatGPT/OAuth — no API key needed for personal use) or `CODEX_API_KEY` (takes precedence) or `OPENAI_API_KEY`. Select a model with `cx-agent --model <name>` (or the `CX_MODEL` config default; blank = codex's own default): `gpt-5.5` (default), `gpt-5.4`, `gpt-5.4-mini` (fast/cheap, subagents), `gpt-5.3-codex-spark` (run `/model` inside codex for the live list). **Key advantage:** `cx-agent --read-only` activates codex's **real OS-level sandbox** (macOS Seatbelt / Linux bwrap+seccomp) — a kernel-enforced hard-block on all file writes, not just tool-layer restriction.
+
+For the **OpenCode (via OpenRouter)** backend, setup installs `oc-agent`/`oc-stream`. It needs the `opencode` CLI (`npm i -g opencode-ai`) plus `node`. Auth is an OpenRouter API key (`OPENROUTER_API_KEY`) pasted by **you** — same auto-open-editor mechanism as DeepSeek's key (Claude/the installer never writes the key value itself). Model selection: setup asks (via a multiple-choice question) for a default model from 2-3 curated free-tier OpenRouter slugs (e.g. `google/gemma-4-31b-it:free`) or a custom slug, writing it to `OC_MODEL` in the config; override per-call with `oc-agent --model <bare-slug>` (no `openrouter/` prefix needed — `oc-stream` adds it). List live models with `OPENROUTER_API_KEY=<key> opencode models openrouter`. **Key caveat:** unlike Codex's `cx-agent --read-only` (a real OS-level, kernel-enforced sandbox), OpenCode has **no sandbox at all** — no OS-level or tool-level write-deny. `--auto` (always used internally) auto-approves every permission prompt because a headless run has no TTY to answer prompts — this is a functional requirement, not a safety feature. Isolation is via git worktree only (same posture as the Antigravity backend). Native Windows: not supported — OpenCode is Unix-only (macOS/Linux/WSL) for v1.
 
 DeepSeek key: https://platform.deepseek.com/api_keys
 
@@ -106,7 +108,7 @@ A **local, read-only web dashboard** over data that already lives on disk. It li
 Claude Code CLI sessions (all projects, **busy** ones pinned on top); click a session to see
 its **flow** (messages / tool calls / results), the **subagents** it spawned, and click a
 subagent to drill into *its* flow (nested by spawn depth). A second panel shows the
-cli-dispatch **worker** delegations (DeepSeek / Antigravity / Codex) with their state + flow.
+cli-dispatch **worker** delegations (DeepSeek / Antigravity / Codex / OpenCode) with their state + flow.
 Busy sessions auto-refresh.
 
 It reads `~/.claude/projects/**` (Claude Code transcripts), `~/.claude/sessions/*.json` (live
@@ -131,34 +133,36 @@ You use cli-dispatch **from inside Claude Code** — two ways:
 | `/cli-dispatch:ds-run <task>` | Delegate a task to **DeepSeek** (session-tracked; worktree isolation for repo tasks) |
 | `/cli-dispatch:ag-run <task>` | Delegate a task to **Antigravity (Gemini)** (same workflow) |
 | `/cli-dispatch:cx-run <task>` | Delegate a task to **Codex (OpenAI)** (real read-only sandbox; same session layout) |
+| `/cli-dispatch:oc-run <task>` | Delegate a task to **OpenCode (OpenRouter)** (no sandbox — worktree isolation only; same session layout) |
 | `/cli-dispatch:sessions` | List past/active sessions (all backends; shows a `backend` column) |
-| `/cli-dispatch:ds-sessions` / `ag-sessions` / `cx-sessions` | Same list, filtered to just DeepSeek / Antigravity / Codex |
+| `/cli-dispatch:ds-sessions` / `ag-sessions` / `cx-sessions` / `oc-sessions` | Same list, filtered to just DeepSeek / Antigravity / Codex / OpenCode |
 | `/cli-dispatch:watch <id>` | Show a session's live status (cost-aware; any backend) |
 | `/cli-dispatch:resume <id> <prompt>` | Continue a worker session with a follow-up prompt (auto-detects backend) |
 | `/cli-dispatch:kill <id>` | Stop a running worker session (SIGTERM + state → killed) |
 | `/cli-dispatch:clean` | Remove stale worker dirs (`running`-but-dead); dry-run by default, `--remove` to delete |
 | `/cli-dispatch:clean-schedule` | Schedule a daily auto-clean via the OS scheduler (launchd / cron / Scheduled Tasks); `status` / `uninstall` too |
 | `/cli-dispatch:status` | Check install/key/CLI status for all backends |
-| `/cli-dispatch:ds-status` / `ag-status` / `cx-status` | Same check, scoped to just DeepSeek / Antigravity / Codex |
-| `/cli-dispatch:balance` | Aggregate — DeepSeek balance + Antigravity quota + Codex rate limits, all at once |
+| `/cli-dispatch:ds-status` / `ag-status` / `cx-status` / `oc-status` | Same check, scoped to just DeepSeek / Antigravity / Codex / OpenCode |
+| `/cli-dispatch:balance` | Aggregate — DeepSeek balance + Antigravity quota + Codex rate limits + OpenCode credits, all at once |
 | `/cli-dispatch:ds-balance` | Show DeepSeek account balance |
 | `/cli-dispatch:cx-balance` | Show Codex usage / rate limits (5h + weekly % left) — native, from codex's own on-disk session records |
 | `/cli-dispatch:ag-balance` | Show Antigravity quota (% left per model + plan) — native, via the local language-server `GetUserStatus` RPC |
+| `/cli-dispatch:oc-balance` | Show OpenCode's OpenRouter paid-credit balance (`total_credits - total_usage`) — `:free` models have no quota API |
 | `/cli-dispatch:doctor` | Health check for all backends — PATH, API keys, CLI auth ✓/✗ |
 | `/cli-dispatch:help` | One-screen command reference cheat sheet |
 
 ## Features
 
-All used from inside Claude Code (`/cli-dispatch:ds-run <task>`, `/cli-dispatch:cx-run`, `/cli-dispatch:ag-run`, or "do <task> with deepseek/codex/gemini"):
+All used from inside Claude Code (`/cli-dispatch:ds-run <task>`, `/cli-dispatch:cx-run`, `/cli-dispatch:ag-run`, `/cli-dispatch:oc-run`, or "do <task> with deepseek/codex/gemini/opencode"):
 
-- **Three worker backends, one hub** — **DeepSeek** (`ds-*`), **Antigravity / Gemini** (`ag-*`), **Codex / OpenAI** (`cx-*`). Pick any (or all) at setup; all three write the **same session layout**, so `sessions`, `watch`, `clean`, the balance commands, and the dashboard work across every backend.
+- **Four worker backends, one hub** — **DeepSeek** (`ds-*`), **Antigravity / Gemini** (`ag-*`), **Codex / OpenAI** (`cx-*`), **OpenCode / OpenRouter** (`oc-*`). Pick any (or all) at setup; all four write the **same session layout**, so `sessions`, `watch`, `clean`, the balance commands, and the dashboard work across every backend.
 - **Delegate & verify** — the worker generates/implements; Claude Code watches live and verifies the output. Conversation context is not shared → the task must be **self-contained**. The worker = doer, you = reviewer/merge owner.
 - **Session tracking (live watch + resume)** — work is not an opaque background process; each run writes a session dir (status / progress / transcript / meta + the full prompt) and is observable and resumable. → [Session tracking](#session-tracking-live-watch--resume)
-- **`--read-only` mode (Codex = real OS sandbox)** — `cx-agent --read-only` activates a **kernel-enforced** no-writes sandbox (macOS Seatbelt / Linux bwrap+seccomp). DeepSeek's `--read-only` is a tool-layer restriction; Antigravity has no write-deny (isolate it in a worktree).
-- **agentic + worktree isolation** — real repo tasks run in a throwaway git worktree; the diff is left **uncommitted** (review → build/test → merge is **on you/Claude**). Bundled helpers: `ds-/ag-/cx-worktree-run`.
-- **Per-backend runner subagents (`ds-/ag-/cx-runner`)** — hand the whole delegation to an isolated sub-context that picks the mode, isolates the work, verifies, and returns a short result — the management noise never enters the orchestrator. → [runner subagents](#ds-runner-subagent-keep-context-clean)
+- **`--read-only` mode (Codex = real OS sandbox)** — `cx-agent --read-only` activates a **kernel-enforced** no-writes sandbox (macOS Seatbelt / Linux bwrap+seccomp). DeepSeek's `--read-only` is a tool-layer restriction; Antigravity and OpenCode have no write-deny at all (isolate both in a worktree).
+- **agentic + worktree isolation** — real repo tasks run in a throwaway git worktree; the diff is left **uncommitted** (review → build/test → merge is **on you/Claude**). Bundled helpers: `ds-/ag-/cx-/oc-worktree-run`.
+- **Per-backend runner subagents (`ds-/ag-/cx-/oc-runner`)** — hand the whole delegation to an isolated sub-context that picks the mode, isolates the work, verifies, and returns a short result — the management noise never enters the orchestrator. → [runner subagents](#ds-runner-subagent-keep-context-clean)
 - **Web dashboard** — a local, read-only view: Claude Code sessions → flow → subagents → flow, plus a worker panel. Pinned task/instruction, Markdown-rendered messages, stale-worker detection, live SSE updates. → [Dashboard](#dashboard)
-- **Native usage / quota** — `/cli-dispatch:balance` (all three at once) or a per-backend `*-balance`; reverse-engineered from each CLI's own local data, **no third-party tools**. → [Usage & quota](#usage--quota--native-no-third-party-tool)
+- **Native usage / quota** — `/cli-dispatch:balance` (all four at once) or a per-backend `*-balance`; reverse-engineered from each CLI's own local data, **no third-party tools**. → [Usage & quota](#usage--quota--native-no-third-party-tool)
 - **Housekeeping** — `/cli-dispatch:clean` prunes stale (`running`-but-dead) worker dirs; `/cli-dispatch:clean-schedule` automates it daily via launchd / cron / Scheduled Tasks.
 - **timeout safety net** — a hung/runaway worker is auto-killed (with its child processes) at a runtime or idle limit; the session goes `state: error`.
 - **global MCP isolation** — workers do not inherit your `~/.claude` MCP servers (playwright, etc.).
@@ -167,7 +171,7 @@ All used from inside Claude Code (`/cli-dispatch:ds-run <task>`, `/cli-dispatch:
 
 ## Session tracking (live watch + resume)
 
-Delegated work is **not an opaque background process**: every backend's output is parsed and each task is written to a **session directory** (same layout for DeepSeek, Antigravity, and Codex). You track what the worker is doing in a **live, structured, resumable** way via `/cli-dispatch:sessions` and `/cli-dispatch:watch <id>`.
+Delegated work is **not an opaque background process**: every backend's output is parsed and each task is written to a **session directory** (same layout for DeepSeek, Antigravity, Codex, and OpenCode). You track what the worker is doing in a **live, structured, resumable** way via `/cli-dispatch:sessions` and `/cli-dispatch:watch <id>`.
 
 Session directory: `${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<id>/` (legacy `claude-ds` path still read as a fallback)
 
@@ -208,14 +212,15 @@ The Antigravity backend has its own parallel subagent: **`ag-runner`**. It works
 extra. Each `*-balance` command reverse-engineers data the CLI already keeps locally; nothing
 new is sent over the network on your behalf.
 
-Use `/cli-dispatch:balance` to see all three at once, or a single `*-balance` command per backend.
+Use `/cli-dispatch:balance` to see all four at once, or a single `*-balance` command per backend.
 
 | Backend | Command | Where the number comes from |
 |---|---|---|
-| **All** | `/cli-dispatch:balance` | Runs the three below in one go and summarizes each headline number side by side. |
+| **All** | `/cli-dispatch:balance` | Runs the four below in one go and summarizes each headline number side by side. |
 | **DeepSeek** | `/cli-dispatch:ds-balance` | DeepSeek's official REST balance API (`/user/balance`), using your `DEEPSEEK_API_KEY`. |
 | **Codex** | `/cli-dispatch:cx-balance` | Codex **persists** the backend's rate-limit payload into its own session records (`~/.codex/sessions/**/*.jsonl`). The command reads the newest `token_count` record's `rate_limits` → `primary` (5h) + `secondary` (7d) windows as **% left** + reset. No network. |
 | **Antigravity** | `/cli-dispatch:ag-balance` | The local Antigravity **language server** (the one the IDE/`agy` already run) exposes a Connect-RPC `GetUserStatus` endpoint. The command finds the running `language_server` process, reads its `--csrf_token` arg + listening port, then `POST`s `GetUserStatus` → plan + **per-model `remainingFraction`** + reset. |
+| **OpenCode** | `/cli-dispatch:oc-balance` | OpenRouter's official REST endpoint (`GET /api/v1/credits`), using your `OPENROUTER_API_KEY` → `total_credits - total_usage` remaining. **Paid-credit balance only** — `:free`-suffixed models have separate, unauthenticated per-model rate limits with no scriptable quota API. |
 
 How the two reverse-engineered ones work, concretely:
 

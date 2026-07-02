@@ -59,6 +59,20 @@ else
   echo "  – cx-agent not installed (optional — /cli-dispatch:setup to add)"
 fi
 
+echo "── OpenCode / OpenRouter ──── optional ─────────────────"
+if command -v oc-agent >/dev/null 2>&1; then
+  ok "oc-agent on PATH"
+  chk oc-stream
+  if command -v opencode >/dev/null 2>&1; then
+    ok "opencode CLI found"
+  else
+    bad "opencode CLI missing — npm i -g opencode-ai"
+  fi
+  [ -f "$CFG" ] && ( . "$CFG"; [ -n "${OPENROUTER_API_KEY:-}" ] && ok "OPENROUTER_API_KEY set" || bad "OPENROUTER_API_KEY missing — add to $CFG (no OAuth fallback for OpenCode)" )
+else
+  echo "  – oc-agent not installed (optional — /cli-dispatch:setup to add)"
+fi
+
 echo "── PATH ────────────────────────────────────────────────"
 case ":$PATH:" in
   *":$HOME/.local/bin:"*) ok "$HOME/.local/bin on PATH" ;;

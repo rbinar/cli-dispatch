@@ -7,6 +7,14 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.15.0] — 2026-07-02
+
+### Eklenenler
+- **Yeni backend: OpenCode (`oc-*`), OpenRouter üzerinden.** cli-dispatch'in 4. worker backend'i olarak OpenCode (npm `opencode-ai`, binary `opencode`) eklendi; OpenRouter üzerinden çalıştığı için kullanıcılar herhangi bir OpenRouter modelini (örn. `google/gemma-4-31b-it:free`) hedefleyebilir. Codex (`cx-*`) backend'inin ayak izinin tam karşılığı: `oc-agent` / `oc-stream` / `oc-worktree-run.sh` / `oc-stream-parse.mjs`, `oc-runner` babysitter subagent'ı ve `/cli-dispatch:oc-run`, `oc-status`, `oc-sessions`, `oc-balance` komutları — ayrıca her cross-backend aggregator (`setup`, `doctor`, `status`, `help`, `sessions`, `balance`, `resume`), dashboard worker-panel etiketi, `plugin.json` ve README güncellendi.
+- **OpenCode'da gerçek sandbox yok.** Codex'in kernel tarafında zorlanan `--read-only`'sinin aksine, OpenCode'da OS-seviyesi veya tool-seviyesi write-deny yok; her zaman geçilen `--auto` bayrağı, headless kullanım için bir güvenlik opsiyonu değil işlevsel bir gereklilik olarak her izin isteğini otomatik onaylar — tek güvenlik sınırı git-worktree izolasyonudur (Antigravity backend'iyle aynı duruş).
+- **OpenCode için setup akışında model seçici.** `/cli-dispatch:setup` artık `AskUserQuestion` ile kullanıcıya varsayılan bir OpenCode modeli seçtiriyor (2-3 seçilmiş ücretsiz-katman OpenRouter slug'ı + özel giriş seçeneği) ve bunu config'e `OC_MODEL` olarak yazıyor; `OPENROUTER_API_KEY`'in kendisi Claude tarafından asla yazılmaz — DeepSeek'in anahtarıyla aynı, kullanıcının kendi yapıştırdığı mekanizma (kurulumdan sonra anahtar hâlâ boşsa installer config'i otomatik olarak bir editörde açar).
+- **Windows v1 için ertelendi.** OpenCode v1 için yalnızca Unix'tir (macOS/Linux/WSL); `install.ps1` ve varsa `.ps1` eşleri değiştirilmedi.
+
 ## [3.13.4] — 2026-06-28
 
 ### Düzeltilenler

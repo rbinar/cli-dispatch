@@ -1,5 +1,5 @@
 ---
-description: Check the cli-dispatch installation status (DeepSeek + Antigravity + Codex)
+description: Check the cli-dispatch installation status (DeepSeek + Antigravity + Codex + OpenCode)
 allowed-tools: Bash
 ---
 
@@ -49,6 +49,26 @@ if command -v codex >/dev/null 2>&1; then
   fi
 else
   echo "codex CLI: MISSING (npm i -g @openai/codex  or  brew install --cask codex)"
+fi
+
+echo "== OpenCode backend (oc / OpenRouter) — optional =="
+command -v oc-agent >/dev/null 2>&1 && echo "wrapper: installed ($(command -v oc-agent))" || echo "wrapper: not installed (enable with /cli-dispatch:setup)"
+if command -v opencode >/dev/null 2>&1; then
+  echo "opencode CLI: found ($(opencode --version 2>/dev/null || echo 'version unknown'))"
+  if [ -f "$CFG" ]; then
+    ( . "$CFG"
+      if [ -n "${OPENROUTER_API_KEY:-}" ]; then
+        echo "auth: OPENROUTER_API_KEY set"
+      else
+        echo "auth: MISSING — no OAuth fallback, add OPENROUTER_API_KEY to the config"
+      fi
+      [ -n "${OC_MODEL:-}" ] && echo "model: OC_MODEL=${OC_MODEL}" || echo "model: OC_MODEL not set (no default — pass --model explicitly or set one in the config)"
+    )
+  else
+    echo "auth: config not found — add OPENROUTER_API_KEY to the config (no OAuth fallback)"
+  fi
+else
+  echo "opencode CLI: MISSING (npm i -g opencode-ai)"
 fi
 
 command -v node >/dev/null 2>&1 && echo "node: found (required by all stream parsers)" || echo "node: MISSING (the stream wrappers need it)"

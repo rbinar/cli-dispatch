@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.15.0] — 2026-07-02
+
+### Added
+- **New backend: OpenCode (`oc-*`), via OpenRouter.** Adds OpenCode (npm `opencode-ai`, binary `opencode`) as cli-dispatch's 4th worker backend, driven through OpenRouter so users can target any OpenRouter model (e.g. `google/gemma-4-31b-it:free`). Full parity with the Codex (`cx-*`) backend's footprint: `oc-agent` / `oc-stream` / `oc-worktree-run.sh` / `oc-stream-parse.mjs`, the `oc-runner` babysitter subagent, and commands `/cli-dispatch:oc-run`, `oc-status`, `oc-sessions`, `oc-balance` — plus updates to every cross-backend aggregator (`setup`, `doctor`, `status`, `help`, `sessions`, `balance`, `resume`), the dashboard worker-panel label, `plugin.json`, and the README.
+- **No real sandbox for OpenCode.** Unlike Codex's kernel-enforced `--read-only`, OpenCode has no OS-level or tool-level write-deny; `--auto` (always passed) auto-approves every permission prompt as a functional requirement for headless use, not a safety opt-in — git-worktree isolation is the only safety boundary (same posture as the Antigravity backend).
+- **Setup-flow model picker for OpenCode.** `/cli-dispatch:setup` now asks the user to pick a default OpenCode model via `AskUserQuestion` (2-3 curated free-tier OpenRouter slugs + a custom-entry option) and writes it to `OC_MODEL` in the config; the `OPENROUTER_API_KEY` itself is never written by Claude — same paste-it-yourself mechanism as DeepSeek's key (installer auto-opens the config in an editor if the key is still empty after install).
+- **Windows deferred for OpenCode.** OpenCode is Unix-only for v1 (macOS/Linux/WSL); `install.ps1` and any `.ps1` twins were not touched.
+
 ## [3.14.4] — 2026-07-01
 
 ### Added
