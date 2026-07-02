@@ -206,8 +206,8 @@ function finalize(code) {
     try { handleEvent(JSON.parse(lineBuf)) } catch { /* ignore */ }
     lineBuf = ''
   }
+  flushPending() // before closeAll — appendProgress no-ops once the fd is closed
   closeAll()
-  flushPending()
   const out = finalText || streamedText
   status.state = out ? 'done' : (code === 0 ? 'done' : 'error')
   status.finalResultPreview = (out || '').replace(/\s+/g, ' ').slice(0, 300)

@@ -63,9 +63,9 @@ Omit `--model` to use OpenCode's own default (or the `OC_MODEL` config value).
 ```bash
 oc-agent --resume <session-id> "<follow-up>"
 ```
-This passes `--session <id> --continue` to `opencode run`. Whether resume actually targets the
-**named** session (vs. just "the last session") is **unverified** — no live-key test has
-confirmed this — so double-check the response is on-topic before trusting a resumed thread.
+This passes `--session <id> --continue` to `opencode run`. Resume semantics verified live
+(3.15.1, real `OPENROUTER_API_KEY`): it targets the **named** session, not just "the last
+session".
 
 To see all sessions (all backends), use `/cli-dispatch:sessions`.
 

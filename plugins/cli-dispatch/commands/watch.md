@@ -1,5 +1,5 @@
 ---
-description: Show the live status of a cli-dispatch worker session (DeepSeek, Antigravity, or Codex)
+description: Show the live status of a cli-dispatch worker session (DeepSeek, Antigravity, Codex, or OpenCode)
 argument-hint: <session-id>
 allowed-tools: Bash
 ---

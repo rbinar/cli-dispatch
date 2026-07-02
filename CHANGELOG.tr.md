@@ -7,6 +7,30 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.15.4] — 2026-07-02
+
+Vaad-edilen-vs-teslim-edilen denetimi (README/komutlar/ajan-talimatları/script'ler üzerinde 4 paralel salt-okunur denetçi); bulgular düzeltilmeden önce repro ile doğrulandı.
+
+### Düzeltildi
+- **Antigravity backend'i tamamen ölüydü.** Track B refactor'ı `ag-transcript-parse.mjs`'in `node:fs` import'undan `openSync`/`closeSync`'i düşürmüş, `drain()` ise hâlâ çağırıyordu; ReferenceError `catch { return }` ile yutuluyordu — tailer agy transkriptinden tek byte okumadan her ag koşusu `state:"error"`, boş transcript kopyası, boş progress.log ve stdout'suz bitiyordu. Import geri eklendi; uçtan uca doğrulandı (sahte-transkript repro + canlı `ag-agent -q` smoke testi `OK` döndü).
+- **Temiz kurulumlar kırık wrapper gönderiyordu: paylaşılan helper'lar hiç kurulmuyordu.** 3.15.x refactor'ları `stream-utils.sh` (her bash stream wrapper'ı `$SCRIPT_DIR` üzerinden source eder) ve `parse-utils.mjs`'i (her parser `./parse-utils.mjs` olarak import eder) çıkardı, ama `install.sh`/`install.ps1` ikisini de kopyalamıyordu — temiz kurulum/yeniden kurulum dört backend'de de eksik-dosya source hatası ya da `ERR_MODULE_NOT_FOUND` ile ölüyordu (mevcut makineler yalnızca bayat, refactor-öncesi kendine-yeten kopyalarla çalışmaya devam ediyordu). İki installer da helper'ları artık koşulsuz kurar.
+- **`claude-ds-stream` eksik-key hatası açıklamak yerine çöküyordu.** Dostane "DEEPSEEK_API_KEY not set. Add it to <config>" mesajı `$CONFIG`'e başvuruyordu; config yükleme `source_config`'e (local değişken) taşınınca değişken yok oldu — `set -u` altında yol `CONFIG: unbound variable` ile ölüyordu. `source_config` artık çözümlenen yolu `CONFIG` olarak dışa açar.
+- **Config'teki `CODEX_API_KEY` codex'e hiç ulaşmıyordu (macOS/Linux).** Config key-tabanlı headless auth vadediyor, ama bash `cx-stream` config'i export etmeden source ediyordu — değişken subprocess ortamına girmiyordu (PowerShell ikizi zaten export ediyordu — platform sapması). Artık `CODEX_API_KEY`/`OPENAI_API_KEY` set ise export edilir; `oc-stream`'in `OPENROUTER_API_KEY` işleyişiyle aynı.
+- **Watchdog timeout'ları cx/oc oturum kayıtlarında görünmezdi.** `--max-runtime`/`--idle-timeout` kill'inde parser yalnızca stdin EOF görüp `state:"done"`/`exitCode:0` ile finalize ediyordu — timeout sadece wrapper'ın exit kodunda vardı; dashboard/sessions/clean başarılı koşu görüyordu. Yeni paylaşılan `reconcile_session_error` helper'ı iki wrapper'ın timeout yolundan `status.json`/`meta.json`'ı yeniden yazar (`state:"error"`, gerçek neden, gerçek rc) — DeepSeek backend'inin mevcut post-run reconcile'ıyla aynı.
+- **Cevabı yalnızca streamed text olarak gelen DeepSeek koşularında `progress.log` son mesajı almıyordu.** `finalize()` `closeAll()`'ı `flushPending()`'den önce çağırıyordu; `appendProgress` kapalı fd'de no-op. Sıra değiştirildi; repro ile doğrulandı.
+- **Dashboard bağlı-worker çipleri model/bayatlık göstermiyordu.** `workerPanelHtml` `w.model` ve `w.stale` render ediyor, ama `linkedWorkers()` bu alanları sonucuna koymuyordu — çipler ölü worker'da ham `running` gösteriyor, model hiç görünmüyordu. Alanlar eklendi.
+- **Kaldırma talimatı var olmayan marketplace'i siliyordu.** README `/plugin marketplace remove claude-ds` diyordu; marketplace'in adı `cli-dispatch`. İki README'de de düzeltildi.
+- **DeepSeek script'leri kullanıcıyı var olmayan slash komutuna yönlendiriyordu.** Beş kullanıcı-görünür hata mesajı "run /cli-dispatch:ds-setup" diyordu; komut `/cli-dispatch:setup`.
+
+### Değişti
+- **TERMINAL.md `claude-ds` → `cli-dispatch` rename'inden arındırıldı:** installer/worktree yolları, config yolu (dokümante legacy yola konan key sessizce yok sayılıyordu), sessions dizini, parser kurulum yolu, `CLI_DISPATCH_*` env adları (legacy `CLAUDE_DS_*` hâlâ geçerli notuyla) ve "dört executable" yanlış sayımı.
+- **OpenCode görünürlüğü:** `ds-delegate` skill'i artık OpenCode backend'ini dokümante eder (bölüm, komutlar, tetikleyiciler, rol satırı) — 4. backend delegasyon skill'inden keşfedilemez durumdaydı; `dashboard.md` ve `watch.md` açıklamaları OpenCode'u sayar; README "kaputun altı" CLI tablosuna `oc-stream`/`oc-agent` satırları eklendi (iki dil); `oc-run.md`'nin bayat "resume doğrulanmadı" uyarısı 3.15.1'de doğrulanmış ifadeyle değiştirildi.
+- **Runner-brief model doğrulama ifadesi dürüstleştirildi:** `meta.json` worker'ın gerçekte koştuğu modeli değil, *istenen* modeli (bayraktan echo) kaydeder — ag-runner talimatı artık gerçek güvencenin tam `agy models` adı + ag-stream'in bilinmeyen-model uyarısı olduğunu söyler; cx/oc talimatları geçersiz slug'ın gürültülü patlaması sayesinde başarılı koşuda istenen = gerçek olduğunu not eder.
+- **`ag-runner` talimatı: `--read-only` reddi doğru katmana atfedildi** (`ag-agent` iletir; `ag-stream` exit 2 ile reddeder).
+
+### Kaldırıldı
+- `ag-version.sh` — öksüz: hiçbir şey kurmuyor, hiçbir şey başvurmuyordu.
+
 ## [3.15.3] — 2026-07-02
 
 ### Değişti

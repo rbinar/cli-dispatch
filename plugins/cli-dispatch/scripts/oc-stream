@@ -249,6 +249,8 @@ if [ -f "$SESSION_DIR/.timeout" ]; then
   echo "oc-stream: stopped by watchdog ($TIMEOUT_REASON)." >&2
   # A watchdog stop is always a failure, regardless of opencode's reported rc.
   [ "$OC_RC" -eq 0 ] && OC_RC=124
+  # The parser only saw stdin EOF and finalized "done"/exitCode:0 — fix the record.
+  reconcile_session_error "$SESSION_DIR" "timeout: $TIMEOUT_REASON" "$OC_RC"
 else
   printf '%s' "$OC_RC" > "$DONEFILE"
 fi

@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.15.4] — 2026-07-02
+
+Promised-vs-shipped audit (4 parallel read-only auditors over README/commands/agent-briefs/scripts), findings verified by repro before fixing.
+
+### Fixed
+- **Antigravity backend was completely dead.** The Track B refactor dropped `openSync`/`closeSync` from `ag-transcript-parse.mjs`'s `node:fs` import while `drain()` still called them; the ReferenceError was swallowed by `catch { return }`, so the tailer never read a byte of agy's transcript — every ag run ended `state:"error"` with an empty transcript copy, empty progress.log, and no stdout answer. Re-imported and verified end-to-end (fake-transcript repro + a live `ag-agent -q` smoke test returning `OK`).
+- **Fresh installs shipped broken wrappers: shared helpers were never installed.** The 3.15.x refactors extracted `stream-utils.sh` (sourced by every bash stream wrapper via `$SCRIPT_DIR`) and `parse-utils.mjs` (imported by every parser as `./parse-utils.mjs`), but `install.sh`/`install.ps1` never copied either — any fresh install/reinstall died with a missing-file source error or `ERR_MODULE_NOT_FOUND` in all four backends (existing machines kept working only on stale pre-refactor self-contained copies). Both installers now ship the helpers unconditionally.
+- **`claude-ds-stream` missing-key error crashed instead of explaining.** The friendly "DEEPSEEK_API_KEY not set. Add it to <config>" message referenced `$CONFIG`, which stopped existing when config loading moved into `source_config` (local var) — under `set -u` the path died with `CONFIG: unbound variable`. `source_config` now exposes the resolved path as `CONFIG`.
+- **`CODEX_API_KEY` in the config never reached codex (macOS/Linux).** The config promises key-based headless auth, but bash `cx-stream` sourced the config without exporting, so the variable never entered the subprocess environment (the PowerShell twin already exported it — platform drift). Now exports `CODEX_API_KEY`/`OPENAI_API_KEY` when set, mirroring `oc-stream`'s `OPENROUTER_API_KEY` handling.
+- **Watchdog timeouts were invisible in cx/oc session records.** On a `--max-runtime`/`--idle-timeout` kill the parser just saw stdin EOF and finalized `state:"done"`/`exitCode:0` — the timeout only existed in the wrapper's exit code, so dashboard/sessions/clean saw a successful run. New shared `reconcile_session_error` helper rewrites `status.json`/`meta.json` (`state:"error"`, real reason, real rc) from the timeout path of both wrappers, matching the DeepSeek backend's existing post-run reconcile.
+- **DeepSeek runs whose answer only arrived as streamed text left `progress.log` without the final message.** `finalize()` called `closeAll()` before `flushPending()`, and `appendProgress` no-ops on a closed fd. Order swapped; verified by repro.
+- **Dashboard linked-worker chips never showed model/staleness.** `workerPanelHtml` renders `w.model` and `w.stale`, but `linkedWorkers()` didn't include those fields in its result — chips silently showed raw `running` for dead workers and no model ever. Fields added.
+- **Uninstall instructions removed a nonexistent marketplace.** README told users `/plugin marketplace remove claude-ds`; the marketplace is named `cli-dispatch`. Fixed in both READMEs.
+- **DeepSeek scripts pointed users at a nonexistent slash command.** Five user-facing error messages said "run /cli-dispatch:ds-setup"; the command is `/cli-dispatch:setup`.
+
+### Changed
+- **TERMINAL.md de-staled from the `claude-ds` → `cli-dispatch` rename:** installer/worktree paths (`plugins/claude-ds/…` → `plugins/cli-dispatch/…`), config path (`~/.config/cli-dispatch/config` — a key placed at the documented legacy path was silently ignored), sessions dir, parser install path, `CLI_DISPATCH_*` env var names (legacy `CLAUDE_DS_*` noted as still honored), and the "four executables" miscount.
+- **OpenCode visibility:** the `ds-delegate` skill now documents the OpenCode backend (section, commands, triggers, role line) — it was entirely absent, making the 4th backend undiscoverable from the delegation skill; `dashboard.md` and `watch.md` descriptions now list OpenCode; the README "under the hood" CLI table gains `oc-stream`/`oc-agent` rows (both languages); `oc-run.md`'s stale "resume unverified" warning replaced with the 3.15.1-verified statement.
+- **Runner-brief model-verification wording made honest:** `meta.json` records the *requested* model (echoed from the flag), not what the worker actually ran — the ag-runner brief now says the real guarantee is the exact `agy models` name plus ag-stream's unknown-model warning, and cx/oc briefs note that loud invalid-slug failures make requested = actual on success.
+- **`ag-runner` brief: `--read-only` rejection attributed to the right layer** (`ag-agent` forwards it; `ag-stream` refuses with exit 2).
+
+### Removed
+- `ag-version.sh` — orphan: installed by nothing, referenced by nothing.
+
 ## [3.15.3] — 2026-07-02
 
 ### Changed

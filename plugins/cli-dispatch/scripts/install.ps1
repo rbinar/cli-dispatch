@@ -50,6 +50,11 @@ where pwsh >nul 2>nul && (pwsh -NoProfile -ExecutionPolicy Bypass -File "%~dp0$n
 "@
 }
 
+# Shared parser helpers (backend-agnostic; always installed) — every *-parse.mjs
+# imports './parse-utils.mjs', so it must sit next to them in LibExec.
+Copy-Item -Force (Join-Path $ScriptDir "parse-utils.mjs") (Join-Path $LibExecDir "parse-utils.mjs")
+Write-Host "Installed shared parser helpers -> $LibExecDir\parse-utils.mjs"
+
 # Dashboard (backend-agnostic; always installed).
 Copy-Item -Force (Join-Path $ScriptDir "cli-dispatch-dashboard.ps1") (Join-Path $BinDir "cli-dispatch-dashboard.ps1")
 Set-Content -Path (Join-Path $BinDir "cli-dispatch-dashboard.cmd") -Value (New-Shim "cli-dispatch-dashboard") -Encoding ASCII

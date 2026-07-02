@@ -42,17 +42,39 @@ kill_worker() {
 # ---- config resolution ----
 
 # Resolve and source the cli-dispatch config file (env wins; legacy claude-ds fallback).
-# Sets variables from the config into the caller's scope.
+# Sets variables from the config into the caller's scope, and exposes the resolved path
+# as CONFIG so callers can reference it in user-facing messages.
 source_config() {
   local config="${CLI_DISPATCH_CONFIG:-${CLAUDE_DS_CONFIG:-}}"
   if [ -z "$config" ]; then
     config="$HOME/.config/cli-dispatch/config"
     [ -f "$config" ] || [ ! -f "$HOME/.config/claude-ds/config" ] || config="$HOME/.config/claude-ds/config"
   fi
+  CONFIG="$config"
   if [ -f "$config" ]; then
     # shellcheck disable=SC1090
     . "$config"
   fi
+}
+
+# ---- post-run error reconcile ----
+
+# Rewrite status.json/meta.json after a wrapper-level failure the parser cannot see.
+# On a watchdog kill the parser just gets stdin EOF and finalizes state:"done"/exitCode:0 —
+# making the timeout invisible to the dashboard/sessions/clean tooling. Call this from the
+# wrapper's timeout path to force state:"error" with the real reason and exit code.
+reconcile_session_error() {
+  local dir="$1" err="$2" rc="$3"
+  CLI_DISPATCH_RS_DIR="$dir" CLI_DISPATCH_RS_ERR="$err" CLI_DISPATCH_RS_RC="$rc" node -e '
+    const fs = require("fs"), p = require("path")
+    const d = process.env.CLI_DISPATCH_RS_DIR, err = process.env.CLI_DISPATCH_RS_ERR, rc = Number(process.env.CLI_DISPATCH_RS_RC)
+    let s = {}; try { s = JSON.parse(fs.readFileSync(p.join(d, "status.json"), "utf8")) } catch {}
+    s.state = "error"; s.error = err
+    try { fs.writeFileSync(p.join(d, "status.json"), JSON.stringify(s, null, 2) + "\n") } catch {}
+    let m = {}; try { m = JSON.parse(fs.readFileSync(p.join(d, "meta.json"), "utf8")) } catch {}
+    m.state = "error"; m.exitCode = rc; m.error = err
+    try { fs.writeFileSync(p.join(d, "meta.json"), JSON.stringify(m, null, 2) + "\n") } catch {}
+  ' || true
 }
 
 # ---- sessions-root resolution ----

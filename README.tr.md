@@ -259,6 +259,8 @@ normalde bunları **sen çağırmazsın**, Claude Code yönetir:
 | `ag-agent` | agy için tek-komut senkron sarmalayıcı: görev → çalış → cevap (stdout) |
 | `cx-stream` | Session-takipli Codex wrapper (codex'in JSONL stdout'unu parser'dan geçirir) |
 | `cx-agent` | codex için tek-komut senkron sarmalayıcı: görev → çalış → cevap (stdout) |
+| `oc-stream` | Session-takipli OpenCode wrapper (opencode'un JSON stream'ini parser'dan geçirir) |
+| `oc-agent` | opencode için tek-komut senkron sarmalayıcı: görev → çalış → cevap (stdout) |
 
 İstersen terminalden de doğrudan kullanabilirsin (ör. plugin dışı script'lerde):
 
@@ -298,7 +300,7 @@ Tam temizlik için sırayla: (1) plugin'i kaldır, (2) wrapper + config dosyalar
 
 ```text
 /plugin uninstall cli-dispatch@cli-dispatch
-/plugin marketplace remove claude-ds
+/plugin marketplace remove cli-dispatch
 /reload-plugins
 ```
 

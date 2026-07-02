@@ -255,6 +255,8 @@ The plugin installs portable CLIs that Claude Code **invokes via Bash** into `~/
 | `ag-agent` | One-shot synchronous wrapper for agy: task → run → answer (stdout) |
 | `cx-stream` | Session-tracked Codex wrapper (pipes codex's JSONL stdout through the parser) |
 | `cx-agent` | One-shot synchronous wrapper for codex: task → run → answer (stdout) |
+| `oc-stream` | Session-tracked OpenCode wrapper (pipes opencode's JSON stream through the parser) |
+| `oc-agent` | One-shot synchronous wrapper for opencode: task → run → answer (stdout) |
 
 If you want, you can also use them directly from the terminal (e.g. in scripts outside the plugin):
 
@@ -294,7 +296,7 @@ For a full cleanup, in order: (1) remove the plugin, (2) delete the wrapper + co
 
 ```text
 /plugin uninstall cli-dispatch@cli-dispatch
-/plugin marketplace remove claude-ds
+/plugin marketplace remove cli-dispatch
 /reload-plugins
 ```
 

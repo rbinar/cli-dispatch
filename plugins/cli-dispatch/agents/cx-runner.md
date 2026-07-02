@@ -93,8 +93,9 @@ default when a model was requested counts as FAILING the task.
    ```bash
    grep -o '"model": *"[^"]*"' ~/.cache/cli-dispatch/sessions/<session-id>/meta.json
    ```
-   An empty value (`""`) means the flag never reached codex → rerun with `--model`.
-   Always report the model actually used.
+   An empty value (`""`) means the flag was never passed → rerun with `--model`.
+   (`meta.json` records the requested model; since codex errors out loudly on an invalid
+   slug, a successful run means that model actually ran.) Always report it.
 
 Omit `--model` ONLY when the orchestrator did not specify a worker model (the codex
 config default then applies).

@@ -69,7 +69,8 @@ ag-agent --cwd <tmpdir> "<task>"
 
 **agy has no tool-level write-deny.** Unlike DeepSeek (`claude --tools` hard-restricts to
 read-only), `agy --sandbox` restricts the terminal, not file writes — tested. The `--read-only`
-flag is **rejected** by `ag-agent`. For a no-writes guarantee you MUST isolate via a throwaway
+flag is **rejected** by the ag-* CLIs (`ag-agent` forwards it; `ag-stream` refuses it with
+exit 2). For a no-writes guarantee you MUST isolate via a throwaway
 dir or a git worktree `--cwd` and **review the diff yourself**. The diff review is your real
 safety boundary — not a mode flag.
 
@@ -96,8 +97,12 @@ Procedure:
    ```bash
    grep -o '"model": *"[^"]*"' ~/.cache/cli-dispatch/sessions/<conv-id>/meta.json
    ```
-   An empty value (`""`) means the flag never reached agy → rerun with the exact name.
-   Always report the model actually used.
+   An empty value (`""`) means the flag was never passed → rerun with the exact name.
+   Caveat: `meta.json` records the **requested** model (echoed from the flag), NOT what agy
+   actually ran — with an inexact name agy silently uses its default while `meta.json` still
+   shows the requested one. The real guarantee is step 1's exact-name match (plus the
+   stderr warning `ag-stream` prints for names not in `agy models`). Report the requested
+   model and whether any unknown-model warning appeared.
 
 Omit `--model` ONLY when the orchestrator did not specify a worker model.
 

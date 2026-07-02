@@ -48,6 +48,14 @@ case ",$BACKENDS," in *,opencode,*) WANT_OC=1;; *) WANT_OC=0;; esac
 mkdir -p "$BIN_DIR" "$LIBEXEC_DIR"
 echo "Backends: $BACKENDS"
 
+# ---- Shared helpers (backend-agnostic; always installed) --------------------
+# stream-utils.sh is sourced by every bash stream wrapper via "$SCRIPT_DIR/stream-utils.sh",
+# and parse-utils.mjs is imported by every parser via './parse-utils.mjs' — both must live
+# next to their consumers in the installed locations.
+install -m 0644 "$SCRIPT_DIR/stream-utils.sh"  "$BIN_DIR/stream-utils.sh"
+install -m 0644 "$SCRIPT_DIR/parse-utils.mjs"  "$LIBEXEC_DIR/parse-utils.mjs"
+echo "Installed shared helpers -> $BIN_DIR/stream-utils.sh, $LIBEXEC_DIR/parse-utils.mjs"
+
 # ---- Dashboard (backend-agnostic; always installed) ------------------------
 install -m 0755 "$SCRIPT_DIR/cli-dispatch-dashboard" "$BIN_DIR/cli-dispatch-dashboard"
 install -m 0644 "$SCRIPT_DIR/dashboard-server.mjs"   "$LIBEXEC_DIR/dashboard-server.mjs"

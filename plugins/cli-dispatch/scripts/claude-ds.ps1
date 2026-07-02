@@ -16,7 +16,7 @@ if (Test-Path $Config) {
 
 $key = $cfg["DEEPSEEK_API_KEY"]
 if ([string]::IsNullOrEmpty($key)) {
-  Write-Error "claude-ds: DEEPSEEK_API_KEY not set. Add it to $Config (run /cli-dispatch:ds-setup)."
+  Write-Error "claude-ds: DEEPSEEK_API_KEY not set. Add it to $Config (run /cli-dispatch:setup)."
   exit 1
 }
 

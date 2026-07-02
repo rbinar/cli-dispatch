@@ -23,7 +23,7 @@
 //   AG_RESUME        ("1" → append to transcript/progress, keep existing meta)
 //   AG_PROGRESS_STDERR ("1" → mirror each progress line to stderr too, for ag-agent)
 
-import { readFileSync, existsSync, mkdirSync, statSync, readSync } from 'node:fs'
+import { readFileSync, existsSync, mkdirSync, statSync, readSync, openSync, closeSync } from 'node:fs'
 import path from 'node:path'
 import { writeMetaFile, createStatusWriter, openSessionFiles, humanSize, clip } from './parse-utils.mjs'
 

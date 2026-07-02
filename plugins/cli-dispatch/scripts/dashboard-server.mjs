@@ -288,7 +288,7 @@ function linkedWorkers(file) {
   if (!txt) return []
   const out = [], seen = new Set()
   for (const w of listWorkers()) {
-    if (w.id && !seen.has(w.id) && txt.includes(w.id)) { seen.add(w.id); out.push({ id: w.id, backend: w.backend, state: w.state, prompt: w.prompt }) }
+    if (w.id && !seen.has(w.id) && txt.includes(w.id)) { seen.add(w.id); out.push({ id: w.id, backend: w.backend, state: w.state, stale: w.stale, model: w.model, prompt: w.prompt }) }
   }
   return out
 }

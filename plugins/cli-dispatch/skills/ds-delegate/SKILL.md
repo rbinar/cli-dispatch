@@ -8,13 +8,15 @@ description: |
   in a git worktree, and review/verify/merge of the output. The built-in Agent/subagent
   tool canNOT use DeepSeek (model enum is Anthropic-only) — claude-ds is the only path.
   cli-dispatch is multi-backend: a second worker, **Antigravity (agy / Gemini)**, is
-  available via `ag-agent` / `ag-stream`, and a third, **Codex (OpenAI Codex CLI)**, via
-  `cx-agent` / `cx-stream` (see the Antigravity and Codex sections below). Codex adds a
-  real OS-level read-only sandbox (`cx-agent --read-only`).
+  available via `ag-agent` / `ag-stream`, a third, **Codex (OpenAI Codex CLI)**, via
+  `cx-agent` / `cx-stream`, and a fourth, **OpenCode (via OpenRouter)**, via
+  `oc-agent` / `oc-stream` (see the Antigravity, Codex, and OpenCode sections below).
+  Codex adds a real OS-level read-only sandbox (`cx-agent --read-only`).
   Triggers: "claude-ds", "delegate to claude-ds", "run with deepseek", "delegate to
-  antigravity/gemini", "run with agy", "delegate to codex", "run with codex/openai" (also
+  antigravity/gemini", "run with agy", "delegate to codex", "run with codex/openai",
+  "delegate to opencode", "run with opencode/openrouter" (also
   Turkish: "deepseek ile yap/çalıştır", "gemini/antigravity ile yap", "codex/openai ile
-  yap", "delege et claude-ds").
+  yap", "opencode/openrouter ile yap", "delege et claude-ds").
 user-invocable: true
 ---
 
@@ -213,22 +215,47 @@ cx-stream --cwd <dir> -p "<task>"       # background/session-tracked variant (po
   (takes precedence over `OPENAI_API_KEY`).
 - **Babysitter subagent:** the `cx-runner` subagent manages a Codex delegation in a sub-context.
 
+## OpenCode (via OpenRouter) backend — `oc-agent` / `oc-stream`
+cli-dispatch's fourth worker is **OpenCode** (`opencode`, npm `opencode-ai`), driven through
+**OpenRouter** so any OpenRouter model slug works. Enable it via `/cli-dispatch:setup`
+(choose OpenCode). Unix-only (macOS/Linux/WSL).
+
+The `oc-*` family mirrors the others:
+```bash
+oc-agent "<task>"                          # agentic in cwd; progress on stderr; answer on stdout
+oc-agent -q "<task>"                       # answer only on stdout
+oc-agent --cwd <dir> "<task>"              # work in <dir>
+oc-agent --model google/gemma-4-31b-it:free "<task>"   # bare OpenRouter slug (oc-stream adds openrouter/)
+oc-agent --resume <session-id> "<follow-up>"           # continue the same session (verified: targets the NAMED session)
+oc-stream --cwd <dir> -p "<task>"          # background/session-tracked variant (poll status.json)
+```
+- **NO sandbox at all** — no OS-level or tool-level write-deny; `--auto` (always passed) is a
+  functional headless requirement, not a safety opt-in. Git-worktree isolation is the only
+  safety boundary (same posture as Antigravity).
+- **Model selection:** `--model <bare-slug>` (config default `OC_MODEL`). Invalid slugs fail
+  loudly with an OpenRouter API error. Live list: `OPENROUTER_API_KEY=<key> opencode models openrouter`.
+- **Auth:** `OPENROUTER_API_KEY` in the config (pasted by the user — never written by Claude).
+- **Same session dir** as the others, so `sessions` / `watch` / `resume` / `kill` all work.
+- **Babysitter subagent:** the `oc-runner` subagent manages an OpenCode delegation in a sub-context.
+
 ## Role
-The worker (claude-ds = DeepSeek, ag-agent = Antigravity/Gemini, or cx-agent = Codex/OpenAI)
-does the work; you = orchestrator + reviewer + git/merge owner. Don't trust any output until verified.
+The worker (claude-ds = DeepSeek, ag-agent = Antigravity/Gemini, cx-agent = Codex/OpenAI, or
+oc-agent = OpenCode/OpenRouter) does the work; you = orchestrator + reviewer + git/merge owner.
+Don't trust any output until verified.
 
 ## Commands
-- `/cli-dispatch:setup` — install worker backends (DeepSeek / Antigravity / Codex); choose at setup + config + smoke test.
+- `/cli-dispatch:setup` — install worker backends (DeepSeek / Antigravity / Codex / OpenCode); choose at setup + config + smoke test.
 - `/cli-dispatch:dashboard` — open the local read-only web dashboard (Claude Code sessions → flow → subagents → flow, + a cli-dispatch worker panel).
 - `/cli-dispatch:ds-run <task>` — delegate to the **DeepSeek** worker (worktree isolation for repo tasks, session-tracked).
 - `/cli-dispatch:ag-run <task>` — delegate to the **Antigravity (Gemini)** worker (same workflow).
 - `/cli-dispatch:cx-run <task>` — delegate to the **Codex (OpenAI)** worker (real read-only sandbox; same workflow).
-- `/cli-dispatch:sessions` — list past/active sessions (all backends; shows a `backend` column). Per-backend: `ds-sessions` / `ag-sessions` / `cx-sessions`.
+- `/cli-dispatch:oc-run <task>` — delegate to the **OpenCode (OpenRouter)** worker (no sandbox — worktree isolation only; same workflow).
+- `/cli-dispatch:sessions` — list past/active sessions (all backends; shows a `backend` column). Per-backend: `ds-sessions` / `ag-sessions` / `cx-sessions` / `oc-sessions`.
 - `/cli-dispatch:watch <id>` — show a session's compact live status (cost-conscious).
 - `/cli-dispatch:clean` — remove stale worker dirs (a `running` session whose process died before finalize, so `status.json` is stuck). Dry-run by default; `--remove` deletes, `--older-than DAYS` also prunes old finished sessions.
 - `/cli-dispatch:clean-schedule` — register a daily OS-level auto-clean (launchd/cron/Scheduled Tasks) that runs `cli-dispatch-clean --remove` in the background; `status` / `uninstall` actions too.
-- `/cli-dispatch:status` — check installation/key/CLI status for all backends. Per-backend: `ds-status` / `ag-status` / `cx-status`.
-- `/cli-dispatch:balance` — aggregate: DeepSeek balance + Antigravity quota + Codex rate limits at once.
+- `/cli-dispatch:status` — check installation/key/CLI status for all backends. Per-backend: `ds-status` / `ag-status` / `cx-status` / `oc-status`.
+- `/cli-dispatch:balance` — aggregate: DeepSeek balance + Antigravity quota + Codex rate limits (+ OpenCode/OpenRouter credits via `oc-balance`) at once.
 - `/cli-dispatch:ds-balance` — show the DeepSeek account balance.
 - `/cli-dispatch:cx-balance` — Codex usage / rate limits (5h + weekly % left), read natively from codex's on-disk session records.
 - `/cli-dispatch:ag-balance` — Antigravity quota (% left per model + plan), via the local language-server `GetUserStatus` RPC (needs the Antigravity server running).

@@ -36,6 +36,11 @@ command -v node >/dev/null 2>&1 || { echo "cx-stream: 'node' not found (required
 # Optional config (shared across backends). cli-dispatch dir, legacy claude-ds fallback (env wins).
 source_config
 
+# API keys must be exported so the codex subprocess inherits them — sourcing the config
+# only sets shell variables, not environment variables, without an explicit export.
+[ -n "${CODEX_API_KEY:-}" ] && export CODEX_API_KEY
+[ -n "${OPENAI_API_KEY:-}" ] && export OPENAI_API_KEY
+
 # Resolve the parser: env > installed location > script dir.
 PARSER="${CX_PARSER:-}"
 if [ -z "$PARSER" ]; then
@@ -266,6 +271,8 @@ if [ -f "$SESSION_DIR/.timeout" ]; then
   echo "cx-stream: stopped by watchdog ($TIMEOUT_REASON)." >&2
   # A watchdog stop is always a failure, regardless of codex's reported rc.
   [ "$CODEX_RC" -eq 0 ] && CODEX_RC=124
+  # The parser only saw stdin EOF and finalized "done"/exitCode:0 — fix the record.
+  reconcile_session_error "$SESSION_DIR" "timeout: $TIMEOUT_REASON" "$CODEX_RC"
 else
   printf '%s' "$CODEX_RC" > "$DONEFILE"
 fi
