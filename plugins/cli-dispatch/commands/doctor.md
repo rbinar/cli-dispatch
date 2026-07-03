@@ -73,6 +73,25 @@ else
   echo "  – oc-agent not installed (optional — /cli-dispatch:setup to add)"
 fi
 
+echo "── GitHub Copilot ─────────── optional ─────────────────"
+if command -v cp-agent >/dev/null 2>&1; then
+  ok "cp-agent on PATH"
+  chk cp-stream
+  if command -v copilot >/dev/null 2>&1; then
+    ok "copilot CLI found"
+  else
+    bad "copilot CLI missing — npm i -g @github/copilot  or  brew install --cask copilot-cli"
+  fi
+  [ -f "$CFG" ] && ( . "$CFG"
+    if [ -n "${COPILOT_GITHUB_TOKEN:-}" ]; then ok "COPILOT_GITHUB_TOKEN set"
+    elif [ -n "${GH_TOKEN:-}" ] || [ -n "${GITHUB_TOKEN:-}" ]; then ok "GH_TOKEN/GITHUB_TOKEN set"
+    else ok "no token in config — will try gh auth token forwarding; active Copilot subscription required"
+    fi
+  )
+else
+  echo "  – cp-agent not installed (optional — /cli-dispatch:setup to add)"
+fi
+
 echo "── GitHub CLI (gh) ────────── optional ─────────────────"
 if command -v gh >/dev/null 2>&1; then
   if [ -n "${CLI_DISPATCH_NO_GH_TOKEN:-}" ]; then

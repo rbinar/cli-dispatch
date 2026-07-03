@@ -1,0 +1,317 @@
+#!/usr/bin/env bash
+# cp-stream — the session-tracked GitHub Copilot worker, mirroring oc-stream
+# (structure) with NO sandbox branching (posture mirrors ag-stream).
+#
+# `copilot -p ... --output-format json` emits a JSONL event stream on stdout. Unlike
+# ag-stream/cx-stream/oc-stream, cp-stream uniquely uses a FIFO + `cat` bridge into
+# cp-stream-parse.mjs for live progress + a rolling status.json.
+#
+# NO SANDBOX: GitHub Copilot has no OS-level or tool-level write-deny.
+# `--allow-all-tools --no-ask-user` auto-approves tools and prevents mid-run interactive
+# questions — this is NOT a safety opt-in, it is a FUNCTIONAL REQUIREMENT for headless use.
+# The only safety boundary is git-worktree isolation (same posture as the Antigravity/agy
+# and OpenCode backends) — review the diff yourself.
+#
+# There is also no `-o <file>` clean-output flag like codex has: cp-stream's only source of
+# the final answer is the parser's captured finalText, printed to the parser's own stdout.
+#
+# Usage:
+#   cp-stream [--cwd <dir>] [--resume <session-id>] [--model <slug>] \
+#             [--effort low|medium|high] [--max-runtime <s>] [--idle-timeout <s>] \
+#             -p "<prompt>" [extra copilot flags]
+#   echo "<prompt>" | cp-stream [--cwd <dir>]
+#
+# Session directory: ${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<sessionID>/
+# (same layout as the other backends, so /cli-dispatch:sessions / watch work for all.)
+#
+# Auth: COPILOT_GITHUB_TOKEN > GH_TOKEN > GITHUB_TOKEN. `maybe_export_gh_token` forwards
+# host gh auth as GH_TOKEN when available; an explicit COPILOT_GITHUB_TOKEN in the config
+# is exported and takes precedence for Copilot. Optional CP_MODEL in the config sets --model.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$SCRIPT_DIR/stream-utils.sh"
+
+command -v copilot >/dev/null 2>&1 || {
+  echo "cp-stream: 'copilot' (GitHub Copilot CLI) not found in PATH." >&2
+  echo "  install: npm i -g @github/copilot   (or brew install --cask copilot-cli)" >&2
+  exit 1
+}
+command -v node >/dev/null 2>&1 || { echo "cp-stream: 'node' not found (required for the stream parser)." >&2; exit 1; }
+
+# Optional config (shared across backends). cli-dispatch dir, legacy claude-ds fallback (env wins).
+source_config
+
+# Forward the host's gh auth (macOS keyring) into the worker env (issue #56).
+maybe_export_gh_token
+
+# COPILOT_GITHUB_TOKEN must be exported so the copilot subprocess inherits it — sourcing the
+# config only sets a shell variable, not an environment variable, without an explicit export.
+[ -n "${COPILOT_GITHUB_TOKEN:-}" ] && export COPILOT_GITHUB_TOKEN
+
+# Resolve the parser: env > installed location > script dir.
+PARSER="${CP_PARSER:-}"
+if [ -z "$PARSER" ]; then
+  for cand in "$HOME/.local/share/cli-dispatch/cp-stream-parse.mjs" "$HOME/.local/share/claude-ds/cp-stream-parse.mjs" "$SCRIPT_DIR/cp-stream-parse.mjs"; do
+    [ -f "$cand" ] && { PARSER="$cand"; break; }
+  done
+fi
+[ -n "$PARSER" ] && [ -f "$PARSER" ] || { echo "cp-stream: cp-stream-parse.mjs not found (set CP_PARSER)." >&2; exit 1; }
+
+# ---- parse arguments ----
+CWD="$(pwd)"
+RESUME_ID=""
+PROMPT=""
+HAVE_PROMPT=0
+MODEL="${CP_MODEL:-${COPILOT_MODEL:-}}"
+EFFORT="${CP_EFFORT:-}"
+MAX_RUNTIME="${CP_MAX_RUNTIME:-0}"
+IDLE_TIMEOUT="${CP_IDLE_TIMEOUT:-0}"
+PASS_ARGS=()
+need_val() { [ "$2" -ge 2 ] || { echo "cp-stream: $1 requires a value." >&2; exit 1; }; }
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --cwd)            need_val --cwd "$#";    CWD="$2"; shift 2;;
+    --cwd=*)          CWD="${1#*=}"; shift;;
+    --resume)         need_val --resume "$#"; RESUME_ID="$2"; shift 2;;
+    --resume=*)       RESUME_ID="${1#*=}"; shift;;
+    --model)          need_val --model "$#";  MODEL="$2"; shift 2;;
+    --model=*)        MODEL="${1#*=}"; shift;;
+    --effort)         need_val --effort "$#"; EFFORT="$2"; shift 2;;
+    --effort=*)       EFFORT="${1#*=}"; shift;;
+    -p|--prompt)      need_val "$1" "$#";     PROMPT="$2"; HAVE_PROMPT=1; shift 2;;
+    -p=*)             PROMPT="${1#*=}"; HAVE_PROMPT=1; shift;;
+    --prompt=*)       PROMPT="${1#*=}"; HAVE_PROMPT=1; shift;;
+    --max-runtime)    need_val --max-runtime "$#";  MAX_RUNTIME="$2"; shift 2;;
+    --max-runtime=*)  MAX_RUNTIME="${1#*=}"; shift;;
+    --idle-timeout)   need_val --idle-timeout "$#"; IDLE_TIMEOUT="$2"; shift 2;;
+    --idle-timeout=*) IDLE_TIMEOUT="${1#*=}"; shift;;
+    *)                PASS_ARGS+=("$1"); shift;;
+  esac
+done
+
+if [ "$HAVE_PROMPT" -eq 0 ]; then
+  if [ ! -t 0 ]; then PROMPT="$(cat)"; else
+    echo "cp-stream: no prompt. Use -p \"<prompt>\" or pipe via stdin." >&2; exit 1
+  fi
+fi
+# Reject an empty/whitespace-only prompt: copilot -p "" produces no useful turn.
+if [ -z "${PROMPT//[[:space:]]/}" ]; then
+  echo "cp-stream: empty prompt — nothing to delegate." >&2; exit 1
+fi
+case "$MAX_RUNTIME"  in ''|*[!0-9]*) MAX_RUNTIME=0;;  esac
+case "$IDLE_TIMEOUT" in ''|*[!0-9]*) IDLE_TIMEOUT=0;; esac
+
+# The resume id is used as a session-dir path component → reject path-traversal early.
+if [ -n "$RESUME_ID" ]; then
+  case "$RESUME_ID" in
+    */*|*..*) echo "cp-stream: invalid --resume id" >&2; exit 1;;
+  esac
+fi
+
+# Make CWD absolute.
+CWD="$(cd "$CWD" 2>/dev/null && pwd)" || { echo "cp-stream: bad --cwd" >&2; exit 1; }
+
+# ---- build the copilot command ----
+# `--allow-all-tools --no-ask-user` are NOT a safety opt-in — they are a FUNCTIONAL
+# REQUIREMENT: headless runs have no TTY to answer permission prompts or clarifying
+# questions. There is no read-only OS sandbox flag to add here (unlike cx-stream) —
+# GitHub Copilot has no OS-level or tool-level write-deny at all. Safety =
+# git-worktree isolation only.
+if [ -n "$EFFORT" ]; then
+  EFFORT="$(printf '%s' "$EFFORT" | tr '[:upper:]' '[:lower:]')"
+  case "$EFFORT" in low|medium|high) ;; *) echo "cp-stream: --effort must be low|medium|high (got \"$EFFORT\")." >&2; exit 2;; esac
+fi
+
+CP_ARGS=(-p "$PROMPT" --allow-all-tools --no-ask-user --add-dir "$CWD" --output-format json --no-color --no-banner --no-auto-update)
+[ -n "$MODEL" ] && CP_ARGS+=(--model "$MODEL")
+[ -n "$EFFORT" ] && CP_ARGS+=("--reasoning-effort=$EFFORT")
+[ -n "$RESUME_ID" ] && CP_ARGS+=(--resume "$RESUME_ID")
+[ "${#PASS_ARGS[@]}" -gt 0 ] && CP_ARGS+=("${PASS_ARGS[@]}")
+
+RESUME=0
+[ -n "$RESUME_ID" ] && RESUME=1
+
+# ---- session bookkeeping ----
+# The session id is only known once copilot emits its first event (sessionID field). Until
+# then we run in a TEMP session dir; the parser captures the id and we relocate to the
+# canonical dir (same pattern as cx-stream's thread-id relocation).
+SESSIONS_ROOT="$(resolve_sessions_root)"
+mkdir -p "$SESSIONS_ROOT"
+if [ "$RESUME" -eq 1 ]; then
+  SESSION_ID="$RESUME_ID"
+else
+  SESSION_ID="cp-$(date +%s)-$$"   # provisional; renamed to the real sessionID on completion
+fi
+SESSION_DIR="$SESSIONS_ROOT/$SESSION_ID"
+mkdir -p "$SESSION_DIR"
+printf '%s' "$PROMPT" > "$SESSION_DIR/prompt.txt" 2>/dev/null || true
+BRANCH="$(git -C "$CWD" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+
+# Process helpers: mtime_of, kill_tree, proc_tree, kill_worker — defined in stream-utils.sh
+# (sourced above). Defined before launch; the watchdog reuses them.
+
+echo "cp-stream → GitHub Copilot worker" >&2
+echo "  cwd:     $CWD" >&2
+echo "  sandbox: none — git-worktree isolation is the only safety boundary (see cp-runner.md)" >&2
+[ -n "$MODEL" ] && echo "  model:   $MODEL" >&2
+[ -n "$EFFORT" ] && echo "  effort:  $EFFORT" >&2
+[ "$RESUME" -eq 1 ] && echo "  resume:  $RESUME_ID" >&2
+echo "  dir:     $SESSION_DIR" >&2
+echo "  status:  $SESSION_DIR/status.json" >&2
+
+# ---- launch copilot; pipe its JSONL stdout through the parser ----
+# copilot stdout (JSONL) → parser; copilot stderr → our stderr. The parser writes
+# status.json and prints the captured final text on ITS stdout (the ONLY answer source —
+# no -o <file> equivalent exists for copilot).
+PARSER_OUT="$(mktemp -t cp-parsed-XXXXXX)"
+DONEFILE="$SESSION_DIR/.cp.done"; rm -f "$DONEFILE" "$SESSION_DIR/.timeout"
+
+# Launch copilot as a DIRECT background job so $! is copilot's REAL pid; the watchdog targets
+# that pid and `wait` yields copilot's TRUE exit code. This FIFO + `cat` bridge is unique to
+# cp-stream: copilot's stdout cannot be tailed from disk, and bash process substitution is not
+# reliable in every sandboxed macOS shell. Copilot stays directly waitable, and node sees
+# ordinary pipe EOF.
+PARSER_DONE="$(mktemp -u -t cp-pdone-XXXXXX)"
+PIPE_FILE="$(mktemp -u -t cp-jsonl-XXXXXX)"
+mkfifo "$PIPE_FILE"
+
+# Clean up ALL temp files + reap the watchdog (and the copilot worker) on ANY exit path —
+# normal, error, or signal (Ctrl-C) — so nothing leaks and the watchdog can't outlive us.
+cleanup() {
+  [ -n "${WATCHDOG_PID:-}" ] && kill "$WATCHDOG_PID" 2>/dev/null || true
+  [ -n "${CP_PID:-}" ] && kill -TERM "$CP_PID" 2>/dev/null || true
+  [ -n "${PARSER_PID:-}" ] && kill_tree "$PARSER_PID" -TERM
+  rm -f "$PARSER_OUT" "$PARSER_DONE" "$PIPE_FILE" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+handle_interrupt() {
+  local sig="$1" rc="$2"
+  trap - INT TERM
+  echo "cp-stream: interrupted ($sig)." >&2
+  reconcile_session_error "$SESSION_DIR" "interrupted: $sig" "$rc"
+  cleanup
+  exit "$rc"
+}
+trap 'handle_interrupt INT 130' INT
+trap 'handle_interrupt TERM 143' TERM
+
+# copilot's stdout → FIFO → cat → parser; copilot's stderr passes through to our stderr. No
+# stdin redirect needed (unlike codex's prompt-as-arg gotcha) — but redirect from /dev/null
+# anyway for parity/safety, since copilot is not expected to read stdin either.
+(
+  cat "$PIPE_FILE" | \
+  CP_SESSION_DIR="$SESSION_DIR" \
+  CP_PROMPT_PREVIEW="$(printf '%.120s' "$PROMPT")" \
+  CP_CWD="$CWD" \
+  CP_BRANCH="$BRANCH" \
+  CP_MODEL="${MODEL}${EFFORT:+ ($EFFORT)}" \
+  CP_THREAD_ID="$([ "$RESUME" -eq 1 ] && printf '%s' "$RESUME_ID" || true)" \
+  CP_RESUME="$RESUME" \
+    node "$PARSER" > "$PARSER_OUT"
+  touch "$PARSER_DONE"
+) &
+PARSER_PID=$!
+
+cd "$CWD"
+copilot "${CP_ARGS[@]}" </dev/null > "$PIPE_FILE" &
+CP_PID=$!
+
+# The watchdog watches copilot itself for liveness and TARGETS the real copilot pid for the kill.
+PIPE_PID="$CP_PID"
+
+# ---- watchdog: runtime cap + idle on status.json mtime (best-effort) ----
+TRANSCRIPT="$SESSION_DIR/transcript.jsonl"
+watchdog() {
+  local start now m target
+  target="${CP_PID:-$PIPE_PID}"
+  start=$(date +%s)
+  while kill -0 "$PIPE_PID" 2>/dev/null; do
+    sleep 2
+    now=$(date +%s)
+    if [ "$MAX_RUNTIME" -gt 0 ] && [ "$((now - start))" -ge "$MAX_RUNTIME" ]; then
+      echo "runtime ${MAX_RUNTIME}s" > "$SESSION_DIR/.timeout"
+      [ -n "$target" ] && kill_worker "$target"
+      kill_tree "$PIPE_PID" -TERM
+      return 0
+    fi
+    if [ "$IDLE_TIMEOUT" -gt 0 ] && [ -f "$TRANSCRIPT" ]; then
+      m="$(mtime_of "$TRANSCRIPT")"; m="${m:-$start}"
+      if [ "$((now - m))" -ge "$IDLE_TIMEOUT" ]; then
+        echo "idle ${IDLE_TIMEOUT}s" > "$SESSION_DIR/.timeout"
+        [ -n "$target" ] && kill_worker "$target"
+        kill_tree "$PIPE_PID" -TERM
+        return 0
+      fi
+    fi
+  done
+}
+WATCHDOG_PID=""
+if [ "$MAX_RUNTIME" -gt 0 ] || [ "$IDLE_TIMEOUT" -gt 0 ]; then
+  echo "  guard:   max-runtime=${MAX_RUNTIME}s idle-timeout=${IDLE_TIMEOUT}s" >&2
+  watchdog & WATCHDOG_PID=$!
+fi
+
+# ---- wait for copilot + parser to finish ----
+# Wait on the copilot job FIRST: its exit status is copilot's REAL exit code (direct bg job).
+set +e
+wait "$CP_PID"; CP_RC=$?
+set -e
+[ -n "$WATCHDOG_PID" ] && kill_tree "$WATCHDOG_PID" -TERM
+case "$CP_RC" in ''|*[!0-9]*) CP_RC=1;; esac
+
+# The parser subshell is a background job tracked by PARSER_PID, but we still synchronize on
+# its done-marker rather than just `wait`ing on it: PARSER_DONE is touched only after the FIFO
+# is fully drained and status.json has been written. Bounded poll so we never hang if the
+# parser died early.
+for _ in $(seq 1 100); do
+  [ -e "$PARSER_DONE" ] && break
+  sleep 0.1
+done
+
+if [ -f "$SESSION_DIR/.timeout" ]; then
+  TIMEOUT_REASON="$(cat "$SESSION_DIR/.timeout" 2>/dev/null || true)"
+  printf 'timeout: %s' "$TIMEOUT_REASON" > "$DONEFILE"
+  echo "cp-stream: stopped by watchdog ($TIMEOUT_REASON)." >&2
+  # A watchdog stop is always a failure, regardless of copilot's reported rc.
+  [ "$CP_RC" -eq 0 ] && CP_RC=124
+  # The parser only saw stdin EOF and finalized "done"/exitCode:0 — fix the record.
+  reconcile_session_error "$SESSION_DIR" "timeout: $TIMEOUT_REASON" "$CP_RC"
+else
+  if [ "$CP_RC" -ne 0 ]; then
+    CP_STATE=""
+    [ -f "$SESSION_DIR/status.json" ] && CP_STATE="$(json_field "$SESSION_DIR/status.json" state || true)"
+    if [ "$CP_STATE" = "done" ] || [ -z "$CP_STATE" ]; then
+      reconcile_session_error "$SESSION_DIR" "copilot exited with code $CP_RC" "$CP_RC"
+    fi
+  fi
+  printf '%s' "$CP_RC" > "$DONEFILE"
+fi
+
+# ---- H2: consult the parser's result; turn-level errors must propagate ----
+# Confirmed 2026-07-02 against a live COPILOT_GITHUB_TOKEN: GitHub Copilot emits a top-level
+# {"type":"error",...} event on a turn failure (bad model slug, no tool-use-capable endpoint,
+# upstream 5xx, etc) — the parser captures it into status.json state=error (+ error message).
+# Surface the reason on stderr and force a non-zero exit so callers don't see "success" with
+# no output.
+if ! surface_status_error "$SESSION_DIR" "cp-stream: copilot turn failed"; then
+  [ "$CP_RC" -eq 0 ] && CP_RC=1
+fi
+
+# ---- relocate the provisional session dir to the real sessionID (best-effort) ----
+if [ "$RESUME" -eq 0 ]; then
+  REAL_ID="$(json_field "$SESSION_DIR/meta.json" threadId || true)"
+  # relocate_session_dir warns (not clobbers) if the real session dir already exists, echoes
+  # the discovered "  session: <id>" line, and prints the resulting dir for us to capture.
+  SESSION_DIR="$(relocate_session_dir "$SESSIONS_ROOT" "$SESSION_DIR" "$SESSION_ID" "$REAL_ID" "cp-stream" "session dir" "  session: ")"
+fi
+
+# ---- print ONLY the final answer on stdout ----
+# No -o <file> equivalent exists for copilot — the parser's captured finalText (printed to
+# PARSER_OUT) is the SOLE source of the answer.
+[ -s "$PARSER_OUT" ] && cat "$PARSER_OUT"
+
+rm -f "$SESSION_DIR/.timeout" 2>/dev/null || true
+# Temp files (PARSER_OUT/PARSER_DONE) are removed by the EXIT trap.
+exit "$CP_RC"

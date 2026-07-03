@@ -8,7 +8,7 @@ allowed-tools: Bash
 Launch the **local, read-only web dashboard**. It shows active Claude Code CLI sessions
 (across all projects, active pinned on top); click a session to see its **flow**, the
 **subagents** it spawned, and click a subagent to drill into *its* flow — plus a panel for the
-cli-dispatch **worker** delegations (DeepSeek / Antigravity / Codex / OpenCode).
+cli-dispatch **worker** delegations (DeepSeek / Antigravity / Codex / OpenCode / Copilot).
 
 > Read-only. Binds `127.0.0.1` only. No config/secret access. This is the only long-running
 > process the plugin starts — it serves until you stop it (the printed `kill <pid>`, or Ctrl-C

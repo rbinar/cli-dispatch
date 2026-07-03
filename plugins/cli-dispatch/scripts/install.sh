@@ -23,13 +23,13 @@ if [ -d "$_OLD_SESS" ] && [ ! -d "$_NEW_SESS" ]; then
 fi
 _OLD_LIBEXEC="$HOME/.local/share/claude-ds"
 if [ -d "$_OLD_LIBEXEC" ] && [ "$_OLD_LIBEXEC" != "$LIBEXEC_DIR" ]; then
-  rm -f "$_OLD_LIBEXEC"/ds-stream-parse.mjs "$_OLD_LIBEXEC"/ag-transcript-parse.mjs "$_OLD_LIBEXEC"/cx-stream-parse.mjs 2>/dev/null || true
+  rm -f "$_OLD_LIBEXEC"/ds-stream-parse.mjs "$_OLD_LIBEXEC"/ag-transcript-parse.mjs "$_OLD_LIBEXEC"/cx-stream-parse.mjs "$_OLD_LIBEXEC"/cp-stream-parse.mjs 2>/dev/null || true
   rmdir "$_OLD_LIBEXEC" 2>/dev/null || true
 fi
 
 # ---- which worker backends to install --------------------------------------
-# Usage: install.sh [--backends deepseek,antigravity | all] [--install-missing]
-# Default: deepseek (preserves prior behavior). Antigravity (agy / Gemini) is opt-in.
+# Usage: install.sh [--backends deepseek,antigravity,codex,opencode,copilot | all] [--install-missing]
+# Default: deepseek (preserves prior behavior). Other backends are opt-in.
 # --install-missing: best-effort auto-install any missing backend CLI (via npm/brew/
 # curl, whichever applies) before falling back to the manual-install warning. Never
 # automates auth/sign-in. Default OFF (unset behavior is unchanged).
@@ -43,12 +43,13 @@ while [ "$#" -gt 0 ]; do
     *) echo "install.sh: unknown arg '$1'" >&2; exit 1;;
   esac
 done
-[ "$BACKENDS" = "all" ] && BACKENDS="deepseek,antigravity,codex,opencode"
+[ "$BACKENDS" = "all" ] && BACKENDS="deepseek,antigravity,codex,opencode,copilot"
 case ",$BACKENDS," in *,deepseek,*) WANT_DS=1;; *) WANT_DS=0;; esac
 case ",$BACKENDS," in *,antigravity,*) WANT_AG=1;; *) WANT_AG=0;; esac
 case ",$BACKENDS," in *,codex,*) WANT_CX=1;; *) WANT_CX=0;; esac
 case ",$BACKENDS," in *,opencode,*) WANT_OC=1;; *) WANT_OC=0;; esac
-[ "$WANT_DS" -eq 1 ] || [ "$WANT_AG" -eq 1 ] || [ "$WANT_CX" -eq 1 ] || [ "$WANT_OC" -eq 1 ] || { echo "install.sh: no known backend in '--backends $BACKENDS' (deepseek,antigravity,codex,opencode)" >&2; exit 1; }
+case ",$BACKENDS," in *,copilot,*) WANT_CP=1;; *) WANT_CP=0;; esac
+[ "$WANT_DS" -eq 1 ] || [ "$WANT_AG" -eq 1 ] || [ "$WANT_CX" -eq 1 ] || [ "$WANT_OC" -eq 1 ] || [ "$WANT_CP" -eq 1 ] || { echo "install.sh: no known backend in '--backends $BACKENDS' (deepseek,antigravity,codex,opencode,copilot)" >&2; exit 1; }
 
 # ---- best-effort auto-install for a missing backend CLI (only when
 # --install-missing is passed) -----------------------------------------------
@@ -86,6 +87,15 @@ try_install_missing_cli() {
         npm i -g opencode-ai || true
       else
         echo "  FAIL: 'opencode' has no non-npm install path; Node/npm is required."
+      fi
+      ;;
+    copilot)
+      if command -v npm >/dev/null 2>&1; then
+        npm i -g @github/copilot || true
+      elif [ "$(uname -s)" = "Darwin" ] && command -v brew >/dev/null 2>&1; then
+        brew install --cask copilot-cli || true
+      else
+        curl -fsSL https://gh.io/copilot-install | bash || true
       fi
       ;;
   esac
@@ -200,6 +210,28 @@ if [ "$WANT_OC" -eq 1 ]; then
   fi
 fi
 
+# ---- GitHub Copilot backend (cp-* family) ----------------------------------
+if [ "$WANT_CP" -eq 1 ]; then
+  install -m 0755 "$SCRIPT_DIR/cp-stream" "$BIN_DIR/cp-stream"
+  install -m 0755 "$SCRIPT_DIR/cp-agent"  "$BIN_DIR/cp-agent"
+  install -m 0644 "$SCRIPT_DIR/cp-stream-parse.mjs" "$LIBEXEC_DIR/cp-stream-parse.mjs"
+  echo "Installed GitHub Copilot backend -> cp-stream, cp-agent (parser -> $LIBEXEC_DIR/cp-stream-parse.mjs)"
+  if command -v copilot >/dev/null 2>&1; then
+    echo "  copilot CLI: found ($(copilot --version 2>/dev/null || echo '?'))"
+  else
+    if [ "$INSTALL_MISSING" -eq 1 ]; then try_install_missing_cli copilot || true; fi
+    if command -v copilot >/dev/null 2>&1; then
+      echo "  copilot CLI: found ($(copilot --version 2>/dev/null || echo '?'))"
+    else
+      echo "  WARNING: 'copilot' (GitHub Copilot CLI) not found in PATH. Install it, then authenticate:"
+      echo "    npm i -g @github/copilot"
+      echo "    brew install --cask copilot-cli"
+      echo "    curl -fsSL https://gh.io/copilot-install | bash"
+      echo "    gh auth login   # or set COPILOT_GITHUB_TOKEN / GH_TOKEN / GITHUB_TOKEN; active Copilot subscription required"
+    fi
+  fi
+fi
+
 # ---- config skeleton (shared; created only if missing — never clobbered) ---
 if [ ! -f "$CONFIG" ]; then
   mkdir -p "$CONFIG_DIR"
@@ -247,6 +279,17 @@ OPENROUTER_API_KEY=""
 OC_MODEL=""
 # No sandbox: --auto approves all permissions (required for headless use, not a
 # safety opt-in). Use --cwd + a git worktree for a no-writes guarantee.
+
+# --- GitHub Copilot backend (cp-agent / cp-stream) --- OPTIONAL.
+# Auth: cli-dispatch automatically reuses `gh auth token` via GH_TOKEN when available.
+# COPILOT_GITHUB_TOKEN here overrides GH_TOKEN/GITHUB_TOKEN if set explicitly.
+# An active GitHub Copilot subscription is required.
+COPILOT_GITHUB_TOKEN=""
+# Default model slug for the copilot worker. Blank = copilot's own default.
+# Examples: claude-sonnet-4.6, gpt-5.2, auto. Override per-call with `cp-agent --model <slug>`.
+CP_MODEL=""
+# No sandbox: --allow-all-tools --no-ask-user enables headless use, not a safety opt-in.
+# Use --cwd + a git worktree for a no-writes guarantee.
 CFG
   chmod 600 "$CONFIG"
   echo "Created config template -> $CONFIG"
@@ -282,3 +325,4 @@ echo "Done."
 [ "$WANT_AG" -eq 1 ] && echo "  Antigravity: sign in with 'agy' (or set GEMINI_API_KEY), then test: ag-agent -q 'Reply with exactly: OK'"
 [ "$WANT_CX" -eq 1 ] && echo "  Codex:       run 'codex login' (or set CODEX_API_KEY), then test: cx-agent --read-only -q 'Reply with exactly: OK'"
 [ "$WANT_OC" -eq 1 ] && echo "  OpenCode:    add your OPENROUTER_API_KEY to $CONFIG, then test: oc-agent -q 'Reply with exactly: OK'"
+[ "$WANT_CP" -eq 1 ] && echo "  Copilot:     run 'gh auth login' (or set COPILOT_GITHUB_TOKEN/GH_TOKEN), ensure Copilot subscription, then test: cp-agent -q 'Reply with exactly: OK'"

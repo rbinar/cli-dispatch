@@ -9,14 +9,17 @@ description: |
   tool canNOT use DeepSeek (model enum is Anthropic-only) — claude-ds is the only path.
   cli-dispatch is multi-backend: a second worker, **Antigravity (agy / Gemini)**, is
   available via `ag-agent` / `ag-stream`, a third, **Codex (OpenAI Codex CLI)**, via
-  `cx-agent` / `cx-stream`, and a fourth, **OpenCode (via OpenRouter)**, via
-  `oc-agent` / `oc-stream` (see the Antigravity, Codex, and OpenCode sections below).
+  `cx-agent` / `cx-stream`, a fourth, **OpenCode (via OpenRouter)**, via
+  `oc-agent` / `oc-stream`, and a fifth, **GitHub Copilot**, via `cp-agent` /
+  `cp-stream` (see the Antigravity, Codex, OpenCode, and GitHub Copilot sections below).
   Codex adds a real OS-level read-only sandbox (`cx-agent --read-only`).
   Triggers: "claude-ds", "delegate to claude-ds", "run with deepseek", "delegate to
   antigravity/gemini", "run with agy", "delegate to codex", "run with codex/openai",
-  "delegate to opencode", "run with opencode/openrouter" (also
+  "delegate to opencode", "run with opencode/openrouter", "delegate to copilot",
+  "run with github copilot" (also
   Turkish: "deepseek ile yap/çalıştır", "gemini/antigravity ile yap", "codex/openai ile
-  yap", "opencode/openrouter ile yap", "delege et claude-ds").
+  yap", "opencode/openrouter ile yap", "copilot ile yap/çalıştır", "delegate to copilot",
+  "delege et claude-ds").
 user-invocable: true
 ---
 
@@ -238,24 +241,58 @@ oc-stream --cwd <dir> -p "<task>"          # background/session-tracked variant 
 - **Same session dir** as the others, so `sessions` / `watch` / `resume` / `kill` all work.
 - **Babysitter subagent:** the `oc-runner` subagent manages an OpenCode delegation in a sub-context.
 
+## GitHub Copilot backend — `cp-agent` / `cp-stream`
+cli-dispatch's fifth worker is **GitHub Copilot** (`copilot`, npm `@github/copilot`). Enable
+it via `/cli-dispatch:setup` (choose GitHub Copilot). Unix-only (macOS/Linux/WSL).
+
+The `cp-*` family mirrors the OpenCode backend:
+```bash
+cp-agent "<task>"                          # agentic in cwd; progress on stderr; answer on stdout
+cp-agent -q "<task>"                       # answer only on stdout
+cp-agent --cwd <dir> "<task>"              # work in <dir>; passed to copilot as --add-dir
+cp-agent --model gpt-5.4 "<task>"          # Copilot model slug (e.g. gpt-5.4, auto)
+cp-agent --effort high "<task>"            # maps to --reasoning-effort=high
+cp-agent --resume <session-id> "<follow-up>"           # continue the same session
+cp-stream --cwd <dir> -p "<task>"          # background/session-tracked variant (poll status.json)
+```
+- **NO sandbox at all** — no OS-level or tool-level write-deny; `--allow-all-tools
+  --no-ask-user` is always passed for headless use, not as a safety opt-in. Git-worktree
+  isolation is the only safety boundary (same posture as OpenCode and Antigravity).
+- **Model selection:** `--model <slug>` (config default `CP_MODEL`). Examples:
+  `gpt-5.4`, `auto`. Current model list is only visible interactively via `/model` in the
+  copilot TUI (auth required) or GitHub Copilot docs — slugs change over time.
+- **Reasoning effort:** `--effort low|medium|high` maps to Copilot's
+  `--reasoning-effort=<level>`.
+- **Auth:** `COPILOT_GITHUB_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN`; cli-dispatch automatically
+  reuses `gh auth token` as `GH_TOKEN` when available. An active GitHub Copilot subscription
+  is required.
+- **Balance:** not queryable from the CLI. `/usage` is interactive-only inside a Copilot REPL;
+  use https://github.com/settings/billing for real usage/limits.
+- **Same session dir** as the others, so `sessions` / `watch` / `resume` / `kill` all work.
+- **Babysitter subagent:** the `cp-runner` subagent manages a Copilot delegation in a sub-context.
+
 ## Role
-The worker (claude-ds = DeepSeek, ag-agent = Antigravity/Gemini, cx-agent = Codex/OpenAI, or
-oc-agent = OpenCode/OpenRouter) does the work; you = orchestrator + reviewer + git/merge owner.
+The worker (claude-ds = DeepSeek, ag-agent = Antigravity/Gemini, cx-agent = Codex/OpenAI,
+oc-agent = OpenCode/OpenRouter, or cp-agent = GitHub Copilot) does the work; you =
+orchestrator + reviewer + git/merge owner.
 Don't trust any output until verified.
 
 ## Commands
-- `/cli-dispatch:setup` — install worker backends (DeepSeek / Antigravity / Codex / OpenCode); choose at setup + config + smoke test.
+- `/cli-dispatch:setup` — install worker backends (DeepSeek / Antigravity / Codex / OpenCode / Copilot); choose at setup + config + smoke test.
 - `/cli-dispatch:dashboard` — open the local read-only web dashboard (Claude Code sessions → flow → subagents → flow, + a cli-dispatch worker panel).
 - `/cli-dispatch:ds-run <task>` — delegate to the **DeepSeek** worker (worktree isolation for repo tasks, session-tracked).
 - `/cli-dispatch:ag-run <task>` — delegate to the **Antigravity (Gemini)** worker (same workflow).
 - `/cli-dispatch:cx-run <task>` — delegate to the **Codex (OpenAI)** worker (real read-only sandbox; same workflow).
 - `/cli-dispatch:oc-run <task>` — delegate to the **OpenCode (OpenRouter)** worker (no sandbox — worktree isolation only; same workflow).
-- `/cli-dispatch:sessions` — list past/active sessions (all backends; shows a `backend` column). Per-backend: `ds-sessions` / `ag-sessions` / `cx-sessions` / `oc-sessions`.
+- `/cli-dispatch:cp-run <task>` — delegate to the **GitHub Copilot** worker (no sandbox — worktree isolation only; same workflow).
+- `/cli-dispatch:sessions` — list past/active sessions (all backends; shows a `backend` column). Per-backend: `ds-sessions` / `ag-sessions` / `cx-sessions` / `oc-sessions` / `cp-sessions`.
 - `/cli-dispatch:watch <id>` — show a session's compact live status (cost-conscious).
 - `/cli-dispatch:clean` — remove stale worker dirs (a `running` session whose process died before finalize, so `status.json` is stuck). Dry-run by default; `--remove` deletes, `--older-than DAYS` also prunes old finished sessions.
 - `/cli-dispatch:clean-schedule` — register a daily OS-level auto-clean (launchd/cron/Scheduled Tasks) that runs `cli-dispatch-clean --remove` in the background; `status` / `uninstall` actions too.
-- `/cli-dispatch:status` — check installation/key/CLI status for all backends. Per-backend: `ds-status` / `ag-status` / `cx-status` / `oc-status`.
-- `/cli-dispatch:balance` — aggregate: DeepSeek balance + Antigravity quota + Codex rate limits (+ OpenCode/OpenRouter credits via `oc-balance`) at once.
+- `/cli-dispatch:status` — check installation/key/CLI status for all backends. Per-backend: `ds-status` / `ag-status` / `cx-status` / `oc-status` / `cp-status`.
+- `/cli-dispatch:balance` — aggregate: DeepSeek balance + Antigravity quota + Codex rate limits + OpenCode/OpenRouter credits + Copilot usage note at once.
 - `/cli-dispatch:ds-balance` — show the DeepSeek account balance.
 - `/cli-dispatch:cx-balance` — Codex usage / rate limits (5h + weekly % left), read natively from codex's on-disk session records.
 - `/cli-dispatch:ag-balance` — Antigravity quota (% left per model + plan), via the local language-server `GetUserStatus` RPC (needs the Antigravity server running).
+- `/cli-dispatch:oc-balance` — OpenCode / OpenRouter credits.
+- `/cli-dispatch:cp-balance` — Copilot usage note (not queryable from the CLI; use GitHub Billing).

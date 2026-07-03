@@ -19,7 +19,8 @@ cat <<'HELP'
 │    /cli-dispatch:ag-run <task>  Delegate to Antigravity / Gemini             │
 │    /cli-dispatch:cx-run <task>  Delegate to OpenAI Codex                     │
 │    /cli-dispatch:oc-run <task>  Delegate to OpenCode (OpenRouter)            │
-│    Subagents: ds-runner/ag-runner/cx-runner/oc-runner  (babysitter + reviewer)│
+│    /cli-dispatch:cp-run <task>  Delegate to GitHub Copilot                   │
+│    Subagents: ds/ag/cx/oc/cp-runner  (babysitter + reviewer)                 │
 │                                                                               │
 │  MONITOR                                                                      │
 │    /cli-dispatch:sessions       List all sessions (all backends)             │
@@ -34,6 +35,7 @@ cat <<'HELP'
 │    /cli-dispatch:ag-balance     Antigravity / Gemini quota                   │
 │    /cli-dispatch:cx-balance     Codex / OpenAI rate limits                   │
 │    /cli-dispatch:oc-balance     OpenCode / OpenRouter credits                │
+│    /cli-dispatch:cp-balance     Copilot usage note (not CLI-queryable)       │
 │    /cli-dispatch:clean          Remove old session dirs                      │
 │    /cli-dispatch:clean-schedule Schedule periodic cleanup                    │
 │                                                                               │

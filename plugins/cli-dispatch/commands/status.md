@@ -1,5 +1,5 @@
 ---
-description: Check the cli-dispatch installation status (DeepSeek + Antigravity + Codex + OpenCode)
+description: Check the cli-dispatch installation status (DeepSeek + Antigravity + Codex + OpenCode + Copilot)
 allowed-tools: Bash
 ---
 
@@ -69,6 +69,31 @@ if command -v opencode >/dev/null 2>&1; then
   fi
 else
   echo "opencode CLI: MISSING (npm i -g opencode-ai)"
+fi
+
+echo "== GitHub Copilot backend (cp) — optional =="
+command -v cp-agent >/dev/null 2>&1 && echo "wrapper: installed ($(command -v cp-agent))" || echo "wrapper: not installed (enable with /cli-dispatch:setup)"
+if command -v copilot >/dev/null 2>&1; then
+  echo "copilot CLI: found ($(copilot --version 2>/dev/null || echo 'version unknown'))"
+  if [ -f "$CFG" ]; then
+    ( . "$CFG"
+      if [ -n "${COPILOT_GITHUB_TOKEN:-}" ]; then
+        echo "auth: COPILOT_GITHUB_TOKEN set"
+      elif [ -n "${GH_TOKEN:-}" ]; then
+        echo "auth: GH_TOKEN set"
+      elif [ -n "${GITHUB_TOKEN:-}" ]; then
+        echo "auth: GITHUB_TOKEN set"
+      else
+        echo "auth: via gh auth token if available, or set COPILOT_GITHUB_TOKEN/GH_TOKEN/GITHUB_TOKEN"
+      fi
+      [ -n "${CP_MODEL:-}" ] && echo "model: CP_MODEL=${CP_MODEL}" || echo "model: CP_MODEL not set (copilot default used)"
+      echo "subscription: active GitHub Copilot subscription required"
+    )
+  else
+    echo "auth: config not found — gh auth token may still be forwarded"
+  fi
+else
+  echo "copilot CLI: MISSING (npm i -g @github/copilot  or  brew install --cask copilot-cli)"
 fi
 
 command -v node >/dev/null 2>&1 && echo "node: found (required by all stream parsers)" || echo "node: MISSING (the stream wrappers need it)"

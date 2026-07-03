@@ -1,18 +1,18 @@
 ---
-description: Show usage/balance for all backends at once (DeepSeek + Antigravity + Codex + OpenCode)
+description: Show usage/balance for all backends at once (DeepSeek + Antigravity + Codex + OpenCode + Copilot)
 allowed-tools: Bash
 ---
 
 # cli-dispatch balance (all backends)
 
 The aggregate view: DeepSeek account balance + Antigravity per-model quota + Codex rate
-limits + OpenCode (OpenRouter) credit balance, side by side. Mirrors the per-backend
+limits + OpenCode (OpenRouter) credit balance + Copilot usage visibility note, side by side. Mirrors the per-backend
 `/cli-dispatch:ds-balance`, `/cli-dispatch:ag-balance`, `/cli-dispatch:cx-balance`, and
-`/cli-dispatch:oc-balance`. All read-only, no third-party tools; an unconfigured/offline
+`/cli-dispatch:oc-balance` / `/cli-dispatch:cp-balance`. All read-only, no third-party tools; an unconfigured/offline
 backend prints a short note instead of failing.
 **Never print any key VALUE** — only the balance/quota figures.
 
-Run the four sections below and summarize each backend's headline number for the user.
+Run the five sections below and summarize each backend's headline number for the user.
 
 ## DeepSeek (account balance)
 
@@ -108,9 +108,20 @@ if [ ! -f "$CFG" ]; then echo "config: MISSING ($CFG) — run /cli-dispatch:setu
 fi
 ```
 
+## GitHub Copilot (usage not queryable from CLI)
+
+```bash
+echo "== GitHub Copilot =="
+echo "balance: not queryable from the copilot CLI"
+echo "note: /usage is session-scoped and interactive-only inside a copilot REPL session; it is not scriptable."
+echo "usage/limits: https://github.com/settings/billing"
+echo "auth: requires an active GitHub Copilot subscription"
+```
+
 Summarize: DeepSeek `total_balance` per currency, Antigravity per-model `% left`, Codex 5h/7d
 `% left`. Note the Codex figure is as fresh as the last interactive codex turn (exec/`-q`
 runs report `rate_limits:null`). OpenCode: `total_credits - total_usage` (paid-credit
 balance only; `:free` models have no quota API — a low/zero number here does NOT mean a
 free-tier user is out of quota; free-tier limits only surface as a 429 from opencode
-itself).
+itself). Copilot: no numeric balance is available from the CLI; direct users to
+https://github.com/settings/billing for actual usage/limits.

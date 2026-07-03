@@ -8,7 +8,7 @@ allowed-tools: Bash
 
 Usage: `/cli-dispatch:resume <session-id> <follow-up prompt>`
 
-Auto-detects backend (DeepSeek / Antigravity / Codex / OpenCode) from the session's `status.json`.
+Auto-detects backend (DeepSeek / Antigravity / Codex / OpenCode / Copilot) from the session's `status.json`.
 
 ```bash
 ARGS="$ARGUMENTS"
@@ -56,12 +56,16 @@ case "$BACKEND" in
   opencode|oc)
     oc-agent --resume "$SID" "$PROMPT"
     ;;
+  copilot|cp)
+    cp-agent --resume "$SID" "$PROMPT"
+    ;;
   *)
     echo "unknown backend '$BACKEND' — run manually:"
     echo "  deepseek:    claude-ds-stream --resume $SID -p \"$PROMPT\""
     echo "  antigravity: ag-agent --resume $SID \"$PROMPT\""
     echo "  codex:       cx-agent --resume $SID \"$PROMPT\""
     echo "  opencode:    oc-agent --resume $SID \"$PROMPT\""
+    echo "  copilot:     cp-agent --resume $SID \"$PROMPT\""
     exit 1
     ;;
 esac

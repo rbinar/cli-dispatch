@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.20.0] — 2026-07-04
+
+### Added
+- **New backend: GitHub Copilot (`cp-*`).** Adds GitHub Copilot (npm `@github/copilot`, binary `copilot`) as cli-dispatch's 5th worker backend. Full parity with the OpenCode (`oc-*`) backend's footprint: `cp-agent` / `cp-stream` / `cp-worktree-run.sh` / `cp-stream-parse.mjs`, the `cp-runner` babysitter subagent, and commands `/cli-dispatch:cp-run`, `cp-status`, `cp-sessions`, `cp-balance` — plus updates to every cross-backend aggregator (`setup`, `doctor`, `status`, `help`, `sessions`, `balance`, `resume`, `clean`), the dashboard worker-panel label, `plugin.json`, and the README.
+- **No real sandbox for Copilot.** Like OpenCode, GitHub Copilot has no OS-level or tool-level write-deny; `--allow-all-tools --no-ask-user` (always passed) enables headless use, not a safety opt-in — git-worktree isolation is the only safety boundary.
+- **Copilot auth/model/effort support.** `cp-stream` reuses the shared `maybe_export_gh_token` helper (`COPILOT_GITHUB_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN`), honors `CP_MODEL`, passes `--add-dir "$CWD"`, `--no-auto-update`, and maps repo-wide `--effort low|medium|high` to Copilot's `--reasoning-effort=<level>`.
+- **Copilot balance is documented honestly.** `cp-balance` and the aggregate balance command report that usage is not queryable from the CLI; `/usage` is interactive-only inside a Copilot REPL, and actual usage/limits live in GitHub Billing.
+- **Windows deferred for Copilot.** Copilot v1 is Unix-only (macOS/Linux/WSL); `install.ps1` and any `.ps1` twins were not touched.
+
 ## [3.19.0] — 2026-07-04
 
 ### Added

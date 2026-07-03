@@ -7,6 +7,15 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.20.0] — 2026-07-04
+
+### Eklendi
+- **Yeni backend: GitHub Copilot (`cp-*`).** cli-dispatch'in 5. worker backend'i olarak GitHub Copilot (npm `@github/copilot`, binary `copilot`) eklendi. OpenCode (`oc-*`) backend'inin ayak izinin tam karşılığı: `cp-agent` / `cp-stream` / `cp-worktree-run.sh` / `cp-stream-parse.mjs`, `cp-runner` babysitter subagent'ı ve `/cli-dispatch:cp-run`, `cp-status`, `cp-sessions`, `cp-balance` komutları — ayrıca her cross-backend aggregator (`setup`, `doctor`, `status`, `help`, `sessions`, `balance`, `resume`, `clean`), dashboard worker-panel etiketi, `plugin.json` ve README güncellendi.
+- **Copilot'ta gerçek sandbox yok.** OpenCode gibi GitHub Copilot'ta OS-seviyesi veya tool-seviyesi write-deny yok; her zaman geçilen `--allow-all-tools --no-ask-user`, headless kullanım için bir güvenlik opsiyonu değil işlevsel gerekliliktir — tek güvenlik sınırı git-worktree izolasyonudur.
+- **Copilot auth/model/effort desteği.** `cp-stream` ortak `maybe_export_gh_token` yardımcısını kullanır (`COPILOT_GITHUB_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN`), `CP_MODEL`'i dikkate alır, `--add-dir "$CWD"` ve `--no-auto-update` geçirir, repo-geneli `--effort low|medium|high` bayrağını Copilot'ın `--reasoning-effort=<seviye>` bayrağına eşler.
+- **Copilot bakiyesi dürüstçe belgelendi.** `cp-balance` ve toplu balance komutu kullanımın CLI'dan sorgulanamadığını söyler; `/usage` yalnızca Copilot REPL içinde interaktif çalışır, gerçek kullanım/limitler GitHub Billing'dedir.
+- **Windows v1 için ertelendi.** Copilot v1 için yalnızca Unix'tir (macOS/Linux/WSL); `install.ps1` ve varsa `.ps1` eşleri değiştirilmedi.
+
 ## [3.19.0] — 2026-07-04
 
 ### Eklendi

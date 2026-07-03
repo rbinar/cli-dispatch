@@ -7,7 +7,7 @@ allowed-tools: Bash
 
 Worker sessions live under `~/.cache/cli-dispatch/sessions/<id>/`. A worker that was killed
 before it finalized (Ctrl-C, the parent CLI closed mid-run, crash, watchdog kill, or a codex/
-OpenCode provisional `cx-<ts>-<pid>`/`oc-<ts>-<pid>` dir that never relocated to its
+OpenCode/Copilot provisional `cx-<ts>-<pid>`/`oc-<ts>-<pid>`/`cp-<ts>-<pid>` dir that never relocated to its
 thread-id/session-id) leaves `status.json`
 stuck at `state:"running"` forever — it shows up as **stale** in `/cli-dispatch:sessions` and
 the dashboard, and never gets removed. This command finds and (with `--remove`) deletes them.
