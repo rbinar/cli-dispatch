@@ -28,13 +28,18 @@ if [ -d "$_OLD_LIBEXEC" ] && [ "$_OLD_LIBEXEC" != "$LIBEXEC_DIR" ]; then
 fi
 
 # ---- which worker backends to install --------------------------------------
-# Usage: install.sh [--backends deepseek,antigravity | all]
+# Usage: install.sh [--backends deepseek,antigravity | all] [--install-missing]
 # Default: deepseek (preserves prior behavior). Antigravity (agy / Gemini) is opt-in.
+# --install-missing: best-effort auto-install any missing backend CLI (via npm/brew/
+# curl, whichever applies) before falling back to the manual-install warning. Never
+# automates auth/sign-in. Default OFF (unset behavior is unchanged).
 BACKENDS="deepseek"
+INSTALL_MISSING=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --backends) BACKENDS="${2:-}"; shift 2;;
     --backends=*) BACKENDS="${1#*=}"; shift;;
+    --install-missing) INSTALL_MISSING=1; shift;;
     *) echo "install.sh: unknown arg '$1'" >&2; exit 1;;
   esac
 done
@@ -44,6 +49,54 @@ case ",$BACKENDS," in *,antigravity,*) WANT_AG=1;; *) WANT_AG=0;; esac
 case ",$BACKENDS," in *,codex,*) WANT_CX=1;; *) WANT_CX=0;; esac
 case ",$BACKENDS," in *,opencode,*) WANT_OC=1;; *) WANT_OC=0;; esac
 [ "$WANT_DS" -eq 1 ] || [ "$WANT_AG" -eq 1 ] || [ "$WANT_CX" -eq 1 ] || [ "$WANT_OC" -eq 1 ] || { echo "install.sh: no known backend in '--backends $BACKENDS' (deepseek,antigravity,codex,opencode)" >&2; exit 1; }
+
+# ---- best-effort auto-install for a missing backend CLI (only when
+# --install-missing is passed) -----------------------------------------------
+# Tries a package-manager-first install for the named CLI, then re-checks via a
+# fresh `command -v` (NOT the installer's own exit code, which npm/curl can report
+# unreliably re: PATH availability). Every install attempt is guarded (`|| true`)
+# so a failed install never aborts the rest of the script under `set -euo pipefail`.
+# Auth/sign-in is NEVER attempted here -- callers still print the existing WARNING
+# block (with manual install + auth instructions) on failure.
+try_install_missing_cli() {
+  local name="$1"
+  echo "  Attempting to auto-install '$name' (--install-missing)..."
+  case "$name" in
+    claude)
+      if command -v npm >/dev/null 2>&1; then
+        npm i -g @anthropic-ai/claude-code || true
+      else
+        curl -fsSL https://claude.ai/install.sh | bash || true
+      fi
+      ;;
+    agy)
+      curl -fsSL https://antigravity.google/cli/install.sh | bash || true
+      ;;
+    codex)
+      if command -v npm >/dev/null 2>&1; then
+        npm i -g @openai/codex || true
+      elif [ "$(uname -s)" = "Darwin" ] && command -v brew >/dev/null 2>&1; then
+        brew install --cask codex || true
+      else
+        curl -fsSL https://chatgpt.com/codex/install.sh | sh || true
+      fi
+      ;;
+    opencode)
+      if command -v npm >/dev/null 2>&1; then
+        npm i -g opencode-ai || true
+      else
+        echo "  FAIL: 'opencode' has no non-npm install path; Node/npm is required."
+      fi
+      ;;
+  esac
+  if command -v "$name" >/dev/null 2>&1; then
+    echo "  SUCCESS: '$name' installed -> $(command -v "$name")"
+    return 0
+  else
+    echo "  FAIL: automatic install of '$name' did not succeed."
+    return 1
+  fi
+}
 
 mkdir -p "$BIN_DIR" "$LIBEXEC_DIR"
 echo "Backends: $BACKENDS"
@@ -73,7 +126,16 @@ if [ "$WANT_DS" -eq 1 ]; then
   install -m 0755 "$SCRIPT_DIR/ds-agent"         "$BIN_DIR/ds-agent"
   install -m 0644 "$SCRIPT_DIR/ds-stream-parse.mjs" "$LIBEXEC_DIR/ds-stream-parse.mjs"
   echo "Installed DeepSeek backend -> claude-ds, claude-ds-stream, ds-agent (parser -> $LIBEXEC_DIR/ds-stream-parse.mjs)"
-  if command -v claude >/dev/null 2>&1; then echo "  claude CLI: found"; else echo "  WARNING: 'claude' CLI not found in PATH (the DeepSeek worker wraps it)."; fi
+  if command -v claude >/dev/null 2>&1; then
+    echo "  claude CLI: found"
+  else
+    if [ "$INSTALL_MISSING" -eq 1 ]; then try_install_missing_cli claude || true; fi
+    if command -v claude >/dev/null 2>&1; then
+      echo "  claude CLI: found"
+    else
+      echo "  WARNING: 'claude' CLI not found in PATH (the DeepSeek worker wraps it)."
+    fi
+  fi
 fi
 
 # ---- Antigravity backend (ag-* family, Gemini via agy) ---------------------
@@ -85,9 +147,14 @@ if [ "$WANT_AG" -eq 1 ]; then
   if command -v agy >/dev/null 2>&1; then
     echo "  agy CLI: found ($(agy --version 2>/dev/null || echo '?'))"
   else
-    echo "  WARNING: 'agy' (Antigravity CLI) not found in PATH. Install it, then sign in:"
-    echo "    curl -fsSL https://antigravity.google/cli/install.sh | bash"
-    echo "    agy        # run once to sign in (Google), or set GEMINI_API_KEY in the config"
+    if [ "$INSTALL_MISSING" -eq 1 ]; then try_install_missing_cli agy || true; fi
+    if command -v agy >/dev/null 2>&1; then
+      echo "  agy CLI: found ($(agy --version 2>/dev/null || echo '?'))"
+    else
+      echo "  WARNING: 'agy' (Antigravity CLI) not found in PATH. Install it, then sign in:"
+      echo "    curl -fsSL https://antigravity.google/cli/install.sh | bash"
+      echo "    agy        # run once to sign in (Google), or set GEMINI_API_KEY in the config"
+    fi
   fi
 fi
 
@@ -100,11 +167,16 @@ if [ "$WANT_CX" -eq 1 ]; then
   if command -v codex >/dev/null 2>&1; then
     echo "  codex CLI: found ($(codex --version 2>/dev/null || echo '?'))"
   else
-    echo "  WARNING: 'codex' (OpenAI Codex CLI) not found in PATH. Install it, then sign in:"
-    echo "    npm i -g @openai/codex"
-    echo "    brew install --cask codex"
-    echo "    curl -fsSL https://chatgpt.com/codex/install.sh | sh"
-    echo "    codex login   # sign in (ChatGPT/OAuth), or set CODEX_API_KEY in the config"
+    if [ "$INSTALL_MISSING" -eq 1 ]; then try_install_missing_cli codex || true; fi
+    if command -v codex >/dev/null 2>&1; then
+      echo "  codex CLI: found ($(codex --version 2>/dev/null || echo '?'))"
+    else
+      echo "  WARNING: 'codex' (OpenAI Codex CLI) not found in PATH. Install it, then sign in:"
+      echo "    npm i -g @openai/codex"
+      echo "    brew install --cask codex"
+      echo "    curl -fsSL https://chatgpt.com/codex/install.sh | sh"
+      echo "    codex login   # sign in (ChatGPT/OAuth), or set CODEX_API_KEY in the config"
+    fi
   fi
 fi
 
@@ -117,9 +189,14 @@ if [ "$WANT_OC" -eq 1 ]; then
   if command -v opencode >/dev/null 2>&1; then
     echo "  opencode CLI: found ($(opencode --version 2>/dev/null || echo '?'))"
   else
-    echo "  WARNING: 'opencode' (OpenCode CLI) not found in PATH. Install it:"
-    echo "    npm i -g opencode-ai"
-    echo "    # auth is OPENROUTER_API_KEY (config below) -- no login/OAuth flow"
+    if [ "$INSTALL_MISSING" -eq 1 ]; then try_install_missing_cli opencode || true; fi
+    if command -v opencode >/dev/null 2>&1; then
+      echo "  opencode CLI: found ($(opencode --version 2>/dev/null || echo '?'))"
+    else
+      echo "  WARNING: 'opencode' (OpenCode CLI) not found in PATH. Install it:"
+      echo "    npm i -g opencode-ai"
+      echo "    # auth is OPENROUTER_API_KEY (config below) -- no login/OAuth flow"
+    fi
   fi
 fi
 

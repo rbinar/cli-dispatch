@@ -34,13 +34,45 @@ Follow these steps:
    Codex→`codex`, OpenCode→`opencode` (e.g. all four → `deepseek,antigravity,codex,opencode`,
    also accepted as `all`).
 
-3. **Run the installer** with the chosen backends — depending on the OS:
+3. **Cross-reference step 2's picks against step 1's detection, and offer to auto-install any missing CLI(s):**
+   - Map each backend chosen in step 2 to the underlying CLI step 1 checked: DeepSeek→`claude`,
+     Antigravity→`agy`, Codex→`codex`, OpenCode→`opencode`. Determine which of the *chosen*
+     backends' CLIs came back `MISSING` in step 1.
+   - **If none are missing, skip this step entirely** and run the installer in step 4 exactly
+     as today, with no new flag.
+   - **If one or more are missing**, ask a **separate** `AskUserQuestion` (header: "Auto-install?")
+     that explicitly names each missing CLI and the exact command(s) that would run for it:
+     - `claude` → `npm i -g @anthropic-ai/claude-code` (fallback: `curl -fsSL https://claude.ai/install.sh | bash`)
+     - `agy` → `curl -fsSL https://antigravity.google/cli/install.sh | bash`
+     - `codex` → `npm i -g @openai/codex` (fallbacks: `brew install --cask codex`, or `curl -fsSL https://chatgpt.com/codex/install.sh | sh`)
+     - `opencode` → `npm i -g opencode-ai`
+     In the question text, state plainly that the `agy` installer and the `curl`-based
+     fallbacks for `claude`/`codex` **download and execute a script from the vendor's domain**
+     (`antigravity.google`, `claude.ai`, `chatgpt.com`) — the user should know this before
+     approving. Offer:
+     - **"Yes, auto-install"** — the installer will be invoked with `--install-missing`
+       (bash) / `-InstallMissing` (PowerShell) in step 4, so it attempts each missing CLI via
+       package manager or vendor script, falling back to the existing MISSING warning if that
+       fails.
+     - **"No, I'll install manually"** — proceed exactly as today, no new flag; the user
+       installs the missing CLI(s) themselves whenever they like.
+     Leave neither option marked `recommended: true` — running a vendor's install script is a
+     deliberate, per-user tradeoff, not something to nudge them toward.
+   - This approval is **per-run only**: always ask again in a fresh setup run, even if the
+     user approved auto-install previously — never treat a prior session's answer as standing
+     consent.
+
+4. **Run the installer** with the chosen backends — depending on the OS:
    - **macOS / Linux / WSL / Git Bash**:
      ```bash
      bash "${CLAUDE_PLUGIN_ROOT}/scripts/install.sh" --backends <comma-list|all>
      ```
      The comma-list may include `deepseek`, `antigravity`, `codex`, `opencode` (or `all`).
      Note: OpenCode is Unix-only for now (macOS/Linux/WSL) — no native Windows support v1.
+     **If the user approved auto-install in step 3**, append `--install-missing`:
+     ```bash
+     bash "${CLAUDE_PLUGIN_ROOT}/scripts/install.sh" --backends <comma-list|all> --install-missing
+     ```
    - **Native Windows (PowerShell)** — supports **DeepSeek and Codex** (both run natively).
      The Antigravity backend needs a pseudo-TTY (`script`) not present on native Windows, so
      install it under WSL instead. OpenCode is likewise Unix-only for now — install it under
@@ -48,6 +80,14 @@ Follow these steps:
      ```powershell
      powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/install.ps1" -Backends <deepseek,codex|all>
      ```
+     **If the user approved auto-install in step 3**, append `-InstallMissing`:
+     ```powershell
+     powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/install.ps1" -Backends <deepseek,codex|all> -InstallMissing
+     ```
+   - **If the user did not approve auto-install in step 3 (or no chosen backend's CLI was
+     missing), invoke the installer exactly as shown above with no new flag** — this remains
+     the default, unchanged path.
+
    Wrappers go to `~/.local/bin`; parsers to `~/.local/share/cli-dispatch/`. A shared config
    skeleton is created at `~/.config/cli-dispatch/config` if missing (existing configs are
    never clobbered). Legacy `~/.config/claude-ds` config + `~/.cache/claude-ds` sessions are
@@ -55,7 +95,11 @@ Follow these steps:
 
    > Note: both stream variants require `node` for their parser (claude-code already runs in a node environment).
 
-4. **Configure auth for each chosen backend:**
+5. **Configure auth for each chosen backend:**
+   > Even if a CLI was auto-installed in step 4, **auth is always manual** — auto-install only
+   > places the binary on `PATH`; it never signs the user in or writes a key. The steps below
+   > (DeepSeek key paste, OpenCode key + model pick, Antigravity `agy` sign-in, `codex login`)
+   > are unaffected by whether the CLI arrived via auto-install or was already present.
    - **DeepSeek** — the user must add their API key themselves. While the key is still empty,
      the installer **auto-opens** the config in the default editor. If it doesn't open, ask
      the user to add their DeepSeek API key to the `DEEPSEEK_API_KEY=""` line in
@@ -85,7 +129,7 @@ Follow these steps:
      `OPENAI_API_KEY`) in the config. If `codex` was MISSING in step 1, share the install
      command the installer printed.
 
-5. **Optional smoke test** (only for backends the user enabled), as a background task:
+6. **Optional smoke test** (only for backends the user enabled), as a background task:
    ```bash
    claude-ds -p "Reply with exactly: OK"        # DeepSeek (after key added)
    ag-agent -q "Reply with exactly: OK"          # Antigravity (after sign-in)

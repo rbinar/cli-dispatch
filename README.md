@@ -59,7 +59,7 @@ The install output says `Run /reload-plugins to apply`. This step is required fo
 /cli-dispatch:setup
 ```
 
-`/cli-dispatch:setup` first **asks which worker backend(s) to install** — DeepSeek, Antigravity (Gemini), Codex, OpenCode, or all (`--backends all` or `--backends deepseek,antigravity,codex,opencode`). For **DeepSeek** it installs the wrapper to `~/.local/bin/claude-ds` and creates a `~/.config/cli-dispatch/config` skeleton; if the key is still empty, setup **automatically opens the config in your platform's default editor** (macOS `open`, Linux `xdg-open`, WSL `explorer.exe`, Windows `notepad`). Add your DeepSeek API key **yourself** in the opened file:
+`/cli-dispatch:setup` first **asks which worker backend(s) to install** — DeepSeek, Antigravity (Gemini), Codex, OpenCode, or all (`--backends all` or `--backends deepseek,antigravity,codex,opencode`). If a selected backend's underlying CLI (`claude`/`agy`/`codex`/`opencode`) turns out to be missing, `install.sh` can attempt to auto-install it for you — pass `--install-missing` (opt-in, default off; npm preferred where available, `curl | bash` vendor installers as fallback). Setup only adds this flag after asking your explicit approval and showing exactly which CLIs are missing and which commands will run; it never automates auth (sign-in, API keys) — see [CHANGELOG.md](CHANGELOG.md) for details. For **DeepSeek** it installs the wrapper to `~/.local/bin/claude-ds` and creates a `~/.config/cli-dispatch/config` skeleton; if the key is still empty, setup **automatically opens the config in your platform's default editor** (macOS `open`, Linux `xdg-open`, WSL `explorer.exe`, Windows `notepad`). Add your DeepSeek API key **yourself** in the opened file:
 
 ```bash
 # ~/.config/cli-dispatch/config
@@ -283,6 +283,7 @@ On native Windows (if you're not using WSL) the PowerShell variants kick in. **D
   - **DeepSeek**: `claude-ds.ps1` + `claude-ds-stream.ps1` + `ds-agent.ps1` and `.cmd` shims into `~/.local/bin`, parser (`ds-stream-parse.mjs`) into `~/.local/share/cli-dispatch`.
   - **Codex**: `cx-stream.ps1` + `cx-agent.ps1` + `.cmd` shims and parser (`cx-stream-parse.mjs`). Auth: `codex login` (or `CODEX_API_KEY` in the config). Real `-s read-only` sandbox included.
   - The dashboard is always installed; the config is written to `~/.config/cli-dispatch/config`.
+  - Add `-InstallMissing` to have `install.ps1` attempt auto-installing a missing worker CLI (npm, or a vendor fallback) and re-check with `Get-Command`, falling back to the existing warning on failure — opt-in, default off; auth is never automated.
 - Repo tasks: `ds-worktree-run.ps1` / `cx-worktree-run.ps1` — use a **junction** instead of a symlink for `node_modules` (`New-Item -ItemType Junction`; doesn't require admin/developer-mode).
 - If WSL or Git Bash is present, the Unix `.sh` scripts also work.
 

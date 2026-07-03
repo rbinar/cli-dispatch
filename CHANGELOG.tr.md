@@ -7,6 +7,19 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.19.0] — 2026-07-04
+
+### Eklendi
+- **`--install-missing` / `-InstallMissing` — eksik worker CLI'larının opt-in otomatik kurulumu.** `install.sh`/`install.ps1`'e geçildiğinde, yalnızca seçilen bir backend'in altındaki worker CLI'ı eksikse (`claude`, `agy`, `codex`, `opencode`) devreye girer: installer sadece uyarmak yerine otomatik kurmayı dener.
+  - **claude**: npm (`npm i -g @anthropic-ai/claude-code`) tercih edilir, fallback olarak `curl | bash` vendor installer.
+  - **agy**: yalnızca `curl | bash` vendor installer (npm paketi yok).
+  - **codex**: sırasıyla npm (`npm i -g @openai/codex`), `brew install --cask codex`, son çare olarak `curl | bash` vendor installer.
+  - **opencode**: yalnızca npm (`npm i -g opencode-ai`).
+  - Her denemeden sonra `command -v` (Windows'ta `Get-Command`) ile yeniden kontrol eder ve başarı/`FAIL` yazdırır; başarısızlıkta mevcut WARNING + manuel-talimat bloğuna değişmeden düşer.
+  - **Varsayılan KAPALI** — bayrağı geçmemek installer davranışını byte-byte aynı bırakır.
+  - **Auth asla otomatikleştirilmez**: agy sign-in, `codex login`, DeepSeek/OpenRouter API key'leri her zaman kullanıcıya bırakılır — başarılı bir otomatik-kurulumdan sonra bile.
+  - `/cli-dispatch:setup`, bayrağı yalnızca kullanıcının `AskUserQuestion` ile açık onayını aldıktan sonra ekler; hangi CLI'ların eksik olduğunu ve hangi komutların çalışacağını listeler.
+
 ## [3.18.0] — 2026-07-03
 
 ### Eklendi

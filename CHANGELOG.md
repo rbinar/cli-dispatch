@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.19.0] — 2026-07-04
+
+### Added
+- **`--install-missing` / `-InstallMissing` — opt-in auto-install of missing worker CLIs.** Passed to `install.sh`/`install.ps1`, it triggers only when a selected backend's underlying worker CLI is missing (`claude`, `agy`, `codex`, `opencode`): the installer attempts to install it automatically instead of just warning.
+  - **claude**: npm (`npm i -g @anthropic-ai/claude-code`) preferred, `curl | bash` vendor installer as fallback.
+  - **agy**: `curl | bash` vendor installer only (no npm package).
+  - **codex**: npm (`npm i -g @openai/codex`), then `brew install --cask codex`, then `curl | bash` vendor installer as a last resort.
+  - **opencode**: npm (`npm i -g opencode-ai`) only.
+  - After each attempt it re-checks with `command -v` (`Get-Command` on Windows) and prints success/`FAIL`; on failure it falls back to the existing WARNING + manual-instructions block, unchanged.
+  - **Default is OFF** — omitting the flag leaves current installer behavior byte-for-byte unchanged.
+  - **Auth is never automated**: agy sign-in, `codex login`, and DeepSeek/OpenRouter API keys are always left to the user, even after a successful auto-install.
+  - `/cli-dispatch:setup` only appends the flag after asking the user's explicit approval via `AskUserQuestion`, listing exactly which CLIs are missing and which commands will run.
+
 ## [3.18.0] — 2026-07-03
 
 ### Added

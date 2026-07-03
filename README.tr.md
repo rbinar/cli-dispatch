@@ -59,7 +59,7 @@ Install çıktısı `Run /reload-plugins to apply` der. Komutların (`/cli-dispa
 /cli-dispatch:setup
 ```
 
-`/cli-dispatch:setup` önce **hangi backend('ler)i kuracağını sorar** — DeepSeek, Antigravity (Gemini), Codex, OpenCode ya da hepsi (`--backends all` veya `--backends deepseek,antigravity,codex,opencode`). **DeepSeek** için wrapper'ı `~/.local/bin/claude-ds`'e kurar ve `~/.config/cli-dispatch/config` iskeletini oluşturur; key hâlâ boşsa config'i **platformun varsayılan editöründe otomatik açar** (macOS `open`, Linux `xdg-open`, WSL `explorer.exe`, Windows `notepad`). Açılan dosyada DeepSeek API key'ini **kendin** ekle:
+`/cli-dispatch:setup` önce **hangi backend('ler)i kuracağını sorar** — DeepSeek, Antigravity (Gemini), Codex, OpenCode ya da hepsi (`--backends all` veya `--backends deepseek,antigravity,codex,opencode`). Seçilen bir backend'in altındaki CLI (`claude`/`agy`/`codex`/`opencode`) eksik çıkarsa, `install.sh` bunu senin için otomatik kurmayı deneyebilir — `--install-missing` geç (opt-in, varsayılan kapalı; mümkün olduğunda npm tercih edilir, fallback olarak `curl | bash` vendor installer'lar). Setup bu bayrağı yalnızca senin açık onayını aldıktan ve hangi CLI'ların eksik olduğunu, hangi komutların çalışacağını gösterdikten sonra ekler; auth'u (sign-in, API key) asla otomatikleştirmez — detaylar için [CHANGELOG.md](CHANGELOG.md). **DeepSeek** için wrapper'ı `~/.local/bin/claude-ds`'e kurar ve `~/.config/cli-dispatch/config` iskeletini oluşturur; key hâlâ boşsa config'i **platformun varsayılan editöründe otomatik açar** (macOS `open`, Linux `xdg-open`, WSL `explorer.exe`, Windows `notepad`). Açılan dosyada DeepSeek API key'ini **kendin** ekle:
 
 ```bash
 # ~/.config/cli-dispatch/config
@@ -287,6 +287,7 @@ Native Windows'ta (WSL kullanmıyorsan) PowerShell varyantları devreye girer. *
   - **DeepSeek**: `claude-ds.ps1` + `claude-ds-stream.ps1` + `ds-agent.ps1` ve `.cmd` shim'lerini `~/.local/bin`'e, parser'ı (`ds-stream-parse.mjs`) `~/.local/share/cli-dispatch`'e kurar.
   - **Codex**: `cx-stream.ps1` + `cx-agent.ps1` + `.cmd` shim'leri ve parser'ı (`cx-stream-parse.mjs`) kurar. Auth: `codex login` (ya da config'te `CODEX_API_KEY`). Gerçek `-s read-only` sandbox dahil.
   - Dashboard her zaman kurulur; config `~/.config/cli-dispatch/config`'e yazılır.
+  - `install.ps1`'e `-InstallMissing` ekleyerek eksik bir worker CLI'ını otomatik kurmayı denetebilirsin (npm, ya da bir vendor fallback) ve `Get-Command` ile yeniden kontrol eder; başarısızlıkta mevcut uyarıya düşer — opt-in, varsayılan kapalı; auth asla otomatikleştirilmez.
 - Repo görevleri: `ds-worktree-run.ps1` / `cx-worktree-run.ps1` — `node_modules` için symlink yerine **junction** (`New-Item -ItemType Junction`; admin/developer-mode gerektirmez) kullanır.
 - WSL ya da Git Bash varsa Unix `.sh` scriptleri de çalışır.
 

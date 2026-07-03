@@ -2,7 +2,7 @@
 # Usage: install.ps1 [-Backends deepseek,codex | all]
 # Native Windows supports the DeepSeek and Codex backends; Antigravity needs a pseudo-TTY
 # (not available on native Windows) — install it under WSL instead.
-param([string]$Backends = "deepseek")
+param([string]$Backends = "deepseek", [switch]$InstallMissing)
 $ErrorActionPreference = "Stop"
 
 $backendList = ($Backends -replace '\s', '').ToLower()
@@ -95,7 +95,26 @@ if ($wantCX) {
   Write-Host "Installed Codex agent wrapper -> $BinDir\cx-agent.ps1 (+ .cmd shim)"
 
   if (Get-Command codex -ErrorAction SilentlyContinue) { Write-Host "  codex CLI: found ($(codex --version 2>$null))" }
-  else { Write-Host "  WARNING: 'codex' (OpenAI Codex CLI) not found in PATH. Install: npm i -g @openai/codex, then run 'codex login'." }
+  else {
+    if ($InstallMissing) {
+      try {
+        if (Get-Command npm -ErrorAction SilentlyContinue) {
+          Write-Host "  codex CLI: not found — attempting 'npm i -g @openai/codex' (-InstallMissing)..."
+          npm i -g @openai/codex
+        } elseif (Get-Command winget -ErrorAction SilentlyContinue) {
+          Write-Host "  codex CLI: not found — npm unavailable, attempting 'winget install OpenAI.Codex' (-InstallMissing)..."
+          winget install OpenAI.Codex
+        } else {
+          Write-Host "  FAIL: cannot install codex — npm (and winget) not found in PATH; npm is required."
+        }
+      } catch { Write-Host "  FAIL: codex install attempt failed: $_" }
+      if (Get-Command codex -ErrorAction SilentlyContinue) { Write-Host "  codex CLI: SUCCESS — installed ($(codex --version 2>$null))" }
+      else {
+        Write-Host "  FAIL: codex CLI still not found after install attempt."
+        Write-Host "  WARNING: 'codex' (OpenAI Codex CLI) not found in PATH. Install: npm i -g @openai/codex, then run 'codex login'."
+      }
+    } else { Write-Host "  WARNING: 'codex' (OpenAI Codex CLI) not found in PATH. Install: npm i -g @openai/codex, then run 'codex login'." }
+  }
 }
 
 if (-not (Test-Path $Config)) {
@@ -136,7 +155,24 @@ $inPath = ($env:PATH -split ';') -contains $BinDir
 if (-not $inPath) { Write-Host "WARNING: $BinDir is not in PATH. Add it (e.g. via 'setx PATH ...' or System settings)." }
 
 if ($wantDS) {
-  if (Get-Command claude -ErrorAction SilentlyContinue) { Write-Host "claude CLI: found" } else { Write-Host "WARNING: claude CLI not found in PATH (the DeepSeek worker wraps it)." }
+  if (Get-Command claude -ErrorAction SilentlyContinue) { Write-Host "claude CLI: found" }
+  else {
+    if ($InstallMissing) {
+      try {
+        if (Get-Command npm -ErrorAction SilentlyContinue) {
+          Write-Host "claude CLI: not found — attempting 'npm i -g @anthropic-ai/claude-code' (-InstallMissing)..."
+          npm i -g @anthropic-ai/claude-code
+        } else {
+          Write-Host "FAIL: cannot install claude CLI — npm not found in PATH; Node.js/npm is required."
+        }
+      } catch { Write-Host "FAIL: claude CLI install attempt failed: $_" }
+      if (Get-Command claude -ErrorAction SilentlyContinue) { Write-Host "claude CLI: SUCCESS — installed" }
+      else {
+        Write-Host "FAIL: claude CLI still not found after install attempt."
+        Write-Host "WARNING: claude CLI not found in PATH (the DeepSeek worker wraps it)."
+      }
+    } else { Write-Host "WARNING: claude CLI not found in PATH (the DeepSeek worker wraps it)." }
+  }
 }
 Write-Host "Done."
 if ($wantDS) { Write-Host "  DeepSeek: add your key to $Config, then test: claude-ds -p 'Reply with exactly: OK'" }
