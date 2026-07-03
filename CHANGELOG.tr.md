@@ -7,6 +7,16 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.18.0] — 2026-07-03
+
+### Eklendi
+- **Host'un `gh` kimliğini sandbox'lı worker'lara aktar** ([#56](https://github.com/rbinar/cli-dispatch/issues/56)). macOS'ta `gh`, OAuth token'ını sistem Keychain'inde saklar (`~/.config/gh/hosts.yml`'de değil); sandbox'lı worker'lar buna erişemez — bu yüzden delege edilen her `gh issue`/`gh pr`/`gh api` çağrısı kimliksiz çalışıp sessizce boş döner (Codex `workspace-write` ve DeepSeek worker'larında gözlendi: *"gh auth status 7 denemede de geçersiz token döndürdü"*). Çözüm:
+  - `stream-utils.sh` içinde yeni ortak yardımcı `maybe_export_gh_token`; **dört** stream wrapper'ında da (`cx-stream`, `ag-stream`, `claude-ds-stream`, `oc-stream`) `source_config` sonrası çağrılır — böylece her backend için hem `*-agent` hem `*-worktree-run.sh` başlatma yollarını kapsar. Host'un token'ını `GH_TOKEN` olarak dışa aktarır (`gh` bunu keyring'e tercih eder); yalnızca kullanıcı `GH_TOKEN`/`GITHUB_TOKEN` set etmemişse. `gh auth token` kullanır (ağ turu yok).
+  - **Devre dışı bırakma:** aktarımı kapatmak için `CLI_DISPATCH_NO_GH_TOKEN=1` (token geniş kapsam taşıyabilir — `repo`, `workflow`, hatta `delete_repo` — ve worker sandbox'ına / sağlayıcı bağlamına girer).
+  - **`doctor`** yeni bir *GitHub CLI (gh)* bölümüyle durumu raporlar: aktarım-kapalı (opt-out), kullanıcı-set token, otomatik-aktarıldı, veya *kimlik doğrulanmamış → delege gh görevleri başarısız olur*.
+  - README'de *Security and data* altında belgelendi.
+- **Codex worker artık default network erişimli** (workspace-write sandbox). Codex `workspace-write`'ta network'ü default kapatır; bu yüzden `GH_TOKEN` aktarılsa bile `gh`/`curl`/`pip` *"error connecting to api.github.com"* ile başarısızdı — diğer backend'lerde (ds/agy/oc, sandbox yok) tam network varken. `cx-stream` artık default `-c sandbox_workspace_write.network_access=true` enjekte eder; cx diğerleriyle aynı hizada. Çağrı-başına `cx-agent --no-network` ile, global olarak config'te `CX_NETWORK=0` ile kapatılır; `--read-only` tam izole kalır (network yok). Status satırı `sandbox: workspace-write (network: on|off)` gösterir. Canlı doğrulandı: `cx-agent` flag'siz `gh` ile private GitHub issue okuyor.
+
 ## [3.17.0] — 2026-07-02
 
 ### Eklendi

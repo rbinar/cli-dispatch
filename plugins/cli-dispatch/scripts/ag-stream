@@ -35,6 +35,9 @@ command -v node   >/dev/null 2>&1 || { echo "ag-stream: 'node' not found (requir
 # Optional config (shared across backends). cli-dispatch dir, legacy claude-ds fallback (env wins).
 source_config
 
+# Forward the host's gh auth (macOS keyring) into the worker env (issue #56).
+maybe_export_gh_token
+
 # Resolve the parser: env > installed location > script dir.
 PARSER="${AG_PARSER:-}"
 if [ -z "$PARSER" ]; then

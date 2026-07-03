@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.18.0] — 2026-07-03
+
+### Added
+- **Forward the host's `gh` auth into sandboxed workers** ([#56](https://github.com/rbinar/cli-dispatch/issues/56)). On macOS, `gh` stores its OAuth token in the system Keychain (not `~/.config/gh/hosts.yml`), which sandboxed workers can't reach — so any delegated `gh issue`/`gh pr`/`gh api` call ran unauthenticated and silently returned nothing (observed on the Codex `workspace-write` and DeepSeek workers: *"gh auth status 7 denemede de geçersiz token döndürdü"*). Fix:
+  - New shared helper `maybe_export_gh_token` in `stream-utils.sh`, called after `source_config` in **all four** stream wrappers (`cx-stream`, `ag-stream`, `claude-ds-stream`, `oc-stream`) — so it covers both the `*-agent` and `*-worktree-run.sh` launch paths for every backend. It exports the host's token as `GH_TOKEN` (which `gh` prefers over the keyring) only when the user hasn't already set `GH_TOKEN`/`GITHUB_TOKEN`. Uses `gh auth token` (no network round-trip).
+  - **Opt-out:** set `CLI_DISPATCH_NO_GH_TOKEN=1` to disable forwarding (the token can carry broad scopes — `repo`, `workflow`, even `delete_repo` — and travels into the worker sandbox / provider context).
+  - **`doctor`** gains a *GitHub CLI (gh)* section reporting the state: forwarding-disabled (opt-out), user-set token, auto-forwarded, or *not authenticated → delegated gh tasks will fail*.
+  - Documented under *Security and data* in the README.
+- **Codex worker now has network access by default** (workspace-write sandbox). Codex disables network in `workspace-write` by default, so even with `GH_TOKEN` forwarded, `gh`/`curl`/`pip` failed with *"error connecting to api.github.com"* — while the other backends (ds/agy/oc, no sandbox) had full network. `cx-stream` now injects `-c sandbox_workspace_write.network_access=true` by default so cx matches the others. Opt out per-call with `cx-agent --no-network`, or globally with `CX_NETWORK=0` in the config; `--read-only` stays fully isolated (no network). The status line shows `sandbox: workspace-write (network: on|off)`. Verified live: `cx-agent` reads a private GitHub issue via `gh` with no flags.
+
 ## [3.17.0] — 2026-07-02
 
 ### Added

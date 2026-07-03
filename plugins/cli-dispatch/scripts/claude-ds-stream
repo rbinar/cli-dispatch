@@ -32,6 +32,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Config path: cli-dispatch dir, with legacy ~/.config/claude-ds fallback (env wins).
 source_config
+
+# Forward the host's gh auth (macOS keyring) into the worker env (issue #56).
+maybe_export_gh_token
+
 if [ -z "${DEEPSEEK_API_KEY:-}" ]; then
   echo "claude-ds-stream: DEEPSEEK_API_KEY not set. Add it to $CONFIG (run /cli-dispatch:setup)." >&2
   exit 1

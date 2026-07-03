@@ -57,6 +57,34 @@ source_config() {
   fi
 }
 
+# ---- gh (GitHub CLI) token forwarding ----
+
+# maybe_export_gh_token — make the host's `gh` auth reachable from inside the worker.
+#
+# On macOS, `gh` stores its OAuth token in the system Keychain, not in
+# ~/.config/gh/hosts.yml. Sandboxed / subprocess workers (Codex's workspace-write
+# sandbox, DeepSeek, agy, OpenCode) cannot reach the Keychain, so every delegated
+# `gh issue/pr/api` call runs unauthenticated and silently returns nothing. `gh`
+# prefers GH_TOKEN/GITHUB_TOKEN over the keyring, so exporting the token into the
+# worker's environment fixes it (issue #56).
+#
+# Only acts when the user has NOT already provided a token and has NOT opted out:
+#   - respects an existing GH_TOKEN / GITHUB_TOKEN (user's choice wins);
+#   - skips entirely when CLI_DISPATCH_NO_GH_TOKEN is set (opt-out — some users don't
+#     want a broad-scope token in the worker sandbox / provider context);
+#   - no-ops silently when `gh` is missing or not authenticated.
+# `gh auth token` reads the stored token with no network round-trip.
+maybe_export_gh_token() {
+  [ -n "${CLI_DISPATCH_NO_GH_TOKEN:-}" ] && return 0
+  [ -n "${GH_TOKEN:-}" ] && return 0
+  [ -n "${GITHUB_TOKEN:-}" ] && return 0
+  command -v gh >/dev/null 2>&1 || return 0
+  local tok
+  tok="$(gh auth token 2>/dev/null || true)"
+  [ -n "$tok" ] && export GH_TOKEN="$tok"
+  return 0
+}
+
 # ---- post-run error reconcile ----
 
 # Rewrite status.json/meta.json after a wrapper-level failure the parser cannot see.
