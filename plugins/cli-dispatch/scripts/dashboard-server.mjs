@@ -61,6 +61,31 @@ const firstJSON = (txt) => { for (const l of lines(txt)) { try { return JSON.par
 const lastJSON = (txt) => { const ls = lines(txt); for (let i = ls.length - 1; i >= 0; i--) { try { return JSON.parse(ls[i]) } catch {} } return null }
 const clip = (s, n = 140) => { s = String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n) + '…' : s }
 
+function normalizeUsage(u) {
+  if (!u || typeof u !== 'object') return null
+  let inTok = undefined
+  let outTok = undefined
+  let costUsd = undefined
+  if (u.tokens && typeof u.tokens === 'object') {
+    inTok = u.tokens.input ?? u.tokens.prompt_tokens ?? u.tokens.promptTokens ?? u.tokens.input_tokens ?? u.tokens.inputTokens
+    outTok = u.tokens.output ?? u.tokens.completion_tokens ?? u.tokens.completionTokens ?? u.tokens.output_tokens ?? u.tokens.outputTokens
+  }
+  if (inTok === undefined) {
+    inTok = u.input_tokens ?? u.prompt_tokens ?? u.inputTokens ?? u.promptTokens ?? u.input
+  }
+  if (outTok === undefined) {
+    outTok = u.output_tokens ?? u.completion_tokens ?? u.outputTokens ?? u.completionTokens ?? u.output
+  }
+  costUsd = u.cost ?? u.costUsd ?? u.cost_usd ?? u.total_cost_usd
+  if (inTok === undefined && outTok === undefined && costUsd === undefined) {
+    return null
+  }
+  if (inTok !== undefined && inTok !== null) inTok = Number(inTok)
+  if (outTok !== undefined && outTok !== null) outTok = Number(outTok)
+  if (costUsd !== undefined && costUsd !== null) costUsd = Number(costUsd)
+  return { inTok, outTok, costUsd }
+}
+
 // Pull a readable preview out of a message.content that may be string or block array.
 function contentText(content) {
   if (typeof content === 'string') return content
@@ -257,7 +282,7 @@ function listWorkers() {
       lastTool: s.lastTool || null,
       events: s.events || 0,
       toolCounts: s.toolCounts || {},
-      usage: s.usage || null,
+      usage: normalizeUsage(s.usage),
       finalResultPreview: clip(s.finalResultPreview, 200),
     })
   }
@@ -276,7 +301,7 @@ function workerFlow(id) {
   const m = readJSON(path.join(dir, 'meta.json')) || {}
   let prompt = m.promptPreview || ''
   try { const pf = path.join(dir, 'prompt.txt'); if (fs.existsSync(pf)) { const full = fs.readFileSync(pf, 'utf8'); if (full.trim()) prompt = full } } catch {}
-  return { steps, state: s.state || '?', prompt, model: m.model || '', cwd: m.cwd || '', startedAt: m.startedAt || '', finalResultPreview: clip(s.finalResultPreview, 600) }
+  return { steps, state: s.state || '?', prompt, model: m.model || '', cwd: m.cwd || '', startedAt: m.startedAt || '', finalResultPreview: clip(s.finalResultPreview, 600), usage: normalizeUsage(s.usage) }
 }
 
 // ---- routing ----
@@ -526,6 +551,28 @@ function md(t){
 // Times come from disk as UTC ISO; render in the viewer's local timezone.
 const fmtTime=(iso)=>{const d=iso?new Date(iso):null;return d&&!isNaN(d)?d.toLocaleTimeString([],{hour12:false}):''}
 const fmtDT=(iso)=>{const d=iso?new Date(iso):null;return d&&!isNaN(d)?d.toLocaleString([],{hour12:false}).replace(',',''):''}
+const fmtUsage=(u,detailed)=>{
+  if(!u) return null
+  const inTok=u.inTok, outTok=u.outTok, costUsd=u.costUsd
+  const abbreviate=(num)=>{
+    if(num===undefined||num===null||isNaN(num)) return ''
+    if(detailed) return String(num).replace(/\\B(?=(\\d{3})+(?!\\d))/g,',')
+    if(num>=1000) return (num/1000).toFixed(1).replace(/\\.0$/,'')+'k'
+    return String(num)
+  }
+  const inStr=abbreviate(inTok)
+  const outStr=abbreviate(outTok)
+  let tokStr=''
+  if(inStr&&outStr) tokStr=inStr+' in / '+outStr+' out'
+  else if(inStr) tokStr=inStr+' in'
+  else if(outStr) tokStr=outStr+' out'
+  
+  let costStr=''
+  if(costUsd!==undefined&&costUsd!==null&&!isNaN(costUsd)&&costUsd!==0){
+    costStr='$'+Number(costUsd.toFixed(3))
+  }
+  return { tokStr, costStr }
+}
 async function j(u){const r=await fetch(u);return r.json()}
 
 async function loadList(){
@@ -556,7 +603,12 @@ async function loadList(){
       const live=w.state==='running'&&!w.stale
       const dot=live?'busy':w.state==='done'?'closed':'idle'
       const badge=w.stale?'stale':w.state
-      const h='<div class="item'+(sel===w.id?' sel':'')+'"><div><span class="dot '+dot+'"></span>'+esc(w.backend)+' <span class="c">'+(w.model?esc(w.model):'default')+'</span> <span class="badge">'+esc(badge)+'</span></div><div class="small muted">'+esc(w.prompt||w.id.slice(0,8))+'</div><div class="small muted">'+esc(fmtDT(w.started))+(w.lastTool?' · '+esc(w.lastTool):'')+'</div></div>'
+      const u=fmtUsage(w.usage)
+      let usageLine=''
+      if(u&&(u.tokStr||u.costStr)){
+        usageLine=' · '+(u.tokStr?esc(u.tokStr):'')+(u.tokStr&&u.costStr?' · ':'')+(u.costStr?esc(u.costStr):'')
+      }
+      const h='<div class="item'+(sel===w.id?' sel':'')+'"><div><span class="dot '+dot+'"></span>'+esc(w.backend)+' <span class="c">'+(w.model?esc(w.model):'default')+'</span> <span class="badge">'+esc(badge)+'</span></div><div class="small muted">'+esc(w.prompt||w.id.slice(0,8))+'</div><div class="small muted">'+esc(fmtDT(w.started))+(w.lastTool?' · '+esc(w.lastTool):'')+usageLine+'</div></div>'
       const it=E(h); it.onclick=()=>openWorker(w); frag.appendChild(it); sig.push(h)
     })
   }
@@ -628,6 +680,13 @@ async function openWorker(w){
   const flow=await j('/api/worker/'+w.id+'/flow')
   let h=''
   if(flow.prompt) h+='<details class="panel task"'+(taskOpen?' open':'')+'><summary>Görev / talimat</summary><div class="sabody"><div class="md">'+md(flow.prompt)+'</div></div></details>'
+  const u=fmtUsage(flow.usage,true)
+  if(u&&(u.tokStr||u.costStr)){
+    const parts=[]
+    if(u.tokStr) parts.push(u.tokStr)
+    if(u.costStr) parts.push(u.costStr)
+    h+='<div class="small muted" style="margin:4px 8px 12px">Usage: '+esc(parts.join(' · '))+'</div>'
+  }
   h+=renderFlow(flow.steps)
   if(flow.finalResultPreview) h+='<div class="step message" style="margin-top:10px">⏺ <b>result:</b> '+esc(flow.finalResultPreview)+'</div>'
   setView(key,h); loadList()

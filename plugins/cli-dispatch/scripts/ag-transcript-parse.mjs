@@ -83,6 +83,7 @@ const status = {
   startedAt: meta.startedAt,
   lastActivityAt: new Date().toISOString(),
   finalResultPreview: '',
+  usage: null,
 }
 const { flush: flushStatus, write: writeStatus } = createStatusWriter(statusFile, status)
 flushStatus()

@@ -7,6 +7,18 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.21.0] — 2026-07-04
+
+### Eklendi
+
+- **Dashboard'da worker usage görünürlüğü.** Parser'lar worker CLI'ın sunduğu token/maliyet
+  bilgisini artık yakalıyor (DeepSeek: claude stream-json `result` event'inden; Copilot:
+  dokümante olmayan şema üzerinde savunmacı çoklu-desen eşleme; Antigravity: veri yok,
+  `null` kalır; Codex/OpenCode zaten yakalıyordu). Dashboard tüm şekilleri sunucu tarafında
+  `{inTok, outTok, costUsd}` olarak normalize eder ve worker listesinde kompakt bir usage
+  rozeti ("1.5k in / 4.1k out · $0.042") + worker detayında ayrıntılı usage satırı gösterir.
+  Tamamen geriye uyumlu: usage'ı olmayan session'lar için hiçbir şey render edilmez.
+
 ## [3.20.0] — 2026-07-04
 
 ### Eklendi

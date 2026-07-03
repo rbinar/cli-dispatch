@@ -73,6 +73,7 @@ const status = {
   startedAt: meta.startedAt,
   lastActivityAt: new Date().toISOString(),
   finalResultPreview: '',
+  usage: null,
 }
 // status.json throttled writes — delegated to parse-utils createStatusWriter.
 const { flush: flushStatus, write: writeStatus } = createStatusWriter(statusFile, status)
@@ -185,6 +186,19 @@ function handleEvent(ev) {
 
   if (ev.type === 'result' && typeof ev.result === 'string') {
     finalText = ev.result
+    const u = ev.usage && typeof ev.usage === 'object' ? { ...ev.usage } : {}
+    const cost = ev.cost ?? ev.cost_usd ?? ev.total_cost_usd ?? ev.usage?.cost ?? ev.usage?.cost_usd ?? ev.usage?.total_cost_usd
+    if (cost !== undefined) u.cost = cost
+    const input = ev.input_tokens ?? ev.prompt_tokens ?? ev.usage?.input_tokens ?? ev.usage?.prompt_tokens
+    const output = ev.output_tokens ?? ev.completion_tokens ?? ev.usage?.output_tokens ?? ev.usage?.completion_tokens
+    if (input !== undefined) u.input_tokens = input
+    if (output !== undefined) u.output_tokens = output
+    
+    if (Object.keys(u).length > 0) {
+      status.usage = u
+    }
+    touch()
+    writeStatus()
     return
   }
 }

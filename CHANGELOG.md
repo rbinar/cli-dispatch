@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.21.0] — 2026-07-04
+
+### Added
+
+- **Worker usage visibility in the dashboard.** Parsers now capture token/cost usage where
+  the worker CLI exposes it (DeepSeek: from the claude stream-json `result` event; Copilot:
+  defensive multi-pattern match over the undocumented event schema; Antigravity: none
+  available, stays `null`; Codex/OpenCode already captured). The dashboard normalizes all
+  shapes server-side to `{inTok, outTok, costUsd}` and renders a compact usage badge in the
+  worker list ("1.5k in / 4.1k out · $0.042") plus a detailed usage line in the worker view.
+  Fully backward compatible: sessions without usage render nothing.
+
 ## [3.20.0] — 2026-07-04
 
 ### Added

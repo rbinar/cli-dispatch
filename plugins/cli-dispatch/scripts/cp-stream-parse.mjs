@@ -159,7 +159,32 @@ function errorFrom(ev, body) {
 function usageFrom(ev, body) {
   const u = asObj(ev.usage)
   const tokens = ev.tokens ?? body.tokens ?? u.tokens
-  if (tokens && typeof tokens === 'object') status.usage = { tokens, cost: body.cost ?? ev.cost ?? u.cost ?? 0 }
+  if (tokens && typeof tokens === 'object') {
+    const input = tokens.input ?? tokens.prompt_tokens ?? tokens.promptTokens ?? tokens.input_tokens ?? tokens.inputTokens
+    const output = tokens.output ?? tokens.completion_tokens ?? tokens.completionTokens ?? tokens.output_tokens ?? tokens.outputTokens
+    const total = tokens.total ?? tokens.total_tokens ?? tokens.totalTokens ?? tokens.tokenCount ?? (typeof input === 'number' && typeof output === 'number' ? input + output : undefined)
+    status.usage = {
+      tokens: { input, output, total },
+      cost: body.cost ?? ev.cost ?? u.cost ?? 0
+    }
+  } else {
+    const input = ev.prompt_tokens ?? ev.promptTokens ?? ev.input_tokens ?? ev.inputTokens ??
+                  body.prompt_tokens ?? body.promptTokens ?? body.input_tokens ?? body.inputTokens ??
+                  u.prompt_tokens ?? u.promptTokens ?? u.input_tokens ?? u.inputTokens
+    const output = ev.completion_tokens ?? ev.completionTokens ?? ev.output_tokens ?? ev.outputTokens ??
+                   body.completion_tokens ?? body.completionTokens ?? body.output_tokens ?? body.outputTokens ??
+                   u.completion_tokens ?? u.completionTokens ?? u.output_tokens ?? u.outputTokens
+    const total = ev.total_tokens ?? ev.totalTokens ?? ev.tokenCount ??
+                  body.total_tokens ?? body.totalTokens ?? body.tokenCount ??
+                  u.total_tokens ?? u.totalTokens ?? u.tokenCount ??
+                  (typeof input === 'number' && typeof output === 'number' ? input + output : undefined)
+    if (input !== undefined || output !== undefined || total !== undefined) {
+      status.usage = {
+        tokens: { input, output, total },
+        cost: body.cost ?? ev.cost ?? u.cost ?? 0
+      }
+    }
+  }
 }
 
 function handleTool(ev, body) {
