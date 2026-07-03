@@ -73,6 +73,21 @@ else
   echo "  – oc-agent not installed (optional — /cli-dispatch:setup to add)"
 fi
 
+echo "── GitHub CLI (gh) ────────── optional ─────────────────"
+if command -v gh >/dev/null 2>&1; then
+  if [ -n "${CLI_DISPATCH_NO_GH_TOKEN:-}" ]; then
+    ok "CLI_DISPATCH_NO_GH_TOKEN set — gh token forwarding to workers disabled (opt-out)"
+  elif [ -n "${GH_TOKEN:-}" ] || [ -n "${GITHUB_TOKEN:-}" ]; then
+    ok "GH_TOKEN/GITHUB_TOKEN set — inherited by workers"
+  elif gh auth token >/dev/null 2>&1 && [ -n "$(gh auth token 2>/dev/null)" ]; then
+    ok "gh authenticated — token auto-forwarded to workers as GH_TOKEN (issue #56)"
+  else
+    bad "gh not authenticated — delegated gh tasks (issue triage / PR automation) will fail; run 'gh auth login'"
+  fi
+else
+  echo "  – gh not installed (optional — only needed for delegated GitHub tasks)"
+fi
+
 echo "── PATH ────────────────────────────────────────────────"
 case ":$PATH:" in
   *":$HOME/.local/bin:"*) ok "$HOME/.local/bin on PATH" ;;

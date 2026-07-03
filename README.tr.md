@@ -339,6 +339,7 @@ git worktree prune         # ölü kayıtları temizle
 - **Key'ler makineden çıkmaz:** varsa key `~/.config/cli-dispatch/config` içinde (0600, repo dışında) tutulur ve **asla commit edilmez**. Plugin/skill key'i hiçbir yere yazmaz; sen eklersin. (Codex ve Antigravity normalde kendi OAuth girişlerini kullanır — config'te key bile olmaz.)
 - **Veri egress:** bir işçiye verdiğin **prompt ve kod o backend'in sağlayıcısına gönderilir** — DeepSeek, Google (Gemini/Antigravity) ya da OpenAI (Codex). Her birini yalnızca bunu kabul ediyorsan kullan. Dashboard ve `*-balance` komutları local/salt-okunur; senin adına ekstra bir şey göndermez.
 - **İzole çalışma:** gerçek repo görevleri ayrı git worktree'de çalışır; agentic mod ana checkout'a/diğer branch'lere dokunmaz. Üreteni inceleyip (diff + build/test) merge etmek **sana** kalır.
+- **GitHub CLI (`gh`) kimlik aktarımı:** macOS'ta `gh` token'ını sistem Keychain'inde tutar; sandbox'lı worker'lar (Codex `workspace-write`, DeepSeek, agy, OpenCode) buna erişemez — bu yüzden delege edilen `gh issue`/`gh pr`/`gh api` çağrıları sessizce başarısız olur. Giriş yapmışsan (`gh auth token` çalışıyorsa) ve kendin `GH_TOKEN`/`GITHUB_TOKEN` set etmemişsen, runner'lar **`gh` token'ını worker'a `GH_TOKEN` olarak aktarır**; böylece worker'ın `gh` çağrıları kimlik doğrular. Token geniş kapsam taşıyabilir (`repo`, `workflow`, hatta `delete_repo`) ve worker sandbox'ına / sağlayıcı bağlamına gider — **devre dışı bırakmak** için `CLI_DISPATCH_NO_GH_TOKEN=1`. `/cli-dispatch:doctor` mevcut durumu raporlar.
 
 ## Mimari rol
 

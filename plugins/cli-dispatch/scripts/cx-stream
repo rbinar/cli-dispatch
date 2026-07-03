@@ -14,8 +14,8 @@
 #
 # Usage:
 #   cx-stream [--cwd <dir>] [--resume <session-id>] [--read-only] [--sandbox <mode>] \
-#             [--model <m>] [--effort low|medium|high] [--max-runtime <s>] [--idle-timeout <s>] \
-#             -p "<prompt>" [extra codex flags]
+#             [--no-network] [--model <m>] [--effort low|medium|high] \
+#             [--max-runtime <s>] [--idle-timeout <s>] -p "<prompt>" [extra codex flags]
 #   echo "<prompt>" | cx-stream [--cwd <dir>]
 #
 # Session directory: ${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<thread-id>/ (legacy: claude-ds)
@@ -36,6 +36,9 @@ command -v node >/dev/null 2>&1 || { echo "cx-stream: 'node' not found (required
 
 # Optional config (shared across backends). cli-dispatch dir, legacy claude-ds fallback (env wins).
 source_config
+
+# Forward the host's gh auth (macOS keyring) into the worker env (issue #56).
+maybe_export_gh_token
 
 # API keys must be exported so the codex subprocess inherits them — sourcing the config
 # only sets shell variables, not environment variables, without an explicit export.
@@ -58,6 +61,12 @@ PROMPT=""
 HAVE_PROMPT=0
 READ_ONLY=0
 SANDBOX=""                       # explicit --sandbox passthrough (overrides default/--read-only)
+# Network access inside the workspace-write sandbox. Codex disables it by DEFAULT — every
+# gh/curl/pip call then fails with "error connecting". The other cli-dispatch backends
+# (ds/agy/oc) have no sandbox and full network, so cx defaults network ON to match; pass
+# --no-network (or CX_NETWORK=0 in config) for an isolated, no-egress run. read-only mode
+# stays no-network regardless (see below). 1=on, 0=off.
+case "${CX_NETWORK:-1}" in 0|false|no|off) NETWORK=0;; *) NETWORK=1;; esac
 MODEL="${CX_MODEL:-${CODEX_MODEL:-}}"
 EFFORT="${CX_EFFORT:-}"
 MAX_RUNTIME="${CX_MAX_RUNTIME:-0}"
@@ -80,6 +89,8 @@ while [ "$#" -gt 0 ]; do
     -p=*)             PROMPT="${1#*=}"; HAVE_PROMPT=1; shift;;
     --prompt=*)       PROMPT="${1#*=}"; HAVE_PROMPT=1; shift;;
     --read-only)      READ_ONLY=1; shift;;
+    --network|--net)  NETWORK=1; shift;;
+    --no-network|--no-net) NETWORK=0; shift;;
     --max-runtime)    need_val --max-runtime "$#";  MAX_RUNTIME="$2"; shift 2;;
     --max-runtime=*)  MAX_RUNTIME="${1#*=}"; shift;;
     --idle-timeout)   need_val --idle-timeout "$#"; IDLE_TIMEOUT="$2"; shift 2;;
@@ -118,6 +129,21 @@ SANDBOX_MODE="workspace-write"
 [ "$READ_ONLY" -eq 1 ] && SANDBOX_MODE="read-only"
 [ -n "$SANDBOX" ] && SANDBOX_MODE="$SANDBOX"
 
+# Network access applies only to the workspace-write sandbox (read-only = fully isolated;
+# danger-full-access already has network). When on, inject codex's config override so gh/curl
+# reach the network — codex's own default is network-disabled. NET_ARGS is spliced into both
+# the fresh and resume codex arg lists below.
+NET_ARGS=()
+NET_STATE="n/a"
+if [ "$SANDBOX_MODE" = "workspace-write" ]; then
+  if [ "$NETWORK" -eq 1 ]; then
+    NET_ARGS=(-c "sandbox_workspace_write.network_access=true")
+    NET_STATE="on"
+  else
+    NET_STATE="off"
+  fi
+fi
+
 # ---- build the codex command ----
 # `codex exec [resume <id>] [flags] "<prompt>"`. We always emit --json (parser input) and
 # -o <file> (clean final answer), pass --skip-git-repo-check (works outside git). Prompt is
@@ -143,12 +169,14 @@ if [ -n "$RESUME_ID" ]; then
   [ -n "$MODEL" ] && CODEX_ARGS+=(-m "$MODEL")
   [ -n "$EFFORT" ] && CODEX_ARGS+=(-c "model_reasoning_effort=$EFFORT")
   CODEX_ARGS+=(-c "sandbox_mode=$SANDBOX_MODE")
+  [ "${#NET_ARGS[@]}" -gt 0 ] && CODEX_ARGS+=("${NET_ARGS[@]}")
   [ "${#PASS_ARGS[@]}" -gt 0 ] && CODEX_ARGS+=("${PASS_ARGS[@]}")
   CODEX_ARGS+=("$RESUME_ID" "$PROMPT")
 else
   CODEX_ARGS=(exec --json -o "$OUTFILE" --skip-git-repo-check --color never -C "$CWD" -s "$SANDBOX_MODE")
   [ -n "$MODEL" ] && CODEX_ARGS+=(-m "$MODEL")
   [ -n "$EFFORT" ] && CODEX_ARGS+=(-c "model_reasoning_effort=$EFFORT")
+  [ "${#NET_ARGS[@]}" -gt 0 ] && CODEX_ARGS+=("${NET_ARGS[@]}")
   [ "${#PASS_ARGS[@]}" -gt 0 ] && CODEX_ARGS+=("${PASS_ARGS[@]}")
   CODEX_ARGS+=("$PROMPT")
 fi
@@ -173,7 +201,7 @@ BRANCH="$(git -C "$CWD" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
 
 echo "cx-stream → Codex (OpenAI Codex CLI) worker" >&2
 echo "  cwd:     $CWD" >&2
-echo "  sandbox: $SANDBOX_MODE" >&2
+echo "  sandbox: $SANDBOX_MODE$([ "$NET_STATE" != "n/a" ] && echo " (network: $NET_STATE)")" >&2
 [ -n "$MODEL" ] && echo "  model:   $MODEL" >&2
 [ "$RESUME" -eq 1 ] && echo "  resume:  $RESUME_ID" >&2
 echo "  dir:     $SESSION_DIR" >&2

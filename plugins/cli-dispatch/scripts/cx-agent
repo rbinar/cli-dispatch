@@ -16,7 +16,7 @@
 # real no-writes guarantee.
 set -euo pipefail
 
-usage() { echo 'usage: cx-agent [--cwd <dir>] [--resume <session-id>] [--read-only] [--sandbox <mode>] [--model <m>] [--effort low|medium|high] [--max-runtime <s>] [--idle-timeout <s>] [-q] "<task>"' >&2; }
+usage() { echo 'usage: cx-agent [--cwd <dir>] [--resume <session-id>] [--read-only] [--sandbox <mode>] [--no-network] [--model <m>] [--effort low|medium|high] [--max-runtime <s>] [--idle-timeout <s>] [-q] "<task>"' >&2; }
 
 QUIET=0
 TASK=""
@@ -26,6 +26,8 @@ need_val() { [ "$2" -ge 2 ] || { echo "cx-agent: $1 requires a value." >&2; exit
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --read-only)      FWD+=(--read-only); shift;;
+    --network|--net)  FWD+=(--network); shift;;
+    --no-network|--no-net) FWD+=(--no-network); shift;;
     --cwd)            need_val --cwd "$#";    FWD+=(--cwd "$2"); shift 2;;
     --resume)         need_val --resume "$#"; FWD+=(--resume "$2"); shift 2;;
     --model)          need_val --model "$#";  FWD+=(--model "$2"); shift 2;;

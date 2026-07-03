@@ -335,6 +335,7 @@ git worktree prune         # clean up dead records
 - **Keys never leave your machine:** any key lives in `~/.config/cli-dispatch/config` (0600, outside the repo) and is **never committed**. The plugin/skill never writes a key anywhere; you add it. (Codex and Antigravity normally use their own OAuth sign-in — no key in the config at all.)
 - **Data egress:** the **prompt and code you give a worker are sent to that backend's provider** — DeepSeek, Google (Gemini/Antigravity), or OpenAI (Codex). Use each only if you accept that. The dashboard and `*-balance` commands are local/read-only and send nothing extra on your behalf.
 - **Isolated work:** real repo tasks run in a separate git worktree; the agentic mode doesn't touch the main checkout/other branches. Reviewing the output (diff + build/test) and merging is **up to you**.
+- **GitHub CLI (`gh`) auth forwarding:** on macOS, `gh` keeps its token in the system Keychain, which sandboxed workers (Codex's `workspace-write`, DeepSeek, agy, OpenCode) can't reach — so delegated `gh issue`/`gh pr`/`gh api` calls silently fail. When you're logged in (`gh auth token` succeeds) and haven't set `GH_TOKEN`/`GITHUB_TOKEN` yourself, the runners **export your `gh` token into the worker as `GH_TOKEN`** so its `gh` calls authenticate. The token can carry broad scopes (`repo`, `workflow`, even `delete_repo`) and travels into the worker sandbox / provider context — **opt out** by setting `CLI_DISPATCH_NO_GH_TOKEN=1`. `/cli-dispatch:doctor` reports the current state.
 
 ## Architectural role
 

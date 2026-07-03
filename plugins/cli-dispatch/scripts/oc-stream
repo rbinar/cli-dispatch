@@ -40,6 +40,9 @@ command -v node >/dev/null 2>&1 || { echo "oc-stream: 'node' not found (required
 # Optional config (shared across backends). cli-dispatch dir, legacy claude-ds fallback (env wins).
 source_config
 
+# Forward the host's gh auth (macOS keyring) into the worker env (issue #56).
+maybe_export_gh_token
+
 # OPENROUTER_API_KEY must be exported so the opencode subprocess inherits it — sourcing the
 # config only sets a shell variable, not an environment variable, without an explicit export.
 [ -n "${OPENROUTER_API_KEY:-}" ] && export OPENROUTER_API_KEY
