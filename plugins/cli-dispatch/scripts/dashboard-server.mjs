@@ -36,6 +36,7 @@ const VENDOR_DIR = path.join(SELF_DIR, 'vendor')
 
 const HOME = os.homedir()
 const PROJECTS_DIR = path.join(HOME, '.claude', 'projects')
+const parentIndexCache = new Map() // keyed by CC session id -> { mtime, workerIds: string[] }
 const CC_SESSIONS_DIR = path.join(HOME, '.claude', 'sessions')
 const CACHE = process.env.XDG_CACHE_HOME || path.join(HOME, '.cache')
 const WORKERS_ROOT = process.env.CLI_DISPATCH_SESSIONS_DIR || process.env.CLAUDE_DS_SESSIONS_DIR ||
@@ -289,7 +290,7 @@ function listSubagents(sess) {
 }
 
 // ---- cli-dispatch workers ----
-function listWorkers() {
+function listWorkers(skipParentIndex = false) {
   const out = []
   if (!isDir(WORKERS_ROOT)) return out
   for (const d of fs.readdirSync(WORKERS_ROOT)) {
@@ -327,6 +328,12 @@ function listWorkers() {
       finalResultPreview: clip(s.finalResultPreview, 200),
     })
   }
+  if (!skipParentIndex) {
+    const parentIndex = buildWorkerParentIndex()
+    for (const w of out) {
+      w.parentSession = parentIndex.get(w.id) || null
+    }
+  }
   out.sort((a, b) => String(b.started).localeCompare(String(a.started)))
   return out
 }
@@ -357,6 +364,58 @@ function linkedWorkers(file) {
     if (w.id && !seen.has(w.id) && txt.includes(w.id)) { seen.add(w.id); out.push({ id: w.id, backend: w.backend, state: w.state, stale: w.stale, model: w.model, prompt: w.prompt }) }
   }
   return out
+}
+
+function buildWorkerParentIndex() {
+  const reverseMap = new Map()
+  if (!isDir(PROJECTS_DIR)) return reverseMap
+
+  const workers = listWorkers(true)
+  const workerIds = workers.map(w => w.id).filter(Boolean)
+  if (workerIds.length === 0) return reverseMap
+
+  const sessions = []
+  for (const proj of fs.readdirSync(PROJECTS_DIR)) {
+    const pdir = path.join(PROJECTS_DIR, proj)
+    if (!isDir(pdir)) continue
+    for (const f of fs.readdirSync(pdir)) {
+      if (!f.endsWith('.jsonl')) continue
+      const sessionId = f.slice(0, -6)
+      const file = path.join(pdir, f)
+      try {
+        const st = fs.statSync(file)
+        sessions.push({ sessionId, project: proj, file, mtime: st.mtimeMs })
+      } catch {}
+    }
+  }
+
+  for (const s of sessions) {
+    const currentMtime = s.mtime
+    let workerIdsInSession = []
+    const cached = parentIndexCache.get(s.sessionId)
+    if (cached && cached.mtime === currentMtime) {
+      workerIdsInSession = cached.workerIds
+    } else {
+      let txt = ''
+      try { txt = readTail(s.file, 2 * 1024 * 1024) } catch {}
+      if (txt) {
+        for (const wid of workerIds) {
+          if (txt.includes(wid)) {
+            workerIdsInSession.push(wid)
+          }
+        }
+      }
+      parentIndexCache.set(s.sessionId, { mtime: currentMtime, workerIds: workerIdsInSession })
+    }
+
+    for (const wid of workerIdsInSession) {
+      if (!reverseMap.has(wid)) {
+        reverseMap.set(wid, { id: s.sessionId, project: s.project })
+      }
+    }
+  }
+
+  return reverseMap
 }
 
 function send(res, code, obj) {
@@ -1181,6 +1240,7 @@ const fmtDT=(iso)=>{const d=iso?new Date(iso):null;return d&&!isNaN(d)?d.toLocal
 // than the CC tab's ~/.claude/projects/ dash-encoded name — last two path segments is the
 // closest equivalent short label ("parent/leaf") without guessing at the origin repo.
 const shortProj=(cwd)=>{if(!cwd) return '';const parts=cwd.split('/').filter(Boolean);return parts.slice(-2).join('/')}
+const shortSessionProj=(project)=>project.replace(/^-/,'').split('-').slice(-2).join('/')
 const fmtUsage=(u,detailed)=>{
   if(!u) return null
   const inTok=u.inTok, outTok=u.outTok, costUsd=u.costUsd
@@ -1228,7 +1288,7 @@ async function loadList(){
     document.getElementById('meta').textContent=ss.length+' sessions'
     const shown=flt==='all'?ss:ss.filter(s=>s.status===flt)
     shown.forEach(s=>{
-      const h='<div class="item'+(sel===s.id?' sel':'')+'"><div><span class="dot '+s.status+'"></span>'+esc(s.project.replace(/^-/,'').split('-').slice(-2).join('/'))+'<span class="badge">'+s.status+'</span>'+(s.subagentCount?'<span class="badge">'+s.subagentCount+' sub</span>':'')+'</div><div class="small muted">'+esc(s.firstPrompt||s.id.slice(0,8))+'</div><div class="small muted">'+esc(fmtDT(s.lastActivityAt))+' · '+s.sizeKB+'KB</div></div>'
+      const h='<div class="item'+(sel===s.id?' sel':'')+'"><div><span class="dot '+s.status+'"></span>'+esc(shortSessionProj(s.project))+'<span class="badge">'+s.status+'</span>'+(s.subagentCount?'<span class="badge">'+s.subagentCount+' sub</span>':'')+'</div><div class="small muted">'+esc(s.firstPrompt||s.id.slice(0,8))+'</div><div class="small muted">'+esc(fmtDT(s.lastActivityAt))+' · '+s.sizeKB+'KB</div></div>'
       const it=E(h); it.onclick=()=>openSession(s); frag.appendChild(it); sig.push(h)
     })
   }else{
@@ -1251,7 +1311,7 @@ async function loadList(){
         usageLine=' · '+(u.tokStr?esc(u.tokStr):'')+(u.tokStr&&u.costStr?' · ':'')+(u.costStr?esc(u.costStr):'')
       }
       const proj=shortProj(w.cwd)
-      const h='<div class="item'+(sel===w.id?' sel':'')+'"><div><span class="dot '+dot+'"></span>'+esc(w.backend)+' <span class="c">'+(w.model?esc(w.model):'default')+'</span> <span class="'+badgeCls+'">'+esc(badge)+'</span></div>'+(proj?'<div class="small muted">'+esc(proj)+'</div>':'')+'<div class="small muted">'+esc(w.prompt||w.id.slice(0,8))+'</div><div class="small muted">'+esc(fmtDT(w.started))+(w.lastTool?' · '+esc(w.lastTool):'')+usageLine+'</div></div>'
+      const h='<div class="item'+(sel===w.id?' sel':'')+'"><div><span class="dot '+dot+'"></span>'+esc(w.backend)+' <span class="c">'+(w.model?esc(w.model):'default')+'</span> <span class="'+badgeCls+'">'+esc(badge)+'</span></div>'+(proj?'<div class="small muted">'+esc(proj)+'</div>':'')+(w.parentSession?'<div class="small muted">from '+esc(shortSessionProj(w.parentSession.project))+'</div>':'')+'<div class="small muted">'+esc(w.prompt||w.id.slice(0,8))+'</div><div class="small muted">'+esc(fmtDT(w.started))+(w.lastTool?' · '+esc(w.lastTool):'')+usageLine+'</div></div>'
       const it=E(h); it.onclick=()=>openWorker(w); frag.appendChild(it); sig.push(h)
     })
   }
