@@ -114,7 +114,14 @@ function renderItem(item, phase) {
       const text = typeof item.text === 'string' ? item.text : ''
       if (text.trim()) {
         finalText = text
-        if (phase === 'completed') appendProgress(`· ${clip(text, 200)}`)
+        if (phase === 'completed') {
+          if (/usage limit|try again at/i.test(text)) {
+            errorText = String(text)
+            appendProgress(`✗ rate-limited: ${clip(text, 160)}`)
+          } else {
+            appendProgress(`· ${clip(text, 200)}`)
+          }
+        }
       }
       touch(); writeStatus()
       return
