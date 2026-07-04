@@ -323,6 +323,13 @@ function spawnWithScriptFallback({ cmd, args, env, cwd }) {
     for (const cb of exitCbs) { try { cb(normalizedCode) } catch { /* ignore listener errors */ } }
   })
 
+  child.on('error', (err) => {
+    if (exited) return
+    exited = true
+    liveHandles.delete(handle)
+    for (const cb of exitCbs) { try { cb(-1) } catch { /* ignore listener errors */ } }
+  })
+
   const handle = {
     mode: 'script',
     // Consumed by dashboard-server.mjs (written into status.json.takeover so an

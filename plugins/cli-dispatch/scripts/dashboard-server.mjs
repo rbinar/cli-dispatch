@@ -745,7 +745,7 @@ async function handleTakeover(req, res, rawId) {
     finalizeTakeover(id, {
       finalState: code === 0 ? 'done' : 'error',
       completedVia: 'human-takeover',
-      error: code === 0 ? undefined : 'takeover ended abnormally',
+      error: code === 0 ? undefined : (code === -1 ? "failed to start: worker's working directory no longer exists" : 'takeover ended abnormally'),
     })
   })
 
