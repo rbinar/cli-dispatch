@@ -19,7 +19,7 @@ git -C "$REPO" worktree add -b "$BRANCH" "$WT" origin/main || {
   WT="$(mktemp -d /tmp/ag-wt-XXXXXX)" && rmdir "$WT"
   git -C "$REPO" worktree add -b "$BRANCH" "$WT" origin/main
 }
-_cleanup() { rm -f "$WT/node_modules" 2>/dev/null; git -C "$REPO" worktree remove "$WT" --force 2>/dev/null; git -C "$REPO" worktree prune 2>/dev/null; }
+_cleanup() { rm -f "$WT/node_modules" 2>/dev/null; echo ">>> Worktree: $WT  (branch: $BRANCH)"; echo ">>> Review the diff, then YOU handle git/PR/merge. Cleanup:"; echo "    rm -f \"$WT/node_modules\"; git -C \"$REPO\" worktree remove \"$WT\" --force; git -C \"$REPO\" worktree prune"; }
 trap _cleanup ERR INT TERM
 if [ -d "$REPO/node_modules" ] && [ ! -e "$WT/node_modules" ]; then
   ln -s "$REPO/node_modules" "$WT/node_modules"
