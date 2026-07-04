@@ -323,6 +323,13 @@ if [ -f "$SESSION_DIR/.timeout" ]; then
   # The parser only saw stdin EOF and finalized "done"/exitCode:0 — fix the record.
   reconcile_session_error "$SESSION_DIR" "timeout: $TIMEOUT_REASON" "$CODEX_RC"
 else
+  if [ "$CODEX_RC" -ne 0 ]; then
+    CODEX_STATE=""
+    [ -f "$SESSION_DIR/status.json" ] && CODEX_STATE="$(json_field "$SESSION_DIR/status.json" state || true)"
+    if [ "$CODEX_STATE" = "done" ] || [ -z "$CODEX_STATE" ]; then
+      reconcile_session_error "$SESSION_DIR" "codex exited with code $CODEX_RC" "$CODEX_RC"
+    fi
+  fi
   printf '%s' "$CODEX_RC" > "$DONEFILE"
 fi
 

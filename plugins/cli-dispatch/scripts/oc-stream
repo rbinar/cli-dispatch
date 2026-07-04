@@ -256,6 +256,13 @@ if [ -f "$SESSION_DIR/.timeout" ]; then
   # The parser only saw stdin EOF and finalized "done"/exitCode:0 — fix the record.
   reconcile_session_error "$SESSION_DIR" "timeout: $TIMEOUT_REASON" "$OC_RC"
 else
+  if [ "$OC_RC" -ne 0 ]; then
+    OC_STATE=""
+    [ -f "$SESSION_DIR/status.json" ] && OC_STATE="$(json_field "$SESSION_DIR/status.json" state || true)"
+    if [ "$OC_STATE" = "done" ] || [ -z "$OC_STATE" ]; then
+      reconcile_session_error "$SESSION_DIR" "opencode exited with code $OC_RC" "$OC_RC"
+    fi
+  fi
   printf '%s' "$OC_RC" > "$DONEFILE"
 fi
 

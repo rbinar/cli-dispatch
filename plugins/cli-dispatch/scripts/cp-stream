@@ -123,7 +123,7 @@ if [ -n "$EFFORT" ]; then
   case "$EFFORT" in low|medium|high) ;; *) echo "cp-stream: --effort must be low|medium|high (got \"$EFFORT\")." >&2; exit 2;; esac
 fi
 
-CP_ARGS=(-p "$PROMPT" --allow-all-tools --no-ask-user --add-dir "$CWD" --output-format json --no-color --no-banner --no-auto-update)
+CP_ARGS=(-p "$PROMPT" --allow-all-tools --no-ask-user --add-dir "$CWD" --output-format json --no-color --no-auto-update)
 [ -n "$MODEL" ] && CP_ARGS+=(--model "$MODEL")
 [ -n "$EFFORT" ] && CP_ARGS+=("--reasoning-effort=$EFFORT")
 [ -n "$RESUME_ID" ] && CP_ARGS+=(--resume "$RESUME_ID")
