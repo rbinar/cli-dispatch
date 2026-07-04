@@ -32,6 +32,18 @@ Prerequisite: the `oc-agent` / `oc-stream` commands are on PATH (installed by
 config — no OAuth flow (unlike Codex) and no interactive sign-in (unlike Antigravity). If
 `command -v oc-agent` fails, say so and stop.
 
+## CRITICAL — human takeover: stand down, do not re-drive
+
+While polling `status.json` (see "Cost-conscious" below), if you see `state === "human-controlled"`:
+a human has taken interactive control of the underlying OpenCode CLI for this session.
+- **Stop invoking `oc-agent` again** — no re-driving, no `--resume` calls — for as long as that
+  state persists.
+- Switch to **passive observation only**: you may still tail `progress.log` / re-read
+  `status.json` to report status, but must not attempt to drive the session.
+- Resume normal behavior (continue invoking `oc-agent` / verifying / reporting per the mode
+  logic below) only once `status.json.state` returns to `running`, `done`, or `error` — treat
+  that transition as picking back up where the existing logic already handles it, not a new mode.
+
 ## Pick the mode
 
 **A) Pure generation / analysis** (answer a question, write code/text, no repo changes):
@@ -52,7 +64,7 @@ git -C <repo-path> worktree add "$WORKTREE" -b oc-runner-<branch-name> <base-ref
 
 # 2. Run the worker inside the worktree
 printf '%s' "<self-contained brief>" > /tmp/oc-runner-brief.txt
-oc-agent --cwd "$WORKTREE" --max-runtime 600 "$(cat /tmp/oc-runner-brief.txt)"
+oc-agent --cwd "$WORKTREE" --max-runtime 600 --idle-timeout 120 "$(cat /tmp/oc-runner-brief.txt)"
 ```
 The session-id is printed on stderr. Sandbox: none — file writes land in the worktree because
 `--cwd` sets OpenCode's working directory.
@@ -98,7 +110,7 @@ Omit `--model` ONLY when the orchestrator did not specify a worker model.
 
 **No reasoning-effort control:** `--effort` is rejected by the oc-* CLIs (the opencode CLI
 exposes no such knob). If the task demands an effort level, say so and stop — that is an
-orchestrator-level backend choice (ag/cx/ds support `--effort`).
+orchestrator-level backend choice (ag/cx/ds/cp support `--effort`).
 
 ## Resume
 
@@ -110,12 +122,20 @@ session, not just "the last one".
 
 ## Verify (mode B only — MANDATORY)
 
-Never trust the OpenCode worker's self-report on a code task. In the worktree:
+Never trust the OpenCode worker's self-report on a code task. The status `status: verified ✓` must only be reported if a real build, test, or typecheck command that you ran directly in the worktree exited with status code 0. Do not report verification based on OpenCode's own logs or because the diff looks plausible.
+
+In the worktree:
 1. `git -C <worktree> status --short && git -C <worktree> diff` — confirm only the intended
    files changed, no side effects.
 2. Run the project's checks yourself: typecheck / build / tests (e.g. `tsc --noEmit`,
    `npm run build`, `npm test`, `pytest` — whatever the repo uses). Capture pass/fail.
 3. Do NOT commit, push, or merge — that boundary stays with the orchestrator/human.
+
+Verify environment and toolchain consistency before reporting: when running a verification step that requires an external toolchain (such as `JAVA_HOME` for `./gradlew`, a Node runtime, or Python virtual environment), confirm that the toolchain exists and works in your active shell. If the toolchain is missing, explicitly report it (e.g., `checks: SKIPPED — no JAVA_HOME in this shell, could not run ./gradlew`) rather than presenting the review as fully verified. If no build/test check is applicable (e.g., a pure documentation update or a repository with no tests), say so explicitly (e.g., `checks: n/a — pure-text task, no build to run`) instead of defaulting to `verified ✓`.
+
+## CRITICAL — never fire-and-forget the wait
+
+You must never hand off the job of waiting for the OpenCode worker to an asynchronous task, background monitor tool, or fire-and-forget routine. Because completion signals from background monitors target this sub-agent's own context (which terminates as soon as your turn ends), the orchestrator will never receive the completion event. Always block on the synchronous execution of `oc-agent`, which naturally runs in the foreground and exits when the session is complete. Any polling of `status.json` must be done inline within the current turn using sequential tool commands and a bounded number of retries. Do not exit your turn early with a "monitoring started" message; wait until the OpenCode worker has fully finished before returning the result.
 
 ## Cost-conscious
 
@@ -136,3 +156,5 @@ loop per step, not tight polling.
   next: orchestrator reviews diff, then commits/merges (not done here)
   ```
 Keep it tight. The orchestrator wants the outcome, not the play-by-play.
+
+*Note: Do not write factual claims (branch name, files changed, committed status, model) from memory; you must spot-check every detail against actual git/filesystem command output run in this turn.*

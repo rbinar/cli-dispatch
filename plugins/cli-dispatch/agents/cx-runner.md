@@ -31,6 +31,18 @@ Prerequisite: run `command -v cx-agent` — if it fails, say so and stop. (`cx-a
 `--version` flag; do not run `cx-agent --version`.) Codex must be authenticated: run `codex login`
 once (ChatGPT/OAuth) or set `CODEX_API_KEY`.
 
+## CRITICAL — human takeover: stand down, do not re-drive
+
+While polling `status.json` (see "Cost-conscious" below), if you see `state === "human-controlled"`:
+a human has taken interactive control of the underlying Codex CLI for this session.
+- **Stop invoking `cx-agent` again** — no re-driving, no `--resume` calls — for as long as that
+  state persists.
+- Switch to **passive observation only**: you may still tail `progress.log` / re-read
+  `status.json` to report status, but must not attempt to drive the session.
+- Resume normal behavior (continue invoking `cx-agent` / verifying / reporting per the mode
+  logic below) only once `status.json.state` returns to `running`, `done`, or `error` — treat
+  that transition as picking back up where the existing logic already handles it, not a new mode.
+
 ## Pick the mode
 
 **A) Pure generation / analysis** (answer a question, write code/text, no repo changes):
@@ -117,12 +129,20 @@ disables session persistence, so no thread-id is saved and there is nothing to r
 
 ## Verify (mode B only — MANDATORY)
 
-Never trust the Codex worker's self-report on a code task. In the worktree:
+Never trust the Codex worker's self-report on a code task. You must only report `status: verified ✓` in the final verdict if a concrete build, test, or typechecking script that you initiated inside the worktree has returned exit code 0. Never claim verification based on Codex's self-report or because the changes look visually complete and correct.
+
+In the worktree:
 1. `git -C <worktree> status --short && git -C <worktree> diff` — confirm only the intended
    files changed, no side effects.
 2. Run the project's checks yourself: typecheck / build / tests (e.g. `tsc --noEmit`,
    `npm run build`, `npm test`, `pytest` — whatever the repo uses). Capture pass/fail.
 3. Do NOT commit, push, or merge — that boundary stays with the orchestrator/human.
+
+Ensure environment and toolchain consistency before claiming success: if the verification step depends on external tools or specific environment variables (such as a python venv, a node version, or `JAVA_HOME` for gradlew), verify that the required toolchain is present and functional in your execution shell. If the toolchain is unavailable, output a clear skip message (e.g., `checks: SKIPPED — no virtualenv found, could not run pytest`) rather than claiming a successful run or quietly skipping the check. If no test/build command is applicable (e.g. for pure-text or markdown changes, or if the repository does not have a build system), state it clearly (e.g., `checks: n/a — pure-text task, no build to run`) rather than defaulting to `verified ✓`.
+
+## CRITICAL — never fire-and-forget the wait
+
+Do not delegate waiting for the Codex session to a background job, asynchronous monitor tool, or fire-and-forget task. Because any completion notification from an async tool fires back into the babysitter's own sub-context (which will have already exited), the orchestrator will never see the result. You must run `cx-agent` synchronously in the foreground so the process blocks until Codex completes its task. If you poll `status.json` to keep track of the session state, perform that polling inline during your active turn with a bounded loop (sleep and re-check), rather than offloading it to a background tool. Never return your final report until the Codex execution has fully terminated.
 
 ## Cost-conscious
 
@@ -143,3 +163,5 @@ loop per step, not tight polling.
   next: orchestrator reviews diff, then commits/merges (not done here)
   ```
 Keep it tight. The orchestrator wants the outcome, not the play-by-play.
+
+*Note: Every single factual claim in the final report (branch name, list of changed files, committed status, model) must be spot-checked against live git/filesystem command output from this turn, not assumed or written from memory.*

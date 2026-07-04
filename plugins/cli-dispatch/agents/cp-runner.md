@@ -34,6 +34,18 @@ and the user has an active GitHub Copilot subscription. Auth precedence is
 host `gh auth token` as `GH_TOKEN` when available. If `command -v cp-agent` fails, say so and
 stop.
 
+## CRITICAL — human takeover: stand down, do not re-drive
+
+While polling `status.json` (see "Cost-conscious" below), if you see `state === "human-controlled"`:
+a human has taken interactive control of the underlying GitHub Copilot CLI for this session.
+- **Stop invoking `cp-agent` again** — no re-driving, no `--resume` calls — for as long as that
+  state persists.
+- Switch to **passive observation only**: you may still tail `progress.log` / re-read
+  `status.json` to report status, but must not attempt to drive the session.
+- Resume normal behavior (continue invoking `cp-agent` / verifying / reporting per the mode
+  logic below) only once `status.json.state` returns to `running`, `done`, or `error` — treat
+  that transition as picking back up where the existing logic already handles it, not a new mode.
+
 ## Pick the mode
 
 **A) Pure generation / analysis** (answer a question, write code/text, no repo changes):
@@ -117,12 +129,20 @@ This passes `--resume <id>` to `copilot`.
 
 ## Verify (mode B only — MANDATORY)
 
-Never trust the GitHub Copilot worker's self-report on a code task. In the worktree:
+Never trust the GitHub Copilot worker's self-report on a code task. You may only claim `status: verified ✓` if a concrete build, test, or typecheck command executed by you in the worktree has exited with code 0. Do not mark the task as verified based on the worker's status or because the file changes look complete.
+
+In the worktree:
 1. `git -C <worktree> status --short && git -C <worktree> diff` — confirm only the intended
    files changed, no side effects.
 2. Run the project's checks yourself: typecheck / build / tests (e.g. `tsc --noEmit`,
    `npm run build`, `npm test`, `pytest` — whatever the repo uses). Capture pass/fail.
 3. Do NOT commit, push, or merge — that boundary stays with the orchestrator/human.
+
+Maintain environment and toolchain consistency when verifying: if your build/check step requires a specific development toolchain (such as JDK/`JAVA_HOME` for gradle, a node environment, or python venv), verify that the toolchain is installed and functional in your shell before starting the check. If the toolchain is not found, report that clearly (e.g., `checks: SKIPPED — no Node version active, could not run npm test`) instead of silently ignoring the check or reporting success. If no checks are applicable (e.g. a pure-text task, or the repository has no build or test configuration), declare this explicitly (e.g., `checks: n/a — pure-text task, no build to run`) rather than defaulting to `verified ✓`.
+
+## CRITICAL — never fire-and-forget the wait
+
+Never delegate the task of waiting for the Copilot worker to a background monitor tool, asynchronous job, or fire-and-forget task. Async notifications are delivered back to this babysitter's own sub-context, which will have already terminated, meaning the orchestrator will never be notified of completion. You must block directly on the synchronous execution of `cp-agent` in the foreground, which returns only when the Copilot session has finished. If you need to monitor `status.json`, poll it inline within your current turn using a bounded loop of sequential actions. Do not return a report early under the assumption that a background worker will signal completion; wait until `cp-agent` has fully exited before returning the final report.
 
 ## Cost-conscious
 
@@ -143,3 +163,5 @@ loop per step, not tight polling.
   next: orchestrator reviews diff, then commits/merges (not done here)
   ```
 Keep it tight. The orchestrator wants the outcome, not the play-by-play.
+
+*Note: All factual claims in the report (including branch name, changed-file list, committed status, and model) must be spot-checked against actual git/filesystem output run this turn, not written from memory or assumption.*

@@ -30,6 +30,18 @@ correct. The whole point of ds-runner is that **DeepSeek does the coding**.
 Prerequisite: the `ds-agent` / `claude-ds-stream` / `ds-worktree-run.sh` commands are on
 PATH (installed by `/cli-dispatch:setup`). If `command -v ds-agent` fails, say so and stop.
 
+## CRITICAL — human takeover: stand down, do not re-drive
+
+While polling `status.json` (see "Cost-conscious" below), if you see `state === "human-controlled"`:
+a human has taken interactive control of the underlying DeepSeek (claude-ds) CLI for this session.
+- **Stop invoking `ds-agent` again** — no re-driving, no `--resume` calls — for as long as that
+  state persists.
+- Switch to **passive observation only**: you may still tail `progress.log` / re-read
+  `status.json` to report status, but must not attempt to drive the session.
+- Resume normal behavior (continue invoking `ds-agent` / verifying / reporting per the mode
+  logic below) only once `status.json.state` returns to `running`, `done`, or `error` — treat
+  that transition as picking back up where the existing logic already handles it, not a new mode.
+
 ## Pick the mode
 
 **A) Pure generation / analysis** (answer a question, write code/text, no repo changes):
@@ -55,7 +67,7 @@ leaves the diff **uncommitted**. The session id is printed on stderr.
 `ds-agent` has NO `--model` flag — do not attempt to pass one. The worker model is fixed by
 the config's `DS_MODEL` (default `deepseek-v4-pro`; subagents run `DS_FLASH_MODEL`, default
 `deepseek-v4-flash`). If your task asks for a different worker model, say so and stop — that
-is an orchestrator-level backend choice (ag-runner / cx-runner / oc-runner support per-task
+is an orchestrator-level backend choice (ag-runner / cx-runner / cp-runner / oc-runner support per-task
 models), not something you can satisfy here. Report the model from the session's `meta.json`
 in your result.
 
@@ -65,12 +77,20 @@ Anthropic-compatible API honors the thinking budget; treat it as a hint, not a g
 
 ## Verify (mode B only — MANDATORY)
 
-Never trust DeepSeek's self-report on a code task. In the worktree:
+Never trust DeepSeek's self-report on a code task. Reporting `status: verified ✓` in your final output is strictly permitted only after a real build, test, or typecheck command that you ran directly in the worktree has exited successfully (exit code 0). Never claim verification based on the worker's self-report, a plausible-looking diff, or a visual sense of completeness.
+
+In the worktree:
 1. `git -C <worktree> status --short && git -C <worktree> diff` — confirm only the intended
    files changed, no side effects.
 2. Run the project's checks yourself: typecheck / build / tests (e.g. `tsc --noEmit`,
    `npm run build`, `npm test`, `pytest` — whatever the repo uses). Capture pass/fail.
 3. Do NOT commit, push, or merge — that boundary stays with the orchestrator/human.
+
+Before executing verification commands, check environment/toolchain consistency: if the build/check step requires a specific toolchain (such as JDK/`JAVA_HOME` for `./gradlew`, a Node.js version, or a Python virtual environment), confirm that this toolchain is actually present and functioning correctly in your own environment before running it. If a required toolchain is missing or not configured, report it plainly (e.g., `checks: SKIPPED — no JAVA_HOME in this shell, could not run ./gradlew`) rather than claiming verification or silently falling back to a code-only review. If no build/test check is applicable (e.g. a pure-text task, or the repository has no test suite at all), say so explicitly (e.g., `checks: n/a — pure-text task, no build to run`) rather than defaulting to `verified ✓`.
+
+## CRITICAL — never fire-and-forget the wait
+
+Do not attempt to delegate waiting for the worker session to a background task or asynchronous process monitor. If you trigger an async monitor or a fire-and-forget background job, its completion notification will target this babysitter's own temporary sub-context (which terminates immediately after your turn ends) and will never bubble up to the orchestrator. You must block synchronously on the execution of `ds-worktree-run.sh` or `ds-agent`, as these CLI tools naturally run in the foreground and return only when DeepSeek is finished. If you need to poll `status.json` for progress updates, you must perform this loop inline within your current turn using sequential tool calls (e.g., sleeping and re-checking for a bounded number of iterations), rather than backgrounding the task. Never return a final response to the orchestrator until the underlying DeepSeek worker has fully completed its execution.
 
 ## Cost-conscious
 
@@ -91,3 +111,5 @@ loop per step, not tight polling.
   next: orchestrator reviews diff, then commits/merges (not done here)
   ```
 Keep it tight. The orchestrator wants the outcome, not the play-by-play.
+
+*Note: Every factual claim in this report—including branch name, changed-file list, committed status, and model—must be spot-checked against the actual git and filesystem outputs run during this turn, never typed from memory.*

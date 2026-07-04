@@ -31,6 +31,18 @@ Prerequisite: the `ag-agent` / `ag-stream` commands are on PATH (installed by
 `/cli-dispatch:setup`, Antigravity backend) and `agy` is signed in (run `agy` once) or
 `GEMINI_API_KEY` is set. If `command -v ag-agent` fails, say so and stop.
 
+## CRITICAL — human takeover: stand down, do not re-drive
+
+While polling `status.json` (see "Cost-conscious" below), if you see `state === "human-controlled"`:
+a human has taken interactive control of the underlying Antigravity (agy) CLI for this session.
+- **Stop invoking `ag-agent` again** — no re-driving, no `--resume` calls — for as long as that
+  state persists.
+- Switch to **passive observation only**: you may still tail `progress.log` / re-read
+  `status.json` to report status, but must not attempt to drive the session.
+- Resume normal behavior (continue invoking `ag-agent` / verifying / reporting per the mode
+  logic below) only once `status.json.state` returns to `running`, `done`, or `error` — treat
+  that transition as picking back up where the existing logic already handles it, not a new mode.
+
 ## Pick the mode
 
 **A) Pure generation / analysis** (answer a question, write code/text, no repo changes):
@@ -113,12 +125,20 @@ effort). Same mandate as `--model`: requested but not passed = failed task.
 
 ## Verify (mode B only — MANDATORY)
 
-Never trust the agy worker's self-report on a code task. In the worktree:
+Never trust the agy worker's self-report on a code task. You may only report `status: verified ✓` if a real compilation, build, or test check executed directly by you in the worktree has successfully exited with a 0 code. You are strictly forbidden from claiming verification based on the worker's own logs, because "the diff looks reasonable", or because the changes appear complete.
+
+In the worktree:
 1. `git -C <worktree> status --short && git -C <worktree> diff` — confirm only the intended
    files changed, no side effects.
 2. Run the project's checks yourself: typecheck / build / tests (e.g. `tsc --noEmit`,
    `npm run build`, `npm test`, `pytest` — whatever the repo uses). Capture pass/fail.
 3. Do NOT commit, push, or merge — that boundary stays with the orchestrator/human.
+
+Confirm toolchain and environment consistency before verifying: when a verification build or compile step relies on a particular toolchain (such as `JAVA_HOME` for gradlew, a Node version, or a python venv), you must first confirm that the toolchain is active and working in your current shell. If the toolchain is absent, state that clearly in your response (e.g., `checks: SKIPPED — no Node.js in this shell, could not run npm run build`) instead of claiming a successful check. If no real build or test checks apply (such as for pure documentation changes or when the repository lacks any build configuration), report this explicitly (e.g., `checks: n/a — pure-text task, no build to run`) instead of defaulting to a verified status.
+
+## CRITICAL — never fire-and-forget the wait
+
+You must never delegate waiting for the Antigravity worker to a background monitor tool, async task, or a fire-and-forget background job. Any async completion notification would land in this babysitter's own sub-context, which immediately terminates and prevents the result from ever reaching the orchestrator. Instead, block directly on the synchronous invocation of `ag-agent`, which runs in the foreground and exits only when the worker has completed its run. If you choose to poll `status.json` for state changes, do so inline within the current turn using bounded, sequential iterations rather than spawning a background monitoring process. Do not return early to the orchestrator having only initiated a monitor; only output the final verdict after `ag-agent` has fully finished.
 
 ## Cost-conscious
 
@@ -139,3 +159,5 @@ loop per step, not tight polling.
   next: orchestrator reviews diff, then commits/merges (not done here)
   ```
 Keep it tight. The orchestrator wants the outcome, not the play-by-play.
+
+*Note: You must spot-check every factual claim in your report (such as branch name, changed files, committed status, and model) against the git/filesystem outputs of commands executed this turn, rather than relying on memory or assumptions.*
