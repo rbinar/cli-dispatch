@@ -55,7 +55,10 @@ fi
 # Foreground/blocking. claude-ds-stream prints the final answer to stdout (+ session info /
 # live progress to stderr); we just pass its exit code through.
 set +e
-"$STREAM" "${FWD[@]}" -p "$TASK"
+# On macOS bash 3.2 under `set -u`, expanding an EMPTY "${FWD[@]}" is an unbound-variable
+# error — which would break the common no-flags `ds-agent "task"` call. The ${arr[@]+...}
+# idiom expands to nothing when FWD is empty and to the quoted elements otherwise.
+"$STREAM" ${FWD[@]+"${FWD[@]}"} -p "$TASK"
 rc=$?
 set -e
 exit "$rc"
