@@ -239,6 +239,15 @@ TRANSCRIPT="$BRAIN/$CID/.system_generated/logs/transcript_full.jsonl"
 SESSIONS_ROOT="$(resolve_sessions_root)"
 SESSION_DIR="$SESSIONS_ROOT/$CID"
 mkdir -p "$SESSION_DIR"
+# Persist THIS wrapper's own pid ($$) as the worker-tree root. A dashboard takeover needs to
+# kill the whole headless writer tree (the script-wrapped agy child + the background parser
+# below) before spawning the interactive PTY, or the old writers clobber status.json right
+# after takeover starts. CAVEAT: agy is known to sometimes ignore termination signals and
+# reparent itself, so a tree-kill rooted here is BEST-EFFORT for the actual agy binary
+# specifically — an accepted, dashboard-side limitation, not something fixed in this wrapper.
+# A stale worker.pid in a finished session is harmless: the dashboard only acts on it while
+# status.json state=="running".
+printf '%s' "$$" > "$SESSION_DIR/worker.pid" 2>/dev/null || true
 printf '%s' "$PROMPT" > "$SESSION_DIR/prompt.txt" 2>/dev/null || true
 DONEFILE="$SESSION_DIR/.agy.done"; rm -f "$DONEFILE"
 BRANCH="$(git -C "$CWD" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
@@ -246,6 +255,41 @@ BRANCH="$(git -C "$CWD" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
 echo "  conv:   $CID" >&2
 echo "  dir:    $SESSION_DIR" >&2
 echo "  status: $SESSION_DIR/status.json" >&2
+
+# ---- cleanup + signal handling (mirrors cp-stream) ----
+# On ANY exit path reap the watchdog, the tail parser, and the agy worker so nothing leaks.
+# CRITICAL (issue: ag-stream had NO trap): on an EXTERNAL SIGINT/SIGTERM — a dashboard
+# takeover-kill of this headless worker, or a user Ctrl-C — the tail parser
+# (ag-transcript-parse.mjs) would otherwise poll for the .agy.done sentinel FOREVER (its
+# tick() only finalizes once AG_DONEFILE exists), leaving status.json stuck at
+# state:"running". So handle_interrupt (a) WRITES .agy.done with the real signal exit code so
+# the parser stops polling and finalizes as "error" (finalize(): done != "0"/"" → error), and
+# (b) force-reconciles status.json/meta.json to "error" as a backstop in case the parser was
+# already killed. Takeover-safety: killWorkerTree TERMs this tree and WAITS for it to die
+# BEFORE the takeover PTY writes state:"human-controlled", so this error-write lands first and
+# is then overwritten by the PTY — it cannot clobber a human-controlled record.
+cleanup() {
+  [ -n "${WATCHDOG_PID:-}" ] && kill_tree "$WATCHDOG_PID" -TERM 2>/dev/null || true
+  [ -n "${PARSER_PID:-}" ] && kill_tree "$PARSER_PID" -TERM 2>/dev/null || true
+  [ -n "${AGY_PID:-}" ] && kill -TERM "$AGY_PID" 2>/dev/null || true
+  rm -f "${PIDFILE:-}" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+handle_interrupt() {
+  local sig="$1" rc="$2"
+  trap - INT TERM
+  echo "ag-stream: interrupted ($sig)." >&2
+  # Unblock the tail parser: write the sentinel it polls for, with the real exit code so it
+  # finalizes the record as "error" rather than hanging on state:"running".
+  [ -n "${DONEFILE:-}" ] && printf '%s' "$rc" > "$DONEFILE" 2>/dev/null || true
+  # Backstop: force the record to error even if the parser is already gone / mid-poll.
+  [ -n "${SESSION_DIR:-}" ] && reconcile_session_error "$SESSION_DIR" "interrupted: $sig" "$rc"
+  cleanup
+  exit "$rc"
+}
+trap 'handle_interrupt INT 130' INT
+trap 'handle_interrupt TERM 143' TERM
 
 # ---- watchdog: BEST-EFFORT backstop (runtime cap + idle on transcript mtime) ----
 # IMPORTANT: unlike the DeepSeek backend (where this watchdog hard-kills the worker), agy

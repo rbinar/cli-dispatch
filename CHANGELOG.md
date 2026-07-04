@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.22.0] — 2026-07-04
+
+### Added
+
+- **Human-takeover for the dashboard (all 5 backends).** A worker row's detail view now has
+  a "Take control" action: kills the headless worker process, spawns the underlying CLI
+  (DeepSeek/Antigravity/Codex/OpenCode/Copilot, resuming its session where supported) under a
+  PTY, and streams it into an xterm.js terminal in the browser over a hand-rolled WebSocket —
+  so a human can step in on a stuck or ambiguous session without losing its context. "Hand
+  back" tears the PTY down and hands the session back to headless tracking. Read-only by
+  default; this is an explicit opt-in write path scoped to already-owned worker sessions only.
+- **CC session / subagent token usage.** The Claude Code tab's session and subagent detail
+  views now show a "Usage: N in / M out" line, aggregated from the transcript's own per-turn
+  `usage` (deduped by `message.id`, since Claude Code emits one JSONL line per content block
+  with the same usage repeated on each).
+- **Worker flow: tool calls vs. AI messages are now visually distinct.** Worker progress.log
+  lines already carried a leading glyph per event type (`·` message, `✻` thinking, `$` shell
+  command, `✎` edit, `▸` tool, `✗` error) but the dashboard rendered all of them as one flat
+  "log" bucket. The renderer now maps each glyph to the same message/tool/thinking step
+  styles native Claude Code sessions get, plus a distinct style for indented tool-result lines.
+- **Dashboard filter defaults.** The Claude Code tab now defaults to the "busy" filter on
+  load instead of "all". The workers tab shows a derived project label (last two path
+  segments of the worker's cwd) under the backend/model line.
+
+### Fixed
+
+- **Exit-code reconciliation in all 5 stream wrappers.** `claude-ds-stream`, `ag-stream`,
+  `cx-stream`, and `oc-stream` now reconcile the parser-written status against the
+  underlying CLI's real exit code on SIGINT/SIGTERM, matching `cp-stream`'s existing
+  handling — a killed worker no longer leaves `status.json` claiming `done`.
+- Dashboard: worker detail header now reflects `stale` sessions instead of showing the raw
+  (and misleading) `running` state text.
+- OpenCode takeover resume now passes `--continue` alongside `--session`, matching
+  `oc-stream`'s own verified resume invocation.
+
 ## [3.21.0] — 2026-07-04
 
 ### Added

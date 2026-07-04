@@ -145,6 +145,14 @@ else
 fi
 SESSION_DIR="$SESSIONS_ROOT/$SESSION_ID"
 mkdir -p "$SESSION_DIR"
+# Persist THIS wrapper's own pid ($$, NOT $CP_PID) as the worker-tree root. A dashboard
+# takeover must kill the ENTIRE headless writer tree — the parser's `cat|node` background job
+# AND the copilot background job, both direct children of $$ — before spawning the
+# interactive PTY, or the old writers clobber status.json right after takeover starts. A
+# stale worker.pid in a finished session is harmless: the dashboard only acts on it while
+# status.json state=="running". (This dir may later be relocated wholesale via `mv` —
+# worker.pid moves with it.)
+printf '%s' "$$" > "$SESSION_DIR/worker.pid" 2>/dev/null || true
 printf '%s' "$PROMPT" > "$SESSION_DIR/prompt.txt" 2>/dev/null || true
 BRANCH="$(git -C "$CWD" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
 
@@ -269,6 +277,20 @@ for _ in $(seq 1 100); do
   [ -e "$PARSER_DONE" ] && break
   sleep 0.1
 done
+
+# ---- human-controlled guard (defense-in-depth) ----
+# If a human already took over this session, the dashboard tree-killed the WHOLE worker
+# (via worker.pid, see above) and spawned an interactive PTY that now owns status.json,
+# writing state:"human-controlled". That kill normally reaps this wrapper before it ever
+# gets here — but if it raced or somehow missed us, this guard stops the finalize logic
+# below (reconcile_session_error / surface_status_error / relocate_session_dir) from
+# clobbering the dashboard's record. Exit 0 so the caller sees a clean exit; the EXIT trap
+# (cleanup) still runs.
+TAKEOVER_STATE="$(json_field "$SESSION_DIR/status.json" state || true)"
+if [ "$TAKEOVER_STATE" = "human-controlled" ]; then
+  echo "cp-stream: session taken over by a human — leaving record to the dashboard." >&2
+  exit 0
+fi
 
 if [ -f "$SESSION_DIR/.timeout" ]; then
   TIMEOUT_REASON="$(cat "$SESSION_DIR/.timeout" 2>/dev/null || true)"

@@ -1,10 +1,15 @@
 #!/usr/bin/env node
 // dashboard-server.mjs — cli-dispatch dashboard.
-// A self-contained, read-only local web dashboard over data that already lives on disk:
+// A self-contained local web dashboard over data that already lives on disk:
 //   • active Claude Code CLI sessions → their flow → the subagents they spawned → each subagent's flow
 //   • cli-dispatch worker delegations (DeepSeek / Antigravity / Codex / OpenCode / Copilot)
-// Stdlib only (node:http/fs/path/os) — no npm deps, matching the existing parsers.
+// Stdlib only (node:http/fs/path/os/crypto) — no npm deps, matching the existing parsers.
 // Binds 127.0.0.1 ONLY. Never reads config/secrets. All :id params are path-sanitised.
+// Read-only by default. An opt-in human-takeover capability, if explicitly installed,
+// exposes a narrowly-scoped, authenticated write path to already-owned worker sessions
+// only (no general shell, no arbitrary command) — supported for the codex, deepseek,
+// antigravity, opencode, and copilot backends (see .specs/dev/sdd/human-takeover.md;
+// ADR-0001/ADR-0002, both Accepted).
 //
 // The Claude Code on-disk formats (~/.claude/sessions, ~/.claude/projects/**) are internal
 // and may change across Claude Code versions — the mappers degrade gracefully on unknown shapes.
@@ -13,7 +18,21 @@ import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import { spawnSync } from 'node:child_process'
+import crypto from 'node:crypto'
+import { fileURLToPath } from 'node:url'
+import { spawnSync, execSync } from 'node:child_process'
+// NOTE: pty-host.mjs / takeover-cmd.mjs are deliberately NOT imported statically here.
+// They are only needed for the opt-in human-takeover write path and install.sh does not
+// ship them in every configuration — a static top-level import would ERR_MODULE_NOT_FOUND
+// at module load and crash EVERY installed dashboard (takeover users or not). Instead they
+// are loaded LAZILY, on first takeover, inside handleTakeover (see loadTakeoverModules).
+import { readJsonFile, markTakeoverActive, touchTakeoverHeartbeat, clearTakeoverState } from './parse-utils.mjs'
+
+// Directory this file lives in, regardless of whether it's run in-repo or from its
+// installed location (install.sh copies it + its sibling .mjs modules together) — used to
+// resolve the vendored xterm.js static assets next to it (./vendor/*).
+const SELF_DIR = path.dirname(fileURLToPath(import.meta.url))
+const VENDOR_DIR = path.join(SELF_DIR, 'vendor')
 
 const HOME = os.homedir()
 const PROJECTS_DIR = path.join(HOME, '.claude', 'projects')
@@ -33,6 +52,11 @@ for (let i = 0; i < argv.length; i++) {
   if (argv[i] === '--port') PORT = parseInt(argv[++i], 10) || PORT
   else if (argv[i] === '--no-open') OPEN = false
 }
+
+// The takeover auth middleware needs the ACTUAL bound port (PORT above is only the
+// requested starting port — listen() may hop forward on EADDRINUSE). Set once, in the
+// listen() success callback below.
+let ACTUAL_PORT = null
 
 // ---- small fs helpers ----
 const readJSON = (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')) } catch { return null } }
@@ -187,6 +211,11 @@ function mapFlow(file) {
       resultOf[b.tool_use_id] = { ok: !b.is_error, text: clip(contentText(b.content), 160) }
   }
   const steps = []
+  // Claude Code emits one JSONL "assistant" line PER content block (text/thinking/tool_use),
+  // all sharing the same message.id and all carrying that turn's full usage object — sum
+  // per unique message.id, not per line, or usage triple/quadruple-counts.
+  const seenMsgIds = new Set()
+  let inTok = 0, outTok = 0, haveUsage = false
   for (const e of evs) {
     const ts = e.timestamp || null
     const c = e.message && e.message.content
@@ -194,6 +223,14 @@ function mapFlow(file) {
       if (typeof c === 'string') { if (!e.isMeta) steps.push({ kind: 'prompt', ts, text: clip(c, 400) }) }
       // tool_result blocks are folded into their tool step below; skip standalone
     } else if (e.type === 'assistant' && Array.isArray(c)) {
+      const mid = e.message.id
+      const u = e.message.usage
+      if (u && (!mid || !seenMsgIds.has(mid))) {
+        if (mid) seenMsgIds.add(mid)
+        inTok += (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0)
+        outTok += (u.output_tokens || 0)
+        haveUsage = true
+      }
       for (const b of c) {
         if (b.type === 'text' && b.text) steps.push({ kind: 'message', ts, text: clip(b.text, 400) })
         else if (b.type === 'thinking' && b.thinking) steps.push({ kind: 'thinking', ts, text: clip(b.thinking, 300) })
@@ -210,7 +247,7 @@ function mapFlow(file) {
       }
     }
   }
-  return { steps, total, truncated: total > slice.length }
+  return { steps, total, truncated: total > slice.length, usage: haveUsage ? { inTok, outTok } : null }
 }
 
 function toolSummary(_name, input) {
@@ -268,6 +305,10 @@ function listWorkers() {
     let mtime = 0
     try { mtime = fs.statSync(path.join(dir, 'status.json')).mtimeMs } catch {}
     const rawState = s.state || m.state || '?'
+    // NB: this check is scoped to rawState === 'running' on purpose — a 'human-controlled'
+    // session (a human quietly reading PTY output) has its own heartbeat-based staleness
+    // concept (status.json.takeover.lastHeartbeat, reaped elsewhere), not this headless-
+    // worker mtime heuristic, so it can never be misflagged stale by this line.
     const stale = rawState === 'running' && mtime > 0 && (Date.now() - mtime > 90000)
     out.push({
       id: d,
@@ -325,6 +366,508 @@ function send(res, code, obj) {
 }
 const okId = (id) => typeof id === 'string' && ID_RE.test(id)
 
+// ---- static vendor assets (xterm.js UI for human-takeover) ----
+// This server has no general static-file serving — deliberately so (see the file banner:
+// "no config/secret access"). This is a small, FIXED allowlist of the handful of vendored
+// xterm.js files (see vendor/LICENSE-xterm.txt for provenance); the request path is looked
+// up in this exact map, never used to build a filesystem path itself, so there is no
+// path-traversal surface even though these files live in a real directory.
+const VENDOR_FILES = {
+  '/vendor/xterm.js': { file: 'xterm.js', type: 'application/javascript; charset=utf-8' },
+  '/vendor/xterm.css': { file: 'xterm.css', type: 'text/css; charset=utf-8' },
+  '/vendor/xterm-addon-fit.js': { file: 'xterm-addon-fit.js', type: 'application/javascript; charset=utf-8' },
+}
+function serveVendorAsset(pathname, res) {
+  const entry = VENDOR_FILES[pathname]
+  if (!entry) return send(res, 404, { error: 'not found' })
+  let body
+  try { body = fs.readFileSync(path.join(VENDOR_DIR, entry.file)) } catch { return send(res, 404, { error: 'not found' }) }
+  res.writeHead(200, { 'Content-Type': entry.type, 'Cache-Control': 'public, max-age=31536000, immutable' })
+  res.end(body)
+}
+
+// ==== human-takeover (Phase 1, Codex-only) ====================================
+// See .specs/dev/sdd/human-takeover.md ("API Sözleşmeleri") and ADR-0001 (Accepted) for
+// the full contract. Everything in this section is additive to the otherwise read-only
+// dashboard; it is only reachable if a caller passes the shared auth checks below.
+
+// In-memory-only registry of active takeovers, keyed by worker session id. NEVER
+// persisted to disk — the single-use token lives here and nowhere else (status.json's
+// `takeover` sub-object intentionally omits it; see parse-utils.mjs markTakeoverActive).
+//   id -> { token, ptyHandle, host, wsSocket, wsDisconnectedAt, statusFile, progressLog, heartbeatTimer }
+const takeoverRegistry = new Map()
+
+// FIX 8: grace period, after a takeover's WebSocket disconnects (tab closed) with no
+// explicit POST /handback, before dashboard-server itself reaps the still-running PTY.
+// Overridable via env (read ONCE, here at module load) purely so tests can shrink it; a
+// non-positive/absent value falls back to the 3-minute default (review suggested 2–5 min).
+const TAKEOVER_ABANDON_MS = (() => {
+  const v = parseInt(process.env.CLI_DISPATCH_TAKEOVER_ABANDON_MS || '', 10)
+  return v > 0 ? v : 3 * 60 * 1000
+})()
+
+// FIX 2: lazy loader for the takeover-only sibling modules (pty-host.mjs / takeover-cmd.mjs).
+// These are import()'d on first takeover and cached here so subsequent calls don't re-pay the
+// dynamic-import cost. If the files are missing (dashboard installed without the takeover
+// bits), the import() rejects and handleTakeover degrades to a 501 instead of crashing.
+let _takeoverModules = null
+async function loadTakeoverModules() {
+  if (_takeoverModules) return _takeoverModules
+  const [ptyHostMod, takeoverCmdMod] = await Promise.all([
+    import('./pty-host.mjs'),
+    import('./takeover-cmd.mjs'),
+  ])
+  _takeoverModules = { spawnPtyHost: ptyHostMod.spawnPtyHost, buildTakeoverCommand: takeoverCmdMod.buildTakeoverCommand }
+  return _takeoverModules
+}
+
+// Bounded async sleep (unref'd) — used by killWorkerTree's poll so we NEVER block the
+// event loop with a synchronous spin (this runs inside the async request handler).
+const sleepMs = (ms) => new Promise((resolve) => { const t = setTimeout(resolve, ms); t.unref?.() })
+
+// FIX 1 helpers — kill the pre-existing HEADLESS worker process tree before spawning the
+// interactive takeover PTY. cx-stream now writes $dir/worker.pid (the whole cx-stream
+// process TREE root; see C1). We mirror stream-utils.sh's proc_tree/kill_worker: snapshot
+// the full descendant set FIRST (recursive `pgrep -P`), then TERM the captured list, wait,
+// then KILL survivors from that SAME captured list — so children reparented mid-kill are
+// not missed.
+function collectProcTree(rootPid) {
+  const all = []
+  const visit = (pid) => {
+    all.push(pid)
+    let r
+    try { r = spawnSync('pgrep', ['-P', String(pid)], { encoding: 'utf8' }) } catch { return }
+    if (!r || r.status !== 0 || !r.stdout) return   // no children (pgrep exits 1) or pgrep failed
+    for (const line of r.stdout.split('\n')) {
+      const child = parseInt(line.trim(), 10)
+      if (Number.isInteger(child) && child > 0) visit(child)
+    }
+  }
+  visit(rootPid)
+  return all
+}
+
+// Async so the brief inter-signal wait yields the event loop instead of blocking it. TERM
+// the whole snapshot, poll up to ~1.5s (15 × 100ms, stopping early once all are gone), then
+// KILL any survivors from the same captured list.
+async function killWorkerTree(rootPid) {
+  const pids = collectProcTree(rootPid)
+  for (const pid of pids) { try { process.kill(pid, 'SIGTERM') } catch { /* already gone */ } }
+  for (let i = 0; i < 15; i++) {
+    let anyAlive = false
+    for (const pid of pids) { try { process.kill(pid, 0); anyAlive = true; break } catch { /* ESRCH */ } }
+    if (!anyAlive) break
+    await sleepMs(100)
+  }
+  for (const pid of pids) { try { process.kill(pid, 'SIGKILL') } catch { /* already gone */ } }
+}
+
+// ---- shared auth middleware (TL15/TL16, ADR-0001 §3) ----
+//
+// Pure core check, reusable for both the plain-HTTP path (POST /takeover, /handback) and
+// the raw-socket WS-upgrade path (GET /pty/<id>) — those two transports need different
+// rejection mechanics (JSON response vs. raw socket write + destroy), so the actual
+// Origin/Host/header validation logic lives here ONCE and each transport gets a thin
+// wrapper below.
+function validateTakeoverRequest(req, { requireCustomHeader }) {
+  if (ACTUAL_PORT == null) return { ok: false, reason: 'server not ready' }
+  const origin = req.headers.origin
+  const expectedOrigins = [`http://127.0.0.1:${ACTUAL_PORT}`, `http://localhost:${ACTUAL_PORT}`]
+  if (!origin || !expectedOrigins.includes(origin)) return { ok: false, reason: 'bad origin' }
+  // Host is checked INDEPENDENTLY of Origin (defense-in-depth, TL15) — do not skip this
+  // just because Origin passed.
+  const host = req.headers.host
+  const expectedHosts = [`127.0.0.1:${ACTUAL_PORT}`, `localhost:${ACTUAL_PORT}`]
+  if (!host || !expectedHosts.includes(host)) return { ok: false, reason: 'bad host' }
+  if (requireCustomHeader) {
+    // Node lowercases incoming header names in req.headers already. This header is the
+    // PRIMARY CSRF-DoS defense (TL13/TL16): it is not a CORS-simple header, so a
+    // cross-origin browser page is forced into a preflight (OPTIONS) first; since this
+    // server never answers preflights with an Access-Control-Allow-* grant, the browser
+    // never sends the real request at all — the Origin/Host checks above are secondary,
+    // defense-in-depth only (they matter if the request DOES arrive, e.g. from a
+    // non-browser client).
+    if (req.headers['x-cli-dispatch-takeover'] !== '1') return { ok: false, reason: 'missing takeover header' }
+  }
+  return { ok: true }
+}
+
+// Plain-HTTP wrapper: writes a JSON rejection + ends the response, returns false. Callers
+// must `return` immediately when this returns false (the response has already been sent).
+function checkTakeoverAuth(req, res, { requireCustomHeader }) {
+  const result = validateTakeoverRequest(req, { requireCustomHeader })
+  if (!result.ok) { send(res, 403, { error: 'forbidden: ' + result.reason }); return false }
+  return true
+}
+
+// Raw-socket wrapper for the WS-upgrade path: no `res` object exists during 'upgrade', so
+// rejection means writing a bare HTTP status line straight to the socket and destroying
+// it — never call send()/res.end() here.
+function rejectUpgrade(socket, code, text) {
+  try { socket.write(`HTTP/1.1 ${code} ${text}\r\n\r\n`) } catch { /* ignore */ }
+  try { socket.destroy() } catch { /* ignore */ }
+}
+
+// ---- terminal-state helper (single source of truth for ending a takeover) ----
+//
+// Called from exactly two places: the handback handler (explicit, human-initiated) and a
+// PTY's own onExit callback registered by the takeover handler (unexpected death). Both
+// paths converge here so status.json is written exactly once per takeover, never twice —
+// the registry deletion below doubles as the re-entrancy guard (whichever path runs
+// first "wins"; the other finds the entry already gone and no-ops).
+function finalizeTakeover(id, { finalState, completedVia, error } = {}) {
+  const entry = takeoverRegistry.get(id)
+  if (!entry) return
+  takeoverRegistry.delete(id)
+  if (entry.heartbeatTimer) clearInterval(entry.heartbeatTimer)
+  clearTakeoverState(entry.statusFile, { finalState, completedVia, error })
+  try { fs.appendFileSync(entry.progressLog, `--- handback @ ${new Date().toISOString()} ---\n`) } catch { /* ignore */ }
+}
+
+// FIX 8: dashboard-server's OWN in-process reaper for ABANDONED takeovers — a browser tab
+// that connected the WS then closed it WITHOUT POSTing /handback. There, the per-connection
+// heartbeat timer is cleared (bridgePty teardown) but the PTY keeps running AND
+// dashboard-server is still alive+healthy, so the out-of-process backstop
+// (cli-dispatch-clean.mjs) won't step in. We scan the registry every 60s and, for any entry
+// whose WS disconnected more than TAKEOVER_ABANDON_MS ago, kill the REAL live ptyHandle and
+// finalize. Started once here at module load. A takeover that has NEVER had a WS connect
+// (wsDisconnectedAt === null, set at entry creation and only ever stamped by bridgePty's
+// teardown) is NEVER reaped here — only a connected-then-disconnected one is. .unref() so
+// this timer alone never keeps the process alive (matching the heartbeatTimer style).
+// Scan cadence: 60s by default. It only shrinks below 60s if TAKEOVER_ABANDON_MS is
+// configured shorter than that (via env, for tests) — so a short grace is honored promptly
+// instead of waiting up to a full minute for the next tick, while the production default
+// (3-min grace) keeps the plain 60s cadence.
+const _reapScanMs = Math.min(60000, TAKEOVER_ABANDON_MS)
+const _abandonReaper = setInterval(() => {
+  const now = Date.now()
+  for (const [id, entry] of takeoverRegistry) {
+    if (entry.wsDisconnectedAt == null) continue                       // never connected, or currently bridged
+    if (now - entry.wsDisconnectedAt < TAKEOVER_ABANDON_MS) continue   // still within grace
+    try { entry.ptyHandle.kill() } catch { /* ignore */ }
+    finalizeTakeover(id, {
+      finalState: 'error',
+      completedVia: 'human-takeover',
+      error: 'takeover abandoned (no reconnect within grace period after disconnect)',
+    })
+  }
+}, _reapScanMs)
+_abandonReaper.unref?.()
+
+// ---- POST /api/worker/<id>/takeover ----
+async function handleTakeover(req, res, rawId) {
+  if (!checkTakeoverAuth(req, res, { requireCustomHeader: true })) return
+  const id = decodeURIComponent(rawId)
+  if (!okId(id)) return send(res, 400, { error: 'bad id' })
+  const dir = path.resolve(path.join(WORKERS_ROOT, id))
+  if (!dir.startsWith(path.resolve(WORKERS_ROOT) + path.sep) || !isDir(dir)) return send(res, 404, { error: 'not found' })
+
+  // FIX 3: re-entrancy guard. If a takeover is already active for this session, reject the
+  // duplicate POST immediately — before spawning a second PTY / kill / second registry entry.
+  if (takeoverRegistry.has(id)) return send(res, 409, { error: 'takeover already active for this session' })
+
+  const statusFile = path.join(dir, 'status.json')
+  const metaFile = path.join(dir, 'meta.json')
+  const progressLog = path.join(dir, 'progress.log')
+
+  const status = readJsonFile(statusFile)
+  if (status.state !== 'running') return send(res, 409, { error: 'session is not running' })
+
+  const meta = readJsonFile(metaFile)
+  // DeepSeek's stream-parser never writes a `backend` field into meta.json at all, so on
+  // disk `meta.backend` is `undefined` for DeepSeek sessions — fall back the same way the
+  // session-list mapper already does elsewhere in this file (see `s.backend || m.backend ||
+  // 'deepseek'` in the worker-list endpoint).
+  const backend = meta.backend || 'deepseek'
+  const SUPPORTED_TAKEOVER_BACKENDS = ['codex', 'deepseek', 'antigravity', 'opencode', 'copilot']
+  if (!SUPPORTED_TAKEOVER_BACKENDS.includes(backend)) return send(res, 409, { error: 'takeover not supported for backend "' + backend + '"' })
+
+  // OpenCode precondition: channel-split risk between `opencode.db` and `opencode-stable.db`
+  // — fail clean (before the registry reservation below) if neither session store exists.
+  if (backend === 'opencode') {
+    const ocDataDir = process.env.XDG_DATA_HOME
+      ? path.join(process.env.XDG_DATA_HOME, 'opencode')
+      : path.join(os.homedir(), '.local/share/opencode')
+    const hasStore = fs.existsSync(path.join(ocDataDir, 'opencode.db')) || fs.existsSync(path.join(ocDataDir, 'opencode-stable.db'))
+    if (!hasStore) return send(res, 409, { error: 'session store missing' })
+  }
+
+  // FIX 3 (cont.): RESERVE the registry slot SYNCHRONOUSLY — right here, before the first
+  // `await` below. The bare `has()` check above is not enough on its own: this handler is
+  // async and yields at each `await` (module load, worker-tree kill, pty spawn), so two
+  // near-simultaneous POSTs would BOTH pass has()==false before either reached the old
+  // `set()` (which sat after all those awaits) — a TOCTOU that spawned two PTYs. Reserving
+  // the slot now (still ptyHandle-less, so the WS upgrade path — which requires
+  // entry.ptyHandle — rejects until we fill it) means the second POST, which only starts
+  // running once we hit the first await, sees has()==true and gets 409. wsDisconnectedAt
+  // starts null (never-connected) and is only ever stamped by bridgePty's teardown, so the
+  // abandoned-takeover reaper never touches this reservation while it's being set up.
+  const entry = { token: null, ptyHandle: null, host: null, wsSocket: null, wsDisconnectedAt: null, statusFile, progressLog, heartbeatTimer: null }
+  takeoverRegistry.set(id, entry)
+  // Any early-return AFTER this point must release the reservation, or the session wedges
+  // (every future POST would 409 forever). All failure exits below go through releaseAndFail.
+  const releaseAndFail = (code, obj) => { takeoverRegistry.delete(id); return send(res, code, obj) }
+
+  // FIX 2: lazily load the takeover-only modules. Do this BEFORE killing the headless worker
+  // so a dashboard that never shipped the takeover bits degrades cleanly (501) without ever
+  // disrupting a running worker.
+  let spawnPtyHost, buildTakeoverCommand
+  try {
+    ({ spawnPtyHost, buildTakeoverCommand } = await loadTakeoverModules())
+  } catch {
+    return releaseAndFail(501, { error: 'human-takeover not installed on this dashboard (pty-host.mjs/takeover-cmd.mjs missing)' })
+  }
+
+  // FIX 1: kill the pre-existing HEADLESS worker process tree BEFORE spawning the takeover
+  // PTY (correctness + speed — cx-stream also self-defends per C1, but we don't rely on the
+  // race). cx-stream writes $dir/worker.pid (sibling of status.json/meta.json) — the whole
+  // cx-stream process TREE root (codex + parser + wrapper). Snapshot its subtree, TERM, wait,
+  // KILL (see collectProcTree/killWorkerTree above).
+  const workerPidFile = path.join(dir, 'worker.pid')
+  let workerPid = null
+  try { workerPid = parseInt(fs.readFileSync(workerPidFile, 'utf8').trim(), 10) } catch { /* missing → handled below */ }
+  if (Number.isInteger(workerPid) && workerPid > 0) {
+    let alive = true
+    try { process.kill(workerPid, 0) } catch { alive = false }   // ESRCH on the very first check → already dead
+    if (alive) await killWorkerTree(workerPid)
+    else console.error(`[takeover ${id}] worker.pid ${workerPid} already exited — proceeding without killing a prior process (older session predating this fix, or already finished)`)
+  } else {
+    console.error(`[takeover ${id}] no worker.pid found — proceeding without killing a prior process (older session predating this fix, or already finished)`)
+  }
+
+  // Copilot needs a GH token on the environment for `gh`-backed auth; mirror cp-stream's
+  // bash helper (stream-utils.sh maybe_export_gh_token) exactly — opt-out via
+  // CLI_DISPATCH_NO_GH_TOKEN, respect an already-set token, tolerate `gh` being missing or
+  // failing, never throw/block the request path on failure.
+  if (backend === 'copilot') {
+    if (!process.env.COPILOT_GITHUB_TOKEN && !process.env.GH_TOKEN && !process.env.GITHUB_TOKEN && !process.env.CLI_DISPATCH_NO_GH_TOKEN) {
+      try {
+        const tok = execSync('gh auth token', { encoding: 'utf8' }).trim()
+        if (tok) process.env.GH_TOKEN = tok
+      } catch (e) {
+        console.error(`[takeover ${id}] gh auth token fallback failed (non-fatal, proceeding without GH_TOKEN): ${String((e && e.message) || e)}`)
+      }
+    }
+  }
+
+  let cmd
+  try {
+    cmd = buildTakeoverCommand(backend, meta)
+  } catch (e) {
+    return releaseAndFail(500, { error: 'failed to build takeover command: ' + String((e && e.message) || e) })
+  }
+
+  let ptyHandle
+  try {
+    ptyHandle = await spawnPtyHost({ ...cmd, cols: 80, rows: 24 })
+  } catch (e) {
+    return releaseAndFail(500, { error: 'failed to spawn pty: ' + String((e && e.message) || e) })
+  }
+
+  // Fill in the reservation now that the PTY is live (entry is already in the registry).
+  const token = crypto.randomBytes(32).toString('base64url')
+  const host = `127.0.0.1:${ACTUAL_PORT}`
+  entry.token = token
+  entry.ptyHandle = ptyHandle
+  entry.host = host
+
+  // FIX 4: persist the PTY child's pid/pgid so the out-of-process reaper (cli-dispatch-
+  // clean.mjs) can kill an orphaned tree if dashboard-server itself dies. Not secret (unlike
+  // the token) — safe to write to disk.
+  markTakeoverActive(statusFile, { host, ptyPid: ptyHandle.pid, ptyPgid: ptyHandle.pgid })
+  try { fs.appendFileSync(progressLog, `--- human takeover @ ${new Date().toISOString()} ---\n`) } catch { /* ignore */ }
+
+  // If the PTY dies on its own (crash, `exit` typed inside codex, etc.) — not via an
+  // explicit POST /handback — this is the ONE place that writes the terminal status.json
+  // state for that case (see finalizeTakeover's doc comment above; the WS bridge's own
+  // onExit listener, registered separately in bridgePty(), only notifies the browser and
+  // must never also call finalizeTakeover/clearTakeoverState — that would double-write).
+  ptyHandle.onExit((code) => {
+    finalizeTakeover(id, {
+      finalState: code === 0 ? 'done' : 'error',
+      completedVia: 'human-takeover',
+      error: code === 0 ? undefined : 'takeover ended abnormally',
+    })
+  })
+
+  return send(res, 200, { ws: `/pty/${id}`, token, cols: 80, rows: 24 })
+}
+
+// ---- POST /api/worker/<id>/handback ----
+function handleHandback(req, res, rawId) {
+  if (!checkTakeoverAuth(req, res, { requireCustomHeader: true })) return
+  const id = decodeURIComponent(rawId)
+  if (!okId(id)) return send(res, 400, { error: 'bad id' })
+  const entry = takeoverRegistry.get(id)
+  if (!entry) return send(res, 404, { error: 'no active takeover for this session' })
+
+  // codex's interactive resume has no documented graceful "/exit" slash-command guarantee
+  // (see the SDD's per-backend table) — a plain kill() is acceptable for Phase 1.
+  // pty-host.mjs's kill() already does TERM-then-KILL internally (node-pty mode) or a
+  // full process-group TERM-then-KILL (script-fallback mode), so this is not a bare
+  // SIGKILL.
+  try { entry.ptyHandle.kill() } catch { /* ignore */ }
+
+  // The human explicitly asked to hand back, so this is by definition a clean/intentional
+  // end — only a PTY that died UNEXPECTEDLY *before* handback was requested is "abnormal"
+  // (that path is handleTakeover's own ptyHandle.onExit listener, above).
+  finalizeTakeover(id, { finalState: 'done', completedVia: 'human-takeover' })
+
+  return send(res, 200, { state: 'done' })
+}
+
+// ---- hand-rolled RFC6455 WebSocket framing (stdlib-only; ADR-0001/SDD "Teknoloji Seçimleri") ----
+//
+// Phase 1 simplification, documented per the SDD: only single-frame text messages are
+// handled (realistic for keystroke/resize-sized control messages and PTY-output chunks);
+// multi-frame fragmentation is NOT implemented.
+
+function sendWsFrame(socket, strPayload) {
+  const payload = Buffer.from(strPayload, 'utf8')
+  const len = payload.length
+  let header
+  if (len < 126) {
+    header = Buffer.alloc(2); header[0] = 0x81; header[1] = len
+  } else if (len < 65536) {
+    header = Buffer.alloc(4); header[0] = 0x81; header[1] = 126; header.writeUInt16BE(len, 2)
+  } else {
+    header = Buffer.alloc(10); header[0] = 0x81; header[1] = 127; header.writeBigUInt64BE(BigInt(len), 2)
+  }
+  try { socket.write(Buffer.concat([header, payload])) } catch { /* ignore — e.g. socket already closed */ }
+}
+function sendWsClose(socket, code = 1000) {
+  const buf = Buffer.alloc(4); buf[0] = 0x88; buf[1] = 2; buf.writeUInt16BE(code, 2)
+  try { socket.write(buf) } catch { /* ignore */ }
+}
+function sendWsPong(socket, payload) {
+  const header = Buffer.alloc(2); header[0] = 0x8a; header[1] = payload.length
+  try { socket.write(Buffer.concat([header, payload])) } catch { /* ignore */ }
+}
+
+// Parses client→server frames off `socket` (always masked per RFC6455 — unmasked here).
+// `onMessage(str)` fires per complete text frame; `onClose()` fires on a close frame or
+// socket-level close/error/end. NOTE the 'end' case is load-bearing (FIX 8): when a browser
+// tab is closed, the client half-closes (sends a FIN) and the OS-level socket emits 'end'
+// but may NOT emit 'close' for a while (the write side stays open until we end() it). Without
+// wiring 'end' too, teardown — and therefore the abandoned-takeover reaper's wsDisconnectedAt
+// stamp — would never fire on a closed tab. doClose is idempotent, so also-firing on the
+// later 'close' is harmless.
+function attachWsFrameParser(socket, onMessage, onClose) {
+  let buf = Buffer.alloc(0)
+  let closed = false
+  const doClose = () => { if (closed) return; closed = true; onClose() }
+  socket.on('data', (chunk) => {
+    buf = Buffer.concat([buf, chunk])
+    for (;;) {
+      if (buf.length < 2) return
+      const b1 = buf[1]
+      const masked = !!(b1 & 0x80)
+      let len = b1 & 0x7f
+      let offset = 2
+      if (len === 126) {
+        if (buf.length < offset + 2) return
+        len = buf.readUInt16BE(offset); offset += 2
+      } else if (len === 127) {
+        if (buf.length < offset + 8) return
+        len = Number(buf.readBigUInt64BE(offset)); offset += 8
+      }
+      let maskKey = null
+      if (masked) {
+        if (buf.length < offset + 4) return
+        maskKey = buf.subarray(offset, offset + 4); offset += 4
+      }
+      if (buf.length < offset + len) return
+      let payload = buf.subarray(offset, offset + len)
+      if (masked) {
+        const unmasked = Buffer.alloc(len)
+        for (let i = 0; i < len; i++) unmasked[i] = payload[i] ^ maskKey[i % 4]
+        payload = unmasked
+      }
+      const opcode = buf[0] & 0x0f
+      buf = buf.subarray(offset + len)
+      if (opcode === 0x8) { doClose(); return }               // close
+      else if (opcode === 0x9) { sendWsPong(socket, payload) } // ping -> pong
+      else if (opcode === 0xa) { /* pong received, ignore */ }
+      else if (opcode === 0x1) { onMessage(payload.toString('utf8')) }
+      // binary/continuation frames: not needed for Phase 1 (keystrokes/resize/output are
+      // all single-frame text), silently ignored.
+    }
+  })
+  socket.on('close', doClose)
+  socket.on('error', doClose)
+  socket.on('end', doClose)   // FIX 8: half-close (client tab closed → FIN) — see doc comment above
+}
+
+// RFC6455 handshake + bridge wiring for GET /pty/<id>, called once auth/token have
+// already passed in the 'upgrade' handler below.
+function performWsHandshake(req, socket, entry) {
+  const key = req.headers['sec-websocket-key']
+  if (!key) return rejectUpgrade(socket, 400, 'Bad Request')
+  const acceptKey = crypto.createHash('sha1').update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64')
+  socket.write(
+    'HTTP/1.1 101 Switching Protocols\r\n' +
+    'Upgrade: websocket\r\n' +
+    'Connection: Upgrade\r\n' +
+    'Sec-WebSocket-Accept: ' + acceptKey + '\r\n\r\n'
+  )
+  entry.wsSocket = socket
+  // FIX 8: a WS (re)connecting clears any pending abandonment timer — this entry is live again.
+  entry.wsDisconnectedAt = null
+  bridgePty(socket, entry)
+}
+
+function bridgePty(socket, entry) {
+  const { ptyHandle, statusFile } = entry
+
+  // Capture THIS bridge's own heartbeat timer in a local (not only entry.heartbeatTimer) so
+  // teardown clears exactly the timer it created. Without this, the FIX-7 socket swap (an old
+  // socket force-closed while a new one is already bridging) would let the OLD socket's async
+  // teardown clear the NEW socket's heartbeat, because entry.heartbeatTimer has since been
+  // reassigned to the new timer.
+  const heartbeatTimer = setInterval(() => { touchTakeoverHeartbeat(statusFile) }, 30000)
+  heartbeatTimer.unref?.()
+  entry.heartbeatTimer = heartbeatTimer
+
+  let torn = false
+  const teardown = () => {
+    if (torn) return
+    torn = true
+    clearInterval(heartbeatTimer)
+    if (entry.heartbeatTimer === heartbeatTimer) entry.heartbeatTimer = null
+    // Only null the registry pointer + arm the FIX-8 abandonment clock if THIS socket is
+    // still the entry's current socket (after a FIX-7 swap it won't be — the new socket owns
+    // the entry and must not be disturbed by the old one's teardown).
+    if (entry.wsSocket === socket) { entry.wsSocket = null; entry.wsDisconnectedAt = Date.now() }
+  }
+
+  // pty-host.mjs now hands back an already-decoded STRING chunk in BOTH modes (node-pty and
+  // script-fallback; it does UTF-8 reassembly internally via persistent TextDecoders — C3),
+  // so no further decoding is needed or correct here — use the chunk directly (the old
+  // chunk.toString('utf8') was a redundant no-op on an already-string value).
+  ptyHandle.onData((chunk) => sendWsFrame(socket, JSON.stringify({ t: 'o', d: chunk })))
+
+  // Notifies the browser only — does NOT write status.json (see the doc comment on
+  // handleTakeover's own ptyHandle.onExit listener above: that is the single writer).
+  ptyHandle.onExit((code) => {
+    sendWsFrame(socket, JSON.stringify({ t: 'exit', code }))
+    try { socket.end() } catch { /* ignore */ }
+    teardown()
+  })
+
+  attachWsFrameParser(socket, (msgStr) => {
+    let msg
+    try { msg = JSON.parse(msgStr) } catch { return }
+    if (!msg || typeof msg !== 'object') return
+    if (msg.t === 'i' && typeof msg.d === 'string') ptyHandle.write(msg.d)
+    else if (msg.t === 'r' && Number.isFinite(msg.cols) && Number.isFinite(msg.rows)) ptyHandle.resize(msg.cols, msg.rows)
+  }, () => {
+    sendWsClose(socket)
+    try { socket.end() } catch { /* ignore */ }
+    teardown()
+  })
+}
+// ==== end human-takeover ========================================================
+
 // Resolve a `watch` spec to concrete file/dir targets for SSE fs.watch.
 // Returns [{path, recursive}]. Invalid/unknown specs → [] (stream stays open, heartbeat only).
 function watchTargets(spec) {
@@ -365,7 +908,7 @@ function sse(req, res, spec) {
   req.on('close', () => { clearInterval(hb); clearTimeout(t); for (const w of watchers) { try { w.close() } catch {} } })
 }
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://127.0.0.1')
   const p = u.pathname
   try {
@@ -373,6 +916,7 @@ const server = http.createServer((req, res) => {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(PAGE); return
     }
     if (p === '/favicon.ico') { res.writeHead(204); res.end(); return }
+    if (Object.prototype.hasOwnProperty.call(VENDOR_FILES, p)) return serveVendorAsset(p, res)
     if (p === '/api/stream') return sse(req, res, u.searchParams.get('watch') || 'sessions')
     if (p === '/api/sessions') return send(res, 200, listSessions())
     if (p === '/api/workers') return send(res, 200, listWorkers())
@@ -403,11 +947,77 @@ const server = http.createServer((req, res) => {
       if (!dir.startsWith(path.resolve(WORKERS_ROOT) + path.sep) || !isDir(dir)) return send(res, 404, { error: 'not found' })
       return send(res, 200, workerFlow(id))
     }
+    // ---- human-takeover write endpoints (opt-in; see .specs/dev/sdd/human-takeover.md) ----
+    if ((m = p.match(/^\/api\/worker\/([^/]+)\/takeover$/)) && req.method === 'POST') {
+      return await handleTakeover(req, res, m[1])
+    }
+    if ((m = p.match(/^\/api\/worker\/([^/]+)\/handback$/)) && req.method === 'POST') {
+      return handleHandback(req, res, m[1])
+    }
     send(res, 404, { error: 'no route' })
   } catch (e) {
     send(res, 500, { error: String(e && e.message || e) })
   }
 })
+
+// GET /pty/<id>?token=<t> — WebSocket upgrade for the human-takeover terminal bridge. No
+// 'upgrade' handler existed before this feature; this is the only place a WebSocket is
+// ever accepted by this server.
+server.on('upgrade', (req, socket) => {
+  socket.on('error', () => { /* avoid an uncaught 'error' crashing the process, e.g. ECONNRESET */ })
+  let u
+  try { u = new URL(req.url, 'http://127.0.0.1') } catch { return rejectUpgrade(socket, 400, 'Bad Request') }
+  const m = u.pathname.match(/^\/pty\/([^/]+)$/)
+  if (!m) return rejectUpgrade(socket, 404, 'Not Found')
+  const id = decodeURIComponent(m[1])
+  if (!okId(id)) return rejectUpgrade(socket, 400, 'Bad Request')
+
+  // Same Origin+Host fail-closed checks as the POST endpoints (custom-header check does
+  // NOT apply here — GET/WS is not a preflight-eligible verb, see validateTakeoverRequest).
+  const auth = validateTakeoverRequest(req, { requireCustomHeader: false })
+  if (!auth.ok) return rejectUpgrade(socket, 403, 'Forbidden')
+
+  const entry = takeoverRegistry.get(id)
+  if (!entry || !entry.ptyHandle) return rejectUpgrade(socket, 404, 'Not Found')
+
+  // Constant-time token compare. Reject immediately (without calling timingSafeEqual) on
+  // a length mismatch — timingSafeEqual throws on unequal-length buffers. This length
+  // check does technically leak length via timing, but the token is a fixed-length
+  // (32-byte) base64url string, so this is a non-issue in practice.
+  const providedToken = u.searchParams.get('token') || ''
+  const expected = Buffer.from(entry.token, 'utf8')
+  const provided = Buffer.from(providedToken, 'utf8')
+  if (provided.length !== expected.length || !crypto.timingSafeEqual(provided, expected)) {
+    return rejectUpgrade(socket, 403, 'Forbidden')
+  }
+
+  // FIX 7: single-active-viewer semantics. If a previous WS is still bridged to this entry,
+  // close+destroy it cleanly FIRST before bridging the new one. socket.destroy() makes the old
+  // socket emit 'close', which drives its attachWsFrameParser's doClose → the bridge's onClose
+  // → teardown (heartbeat timer cleared). The FIX-8/teardown guards (local heartbeat timer,
+  // `entry.wsSocket === socket` check) ensure the old socket's async teardown does NOT clear
+  // the new socket's heartbeat or null out the new socket. Multi-viewer is out of scope.
+  if (entry.wsSocket && entry.wsSocket !== socket) {
+    const old = entry.wsSocket
+    sendWsClose(old)
+    try { old.destroy() } catch { /* ignore */ }
+  }
+
+  // NEVER log req.url here or anywhere on this path — it carries the takeover token in
+  // its query string (TL17).
+  performWsHandshake(req, socket, entry)
+})
+
+// Explicit SIGTERM handler for THIS process. pty-host.mjs (imported above) registers its
+// own 'SIGTERM' listener the first time a takeover is ever spawned, to kill any live
+// hosted PTYs — but adding a 'SIGTERM' listener in Node SUPPRESSES the default
+// terminate-on-SIGTERM behavior for the WHOLE process, not just that listener's own
+// concern. Without an explicit handler here that actually calls process.exit(), this
+// server would become unkillable via SIGTERM once a takeover has occurred, breaking the
+// `kill <pid>` shutdown instructions in dashboard.md. Registered unconditionally (not
+// only once a takeover has fired) so shutdown behavior never depends on whether a
+// takeover has happened yet.
+process.on('SIGTERM', () => { process.exit(0) })
 
 function listen(port, tries = 12) {
   server.once('error', (e) => {
@@ -415,8 +1025,9 @@ function listen(port, tries = 12) {
     else { console.error('dashboard: ' + e.message); process.exit(1) }
   })
   server.listen(port, '127.0.0.1', () => {
-    const url = 'http://127.0.0.1:' + port
-    console.error('cli-dispatch dashboard → ' + url + '  (read-only; Ctrl-C to stop)')
+    ACTUAL_PORT = server.address().port
+    const url = 'http://127.0.0.1:' + ACTUAL_PORT
+    console.error('cli-dispatch dashboard → ' + url + '  (read-only by default; Ctrl-C to stop)')
     if (OPEN) {
       const cmd = process.platform === 'darwin' ? 'open' : (process.platform === 'win32' ? 'explorer.exe' : 'xdg-open')
       try { spawnSync(cmd, [url], { stdio: 'ignore' }) } catch {}
@@ -427,6 +1038,9 @@ listen(PORT)
 
 // ---- embedded single-page UI ----
 const PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>cli-dispatch dashboard</title>
+<link rel="stylesheet" href="/vendor/xterm.css">
+<script src="/vendor/xterm.js"></script>
+<script src="/vendor/xterm-addon-fit.js"></script>
 <style>
 :root{--bg:#0d1117;--panel:#161b22;--bd:#30363d;--fg:#e6edf3;--dim:#8b949e;--acc:#ff7a18;--g:#3fb950;--y:#d29922;--lnk:#58a6ff}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
@@ -449,8 +1063,11 @@ header b{color:var(--acc)} .grow{flex:1}
 .crumb{margin-bottom:10px;color:var(--dim)}.crumb a{color:var(--lnk);cursor:pointer;text-decoration:none}
 .badge{border:1px solid var(--bd);border-radius:10px;padding:1px 7px;font-size:11px;color:var(--dim);margin-left:6px}
 .step{padding:6px 8px;border-left:2px solid var(--bd);margin:4px 0}
-.step.tool{border-color:var(--acc)}.step.prompt{border-color:var(--lnk)}.step.message{border-color:#444c56}
-.step.thinking{border-color:#373e47;color:var(--dim)}.step.log{border-color:#373e47}
+.step.tool{border-color:var(--acc)}.step.prompt{border-color:var(--lnk)}.step.message{border-color:var(--lnk)}
+.step.thinking{border-color:#373e47;color:var(--dim);font-style:italic}.step.log{border-color:#373e47}
+.step.errline{border-color:#f85149;color:#f85149}
+.step.result{border-color:var(--bd);margin:2px 0 2px 14px;padding:2px 8px;font-size:11px;color:var(--dim)}
+.step.result.ok{color:var(--g)}.step.result.err{color:#f85149}
 .k{color:var(--acc)}.ok{color:var(--g)}.err{color:#f85149}
 .md{display:inline}.md>div{margin:1px 0}.md-h{font-weight:700;color:var(--fg);margin:6px 0 2px}
 .md-ul{margin:2px 0;padding-left:18px}.md-ul li{margin:1px 0}
@@ -474,19 +1091,28 @@ header b{color:var(--acc)} .grow{flex:1}
 .sa.act{border-color:var(--g);color:var(--g)}
 .live{color:var(--g)}
 a.agentlink{color:var(--lnk);cursor:pointer}
+.human{background:#a371f7}
+.badge.human{border-color:#a371f7;color:#a371f7}
+#takeover{display:none;margin-bottom:10px}
+.tkbar{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.tkbtn{background:#1f2630;border:1px solid var(--bd);color:var(--fg);border-radius:6px;padding:5px 12px;cursor:pointer;font:inherit}
+.tkbtn:hover{background:#2a323d;border-color:var(--acc)}
+.tkbtn-off{border-color:#a371f7;color:#a371f7}
+.term-wrap{border:1px solid var(--bd);border-radius:8px;padding:6px;background:#000;height:380px}
+#tkTerm{height:100%}
 </style></head><body>
 <header><b>cli-dispatch</b> <span class="muted">dashboard</span><span class="grow"></span>
-<span class="small muted" id="meta"></span><span class="small muted">· read-only · localhost</span></header>
+<span class="small muted" id="meta"></span><span class="small muted">· read-only by default · opt-in takeover</span></header>
 <div class="layout">
  <div class="rail">
    <div class="tabs"><div class="tab on" id="tabCC">Claude Code</div><div class="tab" id="tabW">cli-dispatch workers</div></div>
    <div id="filter" class="filter"></div>
    <div id="list"></div>
  </div>
- <div class="main"><div class="crumb" id="crumb">Select a session…</div><div id="view" class="empty">←</div></div>
+ <div class="main"><div class="crumb" id="crumb">Select a session…</div><div id="takeover"></div><div id="view" class="empty">←</div></div>
 </div>
 <script>
-let mode='cc', sel=null, flt='all', wFlt='all'
+let mode='cc', sel=null, flt='busy', wFlt='all'
 function setFilter(k){ flt=k; loadList() }
 function setWFilter(k){ wFlt=k; loadList() }
 // Live updates via Server-Sent Events. One detail stream for the open item; it
@@ -551,6 +1177,10 @@ function md(t){
 // Times come from disk as UTC ISO; render in the viewer's local timezone.
 const fmtTime=(iso)=>{const d=iso?new Date(iso):null;return d&&!isNaN(d)?d.toLocaleTimeString([],{hour12:false}):''}
 const fmtDT=(iso)=>{const d=iso?new Date(iso):null;return d&&!isNaN(d)?d.toLocaleString([],{hour12:false}).replace(',',''):''}
+// Worker cwd is a real filesystem path (often a throwaway worktree, e.g. /tmp/wt-603) rather
+// than the CC tab's ~/.claude/projects/ dash-encoded name — last two path segments is the
+// closest equivalent short label ("parent/leaf") without guessing at the origin repo.
+const shortProj=(cwd)=>{if(!cwd) return '';const parts=cwd.split('/').filter(Boolean);return parts.slice(-2).join('/')}
 const fmtUsage=(u,detailed)=>{
   if(!u) return null
   const inTok=u.inTok, outTok=u.outTok, costUsd=u.costUsd
@@ -574,6 +1204,16 @@ const fmtUsage=(u,detailed)=>{
   return { tokStr, costStr }
 }
 async function j(u){const r=await fetch(u);return r.json()}
+// Single source of truth for how a worker's raw {state, stale} maps to a filter-chip/badge
+// bucket. 'human-controlled' gets its own bucket (previously fell through the catch-all
+// into 'error', which is wrong — a human quietly watching a session is not a failure).
+function workerBucket(w){
+  if(w.state==='human-controlled') return 'human'
+  if(w.stale||w.state==='error') return 'error'
+  if(w.state==='running') return 'running'
+  if(w.state==='done') return 'done'
+  return 'error'
+}
 
 async function loadList(){
   const el=document.getElementById('list')
@@ -593,22 +1233,25 @@ async function loadList(){
     })
   }else{
     const ws=await j('/api/workers')
-    const wCounts={all:ws.length,running:0,done:0,error:0}
-    ws.forEach(w=>{ const k=w.stale||w.state==='error'?'error':w.state==='running'?'running':w.state==='done'?'done':'error'; wCounts[k]=(wCounts[k]||0)+1 })
+    const wCounts={all:ws.length,running:0,human:0,done:0,error:0}
+    ws.forEach(w=>{ const k=workerBucket(w); wCounts[k]=(wCounts[k]||0)+1 })
     fb.style.display='flex'
-    fb.innerHTML=[['all',wCounts.all],['running',wCounts.running],['done',wCounts.done],['error',wCounts.error]].map(([k,n])=>'<span class="fchip'+(wFlt===k?' on':'')+'" onclick="setWFilter(\\''+k+'\\')">'+k+'<span class="c">'+n+'</span></span>').join('')
+    fb.innerHTML=[['all',wCounts.all],['running',wCounts.running],['human',wCounts.human],['done',wCounts.done],['error',wCounts.error]].map(([k,n])=>'<span class="fchip'+(wFlt===k?' on':'')+'" onclick="setWFilter(\\''+k+'\\')">'+k+'<span class="c">'+n+'</span></span>').join('')
     document.getElementById('meta').textContent=ws.length+' workers'
-    const shown=wFlt==='all'?ws:ws.filter(w=>{ const k=w.stale||w.state==='error'?'error':w.state==='running'?'running':w.state==='done'?'done':'error'; return k===wFlt })
+    const shown=wFlt==='all'?ws:ws.filter(w=>workerBucket(w)===wFlt)
     shown.forEach(w=>{
-      const live=w.state==='running'&&!w.stale
-      const dot=live?'busy':w.state==='done'?'closed':'idle'
+      const bucket=workerBucket(w)
+      const live=bucket==='running'
+      const dot=live?'busy':bucket==='human'?'human':bucket==='done'?'closed':bucket==='error'?'idle':'idle'
       const badge=w.stale?'stale':w.state
+      const badgeCls='badge'+(bucket==='human'?' human':'')
       const u=fmtUsage(w.usage)
       let usageLine=''
       if(u&&(u.tokStr||u.costStr)){
         usageLine=' · '+(u.tokStr?esc(u.tokStr):'')+(u.tokStr&&u.costStr?' · ':'')+(u.costStr?esc(u.costStr):'')
       }
-      const h='<div class="item'+(sel===w.id?' sel':'')+'"><div><span class="dot '+dot+'"></span>'+esc(w.backend)+' <span class="c">'+(w.model?esc(w.model):'default')+'</span> <span class="badge">'+esc(badge)+'</span></div><div class="small muted">'+esc(w.prompt||w.id.slice(0,8))+'</div><div class="small muted">'+esc(fmtDT(w.started))+(w.lastTool?' · '+esc(w.lastTool):'')+usageLine+'</div></div>'
+      const proj=shortProj(w.cwd)
+      const h='<div class="item'+(sel===w.id?' sel':'')+'"><div><span class="dot '+dot+'"></span>'+esc(w.backend)+' <span class="c">'+(w.model?esc(w.model):'default')+'</span> <span class="'+badgeCls+'">'+esc(badge)+'</span></div>'+(proj?'<div class="small muted">'+esc(proj)+'</div>':'')+'<div class="small muted">'+esc(w.prompt||w.id.slice(0,8))+'</div><div class="small muted">'+esc(fmtDT(w.started))+(w.lastTool?' · '+esc(w.lastTool):'')+usageLine+'</div></div>'
       const it=E(h); it.onclick=()=>openWorker(w); frag.appendChild(it); sig.push(h)
     })
   }
@@ -619,6 +1262,11 @@ async function loadList(){
   const rail=el.parentElement; const sc=rail.scrollTop
   el.replaceChildren(frag); rail.scrollTop=sc
 }
+// worker progress.log lines already carry a leading glyph per event type (written by
+// {ag,cx,ds,oc,cp}-*-parse.mjs — see appendProgress() call sites); map that glyph to the
+// same step classes native CC tool/message/thinking steps use, so workers get equal
+// visual separation instead of one flat "log" bucket.
+const LOG_GLYPH_KIND={'·':'message','✻':'thinking','$':'tool','✎':'tool','▸':'tool','🔎':'tool','☑':'tool','✗':'errline'}
 function renderFlow(steps){
   if(!steps||!steps.length) return '<div class="empty">no steps</div>'
   return steps.slice().reverse().map(s=>{
@@ -631,8 +1279,29 @@ function renderFlow(steps){
     if(s.kind==='prompt') return '<div class="step prompt">▸ <span class="md">'+md(s.text)+'</span></div>'
     if(s.kind==='message') return '<div class="step message">⏺ <span class="md">'+md(s.text)+'</span></div>'
     if(s.kind==='thinking') return '<div class="step thinking">✻ '+esc(s.text)+'</div>'
+    if(s.kind==='log'){
+      const raw=s.text||''
+      const rm=raw.match(/^\s{2}(✓|✗)\s?(.*)$/)
+      if(rm) return '<div class="step result '+(rm[1]==='✓'?'ok':'err')+'">⎿ '+esc(rm[2])+'</div>'
+      const t=raw.replace(/^\s+/,'')
+      const g=t.charAt(0), kind=LOG_GLYPH_KIND[g]
+      if(kind){
+        const rest=t.slice(1).trim()
+        const body=kind==='message'?'<span class="md">'+md(rest)+'</span>':esc(rest).replace(/\(exit (\d+)\)$/,(mm,c)=>c==='0'?'<span class="ok">(exit 0)</span>':'<span class="err">(exit '+c+')</span>')
+        return '<div class="step '+kind+'">'+esc(g)+' '+body+'</div>'
+      }
+      return '<div class="step log">'+esc(raw)+'</div>'
+    }
     return '<div class="step log">'+esc(s.text)+'</div>'
   }).join('')
+}
+function usageHtml(usage){
+  const u=fmtUsage(usage,true)
+  if(!u||(!u.tokStr&&!u.costStr)) return ''
+  const parts=[]
+  if(u.tokStr) parts.push(u.tokStr)
+  if(u.costStr) parts.push(u.costStr)
+  return '<div class="small muted" style="margin:4px 8px 12px">Usage: '+esc(parts.join(' · '))+'</div>'
 }
 function workerPanelHtml(lw){ if(!lw||!lw.length) return ''
   return '<details class="panel wk"><summary>Worker sessions (ds/ag/cx/oc/cp) <span class="badge">'+lw.length+'</span></summary><div class="sabody">'+lw.map(w=>'<span class="sa" onclick="openWorkerById(\\''+escAttr(w.id)+'\\')">'+esc(w.backend)+' ('+(w.model?esc(w.model):'default')+'): '+esc(w.prompt||w.id.slice(0,12))+' <span class="c">'+esc(w.stale?'stale':w.state)+'</span></span>').join('')+'</div></details>' }
@@ -640,6 +1309,7 @@ function openWorkerById(id){ fetch('/api/workers').then(r=>r.json()).then(ws=>{c
 function chipHtml(a){const t=fmtTime(a.startedAt);return '<span class="sa'+(a.active?' act':'')+'" onclick="openSub(\\''+escAttr(a.agentId)+'\\','+(a.active?'true':'false')+')">'+(a.active?'● ':'')+esc(a.agentType)+': '+esc(a.description||a.agentId.slice(0,8))+(a.spawnDepth>1?' ·d'+a.spawnDepth:'')+(t?' <span class="c">'+t+'</span>':'')+'</span>'}
 async function openSession(s){
   sel=s.id; mode='cc'
+  takeoverTeardown(); { const tk=document.getElementById('takeover'); tk.style.display='none'; tk.innerHTML='' }
   document.getElementById('crumb').innerHTML='<a onclick="back()">sessions</a> › '+esc(s.id.slice(0,8))+' <span class="muted">('+esc(s.status)+')</span>'
   const prevPanel=document.querySelector('#view details.restpanel'); const subsOpen=prevPanel?prevPanel.open:false
   const key='session:'+s.id
@@ -654,6 +1324,7 @@ async function openSession(s){
     if(rest.length) h+='<details class="panel restpanel"'+(subsOpen?' open':'')+'><summary>Subagents <span class="badge">'+rest.length+'</span></summary><div class="sabody">'+rest.map(chipHtml).join('')+'</div></details>'
   }
   h+=workerPanelHtml(flow.linkedWorkers)
+  h+=usageHtml(flow.usage)
   h+=renderFlow(flow.steps)+(flow.truncated?'<div class="small muted">(showing last '+flow.steps.length+' of '+flow.total+')</div>':'')
   setView(key,h); loadList()
   watchDetail(s.status==='busy'?'session:'+s.id:null, ()=>openSession(s))
@@ -667,12 +1338,116 @@ async function openSub(aid,active){
   if(v._k!==key){ v._k=key; v._h=null; v.className=''; v.innerHTML='loading…' }
   const flow=await j('/api/subagent/'+sid+'/'+aid+'/flow')
   window._cur={type:'sub',sid:sid,aid:aid}
-  setView(key,workerPanelHtml(flow.linkedWorkers)+renderFlow(flow.steps)+(flow.truncated?'<div class="small muted">(last '+flow.steps.length+' of '+flow.total+')</div>':''))
+  setView(key,workerPanelHtml(flow.linkedWorkers)+usageHtml(flow.usage)+renderFlow(flow.steps)+(flow.truncated?'<div class="small muted">(last '+flow.steps.length+' of '+flow.total+')</div>':''))
   watchDetail(active?'subagent:'+sid+':'+aid:null, ()=>openSub(aid,true))
 }
+// ==== human-takeover UI (codex / deepseek / antigravity / opencode / copilot) ======
+// activeTakeover holds THIS tab's live view of an in-progress takeover: the open
+// WebSocket + mounted xterm.js Terminal (+ its FitAddon/ResizeObserver, if the fit addon
+// loaded). Never persisted anywhere — a page reload loses this tab's live terminal
+// (Phase 1: no reconnect, see the SDD's non-goals). The token lives only in the WS URL
+// built in takeoverMount and is never logged to the console (matches the server-side
+// "never log the token" invariant).
+let activeTakeover=null
+
+function takeoverTeardown(){
+  if(!activeTakeover) return
+  const at=activeTakeover; activeTakeover=null
+  try{ if(at.resizeObserver) at.resizeObserver.disconnect() }catch(e){}
+  try{ at.ws.close() }catch(e){}
+  try{ at.term.dispose() }catch(e){}
+}
+
+function takeoverStart(id,backend){
+  fetch('/api/worker/'+encodeURIComponent(id)+'/takeover',{method:'POST',headers:{'X-CLI-Dispatch-Takeover':'1'}})
+    .then(r=>r.json().then(body=>({ok:r.ok,body:body})))
+    .then(res=>{ if(!res.ok) throw new Error((res.body&&res.body.error)||'takeover failed'); takeoverMount(id,res.body,backend) })
+    .catch(e=>{ alert('Take control failed: '+e.message) })
+}
+
+// Builds the terminal DOM + opens the WS, per the SDD flow: POST takeover -> open WS
+// with token -> xterm attaches. Resolved same-origin (location.protocol/host), never
+// hardcoded — this server may have hopped to a different port on EADDRINUSE.
+function takeoverMount(id,res,backend){
+  takeoverTeardown()
+  const el=document.getElementById('takeover')
+  el.style.display='block'
+  el.innerHTML='<div class="tkbar"><button class="tkbtn tkbtn-off" id="tkBackBtn">Hand back</button><span class="small muted">live terminal · '+esc(backend||'?')+'</span></div><div class="term-wrap"><div id="tkTerm"></div></div>'
+  document.getElementById('tkBackBtn').onclick=()=>takeoverHandback(id)
+  const term=new Terminal({cols:res.cols||80,rows:res.rows||24,convertEol:true,theme:{background:'#000000',foreground:'#e6edf3'}})
+  let fit=null
+  if(window.FitAddon&&window.FitAddon.FitAddon){ fit=new window.FitAddon.FitAddon(); term.loadAddon(fit) }
+  term.open(document.getElementById('tkTerm'))
+  const proto=(location.protocol==='https:'?'wss://':'ws://')
+  const ws=new WebSocket(proto+location.host+res.ws+'?token='+encodeURIComponent(res.token))
+  activeTakeover={id:id,ws:ws,term:term,fit:fit,resizeObserver:null}
+  // Keystrokes typed before the WS handshake completes (PTY spawn + upgrade round-trip is
+  // not instant) must not be silently dropped — buffer them and flush in order on 'open'.
+  let pendingInput=''
+  const sendResize=()=>{
+    if(!fit) return
+    try{ fit.fit() }catch(e){ return }
+    if(ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify({t:'r',cols:term.cols,rows:term.rows}))
+  }
+  ws.addEventListener('open', ()=>{
+    if(pendingInput){ ws.send(JSON.stringify({t:'i',d:pendingInput})); pendingInput='' }
+    sendResize()
+  })
+  ws.addEventListener('message', ev=>{
+    let msg=null
+    try{ msg=JSON.parse(ev.data) }catch(e){ return }
+    if(!msg) return
+    if(msg.t==='o') term.write(msg.d)
+    else if(msg.t==='exit'){ term.write('\\r\\n\\r\\n[session ended, code '+msg.code+']\\r\\n'); term.options.disableStdin=true }
+  })
+  ws.addEventListener('close', ()=>{ term.options.disableStdin=true })
+  term.onData(d=>{ if(ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify({t:'i',d:d})); else pendingInput+=d })
+  if(fit){
+    const wrap=document.querySelector('#takeover .term-wrap')
+    const ro=new ResizeObserver(sendResize)
+    ro.observe(wrap)
+    activeTakeover.resizeObserver=ro
+  }
+}
+
+function takeoverHandback(id){
+  fetch('/api/worker/'+encodeURIComponent(id)+'/handback',{method:'POST',headers:{'X-CLI-Dispatch-Takeover':'1'}})
+    .catch(()=>{})
+    .then(()=>{
+      takeoverTeardown()
+      const el=document.getElementById('takeover'); el.style.display='none'; el.innerHTML=''
+      loadList()
+    })
+}
+
+// Renders the take-control/hand-back bar for the currently open worker. Called from
+// openWorker() on every render, including SSE-triggered refreshes — but if THIS tab
+// already holds the live terminal for this worker id, it's a deliberate no-op (leaving
+// the mounted xterm.js instance + its WebSocket alone; rebuilding the DOM here on every
+// refresh would tear down a live terminal mid-session).
+function renderTakeoverBar(w){
+  const el=document.getElementById('takeover')
+  if(activeTakeover&&activeTakeover.id===w.id){ el.style.display='block'; return }
+  if(activeTakeover&&activeTakeover.id!==w.id) takeoverTeardown()
+  if(w.state==='running'&&['codex','deepseek','antigravity','opencode','copilot'].includes(w.backend)){
+    el.style.display='block'
+    el.innerHTML='<div class="tkbar"><button class="tkbtn" id="tkStartBtn" title="Take control of this session">Take control</button></div>'
+    document.getElementById('tkStartBtn').onclick=()=>takeoverStart(w.id,w.backend)
+    return
+  }
+  if(w.state==='human-controlled'){
+    el.style.display='block'
+    el.innerHTML='<div class="tkbar"><span class="small muted">human-controlled (attach from the tab that started it, or hand back)</span><button class="tkbtn tkbtn-off" id="tkBackBtn2">Hand back</button></div>'
+    document.getElementById('tkBackBtn2').onclick=()=>takeoverHandback(w.id)
+    return
+  }
+  el.style.display='none'; el.innerHTML=''
+}
+// ==== end human-takeover UI ========================================================
 async function openWorker(w){
   sel=w.id;
-  document.getElementById('crumb').innerHTML='<a onclick="back()">workers</a> › '+esc(w.backend)+' <span class="c">'+(w.model?esc(w.model):'default')+'</span> '+esc(w.id.slice(0,12))+' <span class="muted">('+esc(w.state)+')</span>'
+  document.getElementById('crumb').innerHTML='<a onclick="back()">workers</a> › '+esc(w.backend)+' <span class="c">'+(w.model?esc(w.model):'default')+'</span> '+esc(w.id.slice(0,12))+' <span class="muted">('+esc(w.stale?'stale':w.state)+')</span>'
+  renderTakeoverBar(w)
   const taskPanel=document.querySelector('#view details.panel.task'); const taskOpen=taskPanel?taskPanel.open:false
   const key='worker:'+w.id
   const v=document.getElementById('view')
@@ -680,20 +1455,14 @@ async function openWorker(w){
   const flow=await j('/api/worker/'+w.id+'/flow')
   let h=''
   if(flow.prompt) h+='<details class="panel task"'+(taskOpen?' open':'')+'><summary>Görev / talimat</summary><div class="sabody"><div class="md">'+md(flow.prompt)+'</div></div></details>'
-  const u=fmtUsage(flow.usage,true)
-  if(u&&(u.tokStr||u.costStr)){
-    const parts=[]
-    if(u.tokStr) parts.push(u.tokStr)
-    if(u.costStr) parts.push(u.costStr)
-    h+='<div class="small muted" style="margin:4px 8px 12px">Usage: '+esc(parts.join(' · '))+'</div>'
-  }
+  h+=usageHtml(flow.usage)
   h+=renderFlow(flow.steps)
   if(flow.finalResultPreview) h+='<div class="step message" style="margin-top:10px">⏺ <b>result:</b> '+esc(flow.finalResultPreview)+'</div>'
   setView(key,h); loadList()
-  watchDetail((w.state==='running'&&!w.stale)?'worker:'+w.id:null, ()=>openWorker(w))
+  watchDetail(((w.state==='running'&&!w.stale)||w.state==='human-controlled')?'worker:'+w.id:null, ()=>openWorker(w))
 }
 function reopen(sid){ fetch('/api/sessions').then(r=>r.json()).then(ss=>{const s=ss.find(x=>x.id===sid); if(s) openSession(s)}) }
-function back(){ watchDetail(null); sel=null; window._cur=null; document.getElementById('crumb').textContent='Select a session…'; const v=document.getElementById('view'); v._k=null; v._h=null; v.className='empty'; v.innerHTML='←'; loadList() }
+function back(){ watchDetail(null); takeoverTeardown(); { const tk=document.getElementById('takeover'); tk.style.display='none'; tk.innerHTML='' } sel=null; window._cur=null; document.getElementById('crumb').textContent='Select a session…'; const v=document.getElementById('view'); v._k=null; v._h=null; v.className='empty'; v.innerHTML='←'; loadList() }
 document.getElementById('tabCC').onclick=()=>{mode='cc';document.getElementById('tabCC').classList.add('on');document.getElementById('tabW').classList.remove('on');back()}
 document.getElementById('tabW').onclick=()=>{mode='w';wFlt='all';document.getElementById('tabW').classList.add('on');document.getElementById('tabCC').classList.remove('on');back()}
 loadList()

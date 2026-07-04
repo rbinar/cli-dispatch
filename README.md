@@ -115,9 +115,12 @@ Busy sessions auto-refresh.
 
 It reads `~/.claude/projects/**` (Claude Code transcripts), `~/.claude/sessions/*.json` (live
 busy/idle), and `~/.cache/cli-dispatch/sessions/**` (workers). Notes:
-- **The only long-running process the plugin starts.** It binds `127.0.0.1` only, is strictly
-  **read-only**, and never touches your config/keys. Stop it with the printed `kill <pid>`
-  (or Ctrl-C if you run `cli-dispatch-dashboard` yourself in a terminal).
+- **The only long-running process the plugin starts.** It binds `127.0.0.1` only, is
+  **read-only by default**, and never touches your config/keys. An opt-in **human-takeover**
+  action on a worker's detail view exposes a narrowly-scoped, authenticated write path to
+  already-owned worker sessions only (kill the headless process, attach a PTY terminal) — no
+  general shell, no arbitrary command. Stop the dashboard with the printed `kill <pid>` (or
+  Ctrl-C if you run `cli-dispatch-dashboard` yourself in a terminal).
 - The Claude Code on-disk transcript format is internal and may change across versions; the
   dashboard renders unknown shapes defensively.
 

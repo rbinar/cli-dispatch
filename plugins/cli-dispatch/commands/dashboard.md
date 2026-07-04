@@ -10,9 +10,13 @@ Launch the **local, read-only web dashboard**. It shows active Claude Code CLI s
 **subagents** it spawned, and click a subagent to drill into *its* flow — plus a panel for the
 cli-dispatch **worker** delegations (DeepSeek / Antigravity / Codex / OpenCode / Copilot).
 
-> Read-only. Binds `127.0.0.1` only. No config/secret access. This is the only long-running
-> process the plugin starts — it serves until you stop it (the printed `kill <pid>`, or Ctrl-C
-> if you run `cli-dispatch-dashboard` yourself in a terminal).
+> Read-only by default. Binds `127.0.0.1` only. No config/secret access. An opt-in human-takeover
+> capability, if explicitly installed, exposes a narrowly-scoped, authenticated write path to
+> already-owned worker sessions only (no general shell, no arbitrary command) — currently
+> supported for all five backends (DeepSeek / Antigravity / Codex / OpenCode / Copilot).
+> This is the only long-running process the plugin
+> starts — it serves until you stop it (the printed `kill <pid>`, or Ctrl-C if you run
+> `cli-dispatch-dashboard` yourself in a terminal).
 
 ```bash
 if ! command -v cli-dispatch-dashboard >/dev/null 2>&1; then
