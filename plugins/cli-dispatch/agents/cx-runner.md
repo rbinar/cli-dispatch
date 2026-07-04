@@ -127,6 +127,24 @@ cx-agent --resume <thread-id> "<follow-up>"
 Also: never start a session with `--ephemeral` if you intend to resume it — ephemeral mode
 disables session persistence, so no thread-id is saved and there is nothing to resume.
 
+## CRITICAL — Codex OAuth rate-limit: detect, report, don't retry blindly
+
+`cx-stream-parse.mjs` detects Codex's ChatGPT-OAuth usage-limit notice ("usage limit" / "try
+again at") and records it as `status.json` `state: "error"` with the matched text in `error`
+— it will NOT silently show up as `done` with an empty diff. When you see this:
+- **Do not retry `cx-agent` on the same task.** OAuth rate limits reset on a schedule (the
+  error text usually names a time) — retrying immediately just burns another attempt against
+  the same limit.
+- **Report it as a distinct failure mode**, not a generic error, e.g.:
+  `status: FAILED — Codex OAuth rate-limited (reset: <time from error text if present>)`.
+- **Suggest a reroute** in your final report: note that the orchestrator can hand this same
+  task to `ds-runner` or `ag-runner` instead of retrying Codex.
+- **Note the `CODEX_API_KEY` escape hatch**: `cx-stream` already exports `CODEX_API_KEY` (or
+  `OPENAI_API_KEY`) ahead of OAuth login whenever either is set in the cli-dispatch config —
+  a separate quota/billing pool from the ChatGPT plan. If you hit an OAuth rate limit, mention
+  in your report that setting `CODEX_API_KEY` is a standing workaround the human can configure.
+  You cannot set this yourself — it requires an API key only the human can obtain and add.
+
 ## Verify (mode B only — MANDATORY)
 
 Never trust the Codex worker's self-report on a code task. You must only report `status: verified ✓` in the final verdict if a concrete build, test, or typechecking script that you initiated inside the worktree has returned exit code 0. Never claim verification based on Codex's self-report or because the changes look visually complete and correct.
