@@ -317,7 +317,20 @@ fi
 
 case ":$PATH:" in
   *":$BIN_DIR:"*) : ;;
-  *) echo "WARNING: $BIN_DIR is not in PATH. Add it to your shell profile." ;;
+  *)
+    if [ "$(basename "${SHELL:-}")" = "zsh" ]; then
+      ZSENV="$HOME/.zshenv"
+      EXPORT_LINE='export PATH="$HOME/.local/bin:$PATH"'
+      if grep -qF '$HOME/.local/bin' "$ZSENV" 2>/dev/null; then
+        echo "~/.zshenv already exports \$HOME/.local/bin -> PATH (left untouched)"
+      else
+        echo "$EXPORT_LINE" >> "$ZSENV"
+        echo "Added \$HOME/.local/bin to ~/.zshenv (read by non-interactive zsh -- needed for Claude Code subagents to find these CLIs). Restart your shell or Claude Code session."
+      fi
+    else
+      echo "WARNING: $BIN_DIR is not in PATH. Add it to your shell profile."
+    fi
+    ;;
 esac
 
 echo "Done."
