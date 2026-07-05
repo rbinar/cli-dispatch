@@ -290,6 +290,16 @@ if [ -z "$MODEL" ]; then
   META_MODEL="$(sed -n 's/^model *= *"\(.*\)".*/\1/p' "${CODEX_HOME:-$HOME/.codex}/config.toml" 2>/dev/null | head -1)"
 fi
 
+# Same reasoning for the effort/thinking-level label: when --effort wasn't passed, codex
+# still applies its own config default (~/.codex/config.toml `model_reasoning_effort = "..."`)
+# — without this, the dashboard silently shows no thinking level even though one was in
+# effect, which reads as "no reasoning applied" when a real (default) level was used.
+META_EFFORT=""
+if [ -z "$EFFORT" ]; then
+  META_EFFORT="$(sed -n 's/^model_reasoning_effort *= *"\(.*\)".*/\1/p' "${CODEX_HOME:-$HOME/.codex}/config.toml" 2>/dev/null | head -1)"
+fi
+EFFECTIVE_EFFORT="${EFFORT:-$META_EFFORT}"
+
 # codex's stdout → parser (process substitution); codex's stderr passes through to our stderr.
 # Prompt-as-arg → redirect stdin from /dev/null (the documented gotcha; without it codex blocks
 # on "Reading additional input from stdin..."). The `{ node ...; touch DONE; }` wrapper lets us
@@ -299,7 +309,7 @@ codex "${CODEX_ARGS[@]}" </dev/null > >(
   CX_PROMPT_PREVIEW="$(printf '%.120s' "$PROMPT")" \
   CX_CWD="$CWD" \
   CX_BRANCH="$BRANCH" \
-  CX_MODEL="${MODEL:-$META_MODEL}${EFFORT:+ ($EFFORT)}" \
+  CX_MODEL="${MODEL:-$META_MODEL}${EFFECTIVE_EFFORT:+ (${EFFECTIVE_EFFORT})}" \
   CX_THREAD_ID="$([ "$RESUME" -eq 1 ] && printf '%s' "$RESUME_ID" || true)" \
   CX_RESUME="$RESUME" \
     node "$PARSER" > "$PARSER_OUT"
