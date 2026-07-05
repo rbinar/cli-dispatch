@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.25.0] — 2026-07-06
+
+### Added
+
+- **`/cli-dispatch:setup` offers to persist the delegation-priority reminder into CLAUDE.md.**
+  Setup now has a new step that asks, via `AskUserQuestion`, whether to write a standing
+  "runner delegation priority" reminder into your global or project `CLAUDE.md`. Once
+  accepted, the reminder is idempotent and marker-guarded
+  (`<!-- cli-dispatch:orchestration-priority -->`), so you no longer have to manually
+  re-paste delegation-priority instructions into every session — the plugin can write it
+  once and leave it in place.
+
+### Fixed
+
+- **`cp-stream-parse` no longer lets ephemeral reasoning clobber the final answer (#62).**
+  GitHub Copilot's `assistant.reasoning` events (marked `ephemeral: true`) could arrive right
+  after the true final `assistant.message` and overwrite the captured final answer with an
+  internal reasoning fragment instead of the real report. Root-caused by replaying a real
+  historical session transcript through the parser. The fix excludes ephemeral/reasoning
+  events from ever touching `finalText`, and a new regression test
+  (`plugins/cli-dispatch/scripts/__tests__/cp-stream-parse.test.mjs`) locks the behavior in.
+
 ## [3.24.0] — 2026-07-06
 
 ### Added
