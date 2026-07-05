@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.23.0] — 2026-07-06
+
+### Added
+
+- **Dashboard config editor (secrets write-only).** The dashboard now has a config editor for
+  the cli-dispatch config file — API keys and other secret fields are write-only (never
+  echoed back once saved), and non-secret fields can be viewed and edited directly. A masked
+  preview (e.g. `sk-...a1b2`) shows just enough of a saved key to confirm which one is
+  configured without ever exposing the full value in the UI.
+- **`_MODEL` config fields now document that they're single-value only** — clarified in
+  docs to prevent confusion with the new multi-candidate model list feature below.
+- **ag/cx/oc/cp-runner can pick from a candidate model list.** Instead of a single fixed
+  `_MODEL` config value, these four runners now accept a list of candidate models; the
+  babysitter subagent picks whichever fits the task best from the list at dispatch time.
+- **Terminal-styled session/subagent/worker flow box.** The dashboard now renders the
+  session → subagent → worker relationship inside a terminal-styled box, making the
+  delegation chain easier to read at a glance.
+- **Claude Code tab shows each session's current model.** Session rows in the Claude Code
+  tab now display the model currently in use for that session.
+- **Dashboard shows total delegation cost + high-overhead warning.** The dashboard now
+  aggregates and displays the total cost across all delegated worker sessions, and surfaces
+  a warning when delegation overhead is disproportionately high relative to the work done.
+- **Each worker row resolves its specific babysitter subagent + that subagent's token
+  usage.** Worker detail views now show which babysitter subagent (ds/ag/cx/oc/cp-runner)
+  is responsible for a given worker and that subagent's own token usage, not just the
+  worker's.
+- **Worker rows show their parent Claude Code session.** A worker's detail view now links
+  back to the Claude Code session that spawned it, making it easier to trace a worker back
+  to the conversation that dispatched it.
+
+### Fixed
+
+- **`parent-index` prefers a resolved subagent match over a bare top-level match.** When
+  both a specific subagent and a generic top-level session could plausibly be a worker's
+  parent, the index now prefers the more specific subagent match instead of falling back to
+  the bare top-level one.
+- **`oc-stream` no longer treats OpenCode's own interrupted-call cancellations as fatal.**
+  OpenCode occasionally cancels its own in-flight tool calls internally as part of normal
+  operation; `oc-stream` was misreading these as fatal errors and killing the session. They
+  are now recognized and ignored.
+- **`cp-stream-parse` now extracts the real tool name/args from Copilot's actual event
+  schema.** The previous parser assumed a documented event shape that didn't match what the
+  Copilot CLI actually emits, so tool calls in the worker log showed blank or incorrect
+  names/args. Reworked to match the real, undocumented schema.
+- **`cx-runner` reports Codex rate-limit clearly and suggests a reroute.** When Codex hits
+  its rate limit mid-task, the runner now surfaces a clear rate-limit message instead of a
+  generic failure, and suggests rerouting the task to another backend.
+- **`worktree-run.sh` scripts no longer auto-delete their worktree on kill.** Killing a
+  worker mid-run previously triggered the script's cleanup trap and deleted the git
+  worktree along with any in-progress work; the trap no longer fires on a kill signal.
+- **`install.sh` never installed the human-takeover support files.** Fresh installs were
+  missing `pty-host.mjs`, `takeover-cmd.mjs`, and the `vendor/` directory needed for the
+  dashboard's "Take control" feature, so takeover silently failed on any machine set up
+  after that feature shipped. The installer now copies all three.
+- **Takeover spawn failure no longer crashes the whole dashboard.** If spawning the
+  underlying CLI for a human-takeover session failed (e.g. missing binary), the error
+  previously propagated up and took down the entire dashboard process instead of just that
+  one takeover attempt.
+
 ## [3.22.0] — 2026-07-04
 
 ### Added
