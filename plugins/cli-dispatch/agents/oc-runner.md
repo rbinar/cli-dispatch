@@ -112,6 +112,25 @@ Omit `--model` ONLY when the orchestrator did not specify a worker model.
 exposes no such knob). If the task demands an effort level, say so and stop — that is an
 orchestrator-level backend choice (ag/cx/ds/cp support `--effort`).
 
+### Multi-candidate model list
+
+If the orchestrator provides a **list** of 2+ candidate models (e.g. "pick the best of:
+google/gemma-4-31b-it:free, anthropic/claude-sonnet-4.6, openai/gpt-5.5 for this task"),
+you must **reason about which candidate best fits the task** BEFORE invoking `oc-agent`:
+
+1. Evaluate the task's nature: complexity, whether it's pure text-generation vs needs strong
+   code-reasoning, cost/speed tradeoffs apparent from the candidate list, or anything else
+   relevant.
+2. Pick **exactly one** model from the given list. Never invent a model not in the list,
+   never silently fall back to omitting `--model` when a list was given.
+3. Pass the picked slug as a bare OpenRouter slug (no `openrouter/` prefix, per the existing
+   note above). An invalid slug in the picked candidate still fails loudly with an
+   OpenRouter API error, same as case (a) — that existing behavior is unchanged.
+4. Confirm via `meta.json` as in case (a).
+5. In the final report, explicitly state **which model was picked** from the list and a
+   **one-line reason** why — required for auditability, not just the bare model name from
+   `meta.json`.
+
 ## Resume
 
 ```bash
@@ -155,6 +174,7 @@ loop per step, not tight polling.
   checks: <tsc/build/test results>
   next: orchestrator reviews diff, then commits/merges (not done here)
   ```
+  When multi-candidate mode was used, the `model:` line must include which model was picked from the list and a one-line reason why — not just the bare model name.
 Keep it tight. The orchestrator wants the outcome, not the play-by-play.
 
 *Note: Do not write factual claims (branch name, files changed, committed status, model) from memory; you must spot-check every detail against actual git/filesystem command output run in this turn.*

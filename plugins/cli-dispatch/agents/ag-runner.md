@@ -123,6 +123,26 @@ Omit `--model` ONLY when the orchestrator did not specify a worker model.
 `"Gemini 3.5 Flash (Low)"`; without `--model` it picks the first `agy models` entry at that
 effort). Same mandate as `--model`: requested but not passed = failed task.
 
+### Multi-candidate model list
+
+If the orchestrator provides a **list** of 2+ candidate models (e.g. "pick the best of:
+gpt-5.5, claude-sonnet-5, gemini-3.5-flash for this task"), you must **reason about which
+candidate best fits the task** BEFORE invoking `ag-agent`:
+
+1. Evaluate the task's nature: complexity, whether it's pure text-generation vs needs strong
+   code-reasoning, cost/speed tradeoffs apparent from the candidate list, or anything else
+   relevant.
+2. Pick **exactly one** model from the given list. Never invent a model not in the list,
+   never silently fall back to omitting `--model` when a list was given.
+3. Resolve the picked candidate to its exact `agy models` display line (including reasoning
+   suffix) — the exact-match requirement from case (a) step 1 still applies: a loose slug
+   like "gemini-3.5-flash" must be resolved to e.g. `"Gemini 3.5 Flash (High)"` before
+   being passed via `--model`.
+4. Pass it verbatim via `--model` and confirm via `meta.json`, exactly as in case (a).
+5. In the final report, explicitly state **which model was picked** from the list and a
+   **one-line reason** why — required for auditability, not just the bare model name from
+   `meta.json`.
+
 ## Verify (mode B only — MANDATORY)
 
 Never trust the agy worker's self-report on a code task. You may only report `status: verified ✓` if a real compilation, build, or test check executed directly by you in the worktree has successfully exited with a 0 code. You are strictly forbidden from claiming verification based on the worker's own logs, because "the diff looks reasonable", or because the changes appear complete.
@@ -158,6 +178,7 @@ loop per step, not tight polling.
   checks: <tsc/build/test results>
   next: orchestrator reviews diff, then commits/merges (not done here)
   ```
+  When multi-candidate mode was used, the `model:` line must include which model was picked from the list and a one-line reason why — not just the bare model name.
 Keep it tight. The orchestrator wants the outcome, not the play-by-play.
 
 *Note: You must spot-check every factual claim in your report (such as branch name, changed files, committed status, and model) against the git/filesystem outputs of commands executed this turn, rather than relying on memory or assumptions.*

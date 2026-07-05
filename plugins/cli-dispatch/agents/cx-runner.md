@@ -117,6 +117,27 @@ config default then applies).
 `high`). Same mandate as `--model`: requested but not passed = failed task. The effort is
 recorded in `meta.json`'s model label, e.g. `gpt-5.5 (low)`.
 
+### Multi-candidate model list
+
+If the orchestrator provides a **list** of 2+ candidate models (e.g. "pick the best of:
+gpt-5.5, claude-sonnet-5, gemini-3.5-flash for this task"), you must **reason about which
+candidate best fits the task** BEFORE invoking `cx-agent`:
+
+1. Evaluate the task's nature: complexity, whether it's pure text-generation vs needs strong
+   code-reasoning, cost/speed tradeoffs apparent from the candidate list, or anything else
+   relevant.
+2. Pick **exactly one** model from the given list. Never invent a model not in the list,
+   never silently fall back to omitting `--model` when a list was given.
+3. Pass the picked slug verbatim via `--model`, exactly as in case (a). Codex has no `models`
+   list command — if the picked slug is invalid, codex fails LOUDLY with an API error (per
+   case (a) step 1). If that happens, report the specific failure (which slug failed, that
+   it was invalid) rather than silently trying a different candidate from the list without
+   documenting it in the report.
+4. Confirm via `meta.json` as in case (a).
+5. In the final report, explicitly state **which model was picked** from the list and a
+   **one-line reason** why — required for auditability, not just the bare model name from
+   `meta.json`.
+
 ## Resume gotcha
 
 The `resume` subcommand does NOT support `--cwd` (codex limitation). Resume reuses the thread's
@@ -180,6 +201,7 @@ loop per step, not tight polling.
   checks: <tsc/build/test results>
   next: orchestrator reviews diff, then commits/merges (not done here)
   ```
+  When multi-candidate mode was used, the `model:` line must include which model was picked from the list and a one-line reason why — not just the bare model name.
 Keep it tight. The orchestrator wants the outcome, not the play-by-play.
 
 *Note: Every single factual claim in the final report (branch name, list of changed files, committed status, model) must be spot-checked against live git/filesystem command output from this turn, not assumed or written from memory.*

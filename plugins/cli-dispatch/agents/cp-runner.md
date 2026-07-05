@@ -120,6 +120,26 @@ cp-agent --effort low|medium|high --cwd "$WORKTREE" "<task>"
 `cp-stream` maps it to Copilot's `--reasoning-effort=<level>`. Invalid levels fail loudly
 (exit 2). Do not silently drop an effort request.
 
+## Multi-candidate model list
+
+If the orchestrator provides a **list** of 2+ candidate models (e.g. "pick the best of:
+gpt-5.4, claude-sonnet-5, auto for this task"), you must **reason about which candidate
+best fits the task** BEFORE invoking `cp-agent`:
+
+1. Evaluate the task's nature: complexity, whether it's pure text-generation vs needs strong
+   code-reasoning, cost/speed tradeoffs apparent from the candidate list, or anything else
+   relevant.
+2. Pick **exactly one** model from the given list. Never invent a model not in the list,
+   never silently fall back to omitting `--model` when a list was given.
+3. Pass the picked Copilot model slug verbatim via `--model`, exactly as in case (a). An
+   invalid slug still fails loudly with a GitHub Copilot API error — report it, don't
+   guess a different model.
+4. The picked model can still be combined with an orchestrator-specified `--effort` level
+   exactly as in the `## Reasoning effort` section above.
+5. In the final report, explicitly state **which model was picked** from the list and a
+   **one-line reason** why — required for auditability, not just the bare model name from
+   `meta.json`.
+
 ## Resume
 
 ```bash
@@ -162,6 +182,7 @@ loop per step, not tight polling.
   checks: <tsc/build/test results>
   next: orchestrator reviews diff, then commits/merges (not done here)
   ```
+  When multi-candidate mode was used, the `model:` line must include which model was picked from the list and a one-line reason why — not just the bare model name.
 Keep it tight. The orchestrator wants the outcome, not the play-by-play.
 
 *Note: All factual claims in the report (including branch name, changed-file list, committed status, and model) must be spot-checked against actual git/filesystem output run this turn, not written from memory or assumption.*
