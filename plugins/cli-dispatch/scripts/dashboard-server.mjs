@@ -1386,8 +1386,9 @@ const PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>cli-dispat
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
 header{padding:8px 14px;border-bottom:1px solid var(--bd);display:flex;gap:10px;align-items:center}
 header b{color:var(--acc)} .grow{flex:1}
-.layout{display:grid;grid-template-columns:320px 1fr;height:calc(100vh - 41px)}
+.layout{display:grid;grid-template-columns:320px 1fr 320px;height:calc(100vh - 41px)}
 .rail{border-right:1px solid var(--bd);overflow:auto}
+.side-panel{border-left:1px solid var(--bd);overflow:auto;padding:14px}
 .tabs{display:flex;border-bottom:1px solid var(--bd)} .tab{flex:1;padding:8px;text-align:center;cursor:pointer;color:var(--dim)}
 .tab.on{color:var(--fg);border-bottom:2px solid var(--acc)}
 .filter{display:flex;gap:6px;padding:6px 8px;border-bottom:1px solid var(--bd);flex-wrap:wrap}
@@ -1459,6 +1460,7 @@ input.cfg-input:focus{border-color:var(--acc);outline:none}
    <div id="list"></div>
  </div>
  <div class="main"><div class="crumb" id="crumb">Select a session…</div><div id="takeover"></div><div id="view" class="empty">←</div></div>
+ <div class="side-panel" id="sidePanel"></div>
 </div>
 <script>
 let mode='cc', sel=null, flt='busy', wFlt='all'
@@ -1701,19 +1703,21 @@ async function openSession(s){
   sel=s.id; mode='cc'
   takeoverTeardown(); { const tk=document.getElementById('takeover'); tk.style.display='none'; tk.innerHTML='' }
   document.getElementById('crumb').innerHTML='<a onclick="back()">sessions</a> › '+esc(s.id.slice(0,8))+' <span class="muted">('+esc(s.status)+')</span>'
-  const prevPanel=document.querySelector('#view details.restpanel'); const subsOpen=prevPanel?prevPanel.open:false
+  const prevPanel=document.querySelector('#sidePanel details.restpanel'); const subsOpen=prevPanel?prevPanel.open:false
   const key='session:'+s.id
   const v=document.getElementById('view')
   if(v._k!==key){ v._k=key; v._h=null; v.className=''; v.innerHTML='loading…' }
   const [flow,subs]=await Promise.all([j('/api/session/'+s.id+'/flow'),j('/api/session/'+s.id+'/subagents')])
   window._cur={type:'session',id:s.id}
-  let h=''
+  let side=''
   if(subs.length){
     const act=subs.filter(a=>a.active), rest=subs.filter(a=>!a.active)
-    if(act.length) h+='<details class="panel act" open><summary>Active subagents <span class="badge">'+act.length+'</span></summary><div class="sabody">'+act.map(chipHtml).join('')+'</div></details>'
-    if(rest.length) h+='<details class="panel restpanel"'+(subsOpen?' open':'')+'><summary>Subagents <span class="badge">'+rest.length+'</span></summary><div class="sabody">'+rest.map(chipHtml).join('')+'</div></details>'
+    if(act.length) side+='<details class="panel act" open><summary>Active subagents <span class="badge">'+act.length+'</span></summary><div class="sabody">'+act.map(chipHtml).join('')+'</div></details>'
+    if(rest.length) side+='<details class="panel restpanel"'+(subsOpen?' open':'')+'><summary>Subagents <span class="badge">'+rest.length+'</span></summary><div class="sabody">'+rest.map(chipHtml).join('')+'</div></details>'
   }
-  h+=workerPanelHtml(flow.linkedWorkers)
+  side+=workerPanelHtml(flow.linkedWorkers)
+  document.getElementById('sidePanel').innerHTML=side
+  let h=''
   h+=usageHtml(flow.usage)
   h+='<div class="term-flow">'+renderFlow(flow.steps)+'</div>'+(flow.truncated?'<div class="small muted">(showing last '+flow.steps.length+' of '+flow.total+')</div>':'')
   setView(key,h); loadList()
@@ -1728,7 +1732,8 @@ async function openSub(aid,active){
   if(v._k!==key){ v._k=key; v._h=null; v.className=''; v.innerHTML='loading…' }
   const flow=await j('/api/subagent/'+sid+'/'+aid+'/flow')
   window._cur={type:'sub',sid:sid,aid:aid}
-  setView(key,workerPanelHtml(flow.linkedWorkers)+usageHtml(flow.usage)+'<div class="term-flow">'+renderFlow(flow.steps)+'</div>'+(flow.truncated?'<div class="small muted">(last '+flow.steps.length+' of '+flow.total+')</div>':''))
+  document.getElementById('sidePanel').innerHTML=workerPanelHtml(flow.linkedWorkers)
+  setView(key,usageHtml(flow.usage)+'<div class="term-flow">'+renderFlow(flow.steps)+'</div>'+(flow.truncated?'<div class="small muted">(last '+flow.steps.length+' of '+flow.total+')</div>':''))
   watchDetail(active?'subagent:'+sid+':'+aid:null, ()=>openSub(aid,true))
 }
 // ==== human-takeover UI (codex / deepseek / antigravity / opencode / copilot) ======
@@ -1836,6 +1841,7 @@ function renderTakeoverBar(w){
 // ==== end human-takeover UI ========================================================
 async function openWorker(w){
   sel=w.id;
+  document.getElementById('sidePanel').innerHTML=''
   document.getElementById('crumb').innerHTML='<a onclick="back()">workers</a> › '+esc(w.backend)+' <span class="c">'+(w.model?esc(w.model):'default')+'</span> '+esc(w.id.slice(0,12))+' <span class="muted">('+esc(w.stale?'stale':w.state)+')</span>'
   renderTakeoverBar(w)
   const taskPanel=document.querySelector('#view details.panel.task'); const taskOpen=taskPanel?taskPanel.open:false
@@ -1926,13 +1932,16 @@ async function renderConfigEditor() {
         html += '<div class="cfg-field">'
         if (item.secret) {
           html += '<input type="password" class="cfg-input" id="input_' + escAttr(k) + '" placeholder="enter new key to update, leave blank to keep current">'
-          html += '<button class="tkbtn" onclick="saveConfig(\'' + escAttr(k) + '\', true)">Save</button>'
+          html += '<button class="tkbtn" onclick="saveConfig(\\'' + escAttr(k) + '\\', true)">Save</button>'
         } else {
           html += '<input type="text" class="cfg-input" id="input_' + escAttr(k) + '" value="' + escAttr(item.value) + '">'
-          html += '<button class="tkbtn" onclick="saveConfig(\'' + escAttr(k) + '\', false)">Save</button>'
+          html += '<button class="tkbtn" onclick="saveConfig(\\'' + escAttr(k) + '\\', false)">Save</button>'
         }
         html += '<span id="err_' + escAttr(k) + '" class="err" style="margin-left:8px"></span>'
         html += '</div>'
+        if (!item.secret && k.endsWith('_MODEL')) {
+          html += '<div class="small muted" style="margin-top:2px">Single default model, used only when no --model is passed. For multi-candidate selection (babysitter picks one), list the candidates in the task prompt instead — this field always holds exactly one value.</div>'
+        }
         html += '</div>'
       }
       html += '</div></div>'
@@ -1944,7 +1953,7 @@ async function renderConfigEditor() {
   }
 }
 function reopen(sid){ fetch('/api/sessions').then(r=>r.json()).then(ss=>{const s=ss.find(x=>x.id===sid); if(s) openSession(s)}) }
-function back(){ watchDetail(null); takeoverTeardown(); { const tk=document.getElementById('takeover'); tk.style.display='none'; tk.innerHTML='' } sel=null; window._cur=null; document.getElementById('crumb').textContent='Select a session…'; const v=document.getElementById('view'); v._k=null; v._h=null; v.className='empty'; v.innerHTML='←'; loadList() }
+function back(){ watchDetail(null); takeoverTeardown(); { const tk=document.getElementById('takeover'); tk.style.display='none'; tk.innerHTML='' } sel=null; window._cur=null; document.getElementById('crumb').textContent='Select a session…'; const v=document.getElementById('view'); v._k=null; v._h=null; v.className='empty'; v.innerHTML='←'; document.getElementById('sidePanel').innerHTML=''; loadList() }
 document.getElementById('tabCC').onclick=()=>{mode='cc';document.getElementById('tabCC').classList.add('on');document.getElementById('tabW').classList.remove('on');document.getElementById('tabConfig').classList.remove('on');back()}
 document.getElementById('tabW').onclick=()=>{mode='w';wFlt='all';document.getElementById('tabW').classList.add('on');document.getElementById('tabCC').classList.remove('on');document.getElementById('tabConfig').classList.remove('on');back()}
 document.getElementById('tabConfig').onclick=()=>{mode='config';document.getElementById('tabConfig').classList.add('on');document.getElementById('tabCC').classList.remove('on');document.getElementById('tabW').classList.remove('on');openConfigView()}
