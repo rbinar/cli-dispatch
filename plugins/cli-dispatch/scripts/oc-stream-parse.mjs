@@ -155,8 +155,13 @@ function handlePart(type, sessionID, part, topError) {
         countTool(toolName)
       } else if (statusStr === 'error') {
         const msg = st.error ?? st.output ?? 'tool error'
-        errorText = String(msg)
-        appendProgress(`✗ ${toolName}: ${clip(errorText, 160)}`)
+        if (st.metadata && st.metadata.interrupted === true) {
+          const label = (toolName === 'unknown' && callID) ? callID : toolName
+          appendProgress(`⚠ interrupted: ${label}`)
+        } else {
+          errorText = String(msg)
+          appendProgress(`✗ ${toolName}: ${clip(errorText, 160)}`)
+        }
       } else if (statusStr === 'running' || statusStr === 'pending') {
         appendProgress(`▸ ${toolName}`)
       }
