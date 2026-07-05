@@ -1152,7 +1152,11 @@ const server = http.createServer(async (req, res) => {
                 let val = match[2] !== undefined ? match[2] : (match[3] !== undefined ? match[3] : match[4])
                 val = val.replace(/\\"/g, '"')
                 if (CONFIG_KEYS[key].secret) {
-                  result[key].set = (val !== '')
+                  const isSet = (val !== '')
+                  result[key].set = isSet
+                  if (isSet && val.length >= 12) {
+                    result[key].masked = val.slice(0, 6) + '...' + val.slice(-4)
+                  }
                 } else {
                   result[key].value = val
                 }
@@ -1924,6 +1928,9 @@ async function renderConfigEditor() {
         if (item.secret) {
           if (item.set) {
             html += '<span class="badge ok">● set</span>'
+            if (item.masked) {
+              html += '<span class="small muted">' + esc(item.masked) + '</span>'
+            }
           } else {
             html += '<span class="badge muted">○ not set</span>'
           }
