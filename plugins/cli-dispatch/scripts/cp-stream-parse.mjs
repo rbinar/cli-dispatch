@@ -99,6 +99,9 @@ const touch = () => { status.lastActivityAt = new Date().toISOString(); status.e
 let finalText = ''        // captured answer text; deltas append, complete messages overwrite
 let errorText = ''        // surfaced error message, if GitHub Copilot emits one
 const emittedTools = new Set()
+const toolMeta = new Map() // toolCallId -> { name, args } — learned from tool.execution_start
+                            // or assistant.message's nested toolRequests[], consulted by handleTool()
+                            // for events (like tool.execution_complete) that omit name/args.
 
 // Bump the tool counter + record lastTool for a named tool.
 const countTool = (name) => {
@@ -134,6 +137,26 @@ function learnModel(ev, body) {
   if (mid && (!meta.model || meta.model === process.env.CP_MODEL)) {
     meta.model = mid
     writeMeta()
+  }
+}
+
+function learnToolMeta(body) {
+  if (body.toolCallId && (body.toolName || body.arguments)) {
+    const prev = toolMeta.get(body.toolCallId) || {}
+    toolMeta.set(body.toolCallId, {
+      name: body.toolName ?? prev.name,
+      args: asObj(body.arguments ?? prev.args),
+    })
+  }
+  const reqs = Array.isArray(body.toolRequests) ? body.toolRequests : []
+  for (const req of reqs) {
+    const id = req && req.toolCallId
+    if (!id) continue
+    const prev = toolMeta.get(id) || {}
+    toolMeta.set(id, {
+      name: firstString(req.name, req.tool, req.toolName) ?? prev.name,
+      args: asObj(req.arguments ?? req.input ?? prev.args),
+    })
   }
 }
 
@@ -187,22 +210,26 @@ function usageFrom(ev, body) {
   }
 }
 
-function handleTool(ev, body) {
+function handleTool(type, ev, body) {
   const st = asObj(body.state)
-  const callID = body.callID ?? body.callId ?? body.id ?? ev.callID ?? ev.callId ?? ''
-  const toolName = firstString(body.tool, body.toolName, body.name, ev.tool, ev.toolName, ev.name) || 'tool'
-  const statusStr = firstString(st.status, body.status, ev.status) || ''
+  const callID = body.toolCallId ?? body.callID ?? body.callId ?? body.id ?? ev.callID ?? ev.callId ?? ''
+  const meta = callID ? toolMeta.get(callID) : undefined
+  const toolName = firstString(body.tool, body.toolName, body.name, meta && meta.name, ev.tool, ev.toolName, ev.name) || 'tool'
+  const statusStr = firstString(st.status, body.status, ev.status) ||
+    (type === 'tool.execution_complete' ? (body.success === false ? 'error' : 'complete') :
+     type === 'tool.execution_start' ? 'start' : '')
   const key = callID + ':' + statusStr
   if (callID && emittedTools.has(key)) { touch(); return }
   if (callID) emittedTools.add(key)
 
   if (/complete|success|done/i.test(statusStr)) {
-    const input = asObj(st.input ?? body.input ?? ev.input)
+    const input = asObj(st.input ?? body.input ?? body.arguments ?? (meta && meta.args) ?? ev.input)
     const title = input.filePath ?? input.path ?? input.command ?? input.title ?? body.command ?? body.path ?? JSON.stringify(input)
     appendProgress(`✎ ${toolName} ${clip(title, 100)}`)
     countTool(toolName)
   } else if (/error|fail/i.test(statusStr)) {
-    const msg = st.error ?? st.output ?? body.error ?? body.message ?? 'tool error'
+    const result = asObj(body.result)
+    const msg = st.error ?? result.error ?? body.error ?? body.message ?? 'tool error'
     errorText = String(msg)
     appendProgress(`✗ ${toolName}: ${clip(errorText, 160)}`)
   } else {
@@ -227,6 +254,7 @@ function handleEvent(ev) {
   const body = asObj(ev.part ?? ev.payload ?? ev.data ?? ev.message)
   learnSession(ev, body)
   learnModel(ev, body)
+  learnToolMeta(body)
 
   if (/error|failed|failure/.test(type)) {
     errorText = String(errorFrom(ev, body) || 'unknown error')
@@ -234,8 +262,12 @@ function handleEvent(ev) {
     touch(); writeStatus()
     return
   }
-  if (/tool/.test(type) || body.tool || body.toolName) {
-    handleTool(ev, body)
+  if (type === 'tool.execution_start' || type === 'tool.execution_complete' || body.tool || body.toolName) {
+    handleTool(type, ev, body)
+    return
+  }
+  if (type === 'tool.execution_partial_result') {
+    touch(); writeStatus()
     return
   }
   if (/text|message|answer|response|content|delta/.test(type) || textFrom(ev, body)) {
