@@ -230,7 +230,7 @@ function sumUsageFromEvents(evs) {
 }
 
 function mapFlow(file) {
-  if (!fs.existsSync(file)) return { steps: [], total: 0, truncated: false }
+  if (!fs.existsSync(file)) return { steps: [], total: 0, truncated: false, model: '' }
   const all = lines(readTail(file, 4 * 1024 * 1024))   // cap memory; big files keep their tail
   const total = all.length
   const slice = all.slice(Math.max(0, all.length - FLOW_CAP))
@@ -251,6 +251,7 @@ function mapFlow(file) {
     if (Array.isArray(c)) for (const b of c) if (b && b.type === 'tool_result' && b.tool_use_id)
       resultOf[b.tool_use_id] = { ok: !b.is_error, text: clip(contentText(b.content), 160) }
   }
+  let model = ''
   const steps = []
   for (const e of evs) {
     const ts = e.timestamp || null
@@ -259,6 +260,7 @@ function mapFlow(file) {
       if (typeof c === 'string') { if (!e.isMeta) steps.push({ kind: 'prompt', ts, text: clip(c, 400) }) }
       // tool_result blocks are folded into their tool step below; skip standalone
     } else if (e.type === 'assistant' && Array.isArray(c)) {
+      if (e.message && e.message.model) { model = e.message.model }
       for (const b of c) {
         if (b.type === 'text' && b.text) steps.push({ kind: 'message', ts, text: clip(b.text, 400) })
         else if (b.type === 'thinking' && b.thinking) steps.push({ kind: 'thinking', ts, text: clip(b.thinking, 300) })
@@ -276,7 +278,7 @@ function mapFlow(file) {
     }
   }
   const { inTok, outTok, haveUsage } = sumUsageFromEvents(evs)
-  return { steps, total, truncated: total > slice.length, usage: haveUsage ? { inTok, outTok } : null }
+  return { steps, total, truncated: total > slice.length, usage: haveUsage ? { inTok, outTok } : null, model: model || '' }
 }
 
 function toolSummary(_name, input) {
@@ -302,6 +304,20 @@ function listSubagents(sess) {
     const meta = readJSON(path.join(d, f)) || {}
     const jl = path.join(d, 'agent-' + aid + '.jsonl')
     const st = safeStat(jl)
+    let model = ''
+    if (st) {
+      const tailTxt = readTail(jl)
+      const tailLines = lines(tailTxt)
+      for (let i = tailLines.length - 1; i >= 0; i--) {
+        try {
+          const parsed = JSON.parse(tailLines[i])
+          if (parsed && parsed.type === 'assistant' && parsed.message && parsed.message.model) {
+            model = parsed.message.model
+            break
+          }
+        } catch {}
+      }
+    }
     out.push({
       agentId: aid,
       agentType: meta.agentType || '?',
@@ -312,6 +328,7 @@ function listSubagents(sess) {
       // "active" = its transcript was written very recently (still streaming).
       active: st ? (Date.now() - st.mtimeMs < 45000) : false,
       lastActivityMs: st ? st.mtimeMs : 0,
+      model: model || '',
     })
   }
   return out
@@ -1706,7 +1723,7 @@ function babysitterUsageHtml(w, workerUsage){
 function workerPanelHtml(lw){ if(!lw||!lw.length) return ''
   return '<details class="panel wk"><summary>Worker sessions (ds/ag/cx/oc/cp) <span class="badge">'+lw.length+'</span></summary><div class="sabody">'+lw.map(w=>'<span class="sa" onclick="openWorkerById(\\''+escAttr(w.id)+'\\')">'+esc(w.backend)+' ('+(w.model?esc(w.model):'default')+'): '+esc(w.prompt||w.id.slice(0,12))+' <span class="c">'+esc(w.stale?'stale':w.state)+'</span></span>').join('')+'</div></details>' }
 function openWorkerById(id){ fetch('/api/workers').then(r=>r.json()).then(ws=>{const w=ws.find(x=>x.id===id); if(!w) return; mode='w'; document.getElementById('tabW').classList.add('on'); document.getElementById('tabCC').classList.remove('on'); document.getElementById('tabConfig').classList.remove('on'); openWorker(w)}) }
-function chipHtml(a){const t=fmtTime(a.startedAt);return '<span class="sa'+(a.active?' act':'')+'" onclick="openSub(\\''+escAttr(a.agentId)+'\\','+(a.active?'true':'false')+')">'+(a.active?'● ':'')+esc(a.agentType)+': '+esc(a.description||a.agentId.slice(0,8))+(a.spawnDepth>1?' ·d'+a.spawnDepth:'')+(t?' <span class="c">'+t+'</span>':'')+'</span>'}
+function chipHtml(a){const t=fmtTime(a.startedAt);return '<span class="sa'+(a.active?' act':'')+'" onclick="openSub(\\''+escAttr(a.agentId)+'\\','+(a.active?'true':'false')+')">'+(a.active?'● ':'')+esc(a.agentType)+': '+esc(a.description||a.agentId.slice(0,8))+(a.spawnDepth>1?' ·d'+a.spawnDepth:'')+(a.model?' <span class="badge">'+esc(a.model)+'</span>':'')+(t?' <span class="c">'+t+'</span>':'')+'</span>'}
 async function openSession(s){
   sel=s.id; mode='cc'
   takeoverTeardown(); { const tk=document.getElementById('takeover'); tk.style.display='none'; tk.innerHTML='' }
@@ -1734,11 +1751,11 @@ async function openSession(s){
 async function openSub(aid,active){
   const sid=window._cur&&window._cur.type==='session'?window._cur.id:(window._cur&&window._cur.sid)
   if(!sid) return;
-  document.getElementById('crumb').innerHTML='<a onclick="back()">sessions</a> › <a onclick="reopen(\\''+escAttr(sid)+'\\')">'+esc(sid.slice(0,8))+'</a> › <span class="k">subagent '+esc(aid.slice(0,8))+'</span>'+(active?' <span class="live">● live</span>':'')
   const key='sub:'+sid+':'+aid
   const v=document.getElementById('view')
   if(v._k!==key){ v._k=key; v._h=null; v.className=''; v.innerHTML='loading…' }
   const flow=await j('/api/subagent/'+sid+'/'+aid+'/flow')
+  document.getElementById('crumb').innerHTML='<a onclick="back()">sessions</a> › <a onclick="reopen(\\''+escAttr(sid)+'\\')">'+esc(sid.slice(0,8))+'</a> › <span class="k">subagent '+esc(aid.slice(0,8))+'</span>'+(flow.model?' <span class="badge">'+esc(flow.model)+'</span>':'')+(active?' <span class="live">● live</span>':'')
   window._cur={type:'sub',sid:sid,aid:aid}
   document.getElementById('sidePanel').innerHTML=workerPanelHtml(flow.linkedWorkers)
   setView(key,usageHtml(flow.usage)+'<div class="term-flow">'+renderFlow(flow.steps)+'</div>'+(flow.truncated?'<div class="small muted">(last '+flow.steps.length+' of '+flow.total+')</div>':''))
