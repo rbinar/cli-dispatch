@@ -166,7 +166,24 @@ function listSessions() {
         const file = path.join(pdir, f)
         const st = safeStat(file); if (!st) continue
         const head = firstJSON(readHead(file)) || {}
-        const tail = lastJSON(readTail(file)) || {}
+        const tailTxt = readTail(file)
+        const tailLines = lines(tailTxt)
+        let tail = {}
+        let model = null
+        let foundTail = false
+        for (let i = tailLines.length - 1; i >= 0; i--) {
+          try {
+            const parsed = JSON.parse(tailLines[i])
+            if (!foundTail) {
+              tail = parsed
+              foundTail = true
+            }
+            if (parsed && parsed.type === 'assistant' && parsed.message && parsed.message.model) {
+              model = parsed.message.model
+              break
+            }
+          } catch {}
+        }
         const lv = live[id]
         const sess = { id, project: proj, dir: path.join(pdir, id), file }
         out.push({
@@ -180,6 +197,7 @@ function listSessions() {
           firstPrompt: clip(contentText(head.message && head.message.content), 80),
           subagentCount: countSubagents(sess),
           sizeKB: Math.round(st.size / 1024),
+          model,
         })
       }
     }
@@ -1386,7 +1404,7 @@ async function loadList(){
     document.getElementById('meta').textContent=ss.length+' sessions'
     const shown=flt==='all'?ss:ss.filter(s=>s.status===flt)
     shown.forEach(s=>{
-      const h='<div class="item'+(sel===s.id?' sel':'')+'"><div><span class="dot '+s.status+'"></span>'+esc(shortSessionProj(s.project))+'<span class="badge">'+s.status+'</span>'+(s.subagentCount?'<span class="badge">'+s.subagentCount+' sub</span>':'')+'</div><div class="small muted">'+esc(s.firstPrompt||s.id.slice(0,8))+'</div><div class="small muted">'+esc(fmtDT(s.lastActivityAt))+' · '+s.sizeKB+'KB</div></div>'
+      const h='<div class="item'+(sel===s.id?' sel':'')+'"><div><span class="dot '+s.status+'"></span>'+esc(shortSessionProj(s.project))+'<span class="badge">'+s.status+'</span>'+(s.model?' <span class="badge">'+esc(s.model)+'</span>':'')+(s.subagentCount?'<span class="badge">'+s.subagentCount+' sub</span>':'')+'</div><div class="small muted">'+esc(s.firstPrompt||s.id.slice(0,8))+'</div><div class="small muted">'+esc(fmtDT(s.lastActivityAt))+' · '+s.sizeKB+'KB</div></div>'
       const it=E(h); it.onclick=()=>openSession(s); frag.appendChild(it); sig.push(h)
     })
   }else{
