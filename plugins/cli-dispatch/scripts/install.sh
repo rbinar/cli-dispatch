@@ -122,7 +122,14 @@ echo "Installed shared helpers -> $BIN_DIR/stream-utils.sh, $LIBEXEC_DIR/parse-u
 # ---- Dashboard (backend-agnostic; always installed) ------------------------
 install -m 0755 "$SCRIPT_DIR/cli-dispatch-dashboard" "$BIN_DIR/cli-dispatch-dashboard"
 install -m 0644 "$SCRIPT_DIR/dashboard-server.mjs"   "$LIBEXEC_DIR/dashboard-server.mjs"
-echo "Installed dashboard -> cli-dispatch-dashboard (server -> $LIBEXEC_DIR/dashboard-server.mjs); open it with /cli-dispatch:dashboard"
+install -m 0644 "$SCRIPT_DIR/pty-host.mjs"           "$LIBEXEC_DIR/pty-host.mjs"
+install -m 0644 "$SCRIPT_DIR/takeover-cmd.mjs"       "$LIBEXEC_DIR/takeover-cmd.mjs"
+mkdir -p "$LIBEXEC_DIR/vendor"
+install -m 0644 "$SCRIPT_DIR/vendor/LICENSE-xterm.txt"   "$LIBEXEC_DIR/vendor/LICENSE-xterm.txt"
+install -m 0644 "$SCRIPT_DIR/vendor/xterm-addon-fit.js"  "$LIBEXEC_DIR/vendor/xterm-addon-fit.js"
+install -m 0644 "$SCRIPT_DIR/vendor/xterm.css"           "$LIBEXEC_DIR/vendor/xterm.css"
+install -m 0644 "$SCRIPT_DIR/vendor/xterm.js"            "$LIBEXEC_DIR/vendor/xterm.js"
+echo "Installed dashboard -> cli-dispatch-dashboard (server + takeover pty-host/takeover-cmd/vendor xterm -> $LIBEXEC_DIR); open it with /cli-dispatch:dashboard"
 
 # ---- Cleanup tool (backend-agnostic; always installed) ---------------------
 install -m 0755 "$SCRIPT_DIR/cli-dispatch-clean"     "$BIN_DIR/cli-dispatch-clean"
