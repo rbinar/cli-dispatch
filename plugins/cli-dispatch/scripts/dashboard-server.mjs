@@ -37,6 +37,7 @@ const VENDOR_DIR = path.join(SELF_DIR, 'vendor')
 const HOME = os.homedir()
 const PROJECTS_DIR = path.join(HOME, '.claude', 'projects')
 const parentIndexCache = new Map() // keyed by CC session id -> { mtime, workerIds: string[] }
+const subagentCache = new Map() // keyed by subagent file path -> { mtime, matchedWorkerIds: string[], usage: { inTok: number, outTok: number } | null }
 const CC_SESSIONS_DIR = path.join(HOME, '.claude', 'sessions')
 const CACHE = process.env.XDG_CACHE_HOME || path.join(HOME, '.cache')
 const WORKERS_ROOT = process.env.CLI_DISPATCH_SESSIONS_DIR || process.env.CLAUDE_DS_SESSIONS_DIR ||
@@ -189,6 +190,27 @@ function listSessions() {
 }
 
 // ---- flow mapper (shared by session + subagent transcripts) ----
+function sumUsageFromEvents(evs) {
+  const seenMsgIds = new Set()
+  let inTok = 0, outTok = 0, haveUsage = false
+  for (const e of evs) {
+    if (e && e.type === 'assistant') {
+      const c = e.message && e.message.content
+      if (Array.isArray(c)) {
+        const mid = e.message && e.message.id
+        const u = e.message && e.message.usage
+        if (u && (!mid || !seenMsgIds.has(mid))) {
+          if (mid) seenMsgIds.add(mid)
+          inTok += (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0)
+          outTok += (u.output_tokens || 0)
+          haveUsage = true
+        }
+      }
+    }
+  }
+  return { inTok, outTok, haveUsage }
+}
+
 function mapFlow(file) {
   if (!fs.existsSync(file)) return { steps: [], total: 0, truncated: false }
   const all = lines(readTail(file, 4 * 1024 * 1024))   // cap memory; big files keep their tail
@@ -212,11 +234,6 @@ function mapFlow(file) {
       resultOf[b.tool_use_id] = { ok: !b.is_error, text: clip(contentText(b.content), 160) }
   }
   const steps = []
-  // Claude Code emits one JSONL "assistant" line PER content block (text/thinking/tool_use),
-  // all sharing the same message.id and all carrying that turn's full usage object — sum
-  // per unique message.id, not per line, or usage triple/quadruple-counts.
-  const seenMsgIds = new Set()
-  let inTok = 0, outTok = 0, haveUsage = false
   for (const e of evs) {
     const ts = e.timestamp || null
     const c = e.message && e.message.content
@@ -224,14 +241,6 @@ function mapFlow(file) {
       if (typeof c === 'string') { if (!e.isMeta) steps.push({ kind: 'prompt', ts, text: clip(c, 400) }) }
       // tool_result blocks are folded into their tool step below; skip standalone
     } else if (e.type === 'assistant' && Array.isArray(c)) {
-      const mid = e.message.id
-      const u = e.message.usage
-      if (u && (!mid || !seenMsgIds.has(mid))) {
-        if (mid) seenMsgIds.add(mid)
-        inTok += (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0)
-        outTok += (u.output_tokens || 0)
-        haveUsage = true
-      }
       for (const b of c) {
         if (b.type === 'text' && b.text) steps.push({ kind: 'message', ts, text: clip(b.text, 400) })
         else if (b.type === 'thinking' && b.thinking) steps.push({ kind: 'thinking', ts, text: clip(b.thinking, 300) })
@@ -248,6 +257,7 @@ function mapFlow(file) {
       }
     }
   }
+  const { inTok, outTok, haveUsage } = sumUsageFromEvents(evs)
   return { steps, total, truncated: total > slice.length, usage: haveUsage ? { inTok, outTok } : null }
 }
 
@@ -408,9 +418,75 @@ function buildWorkerParentIndex() {
       parentIndexCache.set(s.sessionId, { mtime: currentMtime, workerIds: workerIdsInSession })
     }
 
+    const subagentMatchesForSession = new Map()
+    if (workerIdsInSession.length > 0) {
+      const sDir = path.join(PROJECTS_DIR, s.project, s.sessionId)
+      const subDir = path.join(sDir, 'subagents')
+      if (isDir(subDir)) {
+        let subagentFiles = []
+        try {
+          subagentFiles = fs.readdirSync(subDir)
+            .filter(f => f.startsWith('agent-') && f.endsWith('.jsonl'))
+            .map(f => {
+              const filePath = path.join(subDir, f)
+              const agentId = f.slice(6, -6)
+              let mtime = 0
+              try { mtime = fs.statSync(filePath).mtimeMs } catch {}
+              return { agentId, filePath, mtime }
+            })
+            .sort((a, b) => b.mtime - a.mtime)
+        } catch {}
+
+        for (const subFile of subagentFiles) {
+          const filePath = subFile.filePath
+          const currentSubMtime = subFile.mtime
+          let cachedSub = subagentCache.get(filePath)
+
+          if (!cachedSub || cachedSub.mtime !== currentSubMtime) {
+            let txt = ''
+            try { txt = readTail(filePath, 2 * 1024 * 1024) } catch {}
+            const matchedWorkerIds = []
+            let usage = null
+
+            if (txt) {
+              for (const wid of workerIdsInSession) {
+                if (txt.includes(wid)) {
+                  matchedWorkerIds.push(wid)
+                }
+              }
+              if (matchedWorkerIds.length > 0) {
+                const all = lines(readTail(filePath, 4 * 1024 * 1024))
+                const evs = []
+                for (const l of all) { try { evs.push(JSON.parse(l)) } catch {} }
+                const sumRes = sumUsageFromEvents(evs)
+                usage = sumRes.haveUsage ? { inTok: sumRes.inTok, outTok: sumRes.outTok } : null
+              }
+            }
+            cachedSub = { mtime: currentSubMtime, matchedWorkerIds, usage }
+            subagentCache.set(filePath, cachedSub)
+          }
+
+          for (const wid of cachedSub.matchedWorkerIds) {
+            if (!subagentMatchesForSession.has(wid)) {
+              subagentMatchesForSession.set(wid, {
+                subagentId: subFile.agentId,
+                babysitterUsage: cachedSub.usage
+              })
+            }
+          }
+        }
+      }
+    }
+
     for (const wid of workerIdsInSession) {
       if (!reverseMap.has(wid)) {
-        reverseMap.set(wid, { id: s.sessionId, project: s.project })
+        const subMatch = subagentMatchesForSession.get(wid) || { subagentId: null, babysitterUsage: null }
+        reverseMap.set(wid, {
+          id: s.sessionId,
+          project: s.project,
+          subagentId: subMatch.subagentId,
+          babysitterUsage: subMatch.babysitterUsage
+        })
       }
     }
   }
