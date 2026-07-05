@@ -7,6 +7,164 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.26.0] — 2026-07-06
+
+### Eklendi
+
+- **Dashboard, bir Claude Code subagent'ının hangi Anthropic modelini kullandığını gösterir.**
+  Subagent çip listesi ve subagent detay breadcrumb'ı artık her Claude Code subagent'ının
+  yanında model rozeti (örn. Sonnet, Opus, Haiku) gösterir; üst-seviye Claude Code session
+  listesindeki model rozetiyle aynı tail-scan tekniğini kullanır. Böylece yalnızca üst-seviye
+  session'ı değil, belirli bir subagent'ı gerçekte hangi modelin çalıştırdığını tek bakışta
+  görmek kolaylaşır.
+
+### Düzeltildi
+
+- **5 runner agent'ın tamamı fire-and-forget beklemelere ve doğrulanmamış iddialara karşı
+  sertleştirildi (#63, #64, #65).** ds/ag/cx/oc/cp-runner'ın hepsinde, babysitter
+  subagent turn'ünün worker'ın gerçekten terminal state'e ulaştığını doğrulamadan bitebildiği
+  bir güvenilirlik açığı vardı; bu da worker'ları öksüz bırakabiliyor veya Task kaydını zombie
+  hâline getirebiliyordu. Mekanik bir terminal-state kapısı eklendi: babysitter turn'ü, taze
+  bir `status.json` okuması terminal state doğrulamadan bitemez. Buna iki zorunlu
+  iddia-doğrulama kuralı eklendi: bir hataya base state'e karşı kanıtlamadan asla
+  "pre-existing" etiketi koyma ve görevin kendi adlandırılmış gereksinimlerine karşı mekanik
+  checklist olmadan asla "done" raporlama.
+
+## [3.25.0] — 2026-07-06
+
+### Eklendi
+
+- **`/cli-dispatch:setup`, delegasyon-önceliği hatırlatıcısını CLAUDE.md'ye kalıcı yazmayı
+  teklif eder.** Setup artık `AskUserQuestion` ile global veya project `CLAUDE.md` dosyana
+  kalıcı bir "runner delegation priority" hatırlatıcısı yazmak isteyip istemediğini soran yeni
+  bir adım içerir. Kabul edildiğinde hatırlatıcı idempotent ve marker-korumalıdır
+  (`<!-- cli-dispatch:orchestration-priority -->`); böylece delegasyon-önceliği talimatlarını
+  her session'a elle tekrar yapıştırman gerekmez, plugin bunu bir kez yazıp yerinde bırakabilir.
+
+### Düzeltildi
+
+- **`cp-stream-parse`, ephemeral reasoning'in final cevabı ezmesine artık izin vermiyor (#62).**
+  GitHub Copilot'ın `assistant.reasoning` event'leri (`ephemeral: true` işaretli), gerçek final
+  `assistant.message` hemen ardından gelip yakalanan final cevabı gerçek rapor yerine dahili bir
+  reasoning parçasıyla ezebiliyordu. Kök neden, gerçek bir geçmiş session transcript'inin parser
+  üzerinden yeniden oynatılmasıyla bulundu. Düzeltme, ephemeral/reasoning event'lerinin `finalText`
+  alanına hiç dokunmamasını sağlar; yeni regression test'i
+  (`plugins/cli-dispatch/scripts/__tests__/cp-stream-parse.test.mjs`) davranışı kilitler.
+
+## [3.24.0] — 2026-07-06
+
+### Eklendi
+
+- **ag/cx/oc/cp-runner için config seviyesinde aday model listeleri (`AG_MODELS`,
+  `CX_MODELS`, `OC_MODELS`, `CP_MODELS`).** Bu dört runner artık mevcut tek-değerli `_MODEL`
+  key'leriyle uyumlu şekilde config'te kalıcı, virgülle ayrılmış aday-model listesi kabul eder;
+  böylece listeyi her delegasyon prompt'unda tekrar yazmak gerekmez. Orkestratör delegasyonu
+  açık bir model veya satır-içi aday liste vermediğinde runner önce bu config key'lerini kontrol
+  eder ve mevcut tek-değerli `_MODEL` default'una düşmeden önce en uygun adayı kendisi seçer.
+  Dashboard Configuration UI'a (yeni alanlar + yardım metni) ve `install.sh`/`install.ps1` config
+  template'lerine bağlandı. `DS_MODELS` bilinçli olarak hariçtir — ds-runner bu özelliğin dışında
+  kalır.
+
+### Düzeltildi
+
+- **`cx-stream`, Codex'in default reasoning effort'unu artık dashboard etiketinde gösterir.**
+  `--effort` geçilmediğinde Codex kendi `~/.codex/config.toml` `model_reasoning_effort`
+  default'unu (örn. "high") sessizce uyguluyordu, ama dashboard hiçbir thinking-level suffix'i
+  göstermediği için gerçekte uygulanmış effort yokmuş gibi görünüyordu. Mevcut `META_MODEL`
+  fallback desenini yansıtır (`config.toml` aynı şekilde kazınır), böylece etiket gerçekten
+  ne koştuğunu her zaman yansıtır.
+
+## [3.23.0] — 2026-07-06
+
+### Eklendi
+
+- **Dashboard config editor (secret'lar write-only).** Dashboard artık cli-dispatch config dosyası
+  için bir config editor içerir — API key'leri ve diğer secret alanları write-only'dir (kaydedildikten
+  sonra asla geri echo edilmez), secret olmayan alanlar doğrudan görüntülenip düzenlenebilir.
+  Maskelenmiş önizleme (örn. `sk-...a1b2`), tam değeri UI'da hiç açığa çıkarmadan hangi key'in
+  yapılandırıldığını doğrulamaya yetecek kadarını gösterir.
+- **`_MODEL` config alanları artık yalnızca tek-değerli olduklarını belgelemektedir** — aşağıdaki
+  yeni çok-adaylı model listesi özelliğiyle karışmasını önlemek için docs netleştirildi.
+- **ag/cx/oc/cp-runner bir aday model listesinden seçim yapabilir.** Tek sabit `_MODEL` config
+  değeri yerine bu dört runner artık aday model listesi kabul eder; babysitter subagent dispatch
+  sırasında göreve en uygun olanı listeden seçer.
+- **Terminal-styled session/subagent/worker flow box.** Dashboard artık session → subagent → worker
+  ilişkisini terminal-styled bir kutu içinde render eder; delegasyon zincirini tek bakışta okumak
+  kolaylaşır.
+- **Claude Code sekmesi her session'ın güncel modelini gösterir.** Claude Code sekmesindeki session
+  satırları artık o session'da kullanılan mevcut modeli gösterir.
+- **Dashboard toplam delegasyon maliyetini + yüksek-overhead uyarısını gösterir.** Dashboard artık
+  tüm delege edilmiş worker session'ları genelinde toplam maliyeti toplar ve delegasyon overhead'i
+  yapılan işe göre orantısız yüksek olduğunda uyarı gösterir.
+- **Her worker satırı kendi babysitter subagent'ını + o subagent'ın token usage'ını çözer.**
+  Worker detay görünümleri artık yalnızca worker'ı değil, belirli bir worker'dan sorumlu
+  babysitter subagent'ını (ds/ag/cx/oc/cp-runner) ve o subagent'ın kendi token usage'ını gösterir.
+- **Worker satırları parent Claude Code session'ını gösterir.** Worker detay görünümü artık worker'ı
+  onu başlatan Claude Code session'ına geri bağlar; böylece worker'ı dispatch eden konuşmaya iz
+  sürmek kolaylaşır.
+
+### Düzeltildi
+
+- **`parent-index`, çıplak üst-seviye eşleşme yerine çözümlenmiş subagent eşleşmesini tercih eder.**
+  Hem belirli bir subagent hem de genel bir üst-seviye session bir worker'ın parent'ı gibi
+  görünebildiğinde, index artık çıplak üst-seviye eşleşmeye düşmek yerine daha spesifik subagent
+  eşleşmesini tercih eder.
+- **`oc-stream`, OpenCode'un kendi interrupted-call cancellation'larını artık fatal saymıyor.**
+  OpenCode normal çalışmasının parçası olarak bazen kendi devam eden tool call'larını içeride iptal
+  eder; `oc-stream` bunları fatal error sanıp session'ı öldürüyordu. Artık tanınıp yok sayılıyorlar.
+- **`cp-stream-parse`, gerçek tool name/args bilgisini Copilot'ın gerçek event şemasından çıkarır.**
+  Önceki parser, Copilot CLI'ın gerçekte ürettiğiyle eşleşmeyen dokümante bir event şeklini varsayıyordu;
+  bu yüzden worker log'undaki tool call'lar boş veya hatalı ad/arg gösteriyordu. Gerçek, dokümante
+  olmayan şemaya göre yeniden işlendi.
+- **`cx-runner`, Codex rate-limit durumunu net raporlar ve reroute önerir.** Codex görev ortasında
+  rate limit'e takıldığında runner artık genel bir failure yerine açık bir rate-limit mesajı gösterir
+  ve görevin başka backend'e yönlendirilmesini önerir.
+- **`worktree-run.sh` script'leri kill edildiğinde worktree'lerini artık otomatik silmez.** Bir
+  worker'ı koşu ortasında öldürmek eskiden script'in cleanup trap'ini tetikliyor ve git worktree'yi
+  içindeki devam eden işle birlikte siliyordu; trap artık kill sinyalinde çalışmaz.
+- **`install.sh`, human-takeover destek dosyalarını hiç kurmuyordu.** Temiz kurulumlarda dashboard'un
+  "Take control" özelliği için gereken `pty-host.mjs`, `takeover-cmd.mjs` ve `vendor/` dizini eksikti;
+  bu yüzden özellik, o sürümden sonra kurulmuş her makinede sessizce başarısız oluyordu. Installer artık
+  üçünü de kopyalar.
+- **Takeover spawn failure artık tüm dashboard'u çökertmez.** Human-takeover session'ı için alttaki
+  CLI'ı spawn etmek başarısız olduğunda (örn. eksik binary), hata eskiden yalnızca o takeover denemesi
+  yerine tüm dashboard process'ine yayılıp çökertiyordu.
+
+## [3.22.0] — 2026-07-04
+
+### Eklendi
+
+- **Dashboard için human-takeover (5 backend'in tamamı).** Worker satırının detay görünümünde artık
+  bir "Take control" aksiyonu var: headless worker process'ini öldürür, alttaki CLI'ı
+  (DeepSeek/Antigravity/Codex/OpenCode/Copilot, desteklenenlerde session'ı resume ederek) bir PTY
+  altında başlatır ve elde yazılmış WebSocket üzerinden tarayıcıdaki xterm.js terminaline stream eder;
+  böylece insan, takılmış veya belirsiz bir session'a context'i kaybetmeden müdahale edebilir.
+  "Hand back" PTY'yi kapatır ve session'ı yeniden headless tracking'e devreder. Varsayılan read-only'dir;
+  bu, yalnızca zaten sahip olunan worker session'larıyla sınırlı açık opt-in write path'tir.
+- **CC session / subagent token usage.** Claude Code sekmesindeki session ve subagent detay görünümleri
+  artık transcript'in kendi turn-başına `usage` bilgisinden toplanmış bir "Usage: N in / M out" satırı
+  gösterir (`message.id` ile dedupe edilir; çünkü Claude Code aynı usage'ı her content block için bir
+  JSONL satırı olarak tekrar yayar).
+- **Worker flow: tool call'lar ve AI mesajları artık görsel olarak ayrıdır.** Worker `progress.log`
+  satırları zaten event tipine göre başta bir glyph taşıyordu (`·` message, `✻` thinking, `$` shell
+  command, `✎` edit, `▸` tool, `✗` error), ama dashboard hepsini tek düz "log" kovası gibi render
+  ediyordu. Renderer artık her glyph'i native Claude Code session'larının aldığı aynı
+  message/tool/thinking step stillerine eşler; girintili tool-result satırları için de ayrı stil vardır.
+- **Dashboard filtre default'ları.** Claude Code sekmesi artık yüklenirken "all" yerine "busy" filtresiyle
+  açılır. Workers sekmesi, worker'ın cwd'sinin son iki path segmentinden türetilmiş bir project label'ı
+  backend/model satırının altında gösterir.
+
+### Düzeltildi
+
+- **5 stream wrapper'ın tamamında exit-code reconciliation.** `claude-ds-stream`, `ag-stream`,
+  `cx-stream` ve `oc-stream` artık SIGINT/SIGTERM sırasında parser'ın yazdığı status'u alttaki CLI'ın
+  gerçek exit code'uyla uzlaştırır; `cp-stream`'in mevcut davranışıyla aynı hizaya geldi. Öldürülen
+  worker artık `status.json` içinde `done` iddia ederek kalmaz.
+- Dashboard: worker detay header'ı artık ham (ve yanıltıcı) `running` state metni yerine `stale`
+  session'ları yansıtır.
+- OpenCode takeover resume artık `oc-stream`'in kendi doğrulanmış resume çağrısıyla uyumlu olarak
+  `--session` yanında `--continue` geçirir.
+
 ## [3.21.0] — 2026-07-04
 
 ### Eklendi
