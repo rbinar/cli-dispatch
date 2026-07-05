@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.26.0] — 2026-07-06
+
+### Added
+
+- **Dashboard shows which Anthropic model a Claude Code subagent used.** The subagent chip
+  list and the subagent detail breadcrumb now display a model badge (e.g. Sonnet, Opus, Haiku)
+  next to each Claude Code subagent, using the same tail-scan technique already used for the
+  top-level Claude Code session list's model badge. Makes it easy to see at a glance which
+  model actually ran a given subagent, not just the top-level session.
+
+### Fixed
+
+- **Hardened all 5 runner agents against fire-and-forget waits and unverified claims
+  (#63, #64, #65).** ds/ag/cx/oc/cp-runner all had a reliability gap where a babysitter
+  subagent's turn could end before confirming the worker actually reached a terminal state,
+  leaving workers orphaned or their Task registration a zombie. Added a mechanical
+  terminal-state gate — the babysitter's turn must not end until a fresh `status.json` read
+  confirms a terminal state — plus two mandatory claim-verification rules: never label a
+  failure "pre-existing" without proving it against the base state, and never report "done"
+  without a mechanical checklist against the task's own named requirements.
+
 ## [3.25.0] — 2026-07-06
 
 ### Added
