@@ -147,3 +147,46 @@ Follow these steps:
    oc-agent -q "Reply with exactly: OK"        # OpenCode (after key added)
    cp-agent -q "Reply with exactly: OK"        # Copilot (after gh/token auth + subscription)
    ```
+
+7. **Offer to add a delegation-priority reminder to persistent instructions** so the user
+   doesn't need to re-explain the runner delegation order in every session. Use
+   `AskUserQuestion` (header: "Orchestration priority") with these choices:
+   - **"Global ~/.claude/CLAUDE.md"** — adds the reminder to the user's global CLAUDE.md,
+     so it applies to all projects.
+   - **"This project's CLAUDE.md"** — adds it to the repo's CLAUDE.md, scoped to this
+     project only.
+   - **"Skip"** — no changes.
+
+   If the user picks one of the first two options:
+   - First check whether the target file already contains the marker
+     `<!-- cli-dispatch:orchestration-priority -->`. If it does, tell the user the block
+     is already present and skip re-adding it (this keeps re-runs of setup idempotent —
+     the block will never be written twice).
+   - If the marker is **not** present, append the following block to the target file
+     (creating the file first if it doesn't exist):
+
+   ````markdown
+   <!-- cli-dispatch:orchestration-priority -->
+   ## cli-dispatch delegation priority
+
+   Delegate substantive work to cli-dispatch's own backend runners rather than doing it
+   inline — this preserves native Anthropic token budget. Orchestrate from the main thread;
+   runners execute as background subagent tasks. Priority order (by task difficulty):
+
+   - `ds-runner` (DeepSeek) — default for medium/hard tasks, exploration, research, scanning.
+   - `ag-runner` (Antigravity/Gemini) — medium/hard tasks.
+   - `cx-runner` (Codex/OpenAI) — medium/hard tasks.
+   - `cp-runner` (GitHub Copilot) — medium/hard tasks.
+   - `oc-runner` (OpenCode/OpenRouter) — medium tasks.
+
+   Pick the runner's own babysitter model (sonnet/opus) by task difficulty. Also: when you
+   hit a friction point, bug, or improvement idea while using cli-dispatch itself, consider
+   filing it as a GitHub issue at https://github.com/rbinar/cli-dispatch/issues (only if the
+   user's repo is actually rbinar/cli-dispatch or they've indicated they want this — don't
+   assume for a forked/renamed setup).
+   <!-- /cli-dispatch:orchestration-priority -->
+   ````
+
+   - After writing (or skipping because the marker was already found), report which file was
+     updated and the outcome. If the user chose "Skip", note it and move on without making
+     any changes.
