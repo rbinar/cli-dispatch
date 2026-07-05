@@ -1228,6 +1228,7 @@ header b{color:var(--acc)} .grow{flex:1}
 a.agentlink{color:var(--lnk);cursor:pointer}
 .human{background:#a371f7}
 .badge.human{border-color:#a371f7;color:#a371f7}
+.badge.warn{border-color:var(--y);color:var(--y)}
 #takeover{display:none;margin-bottom:10px}
 .tkbar{display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .tkbtn{background:#1f2630;border:1px solid var(--bd);color:var(--fg);border-radius:6px;padding:5px 12px;cursor:pointer;font:inherit}
@@ -1248,6 +1249,15 @@ a.agentlink{color:var(--lnk);cursor:pointer}
 </div>
 <script>
 let mode='cc', sel=null, flt='busy', wFlt='all'
+// "High overhead" heuristic: flag a worker row when its babysitter (the Claude Code runner
+// that dispatched it) burned more than HIGH_OVERHEAD_RATIO times the OUTPUT tokens the worker
+// itself produced on its own (usually cheaper) backend — i.e. delegation likely cost MORE
+// Anthropic-native tokens than it saved. 4x is chosen as a middle point of a defensible 3-5x
+// range: tolerant of normal babysitter overhead (polling/verification/reasoning) while still
+// catching clear waste. When the worker's own usage was never captured (e.g. the Antigravity
+// backend does not report usage), the ratio is unprovable — we deliberately do NOT flag in
+// that case, to avoid crying wolf on backends that simply don't report usage.
+const HIGH_OVERHEAD_RATIO = 4
 function setFilter(k){ flt=k; loadList() }
 function setWFilter(k){ wFlt=k; loadList() }
 // Live updates via Server-Sent Events. One detail stream for the open item; it
@@ -1350,6 +1360,11 @@ function workerBucket(w){
   if(w.state==='done') return 'done'
   return 'error'
 }
+function isHighOverhead(w){
+  return !!(w.parentSession && w.parentSession.babysitterUsage &&
+    w.parentSession.babysitterUsage.outTok != null && w.usage && w.usage.outTok != null &&
+    w.parentSession.babysitterUsage.outTok > HIGH_OVERHEAD_RATIO * w.usage.outTok)
+}
 
 async function loadList(){
   const el=document.getElementById('list')
@@ -1387,7 +1402,7 @@ async function loadList(){
         usageLine=' · '+(u.tokStr?esc(u.tokStr):'')+(u.tokStr&&u.costStr?' · ':'')+(u.costStr?esc(u.costStr):'')
       }
       const proj=shortProj(w.cwd)
-      const h='<div class="item'+(sel===w.id?' sel':'')+'"><div><span class="dot '+dot+'"></span>'+esc(w.backend)+' <span class="c">'+(w.model?esc(w.model):'default')+'</span> <span class="'+badgeCls+'">'+esc(badge)+'</span></div>'+(proj?'<div class="small muted">'+esc(proj)+'</div>':'')+(w.parentSession?'<div class="small muted">from '+esc(shortSessionProj(w.parentSession.project))+'</div>':'')+'<div class="small muted">'+esc(w.prompt||w.id.slice(0,8))+'</div><div class="small muted">'+esc(fmtDT(w.started))+(w.lastTool?' · '+esc(w.lastTool):'')+usageLine+'</div></div>'
+      const h='<div class="item'+(sel===w.id?' sel':'')+'"><div><span class="dot '+dot+'"></span>'+esc(w.backend)+' <span class="c">'+(w.model?esc(w.model):'default')+'</span> <span class="'+badgeCls+'">'+esc(badge)+'</span>'+(isHighOverhead(w)?' <span class="badge warn">high overhead</span>':'')+'</div>'+(proj?'<div class="small muted">'+esc(proj)+'</div>':'')+(w.parentSession?'<div class="small muted">from '+esc(shortSessionProj(w.parentSession.project))+'</div>':'')+'<div class="small muted">'+esc(w.prompt||w.id.slice(0,8))+'</div><div class="small muted">'+esc(fmtDT(w.started))+(w.lastTool?' · '+esc(w.lastTool):'')+usageLine+'</div></div>'
       const it=E(h); it.onclick=()=>openWorker(w); frag.appendChild(it); sig.push(h)
     })
   }
@@ -1438,6 +1453,24 @@ function usageHtml(usage){
   if(u.tokStr) parts.push(u.tokStr)
   if(u.costStr) parts.push(u.costStr)
   return '<div class="small muted" style="margin:4px 8px 12px">Usage: '+esc(parts.join(' · '))+'</div>'
+}
+function babysitterUsageHtml(w, workerUsage){
+  if(!w.parentSession||!w.parentSession.babysitterUsage) return ''
+  const bUsage=w.parentSession.babysitterUsage
+  const bFmt=fmtUsage(bUsage,true)
+  if(!bFmt||!bFmt.tokStr) return ''
+  const wFmt=workerUsage?fmtUsage(workerUsage,true):null
+  const wHasTokens=wFmt&&wFmt.tokStr
+  if(wHasTokens){
+    const totalUsage={
+      inTok:(bUsage.inTok||0)+(workerUsage.inTok||0),
+      outTok:(bUsage.outTok||0)+(workerUsage.outTok||0)
+    }
+    const tFmt=fmtUsage(totalUsage,true)
+    const tTokStr=tFmt?tFmt.tokStr:''
+    return '<div class="small muted" style="margin:4px 8px 12px">Babysitter cost: '+esc(bFmt.tokStr)+'<br>Total: '+esc(tTokStr)+'</div>'
+  }
+  return '<div class="small muted" style="margin:4px 8px 12px">Babysitter cost: '+esc(bFmt.tokStr)+' (worker-side usage not captured — total unknown)</div>'
 }
 function workerPanelHtml(lw){ if(!lw||!lw.length) return ''
   return '<details class="panel wk"><summary>Worker sessions (ds/ag/cx/oc/cp) <span class="badge">'+lw.length+'</span></summary><div class="sabody">'+lw.map(w=>'<span class="sa" onclick="openWorkerById(\\''+escAttr(w.id)+'\\')">'+esc(w.backend)+' ('+(w.model?esc(w.model):'default')+'): '+esc(w.prompt||w.id.slice(0,12))+' <span class="c">'+esc(w.stale?'stale':w.state)+'</span></span>').join('')+'</div></details>' }
@@ -1592,6 +1625,7 @@ async function openWorker(w){
   let h=''
   if(flow.prompt) h+='<details class="panel task"'+(taskOpen?' open':'')+'><summary>Görev / talimat</summary><div class="sabody"><div class="md">'+md(flow.prompt)+'</div></div></details>'
   h+=usageHtml(flow.usage)
+  h+=babysitterUsageHtml(w, flow.usage)
   h+=renderFlow(flow.steps)
   if(flow.finalResultPreview) h+='<div class="step message" style="margin-top:10px">⏺ <b>result:</b> '+esc(flow.finalResultPreview)+'</div>'
   setView(key,h); loadList()
