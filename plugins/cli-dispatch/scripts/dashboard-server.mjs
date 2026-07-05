@@ -1260,6 +1260,8 @@ a.agentlink{color:var(--lnk);cursor:pointer}
 .tkbtn:hover{background:#2a323d;border-color:var(--acc)}
 .tkbtn-off{border-color:#a371f7;color:#a371f7}
 .term-wrap{border:1px solid var(--bd);border-radius:8px;padding:6px;background:#000;height:380px}
+.term-flow{border:1px solid var(--bd);border-radius:8px;padding:8px 12px;background:#000;margin:10px 0}
+.term-flow .step.prompt{font-weight:600}
 #tkTerm{height:100%}
 </style></head><body>
 <header><b>cli-dispatch</b> <span class="muted">dashboard</span><span class="grow"></span>
@@ -1452,7 +1454,7 @@ function renderFlow(steps){
       if(s.spawnsAgent) head='⏺ <span class="k">'+esc(s.name)+'</span> <a class="agentlink" onclick="openSub(\\''+escAttr(s.spawnsAgent)+'\\')">→ '+esc(s.summary||'subagent')+'</a>'
       return '<div class="step tool">'+head+(st?'<div class="small">'+st+' '+esc(s.result||'')+'</div>':'')+'</div>'
     }
-    if(s.kind==='prompt') return '<div class="step prompt">▸ <span class="md">'+md(s.text)+'</span></div>'
+    if(s.kind==='prompt') return '<div class="step prompt">❯ <span class="md">'+md(s.text)+'</span></div>'
     if(s.kind==='message') return '<div class="step message">⏺ <span class="md">'+md(s.text)+'</span></div>'
     if(s.kind==='thinking') return '<div class="step thinking">✻ '+esc(s.text)+'</div>'
     if(s.kind==='log'){
@@ -1519,7 +1521,7 @@ async function openSession(s){
   }
   h+=workerPanelHtml(flow.linkedWorkers)
   h+=usageHtml(flow.usage)
-  h+=renderFlow(flow.steps)+(flow.truncated?'<div class="small muted">(showing last '+flow.steps.length+' of '+flow.total+')</div>':'')
+  h+='<div class="term-flow">'+renderFlow(flow.steps)+'</div>'+(flow.truncated?'<div class="small muted">(showing last '+flow.steps.length+' of '+flow.total+')</div>':'')
   setView(key,h); loadList()
   watchDetail(s.status==='busy'?'session:'+s.id:null, ()=>openSession(s))
 }
@@ -1532,7 +1534,7 @@ async function openSub(aid,active){
   if(v._k!==key){ v._k=key; v._h=null; v.className=''; v.innerHTML='loading…' }
   const flow=await j('/api/subagent/'+sid+'/'+aid+'/flow')
   window._cur={type:'sub',sid:sid,aid:aid}
-  setView(key,workerPanelHtml(flow.linkedWorkers)+usageHtml(flow.usage)+renderFlow(flow.steps)+(flow.truncated?'<div class="small muted">(last '+flow.steps.length+' of '+flow.total+')</div>':''))
+  setView(key,workerPanelHtml(flow.linkedWorkers)+usageHtml(flow.usage)+'<div class="term-flow">'+renderFlow(flow.steps)+'</div>'+(flow.truncated?'<div class="small muted">(last '+flow.steps.length+' of '+flow.total+')</div>':''))
   watchDetail(active?'subagent:'+sid+':'+aid:null, ()=>openSub(aid,true))
 }
 // ==== human-takeover UI (codex / deepseek / antigravity / opencode / copilot) ======
@@ -1651,8 +1653,9 @@ async function openWorker(w){
   if(flow.prompt) h+='<details class="panel task"'+(taskOpen?' open':'')+'><summary>Görev / talimat</summary><div class="sabody"><div class="md">'+md(flow.prompt)+'</div></div></details>'
   h+=usageHtml(flow.usage)
   h+=babysitterUsageHtml(w, flow.usage)
-  h+=renderFlow(flow.steps)
+  h+='<div class="term-flow">'+renderFlow(flow.steps)
   if(flow.finalResultPreview) h+='<div class="step message" style="margin-top:10px">⏺ <b>result:</b> '+esc(flow.finalResultPreview)+'</div>'
+  h+='</div>'
   setView(key,h); loadList()
   watchDetail(((w.state==='running'&&!w.stale)||w.state==='human-controlled')?'worker:'+w.id:null, ()=>openWorker(w))
 }
