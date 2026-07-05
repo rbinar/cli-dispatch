@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.24.0] — 2026-07-06
+
+### Added
+
+- **Config-level candidate model lists for ag/cx/oc/cp-runner (`AG_MODELS`, `CX_MODELS`,
+  `OC_MODELS`, `CP_MODELS`).** These four runners now accept a standing, comma-separated
+  candidate-model list in config, matching the existing single-value `_MODEL` keys, so you
+  don't have to retype the list in every delegation prompt. When the orchestrator's
+  delegation gives no explicit model or inline candidate list, the runner checks these
+  config keys first and picks the best-fit candidate itself, before falling back to the
+  existing single-value `_MODEL` default. Wired into the dashboard Configuration UI (new
+  fields + hint text) and the `install.sh`/`install.ps1` config templates. `DS_MODELS` is
+  intentionally excluded — ds-runner stays out of this feature.
+
+### Fixed
+
+- **`cx-stream` now surfaces Codex's default reasoning effort in the dashboard label.**
+  When `--effort` wasn't passed, Codex silently applied its own `~/.codex/config.toml`
+  `model_reasoning_effort` default (e.g. "high"), but the dashboard showed no thinking-level
+  suffix at all, making it look like no reasoning effort was applied when one actually was.
+  Mirrors the existing `META_MODEL` fallback pattern (scrapes `config.toml` the same way) so
+  the label always reflects what actually ran.
+
 ## [3.23.0] — 2026-07-06
 
 ### Added
