@@ -1068,6 +1068,53 @@ function sse(req, res, spec) {
   req.on('close', () => { clearInterval(hb); clearTimeout(t); for (const w of watchers) { try { w.close() } catch {} } })
 }
 
+const CONFIG_KEYS = {
+  DEEPSEEK_API_KEY: { secret: true },
+  GEMINI_API_KEY: { secret: true },
+  CODEX_API_KEY: { secret: true },
+  OPENROUTER_API_KEY: { secret: true },
+  COPILOT_GITHUB_TOKEN: { secret: true },
+  DS_MODEL: { secret: false },
+  DS_FLASH_MODEL: { secret: false },
+  AG_MODEL: { secret: false },
+  CX_MODEL: { secret: false },
+  OC_MODEL: { secret: false },
+  CP_MODEL: { secret: false }
+}
+
+function resolveConfigPath() {
+  const envOverride = process.env.CLI_DISPATCH_CONFIG || process.env.CLAUDE_DS_CONFIG
+  if (envOverride) return envOverride
+  const primaryPath = path.join(os.homedir(), '.config', 'cli-dispatch', 'config')
+  const legacyPath = path.join(os.homedir(), '.config', 'claude-ds', 'config')
+  if (!fs.existsSync(primaryPath) && fs.existsSync(legacyPath)) {
+    return legacyPath
+  }
+  return primaryPath
+}
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = ''
+    req.on('data', chunk => {
+      body += chunk
+      if (body.length > 65536) {
+        reject(new Error('Request body too large'))
+      }
+    })
+    req.on('end', () => {
+      try {
+        resolve(JSON.parse(body))
+      } catch (e) {
+        reject(e)
+      }
+    })
+    req.on('error', err => {
+      reject(err)
+    })
+  })
+}
+
 const server = http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://127.0.0.1')
   const p = u.pathname
@@ -1080,6 +1127,139 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/stream') return sse(req, res, u.searchParams.get('watch') || 'sessions')
     if (p === '/api/sessions') return send(res, 200, listSessions())
     if (p === '/api/workers') return send(res, 200, listWorkers())
+
+    if (p === '/api/config' && req.method === 'GET') {
+      const configPath = resolveConfigPath()
+      const result = {}
+      for (const k of Object.keys(CONFIG_KEYS)) {
+        if (CONFIG_KEYS[k].secret) {
+          result[k] = { secret: true, set: false }
+        } else {
+          result[k] = { secret: false, value: "" }
+        }
+      }
+      if (fs.existsSync(configPath)) {
+        try {
+          const content = fs.readFileSync(configPath, 'utf8')
+          const lines = content.split(/\r?\n/)
+          for (const line of lines) {
+            const trimmed = line.trim()
+            if (trimmed.startsWith('#') || trimmed === '') continue
+            const match = line.match(/^\s*([A-Za-z0-9_]+)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|([^#\s]*))\s*$/)
+            if (match) {
+              const key = match[1]
+              if (Object.prototype.hasOwnProperty.call(CONFIG_KEYS, key)) {
+                let val = match[2] !== undefined ? match[2] : (match[3] !== undefined ? match[3] : match[4])
+                val = val.replace(/\\"/g, '"')
+                if (CONFIG_KEYS[key].secret) {
+                  result[key].set = (val !== '')
+                } else {
+                  result[key].value = val
+                }
+              }
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+      return send(res, 200, result)
+    }
+
+    if (p === '/api/config' && req.method === 'POST') {
+      if (!checkTakeoverAuth(req, res, { requireCustomHeader: true })) return
+      let body
+      try {
+        body = await readBody(req)
+      } catch (e) {
+        return send(res, 400, { error: 'invalid JSON body' })
+      }
+      const { key, value } = body
+      if (typeof key !== 'string' || !Object.prototype.hasOwnProperty.call(CONFIG_KEYS, key)) {
+        return send(res, 400, { error: 'invalid config key' })
+      }
+      if (typeof value !== 'string') {
+        return send(res, 400, { error: 'value must be a string' })
+      }
+      if (value.includes('\n') || value.includes('\r')) {
+        return send(res, 400, { error: 'value cannot contain newlines' })
+      }
+
+      const escapedValue = value.replace(/"/g, '\\"')
+      const configPath = resolveConfigPath()
+      try {
+        const dir = path.dirname(configPath)
+        fs.mkdirSync(dir, { recursive: true })
+
+        const exists = fs.existsSync(configPath)
+        let lines = []
+        let existingMode = 0o600
+        
+        if (exists) {
+          const stat = fs.statSync(configPath)
+          existingMode = stat.mode & 0o777
+          const content = fs.readFileSync(configPath, 'utf8')
+          lines = content.split(/\r?\n/)
+        }
+
+        const keyPrefix = key + '='
+        let foundIndex = -1
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].startsWith(keyPrefix)) {
+            foundIndex = i
+            break
+          }
+        }
+
+        const newLine = `${key}="${escapedValue}"`
+
+        if (foundIndex !== -1) {
+          lines[foundIndex] = newLine
+        } else {
+          if (!exists) {
+            lines = [`# cli-dispatch config`, newLine, '']
+          } else {
+            let lastNonBlankIdx = -1
+            for (let i = lines.length - 1; i >= 0; i--) {
+              if (lines[i].trim() !== '') {
+                lastNonBlankIdx = i
+                break
+              }
+            }
+            if (lastNonBlankIdx === -1) {
+              lines = [`# cli-dispatch config`, newLine, '']
+            } else {
+              const trailingBlankCount = lines.length - 1 - lastNonBlankIdx
+              const beforeLines = lines.slice(0, lastNonBlankIdx + 1)
+              const prepends = Math.max(0, 2 - trailingBlankCount)
+              for (let j = 0; j < prepends; j++) {
+                beforeLines.push('')
+              }
+              beforeLines.push(newLine)
+              beforeLines.push('')
+              lines = beforeLines
+            }
+          }
+        }
+
+        const finalContent = lines.join('\n')
+        
+        const tempPath = configPath + '.tmp.' + crypto.randomBytes(8).toString('hex')
+        try {
+          fs.writeFileSync(tempPath, finalContent, { mode: existingMode })
+          fs.renameSync(tempPath, configPath)
+        } catch (writeErr) {
+          try {
+            if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath)
+          } catch {}
+          throw writeErr
+        }
+
+        return send(res, 200, { ok: true })
+      } catch (e) {
+        return send(res, 400, { error: 'Failed to write config: ' + String(e.message || e) })
+      }
+    }
 
     let m
     if ((m = p.match(/^\/api\/session\/([^/]+)\/flow$/))) {
@@ -1263,12 +1443,18 @@ a.agentlink{color:var(--lnk);cursor:pointer}
 .term-flow{border:1px solid var(--bd);border-radius:8px;padding:8px 12px;background:#000;margin:10px 0}
 .term-flow .step.prompt{font-weight:600}
 #tkTerm{height:100%}
+input.cfg-input{background:#0d1117;border:1px solid var(--bd);color:var(--fg);border-radius:6px;padding:5px 10px;font:inherit;width:100%;max-width:400px;margin-right:8px}
+input.cfg-input:focus{border-color:var(--acc);outline:none}
+.cfg-row{display:flex;flex-direction:column;gap:4px;padding:8px 0;border-bottom:1px solid #21262d}
+.cfg-row:last-child{border-bottom:none}
+.cfg-label{font-weight:bold;display:flex;align-items:center;gap:8px}
+.cfg-field{display:flex;align-items:center;margin-top:4px}
 </style></head><body>
 <header><b>cli-dispatch</b> <span class="muted">dashboard</span><span class="grow"></span>
 <span class="small muted" id="meta"></span><span class="small muted">· read-only by default · opt-in takeover</span></header>
 <div class="layout">
  <div class="rail">
-   <div class="tabs"><div class="tab on" id="tabCC">Claude Code</div><div class="tab" id="tabW">cli-dispatch workers</div></div>
+   <div class="tabs"><div class="tab on" id="tabCC">Claude Code</div><div class="tab" id="tabW">cli-dispatch workers</div><div class="tab" id="tabConfig">Configuration</div></div>
    <div id="filter" class="filter"></div>
    <div id="list"></div>
  </div>
@@ -1409,7 +1595,7 @@ async function loadList(){
       const h='<div class="item'+(sel===s.id?' sel':'')+'"><div><span class="dot '+s.status+'"></span>'+esc(shortSessionProj(s.project))+'<span class="badge">'+s.status+'</span>'+(s.model?' <span class="badge">'+esc(s.model)+'</span>':'')+(s.subagentCount?'<span class="badge">'+s.subagentCount+' sub</span>':'')+'</div><div class="small muted">'+esc(s.firstPrompt||s.id.slice(0,8))+'</div><div class="small muted">'+esc(fmtDT(s.lastActivityAt))+' · '+s.sizeKB+'KB</div></div>'
       const it=E(h); it.onclick=()=>openSession(s); frag.appendChild(it); sig.push(h)
     })
-  }else{
+  }else if(mode==='w'){
     const ws=await j('/api/workers')
     const wCounts={all:ws.length,running:0,human:0,done:0,error:0}
     ws.forEach(w=>{ const k=workerBucket(w); wCounts[k]=(wCounts[k]||0)+1 })
@@ -1432,6 +1618,14 @@ async function loadList(){
       const h='<div class="item'+(sel===w.id?' sel':'')+'"><div><span class="dot '+dot+'"></span>'+esc(w.backend)+' <span class="c">'+(w.model?esc(w.model):'default')+'</span> <span class="'+badgeCls+'">'+esc(badge)+'</span>'+(isHighOverhead(w)?' <span class="badge warn">high overhead</span>':'')+'</div>'+(proj?'<div class="small muted">'+esc(proj)+'</div>':'')+(w.parentSession?'<div class="small muted">from '+esc(shortSessionProj(w.parentSession.project))+'</div>':'')+'<div class="small muted">'+esc(w.prompt||w.id.slice(0,8))+'</div><div class="small muted">'+esc(fmtDT(w.started))+(w.lastTool?' · '+esc(w.lastTool):'')+usageLine+'</div></div>'
       const it=E(h); it.onclick=()=>openWorker(w); frag.appendChild(it); sig.push(h)
     })
+  }else if(mode==='config'){
+    fb.style.display='none'
+    document.getElementById('meta').textContent='configuration'
+    const h='<div style="padding:14px;color:var(--dim)">Configure backend API keys and model defaults.</div>'
+    if(el._sig===h) return
+    el._sig=h
+    el.innerHTML=h
+    return
   }
   // Skip the swap when nothing visible changed; otherwise keep the rail's scroll position.
   const s2=mode+'|'+sig.join('\\n')
@@ -1501,7 +1695,7 @@ function babysitterUsageHtml(w, workerUsage){
 }
 function workerPanelHtml(lw){ if(!lw||!lw.length) return ''
   return '<details class="panel wk"><summary>Worker sessions (ds/ag/cx/oc/cp) <span class="badge">'+lw.length+'</span></summary><div class="sabody">'+lw.map(w=>'<span class="sa" onclick="openWorkerById(\\''+escAttr(w.id)+'\\')">'+esc(w.backend)+' ('+(w.model?esc(w.model):'default')+'): '+esc(w.prompt||w.id.slice(0,12))+' <span class="c">'+esc(w.stale?'stale':w.state)+'</span></span>').join('')+'</div></details>' }
-function openWorkerById(id){ fetch('/api/workers').then(r=>r.json()).then(ws=>{const w=ws.find(x=>x.id===id); if(!w) return; mode='w'; document.getElementById('tabW').classList.add('on'); document.getElementById('tabCC').classList.remove('on'); openWorker(w)}) }
+function openWorkerById(id){ fetch('/api/workers').then(r=>r.json()).then(ws=>{const w=ws.find(x=>x.id===id); if(!w) return; mode='w'; document.getElementById('tabW').classList.add('on'); document.getElementById('tabCC').classList.remove('on'); document.getElementById('tabConfig').classList.remove('on'); openWorker(w)}) }
 function chipHtml(a){const t=fmtTime(a.startedAt);return '<span class="sa'+(a.active?' act':'')+'" onclick="openSub(\\''+escAttr(a.agentId)+'\\','+(a.active?'true':'false')+')">'+(a.active?'● ':'')+esc(a.agentType)+': '+esc(a.description||a.agentId.slice(0,8))+(a.spawnDepth>1?' ·d'+a.spawnDepth:'')+(t?' <span class="c">'+t+'</span>':'')+'</span>'}
 async function openSession(s){
   sel=s.id; mode='cc'
@@ -1659,10 +1853,101 @@ async function openWorker(w){
   setView(key,h); loadList()
   watchDetail(((w.state==='running'&&!w.stale)||w.state==='human-controlled')?'worker:'+w.id:null, ()=>openWorker(w))
 }
+async function openConfigView() {
+  sel = null
+  window._cur = { type: 'config' }
+  takeoverTeardown()
+  document.getElementById('takeover').style.display = 'none'
+  document.getElementById('takeover').innerHTML = ''
+  document.getElementById('crumb').innerHTML = 'Configuration'
+  const v = document.getElementById('view')
+  v.className = ''
+  v.innerHTML = 'loading…'
+  loadList()
+  await renderConfigEditor()
+}
+async function saveConfig(key, isSecret) {
+  const input = document.getElementById('input_' + key)
+  const errSpan = document.getElementById('err_' + key)
+  if (!input || !errSpan) return
+  errSpan.textContent = ''
+  const val = input.value
+  if (isSecret && val === '') return
+  try {
+    const res = await fetch('/api/config', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CLI-Dispatch-Takeover': '1'
+      },
+      body: JSON.stringify({ key, value: val })
+    })
+    const body = await res.json()
+    if (!res.ok) {
+      errSpan.textContent = body.error || 'Save failed'
+      return
+    }
+    if (isSecret) input.value = ''
+    await renderConfigEditor()
+  } catch (e) {
+    errSpan.textContent = e.message
+  }
+}
+async function renderConfigEditor() {
+  const v = document.getElementById('view')
+  const key = 'config'
+  try {
+    const cfg = await j('/api/config')
+    const groups = [
+      { name: 'DeepSeek', keys: ['DEEPSEEK_API_KEY', 'DS_MODEL', 'DS_FLASH_MODEL'] },
+      { name: 'Antigravity', keys: ['GEMINI_API_KEY', 'AG_MODEL'] },
+      { name: 'Codex', keys: ['CODEX_API_KEY', 'CX_MODEL'] },
+      { name: 'OpenCode', keys: ['OPENROUTER_API_KEY', 'OC_MODEL'] },
+      { name: 'Copilot', keys: ['COPILOT_GITHUB_TOKEN', 'CP_MODEL'] }
+    ]
+    let html = '<div style="max-width:800px">'
+    for (const g of groups) {
+      html += '<div class="panel">'
+      html += '<div style="padding:8px 12px;border-bottom:1px solid var(--bd);font-weight:bold;color:var(--acc)">' + esc(g.name) + ' Backend</div>'
+      html += '<div class="sabody" style="padding:12px">'
+      for (const k of g.keys) {
+        const item = cfg[k]
+        if (!item) continue
+        html += '<div class="cfg-row">'
+        html += '<div class="cfg-label">' + esc(k)
+        if (item.secret) {
+          if (item.set) {
+            html += '<span class="badge ok">● set</span>'
+          } else {
+            html += '<span class="badge muted">○ not set</span>'
+          }
+        }
+        html += '</div>'
+        html += '<div class="cfg-field">'
+        if (item.secret) {
+          html += '<input type="password" class="cfg-input" id="input_' + escAttr(k) + '" placeholder="enter new key to update, leave blank to keep current">'
+          html += '<button class="tkbtn" onclick="saveConfig(\'' + escAttr(k) + '\', true)">Save</button>'
+        } else {
+          html += '<input type="text" class="cfg-input" id="input_' + escAttr(k) + '" value="' + escAttr(item.value) + '">'
+          html += '<button class="tkbtn" onclick="saveConfig(\'' + escAttr(k) + '\', false)">Save</button>'
+        }
+        html += '<span id="err_' + escAttr(k) + '" class="err" style="margin-left:8px"></span>'
+        html += '</div>'
+        html += '</div>'
+      }
+      html += '</div></div>'
+    }
+    html += '</div>'
+    setView(key, html)
+  } catch (e) {
+    setView(key, '<div class="err">Failed to load configuration: ' + esc(e.message) + '</div>')
+  }
+}
 function reopen(sid){ fetch('/api/sessions').then(r=>r.json()).then(ss=>{const s=ss.find(x=>x.id===sid); if(s) openSession(s)}) }
 function back(){ watchDetail(null); takeoverTeardown(); { const tk=document.getElementById('takeover'); tk.style.display='none'; tk.innerHTML='' } sel=null; window._cur=null; document.getElementById('crumb').textContent='Select a session…'; const v=document.getElementById('view'); v._k=null; v._h=null; v.className='empty'; v.innerHTML='←'; loadList() }
-document.getElementById('tabCC').onclick=()=>{mode='cc';document.getElementById('tabCC').classList.add('on');document.getElementById('tabW').classList.remove('on');back()}
-document.getElementById('tabW').onclick=()=>{mode='w';wFlt='all';document.getElementById('tabW').classList.add('on');document.getElementById('tabCC').classList.remove('on');back()}
+document.getElementById('tabCC').onclick=()=>{mode='cc';document.getElementById('tabCC').classList.add('on');document.getElementById('tabW').classList.remove('on');document.getElementById('tabConfig').classList.remove('on');back()}
+document.getElementById('tabW').onclick=()=>{mode='w';wFlt='all';document.getElementById('tabW').classList.add('on');document.getElementById('tabCC').classList.remove('on');document.getElementById('tabConfig').classList.remove('on');back()}
+document.getElementById('tabConfig').onclick=()=>{mode='config';document.getElementById('tabConfig').classList.add('on');document.getElementById('tabCC').classList.remove('on');document.getElementById('tabW').classList.remove('on');openConfigView()}
 loadList()
 // Live list: SSE pushes a change whenever sessions/workers state changes (busy/idle flips, new runs).
 const listES=new EventSource('/api/stream?watch=sessions')
