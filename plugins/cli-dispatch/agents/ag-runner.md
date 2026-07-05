@@ -116,7 +116,22 @@ Procedure:
    stderr warning `ag-stream` prints for names not in `agy models`). Report the requested
    model and whether any unknown-model warning appeared.
 
-Omit `--model` ONLY when the orchestrator did not specify a worker model.
+**Config-level candidate list (`AG_MODELS`):** If the orchestrator's prompt gives NO explicit
+model and NO explicit candidate list, check the cli-dispatch config file for `AG_MODELS`
+BEFORE falling back to omitting `--model`. Use the standard config resolution (check
+`CLI_DISPATCH_CONFIG`, fall back to `~/.config/cli-dispatch/config` or the legacy
+`~/.config/claude-ds/config`). If `AG_MODELS` is set and non-empty (comma-separated list of
+model names), treat it EXACTLY like the orchestrator-provided list case in the next section:
+reason about which candidate fits the task best, pick exactly one, resolve to the exact
+`agy models` display line (the exact-match requirement from step 1 above still applies — a
+loose slug like "gemini-3.5-flash" must resolve to e.g. `"Gemini 3.5 Flash (High)"`), pass
+via `--model`, and in the final report state which model was picked, why, AND explicitly note
+it came from the config-level list (e.g. `model: Gemini 3.5 Flash (High) (picked from config
+AG_MODELS — cheap/fast fit for a doc-only task)`). Only if `AG_MODELS` is ALSO unset/empty
+does the runner fall through to the next line.
+
+Omit `--model` ONLY when the orchestrator did not specify a worker model (no explicit model,
+no inline candidate list, and `AG_MODELS` is unset/empty in config).
 
 **Reasoning effort:** if the task names a thinking/effort level, pass `--effort low|medium|high`
 — it composes the display-name suffix for you (`--model "Gemini 3.5 Flash" --effort low` →

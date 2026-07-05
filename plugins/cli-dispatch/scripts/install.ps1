@@ -134,6 +134,10 @@ CODEX_API_KEY=""
 # Default model for the codex worker. Blank = codex's own default. Override per-call with
 # `cx-agent --model <name>`. Current models: gpt-5.5 (default), gpt-5.4, gpt-5.4-mini.
 CX_MODEL=""
+# Optional comma-separated candidate model list — when set, the cx-runner babysitter
+# picks the best fit from this list (same reasoning as an orchestrator-provided inline
+# list). Leave empty to use only the single CX_MODEL default above.
+CX_MODELS=""
 '@ | Set-Content -Path $Config -Encoding UTF8
   Write-Host "Created config template -> $Config"
 } else {

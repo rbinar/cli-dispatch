@@ -109,7 +109,20 @@ An empty value (`""`) means the flag was never passed → rerun with `--model`. 
 records the requested/observed model; since copilot errors out loudly on an invalid slug, a
 successful run means that model actually ran.) Always report it.
 
-Omit `--model` ONLY when the orchestrator did not specify a worker model.
+**Config-level candidate list (`CP_MODELS`):** If the orchestrator's prompt gives NO explicit
+model and NO explicit candidate list, check the cli-dispatch config file for `CP_MODELS`
+BEFORE falling back to omitting `--model`. Use the standard config resolution (check
+`CLI_DISPATCH_CONFIG`, fall back to `~/.config/cli-dispatch/config` or the legacy
+`~/.config/claude-ds/config`). If `CP_MODELS` is set and non-empty (comma-separated list of
+Copilot model slugs), treat it EXACTLY like the orchestrator-provided list case in the next
+section: reason about which candidate fits the task best, pick exactly one, pass the picked
+slug verbatim via `--model`, and in the final report state which model was picked, why, AND
+explicitly note it came from the config-level list (e.g. `model: gpt-5.4 (picked from config
+CP_MODELS — cheap/fast fit for a doc-only task)`). Only if `CP_MODELS` is ALSO unset/empty
+does the runner fall through to the next line.
+
+Omit `--model` ONLY when the orchestrator did not specify a worker model (no explicit model,
+no inline candidate list, and `CP_MODELS` is unset/empty in config).
 
 ## Reasoning effort
 

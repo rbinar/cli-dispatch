@@ -262,6 +262,10 @@ GEMINI_API_KEY=""
 #   "Claude Opus 4.6 (Thinking)"  "Claude Sonnet 4.6 (Thinking)"  "GPT-OSS 120B (Medium)"
 # Override per-call with `ag-agent --model "<name>"`. Run `agy models` for the live list.
 AG_MODEL=""
+# Optional comma-separated candidate model list — when set, the ag-runner babysitter
+# picks the best fit from this list (same reasoning as an orchestrator-provided inline
+# list). Leave empty to use only the single AG_MODEL default above.
+AG_MODELS=""
 
 # --- Codex backend (cx-agent / cx-stream, OpenAI Codex CLI) --- OPTIONAL.
 # Auth: run `codex login` once (ChatGPT/OAuth — no key needed for personal use).
@@ -272,6 +276,10 @@ CODEX_API_KEY=""
 # (with CODEX_MODEL as fallback). Current models: gpt-5.5 (default), gpt-5.4,
 # gpt-5.4-mini (fast/cheap, subagents), gpt-5.3-codex-spark. Example: CX_MODEL="gpt-5.4-mini"
 CX_MODEL=""
+# Optional comma-separated candidate model list — when set, the cx-runner babysitter
+# picks the best fit from this list (same reasoning as an orchestrator-provided inline
+# list). Leave empty to use only the single CX_MODEL default above.
+CX_MODELS=""
 # Sandbox: default workspace-write (files can be written in --cwd).
 # Pass cx-agent --read-only for a REAL OS-level no-writes guarantee (macOS Seatbelt /
 # Linux bwrap+seccomp) — kernel-enforced, unlike other backends.
@@ -284,6 +292,10 @@ OPENROUTER_API_KEY=""
 # List live models with: OPENROUTER_API_KEY=<key> opencode models openrouter
 # Free-tier example: google/gemma-4-31b-it:free
 OC_MODEL=""
+# Optional comma-separated candidate model list — when set, the oc-runner babysitter
+# picks the best fit from this list (same reasoning as an orchestrator-provided inline
+# list). Leave empty to use only the single OC_MODEL default above.
+OC_MODELS=""
 # No sandbox: --auto approves all permissions (required for headless use, not a
 # safety opt-in). Use --cwd + a git worktree for a no-writes guarantee.
 
@@ -295,6 +307,10 @@ COPILOT_GITHUB_TOKEN=""
 # Default model slug for the copilot worker. Blank = copilot's own default.
 # Examples: claude-sonnet-4.6, gpt-5.2, auto. Override per-call with `cp-agent --model <slug>`.
 CP_MODEL=""
+# Optional comma-separated candidate model list — when set, the cp-runner babysitter
+# picks the best fit from this list (same reasoning as an orchestrator-provided inline
+# list). Leave empty to use only the single CP_MODEL default above.
+CP_MODELS=""
 # No sandbox: --allow-all-tools --no-ask-user enables headless use, not a safety opt-in.
 # Use --cwd + a git worktree for a no-writes guarantee.
 CFG

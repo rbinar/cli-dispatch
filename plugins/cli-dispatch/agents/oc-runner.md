@@ -106,7 +106,22 @@ An empty value (`""`) means the flag was never passed → rerun with `--model`. 
 records the requested model; since opencode errors out loudly on an invalid slug, a
 successful run means that model actually ran.) Always report it.
 
-Omit `--model` ONLY when the orchestrator did not specify a worker model.
+**Config-level candidate list (`OC_MODELS`):** If the orchestrator's prompt gives NO explicit
+model and NO explicit candidate list, check the cli-dispatch config file for `OC_MODELS`
+BEFORE falling back to omitting `--model`. Use the standard config resolution (check
+`CLI_DISPATCH_CONFIG`, fall back to `~/.config/cli-dispatch/config` or the legacy
+`~/.config/claude-ds/config`). If `OC_MODELS` is set and non-empty (comma-separated list of
+bare OpenRouter slugs — no `openrouter/` prefix, same as the single-model case), treat it
+EXACTLY like the orchestrator-provided list case in the next section: reason about which
+candidate fits the task best, pick exactly one, pass the picked bare slug via `--model`
+(`oc-stream` prepends the `openrouter/` prefix automatically), and in the final report state
+which model was picked, why, AND explicitly note it came from the config-level list (e.g.
+`model: google/gemma-4-31b-it:free (picked from config OC_MODELS — cheap/fast fit for a
+doc-only task)`). Only if `OC_MODELS` is ALSO unset/empty does the runner fall through to the
+next line.
+
+Omit `--model` ONLY when the orchestrator did not specify a worker model (no explicit model,
+no inline candidate list, and `OC_MODELS` is unset/empty in config).
 
 **No reasoning-effort control:** `--effort` is rejected by the oc-* CLIs (the opencode CLI
 exposes no such knob). If the task demands an effort level, say so and stop — that is an

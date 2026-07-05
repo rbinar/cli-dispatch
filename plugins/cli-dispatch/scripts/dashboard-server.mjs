@@ -1077,9 +1077,13 @@ const CONFIG_KEYS = {
   DS_MODEL: { secret: false },
   DS_FLASH_MODEL: { secret: false },
   AG_MODEL: { secret: false },
+  AG_MODELS: { secret: false },
   CX_MODEL: { secret: false },
+  CX_MODELS: { secret: false },
   OC_MODEL: { secret: false },
-  CP_MODEL: { secret: false }
+  OC_MODELS: { secret: false },
+  CP_MODEL: { secret: false },
+  CP_MODELS: { secret: false }
 }
 
 function resolveConfigPath() {
@@ -1910,10 +1914,10 @@ async function renderConfigEditor() {
     const cfg = await j('/api/config')
     const groups = [
       { name: 'DeepSeek', keys: ['DEEPSEEK_API_KEY', 'DS_MODEL', 'DS_FLASH_MODEL'] },
-      { name: 'Antigravity', keys: ['GEMINI_API_KEY', 'AG_MODEL'] },
-      { name: 'Codex', keys: ['CODEX_API_KEY', 'CX_MODEL'] },
-      { name: 'OpenCode', keys: ['OPENROUTER_API_KEY', 'OC_MODEL'] },
-      { name: 'Copilot', keys: ['COPILOT_GITHUB_TOKEN', 'CP_MODEL'] }
+      { name: 'Antigravity', keys: ['GEMINI_API_KEY', 'AG_MODEL', 'AG_MODELS'] },
+      { name: 'Codex', keys: ['CODEX_API_KEY', 'CX_MODEL', 'CX_MODELS'] },
+      { name: 'OpenCode', keys: ['OPENROUTER_API_KEY', 'OC_MODEL', 'OC_MODELS'] },
+      { name: 'Copilot', keys: ['COPILOT_GITHUB_TOKEN', 'CP_MODEL', 'CP_MODELS'] }
     ]
     let html = '<div style="max-width:800px">'
     for (const g of groups) {
@@ -1946,8 +1950,10 @@ async function renderConfigEditor() {
         }
         html += '<span id="err_' + escAttr(k) + '" class="err" style="margin-left:8px"></span>'
         html += '</div>'
-        if (!item.secret && k.endsWith('_MODEL')) {
-          html += '<div class="small muted" style="margin-top:2px">Single default model, used only when no --model is passed. For multi-candidate selection (babysitter picks one), list the candidates in the task prompt instead — this field always holds exactly one value.</div>'
+        if (!item.secret && k.endsWith('_MODELS')) {
+          html += '<div class="small muted" style="margin-top:2px">Comma-separated candidate model list (optional). When the delegation prompt names no explicit model, the babysitter checks this list first and picks the best fit itself — same reasoning as an orchestrator-provided list, just persisted here instead of retyped each time. Leave empty to keep using the single default above.</div>'
+        } else if (!item.secret && k.endsWith('_MODEL')) {
+          html += '<div class="small muted" style="margin-top:2px">Single default model, used only when no --model is passed and no candidate list applies. For multi-candidate selection (babysitter picks one), either list candidates in the task prompt, or set the matching ' + esc(k.replace(/_MODEL$/, '') + '_MODELS') + ' field below for a standing default list.</div>'
         }
         html += '</div>'
       }

@@ -109,8 +109,22 @@ default when a model was requested counts as FAILING the task.
    (`meta.json` records the requested model; since codex errors out loudly on an invalid
    slug, a successful run means that model actually ran.) Always report it.
 
-Omit `--model` ONLY when the orchestrator did not specify a worker model (the codex
-config default then applies).
+**Config-level candidate list (`CX_MODELS`):** If the orchestrator's prompt gives NO explicit
+model and NO explicit candidate list, check the cli-dispatch config file for `CX_MODELS`
+BEFORE falling back to omitting `--model`. Use the standard config resolution (check
+`CLI_DISPATCH_CONFIG`, fall back to `~/.config/cli-dispatch/config` or the legacy
+`~/.config/claude-ds/config`). If `CX_MODELS` is set and non-empty (comma-separated list of
+Codex model slugs), treat it EXACTLY like the orchestrator-provided list case in the next
+section: reason about which candidate fits the task best, pick exactly one, pass the picked
+slug verbatim via `--model` (no display-name resolution needed — Codex slugs are passed
+verbatim), and in the final report state which model was picked, why, AND explicitly note it
+came from the config-level list (e.g. `model: gpt-5.4-mini (picked from config CX_MODELS —
+cheap/fast fit for a doc-only task)`). Only if `CX_MODELS` is ALSO unset/empty does the runner
+fall through to the next line.
+
+Omit `--model` ONLY when the orchestrator did not specify a worker model (no explicit model,
+no inline candidate list, and `CX_MODELS` is unset/empty in config — the codex config default
+then applies).
 
 **Reasoning effort:** if the task names a thinking/effort level, pass `--effort low|medium|high`
 (maps to codex's `model_reasoning_effort`; omitted = the config.toml default, currently often
