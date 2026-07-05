@@ -270,6 +270,17 @@ function handleEvent(ev) {
     touch(); writeStatus()
     return
   }
+  // Reasoning/ephemeral events (e.g. assistant.reasoning, assistant.reasoning_delta) must
+  // NEVER reach handleText(): they're transient "thinking" fragments, not the final answer,
+  // and if they arrive late/out-of-order they'd otherwise clobber finalText via the generic
+  // textFrom() fallback below. ev.ephemeral === true is Copilot's authoritative signal for
+  // this; the explicit type checks are belt-and-suspenders in case a future event omits it.
+  if (ev.ephemeral === true || type === 'assistant.reasoning' || type === 'assistant.reasoning_delta') {
+    const text = textFrom(ev, body)
+    if (text.trim()) appendProgress(`✻ ${clip(text, 120)}`)
+    touch(); writeStatus()
+    return
+  }
   if (/text|message|answer|response|content|delta/.test(type) || textFrom(ev, body)) {
     handleText(type, ev, body)
     return
