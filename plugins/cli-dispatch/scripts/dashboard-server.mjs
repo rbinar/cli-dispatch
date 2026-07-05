@@ -479,8 +479,15 @@ function buildWorkerParentIndex() {
     }
 
     for (const wid of workerIdsInSession) {
-      if (!reverseMap.has(wid)) {
-        const subMatch = subagentMatchesForSession.get(wid) || { subagentId: null, babysitterUsage: null }
+      const existing = reverseMap.get(wid)
+      const subMatch = subagentMatchesForSession.get(wid) || { subagentId: null, babysitterUsage: null }
+      // Prefer a resolved subagent-level match over a bare transcript-only match,
+      // regardless of session iteration order. Once we have a resolved subagentId,
+      // no later bare match can displace it (first-wins among resolved matches).
+      const shouldSet =
+        !existing ||
+        (existing.subagentId === null && subMatch.subagentId !== null)
+      if (shouldSet) {
         reverseMap.set(wid, {
           id: s.sessionId,
           project: s.project,
