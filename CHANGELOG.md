@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.27.0] — 2026-07-07
+
+### Added
+
+- **Model-ID datalist suggestions in the dashboard Configuration editor.** The 8 model
+  fields (`AG_MODEL`/`AG_MODELS`, `CX_MODEL`/`CX_MODELS`, `CP_MODEL`/`CP_MODELS`,
+  `OC_MODEL`/`OC_MODELS`) now suggest known-good model IDs as you type, via a native HTML
+  datalist — free text is still accepted, this is a suggestion only. AG/CX/CP lists are
+  static, sourced from installed-CLI metadata where discoverable (agy models,
+  `~/.codex/models_cache.json`, `copilot --help`) with repo-internal fallbacks. OpenCode's
+  list is live: a new `GET /api/models/opencode` route proxies OpenRouter's public models
+  API server-side (empty list on any fetch failure, never crashes the dashboard).
+- **Stale-install version drift detection.** `install.sh`/`install.ps1` now stamp the
+  installed plugin version to `~/.config/cli-dispatch/.installed-version`;
+  `/cli-dispatch:status` warns when an installed copy no longer matches the current
+  `plugin.json`, since installed copies are separate deploys from the repo and could
+  silently drift.
+- **`check-version-sync.mjs` added** to catch `CHANGELOG.md`/`CHANGELOG.tr.md`/
+  `marketplace.json` version drift automatically — both files have silently fallen behind
+  the plugin version before (v3.21.0 and v2.1.0 respectively) with no automated way to
+  notice. Used to verify this very release stays in sync.
+
+### Fixed
+
+- **`cx-stream --resume` now restores the session's original working directory**, and
+  **`cp-stream --resume` now resolves the real Copilot `threadId`** instead of passing our
+  own `cp-<id>` session id straight to `copilot` (Fixes #75, #71). Also fixed an error-
+  serialization bug where a tool-error payload with an object `error`/`message` field
+  rendered as the literal string `"[object Object]"` instead of the actual message.
+- **Worktree-based delegation no longer hardcodes `origin/main` as the base branch**
+  (Fixes #74). Repos without a `main` branch (develop-only, feature-branch-based) either
+  failed outright or silently based the worktree on a stale/mismatched ref; base ref is now
+  resolved in order: the repo's current checked-out branch, then origin's remote HEAD, then
+  `origin/main` as a last resort.
+- **OpenCode sessions with no explicit `OC_MODEL` now show the actual model in use** in the
+  dashboard, via a new `OC_META_MODEL` fallback (scraped from OpenCode's own config),
+  mirroring the existing Codex `META_MODEL`/`META_EFFORT` pattern.
+- **Windows (PowerShell) wrappers reach parity with their bash equivalents.**
+  `claude-ds-stream.ps1`, `cx-agent.ps1`, and `cx-stream.ps1` gained `--effort` support,
+  `META_MODEL`/`META_EFFORT` config-scrape fallback, and `gh`-token forwarding — previously
+  bash-only.
+
+### Changed
+
+- **`dashboard-server.mjs` split into `public-page.mjs` (client SPA template) and
+  `dashboard-utils.mjs` (pure flow/process helpers)** for maintainability — no behavior
+  change (verified byte-identical via HTTP response diff before/after). Added missing
+  regression test coverage for `cx-stream-parse.mjs`, `ag-transcript-parse.mjs`, and the
+  newly-extracted `dashboard-utils.mjs` hot paths, none of which had tests before despite
+  recent real bugs in `readHead`/`readTail` and `collectProcTree`.
+- **Deduplicated the `watchdog()` runtime-cap/idle-timeout logic** across `cx-stream`,
+  `oc-stream`, and `cp-stream` (previously byte-identical copy-paste in each) into the
+  shared `stream-utils.sh` — internal maintainability improvement, no behavior change.
+
 ## [3.26.1] — 2026-07-06 15:00
 
 ### Fixed

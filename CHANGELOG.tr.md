@@ -7,6 +7,61 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.27.0] — 2026-07-07
+
+### Eklendi
+
+- **Dashboard Configuration editöründe model-ID datalist önerileri.** 8 model alanı
+  (`AG_MODEL`/`AG_MODELS`, `CX_MODEL`/`CX_MODELS`, `CP_MODEL`/`CP_MODELS`,
+  `OC_MODEL`/`OC_MODELS`) artık yazarken bilinen-iyi model ID'lerini native bir HTML
+  datalist ile önerir — serbest metin hâlâ kabul edilir, bu yalnızca bir öneridir. AG/CX/CP
+  listeleri statiktir, keşfedilebildiği yerde kurulu CLI meta verisinden kaynaklanır (agy
+  models, `~/.codex/models_cache.json`, `copilot --help`), repo-içi fallback'lerle birlikte.
+  OpenCode'un listesi canlıdır: yeni bir `GET /api/models/opencode` route'u OpenRouter'ın
+  public models API'sini sunucu tarafında proxy'ler (herhangi bir fetch hatasında boş liste,
+  dashboard'ı asla çökertmez).
+- **Stale-install versiyon sapması tespiti.** `install.sh`/`install.ps1` artık kurulu
+  plugin versiyonunu `~/.config/cli-dispatch/.installed-version`'a damgalıyor;
+  `/cli-dispatch:status`, kurulu bir kopya artık mevcut `plugin.json` ile eşleşmediğinde
+  uyarıyor — çünkü kurulu kopyalar repo'dan ayrı deploy'lardır ve sessizce sapabilir.
+- **`check-version-sync.mjs` eklendi**; `CHANGELOG.md`/`CHANGELOG.tr.md`/`marketplace.json`
+  versiyon sapmasını otomatik yakalar — her iki dosya da daha önce sessizce plugin
+  versiyonunun gerisinde kalmıştı (sırasıyla v3.21.0 ve v2.1.0), fark etmenin otomatik bir
+  yolu yoktu. Bu release'in kendisinin senkron kaldığını doğrulamak için kullanıldı.
+
+### Düzeltildi
+
+- **`cx-stream --resume` artık session'ın orijinal çalışma dizinini geri yüklüyor**, ve
+  **`cp-stream --resume` artık gerçek Copilot `threadId`'sini çözümlüyor** — kendi
+  `cp-<id>` session id'mizi doğrudan `copilot`'a geçmek yerine (Fixes #75, #71). Ayrıca
+  bir tool-error payload'ının `error`/`message` alanı obje olduğunda `"[object Object]"`
+  literal string'i olarak render edilen bir hata-serileştirme hatası düzeltildi.
+- **Worktree tabanlı delegasyon artık `origin/main`'i base branch olarak hardcode etmiyor**
+  (Fixes #74). `main` branch'i olmayan repolar (develop-only, feature-branch-tabanlı) ya
+  doğrudan başarısız oluyor ya da worktree'yi sessizce eski/uyumsuz bir ref'e
+  dayandırıyordu; base ref artık şu sırayla çözümleniyor: repo'nun mevcut checkout edilmiş
+  branch'i, sonra origin'in remote HEAD'i, son çare olarak `origin/main`.
+- **Açık `OC_MODEL` olmayan OpenCode session'ları artık dashboard'da gerçekte kullanılan
+  modeli gösteriyor** — yeni bir `OC_META_MODEL` fallback'i (OpenCode'un kendi config'inden
+  kazınır) ile, mevcut Codex `META_MODEL`/`META_EFFORT` desenini yansıtır.
+- **Windows (PowerShell) wrapper'ları bash eşdeğerleriyle eşitleniyor.**
+  `claude-ds-stream.ps1`, `cx-agent.ps1` ve `cx-stream.ps1` artık `--effort` desteği,
+  `META_MODEL`/`META_EFFORT` config-scrape fallback'i ve `gh`-token forwarding kazandı —
+  önceden yalnızca bash'te vardı.
+
+### Değişti
+
+- **`dashboard-server.mjs`, `public-page.mjs` (client SPA template) ve `dashboard-utils.mjs`
+  (saf flow/process yardımcıları) olarak ikiye bölündü** — bakım kolaylığı için, davranış
+  değişikliği yok (HTTP response diff ile öncesi/sonrası byte-identical doğrulandı).
+  `cx-stream-parse.mjs`, `ag-transcript-parse.mjs` ve yeni ayrıştırılan
+  `dashboard-utils.mjs` hot path'leri için eksik regression test kapsamı eklendi; hiçbiri
+  daha önce test edilmemişti, oysa `readHead`/`readTail` ve `collectProcTree`'de yakın
+  zamanda gerçek hatalar düzeltilmişti.
+- **`watchdog()` runtime-cap/idle-timeout mantığı** `cx-stream`, `oc-stream` ve `cp-stream`
+  arasında (öncesinde her birinde byte-identical copy-paste) paylaşılan `stream-utils.sh`'a
+  taşınarak tekilleştirildi — dahili bakım kolaylığı iyileştirmesi, davranış değişikliği yok.
+
 ## [3.26.1] — 2026-07-06 15:00
 
 ### Düzeltildi
