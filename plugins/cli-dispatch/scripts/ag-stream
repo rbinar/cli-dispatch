@@ -19,6 +19,11 @@
 #
 # Auth: Google keyring (run `agy` once interactively to sign in) OR a key in the config
 # (GEMINI_API_KEY / ANTIGRAVITY_API_KEY). Optional AG_MODEL in the config sets --model.
+#
+# On a fresh (non-resume) run, a cheap auth preflight runs before the real agy call — if it
+# detects the session is logged out, this exits 3 (a distinct auth-failure code; see
+# classifyAuthFailure/writeAuthErrorSession in parse-utils.mjs) instead of producing an empty
+# transcript with a generic error (issue #73).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -181,6 +186,88 @@ run_agy_bg() { # backgrounds agy under a pty, writes its PID to $PIDFILE
   esac
   echo $! > "$PIDFILE"
 }
+
+# ---- auth preflight check ----
+if [ "$RESUME" -eq 0 ]; then
+  PREFLIGHT_OUT="$(mktemp -t ag-preflight-XXXXXX)"
+  PREFLIGHT_PID=""
+
+  # Run a minimal, cheap, DIRECT agy call to test auth.
+  ( cd "$CWD" && exec agy -p "ping" --print-timeout 5s --dangerously-skip-permissions ) > "$PREFLIGHT_OUT" 2>&1 &
+  PREFLIGHT_PID=$!
+
+  # Bound total wall-clock time (hard cap of ~35 seconds).
+  CAP=35
+  PREFLIGHT_RC=0
+  for i in $(seq 1 $((CAP * 4))); do
+    if ! kill -0 "$PREFLIGHT_PID" 2>/dev/null; then
+      break
+    fi
+    sleep 0.25
+  done
+
+  if kill -0 "$PREFLIGHT_PID" 2>/dev/null; then
+    # Timed out — kill the process tree of the preflight run.
+    kill_worker "$PREFLIGHT_PID"
+    wait "$PREFLIGHT_PID" 2>/dev/null || true
+    PREFLIGHT_RC=1
+  else
+    set +e
+    wait "$PREFLIGHT_PID"
+    PREFLIGHT_RC=$?
+    set -e
+  fi
+
+  # Classify the results of the preflight auth check.
+  IS_AUTH_FAILURE="$(node -e '
+    Promise.all([
+      import("file://" + process.argv[1]),
+      import("node:fs")
+    ]).then(([m, fs]) => {
+      const output = fs.readFileSync(process.argv[3], "utf8");
+      const res = m.classifyAuthFailure(Number(process.argv[2]), output);
+      process.stdout.write(res.isAuthFailure ? "true" : "false");
+    }).catch(err => {
+      process.stderr.write(err.stack + "\n");
+      process.stdout.write("false");
+    });
+  ' "$SCRIPT_DIR/parse-utils.mjs" "$PREFLIGHT_RC" "$PREFLIGHT_OUT" 2>/dev/null || echo "false")"
+
+  # Delete temp file.
+  rm -f "$PREFLIGHT_OUT"
+
+  if [ "$IS_AUTH_FAILURE" = "true" ]; then
+    SESSIONS_ROOT="$(resolve_sessions_root)"
+    CID="auth-fail-$(date +%Y%m%d%H%M%S)-$((1000 + RANDOM % 9000))"
+    SESSION_DIR="$SESSIONS_ROOT/$CID"
+    
+    BRANCH="$(git -C "$CWD" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    
+    # Write status.json and meta.json using our node helper.
+    node -e '
+      import("file://" + process.argv[1]).then(m => {
+        m.writeAuthErrorSession(
+          process.argv[2],
+          process.argv[3],
+          Number(process.argv[4]),
+          process.argv[5],
+          process.argv[6],
+          process.argv[7]
+        );
+      });
+    ' "$SCRIPT_DIR/parse-utils.mjs" "$SESSION_DIR" \
+      "Antigravity oturumu yok — kullanıcı 'agy' ile interaktif login olmalı veya GEMINI_API_KEY set edilmeli" \
+      "3" "$CWD" "$BRANCH" "$MODEL"
+
+    # Write prompt.txt to the session dir for completeness.
+    printf '%s' "$PROMPT" > "$SESSION_DIR/prompt.txt" 2>/dev/null || true
+
+    # Print error to stderr and exit with distinct exit code 3.
+    echo "ag-stream: Antigravity oturumu yok — kullanıcı 'agy' ile interaktif login olmalı veya GEMINI_API_KEY set edilmeli" >&2
+    echo "  dir:    $SESSION_DIR" >&2
+    exit 3
+  fi
+fi
 
 # Snapshot pre-run state for conv-id discovery: the prior conv-id for THIS workspace, and
 # the set of existing brain/ dirs (so the fallback only ever picks a NEWLY-created one and

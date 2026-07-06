@@ -4,7 +4,8 @@
 // Provides throttled status.json writing, session file fd management, and small
 // formatting utilities that were duplicated across the three backends.
 
-import { writeFileSync, readFileSync, openSync, writeSync, closeSync } from 'node:fs'
+import { writeFileSync, readFileSync, openSync, writeSync, closeSync, mkdirSync } from 'node:fs'
+import { basename, join } from 'node:path'
 
 // ---- state enum ----
 //
@@ -157,4 +158,58 @@ export function humanSize(n) {
 export function clip(s, n) {
   const o = String(s).replace(/\s+/g, ' ').trim()
   return o.length > n ? o.slice(0, n) + '…' : o
+}
+
+// ---- auth classification and handling ----
+
+export function classifyAuthFailure(exitCode, output) {
+  if (exitCode === 0) {
+    return { isAuthFailure: false }
+  }
+  const lower = String(output).toLowerCase()
+  const hasAuthError = lower.includes('not logged into antigravity') ||
+                       lower.includes('error getting token source') ||
+                       lower.includes('authentication failed or timed out')
+  return { isAuthFailure: hasAuthError }
+}
+
+export function writeAuthErrorSession(dir, errorMsg, exitCode, cwd, branch, model) {
+  mkdirSync(dir, { recursive: true })
+  const sId = basename(dir)
+  const now = new Date().toISOString()
+
+  const status = {
+    sessionId: sId,
+    backend: 'antigravity',
+    convId: '',
+    state: 'error',
+    error: errorMsg,
+    errorKind: 'auth',
+    lastTool: null,
+    toolCounts: {},
+    events: 0,
+    startedAt: now,
+    lastActivityAt: now,
+    finalResultPreview: '',
+    usage: null,
+  }
+
+  const meta = {
+    sessionId: sId,
+    backend: 'antigravity',
+    convId: '',
+    promptPreview: '',
+    cwd: cwd || '',
+    branch: branch || '',
+    model: model || '',
+    startedAt: now,
+    endedAt: now,
+    exitCode: exitCode,
+    state: 'error',
+    error: errorMsg,
+    errorKind: 'auth',
+  }
+
+  writeFileSync(join(dir, 'status.json'), JSON.stringify(status, null, 2) + '\n')
+  writeFileSync(join(dir, 'meta.json'), JSON.stringify(meta, null, 2) + '\n')
 }
