@@ -108,6 +108,20 @@ fi
 # Make CWD absolute.
 CWD="$(cd "$CWD" 2>/dev/null && pwd)" || { echo "oc-stream: bad --cwd" >&2; exit 1; }
 
+OC_RESUME_ID="${RESUME_ID:-}"
+if [ -n "$RESUME_ID" ]; then
+  if [[ "$RESUME_ID" =~ ^oc- ]]; then
+    SESSIONS_ROOT_FOR_RESUME="$(resolve_sessions_root)"
+    RECORDED_META="$SESSIONS_ROOT_FOR_RESUME/$RESUME_ID/meta.json"
+    if [ -f "$RECORDED_META" ]; then
+      RECORDED_THREAD_ID="$(sed -n 's/.*"threadId"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$RECORDED_META" 2>/dev/null || true)"
+      if [ -n "$RECORDED_THREAD_ID" ]; then
+        OC_RESUME_ID="$RECORDED_THREAD_ID"
+      fi
+    fi
+  fi
+fi
+
 # ---- build the opencode command ----
 # `--auto` is NOT a safety opt-in — it is a FUNCTIONAL REQUIREMENT: headless runs have no TTY
 # to answer permission prompts, so without --auto the process hangs forever on the first
@@ -124,7 +138,7 @@ CWD="$(cd "$CWD" 2>/dev/null && pwd)" || { echo "oc-stream: bad --cwd" >&2; exit
 # same --cwd used to create the session when resuming it.
 OC_ARGS=(run --format json --auto --dir "$CWD")
 [ -n "$MODEL" ] && OC_ARGS+=(--model "openrouter/$MODEL")
-[ -n "$RESUME_ID" ] && OC_ARGS+=(--session "$RESUME_ID" --continue)
+[ -n "$OC_RESUME_ID" ] && OC_ARGS+=(--session "$OC_RESUME_ID" --continue)
 [ "${#PASS_ARGS[@]}" -gt 0 ] && OC_ARGS+=("${PASS_ARGS[@]}")
 OC_ARGS+=("$PROMPT")
 
@@ -251,7 +265,7 @@ opencode "${OC_ARGS[@]}" </dev/null > >(
   OC_CWD="$CWD" \
   OC_BRANCH="$BRANCH" \
   OC_MODEL="${MODEL:-$OC_META_MODEL}" \
-  OC_THREAD_ID="$([ "$RESUME" -eq 1 ] && printf '%s' "$RESUME_ID" || true)" \
+  OC_THREAD_ID="$([ "$RESUME" -eq 1 ] && printf '%s' "$OC_RESUME_ID" || true)" \
   OC_RESUME="$RESUME" \
     node "$PARSER" > "$PARSER_OUT"
   touch "$PARSER_DONE"

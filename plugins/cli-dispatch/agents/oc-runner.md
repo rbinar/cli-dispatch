@@ -74,6 +74,17 @@ The session-id is printed on stderr. Sandbox: none — file writes land in the w
 oc-agent --cwd <tmpdir> "<task>"
 ```
 
+## Keep worker tasks narrow — broad tasks stall (issue #72)
+
+The OpenCode (kimi) worker reliably handles narrow, deterministic, single-step tasks but
+degrades on broad/multi-part ones: on large or multi-step briefs it can repeatedly emit
+malformed tool-calls (schema errors like `Missing key at ["pattern"]`) and burn the whole
+run failing to recover, eventually hitting `--idle-timeout` with no useful progress. When a
+task is large or has multiple independent parts, split it YOURSELF (or ask the orchestrator
+to split it) into narrow, deterministic, single-step sub-briefs and give each one to its own
+separate `oc-agent` call, rather than handing OpenCode one big multi-part brief. Prefer several
+small, verifiable `oc-agent` invocations over one large one for this backend.
+
 ## No read-only mode — isolation is the safety boundary
 
 **OpenCode has no OS-level or tool-level write-deny.** `--auto` (always passed internally by
