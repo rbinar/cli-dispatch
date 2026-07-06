@@ -189,7 +189,7 @@ mkfifo "$PIPE_FILE"
 cleanup() {
   [ -n "${WATCHDOG_PID:-}" ] && kill "$WATCHDOG_PID" 2>/dev/null || true
   [ -n "${CP_PID:-}" ] && kill -TERM "$CP_PID" 2>/dev/null || true
-  [ -n "${PARSER_PID:-}" ] && kill_tree "$PARSER_PID" -TERM
+  [ -n "${PARSER_PID:-}" ] && kill_tree "$PARSER_PID" -TERM 2>/dev/null || true
   rm -f "$PARSER_OUT" "$PARSER_DONE" "$PIPE_FILE" 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -198,6 +198,7 @@ handle_interrupt() {
   local sig="$1" rc="$2"
   trap - INT TERM
   echo "cp-stream: interrupted ($sig)." >&2
+  for _ in $(seq 1 30); do [ -e "${PARSER_DONE:-/nonexistent}" ] && break; sleep 0.1; done
   reconcile_session_error "$SESSION_DIR" "interrupted: $sig" "$rc"
   cleanup
   exit "$rc"

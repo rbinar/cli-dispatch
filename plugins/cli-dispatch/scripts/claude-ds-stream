@@ -222,8 +222,31 @@ cleanup() {
   [ -n "${WATCHDOG_PID:-}" ] && kill_tree "$WATCHDOG_PID" -TERM 2>/dev/null || true
   _pid="$(cat "$PIDFILE" 2>/dev/null || true)"
   [ -n "$_pid" ] && kill_worker "$_pid" 2>/dev/null || true
+  rm -f "${PARSER_DONE:-}" 2>/dev/null || true
 }
 trap cleanup EXIT
+
+# Interrupt handling: kill the claude worker (PIDFILE) then wait (bounded) for the
+# parser to drain stdin EOF and finalize status.json — the parser is the right-hand
+# side of a literal pipe (`| node "$PARSER"`), so it sees EOF when claude dies, runs
+# its finalize, and touches PARSER_DONE only AFTER writing status.json. Reconciling
+# only once PARSER_DONE exists guarantees our "error" record is written LAST and not
+# clobbered by a still-draining parser finalize (same ordering the normal post-pipe
+# block relies on).
+handle_interrupt() {
+  local sig="$1" rc="$2"
+  trap - INT TERM
+  echo "claude-ds-stream: interrupted ($sig)." >&2
+  local _pid
+  _pid="$(cat "$PIDFILE" 2>/dev/null || true)"
+  [ -n "$_pid" ] && kill_tree "$_pid" -TERM 2>/dev/null || true
+  for _ in $(seq 1 30); do [ -e "${PARSER_DONE:-/nonexistent}" ] && break; sleep 0.1; done
+  reconcile_session_error "$SESSION_DIR" "interrupted: $sig" "$rc"
+  cleanup
+  exit "$rc"
+}
+trap 'handle_interrupt INT 130' INT
+trap 'handle_interrupt TERM 143' TERM
 
 WATCHDOG_PID=""
 if [ "$MAX_RUNTIME" -gt 0 ] || [ "$IDLE_TIMEOUT" -gt 0 ]; then
@@ -234,6 +257,7 @@ fi
 # claude runs cd'd into $CWD (working dir, not just --add-dir), prompt via stdin (process
 # substitution so variadic flags can't swallow it AND claude can be backgrounded with a
 # captured PID for the watchdog). Subshell exits with claude's exit code.
+PARSER_DONE="$(mktemp -u -t ds-pdone-XXXXXX)"
 set +e
 ( cd "$CWD" || exit 127
   env \
@@ -249,13 +273,13 @@ set +e
   CPID=$!
   echo "$CPID" > "$PIDFILE"
   wait "$CPID" ) \
-  | CLAUDE_DS_SESSION_DIR="$SESSION_DIR" \
-    CLAUDE_DS_PROMPT_PREVIEW="$(printf '%.120s' "$PROMPT")" \
-    CLAUDE_DS_CWD="$CWD" \
-    CLAUDE_DS_BRANCH="$BRANCH" \
-    CLAUDE_DS_MODEL="$MODEL${THINK:+ (${EFFORT})}" \
-    CLAUDE_DS_RESUME="$RESUME" \
-    node "$PARSER"
+  | { CLAUDE_DS_SESSION_DIR="$SESSION_DIR" \
+      CLAUDE_DS_PROMPT_PREVIEW="$(printf '%.120s' "$PROMPT")" \
+      CLAUDE_DS_CWD="$CWD" \
+      CLAUDE_DS_BRANCH="$BRANCH" \
+      CLAUDE_DS_MODEL="$MODEL${THINK:+ (${EFFORT})}" \
+      CLAUDE_DS_RESUME="$RESUME" \
+        node "$PARSER"; touch "$PARSER_DONE"; }
 # PIPESTATUS: [0]=claude subshell (via wait), [1]=node parser. We want claude's exit.
 CLAUDE_RC=${PIPESTATUS[0]}
 set -e
