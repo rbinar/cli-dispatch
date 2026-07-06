@@ -31,6 +31,14 @@ if (Test-Path $Config) {
 if ($cfg["CODEX_API_KEY"]) { $env:CODEX_API_KEY = $cfg["CODEX_API_KEY"] }
 if ($cfg["OPENAI_API_KEY"]) { $env:OPENAI_API_KEY = $cfg["OPENAI_API_KEY"] }
 
+# Forward the host's gh auth into the worker env (issue #56).
+if (-not $env:CLI_DISPATCH_NO_GH_TOKEN -and -not $env:GH_TOKEN -and -not $env:GITHUB_TOKEN) {
+  if (Get-Command gh -ErrorAction SilentlyContinue) {
+    $tok = & gh auth token 2>$null
+    if ($LASTEXITCODE -eq 0 -and $tok) { $env:GH_TOKEN = "$tok".Trim() }
+  }
+}
+
 # ---- resolve the parser: env > installed location > script dir ----
 $parser = $env:CX_PARSER
 if ([string]::IsNullOrEmpty($parser)) {
@@ -55,6 +63,7 @@ $resumeId = ""
 $prompt = $null
 $readOnly = 0
 $sandbox = ""
+$effort = if ($env:CX_EFFORT) { $env:CX_EFFORT } else { "" }
 $model = if ($cfg["CX_MODEL"]) { $cfg["CX_MODEL"] } elseif ($cfg["CODEX_MODEL"]) { $cfg["CODEX_MODEL"] } else { "" }
 $maxRuntime = ConvertTo-Int $env:CX_MAX_RUNTIME
 $idleTimeout = ConvertTo-Int $env:CX_IDLE_TIMEOUT
@@ -71,6 +80,8 @@ while ($i -lt $argc) {
     '^--resume=(.*)'   { $resumeId = $matches[1]; $i += 1; continue }
     '^--model$'        { Need-Val '--model' $i $argc; $model = $args[$i+1]; $i += 2; continue }
     '^--model=(.*)'    { $model = $matches[1]; $i += 1; continue }
+    '^--effort$'       { Need-Val '--effort' $i $argc; $effort = $args[$i+1]; $i += 2; continue }
+    '^--effort=(.*)'   { $effort = $matches[1]; $i += 1; continue }
     '^--sandbox$'      { Need-Val '--sandbox' $i $argc; $sandbox = $args[$i+1]; $i += 2; continue }
     '^--sandbox=(.*)'  { $sandbox = $matches[1]; $i += 1; continue }
     '^(-p|--prompt)$'  { Need-Val $a $i $argc; $prompt = $args[$i+1]; $i += 2; continue }
@@ -103,6 +114,35 @@ $sandboxMode = "workspace-write"
 if ($readOnly -eq 1) { $sandboxMode = "read-only" }
 if (-not [string]::IsNullOrEmpty($sandbox)) { $sandboxMode = $sandbox }
 
+# --effort low|medium|high → codex model_reasoning_effort config override.
+if (-not [string]::IsNullOrEmpty($effort)) {
+  $effort = $effort.ToLower()
+  if ($effort -notin @('low','medium','high')) { Write-Error "cx-stream: --effort must be low|medium|high (got '$effort')."; exit 2 }
+}
+
+# Scrape codex's own config.toml for defaults when the user hasn't passed a flag,
+# so the dashboard can show the model/effort actually in use. NOT added to the
+# codex command line — codex applies these defaults itself.
+$codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $HOME ".codex" }
+$codexConfig = Join-Path $codexHome "config.toml"
+$metaModel = ""
+$metaEffort = ""
+if (Test-Path $codexConfig) {
+  if ([string]::IsNullOrEmpty($model)) {
+    try {
+      $m = Get-Content $codexConfig | Select-String '^model\s*=\s*"([^"]*)"' | Select-Object -First 1
+      if ($m) { $metaModel = $m.Matches.Groups[1].Value }
+    } catch {}
+  }
+  if ([string]::IsNullOrEmpty($effort)) {
+    try {
+      $m = Get-Content $codexConfig | Select-String '^model_reasoning_effort\s*=\s*"([^"]*)"' | Select-Object -First 1
+      if ($m) { $metaEffort = $m.Matches.Groups[1].Value }
+    } catch {}
+  }
+}
+$effectiveEffort = if ($effort) { $effort } else { $metaEffort }
+
 # ---- build the codex command (resume accepts a different flag set than plain exec) ----
 $outFile = New-TemporaryFile
 $resume = 0
@@ -111,12 +151,14 @@ if (-not [string]::IsNullOrEmpty($resumeId)) {
   # `codex exec resume` rejects -s/-C/--color → pass sandbox via -c sandbox_mode=, drop cwd/color.
   $codexArgs = @('exec', 'resume', '--json', '-o', $outFile.FullName, '--skip-git-repo-check')
   if (-not [string]::IsNullOrEmpty($model)) { $codexArgs += @('-m', $model) }
+  if ($effort) { $codexArgs += @('-c', "model_reasoning_effort=$effort") }
   $codexArgs += @('-c', "sandbox_mode=$sandboxMode")
   if ($passArgs.Count -gt 0) { $codexArgs += $passArgs }
   $codexArgs += @($resumeId, $prompt)
 } else {
   $codexArgs = @('exec', '--json', '-o', $outFile.FullName, '--skip-git-repo-check', '--color', 'never', '-C', $cwd, '-s', $sandboxMode)
   if (-not [string]::IsNullOrEmpty($model)) { $codexArgs += @('-m', $model) }
+  if ($effort) { $codexArgs += @('-c', "model_reasoning_effort=$effort") }
   if ($passArgs.Count -gt 0) { $codexArgs += $passArgs }
   $codexArgs += @($prompt)
 }
@@ -148,7 +190,9 @@ $env:CX_SESSION_DIR = $sessionDir
 $env:CX_PROMPT_PREVIEW = $prompt.Substring(0, [Math]::Min(120, $prompt.Length))
 $env:CX_CWD = $cwd
 $env:CX_BRANCH = $branch
-$env:CX_MODEL = $model
+$cxModelLabel = if ($model) { $model } else { $metaModel }
+if ($effectiveEffort) { $cxModelLabel = "$cxModelLabel ($effectiveEffort)" }
+$env:CX_MODEL = $cxModelLabel
 $env:CX_THREAD_ID = if ($resume -eq 1) { $resumeId } else { "" }
 $env:CX_RESUME = "$resume"
 

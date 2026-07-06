@@ -59,7 +59,9 @@ Write-Host "Installed shared parser helpers -> $LibExecDir\parse-utils.mjs"
 Copy-Item -Force (Join-Path $ScriptDir "cli-dispatch-dashboard.ps1") (Join-Path $BinDir "cli-dispatch-dashboard.ps1")
 Set-Content -Path (Join-Path $BinDir "cli-dispatch-dashboard.cmd") -Value (New-Shim "cli-dispatch-dashboard") -Encoding ASCII
 Copy-Item -Force (Join-Path $ScriptDir "dashboard-server.mjs") (Join-Path $LibExecDir "dashboard-server.mjs")
-Write-Host "Installed dashboard -> $BinDir\cli-dispatch-dashboard.ps1 (+ .cmd shim; server -> $LibExecDir\dashboard-server.mjs)"
+Copy-Item -Force (Join-Path $ScriptDir "public-page.mjs") (Join-Path $LibExecDir "public-page.mjs")
+Copy-Item -Force (Join-Path $ScriptDir "dashboard-utils.mjs") (Join-Path $LibExecDir "dashboard-utils.mjs")
+Write-Host "Installed dashboard -> $BinDir\cli-dispatch-dashboard.ps1 (+ .cmd shim; server + public-page + dashboard-utils -> $LibExecDir\dashboard-server.mjs)"
 
 # Cleanup tool (backend-agnostic; always installed).
 Copy-Item -Force (Join-Path $ScriptDir "cli-dispatch-clean.ps1") (Join-Path $BinDir "cli-dispatch-clean.ps1")
@@ -178,6 +180,19 @@ if ($wantDS) {
     } else { Write-Host "WARNING: claude CLI not found in PATH (the DeepSeek worker wraps it)." }
   }
 }
+# Write installed version stamp so status.md can detect staleness.
+$pluginJson = Join-Path $ScriptDir "..\.claude-plugin\plugin.json"
+if (Test-Path $pluginJson) {
+  try {
+    $j = Get-Content -Raw $pluginJson | ConvertFrom-Json
+    $ver = $j.version
+    if ($ver) {
+      New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
+      Set-Content -Path (Join-Path $ConfigDir '.installed-version') -Value $ver -NoNewline -Encoding UTF8
+    }
+  } catch {}
+}
+
 Write-Host "Done."
 if ($wantDS) { Write-Host "  DeepSeek: add your key to $Config, then test: claude-ds -p 'Reply with exactly: OK'" }
 if ($wantCX) { Write-Host "  Codex:    run 'codex login' (or set CODEX_API_KEY), then test: cx-agent --read-only -q 'Reply with exactly: OK'" }

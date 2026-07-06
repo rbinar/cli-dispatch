@@ -52,6 +52,7 @@ $cwd = (Get-Location).Path
 $resumeId = ""
 $prompt = $null
 $readOnly = 0
+$effort = if ($env:CLAUDE_DS_EFFORT) { $env:CLAUDE_DS_EFFORT } else { "" }
 $maxRuntime = ConvertTo-Int $env:CLAUDE_DS_MAX_RUNTIME    # seconds; 0 = no overall cap
 $idleTimeout = ConvertTo-Int $env:CLAUDE_DS_IDLE_TIMEOUT  # seconds; 0 = no idle cap
 $passArgs = @()
@@ -72,6 +73,8 @@ while ($i -lt $argc) {
     '^(-p|--prompt)$' { Need-Val $a $i $argc; $prompt = $args[$i+1]; $i += 2; continue }
     '^--prompt=(.*)' { $prompt = $matches[1]; $i += 1; continue }
     '^--read-only$' { $readOnly = 1; $i += 1; continue }
+    '^--effort$'       { Need-Val '--effort' $i $argc; $effort = $args[$i+1]; $i += 2; continue }
+    '^--effort=(.*)'   { $effort = $matches[1]; $i += 1; continue }
     '^--max-runtime$'  { Need-Val '--max-runtime' $i $argc;  $maxRuntime = ConvertTo-Int $args[$i+1]; $i += 2; continue }
     '^--max-runtime=(.*)'  { $maxRuntime = ConvertTo-Int $matches[1]; $i += 1; continue }
     '^--idle-timeout$' { Need-Val '--idle-timeout' $i $argc; $idleTimeout = ConvertTo-Int $args[$i+1]; $i += 2; continue }
@@ -114,6 +117,27 @@ $flash = if ($cfg["DS_FLASH_MODEL"]) { $cfg["DS_FLASH_MODEL"] } else { "deepseek
 [Console]::Error.WriteLine("  dir:    $sessionDir")
 [Console]::Error.WriteLine("  status: $(Join-Path $sessionDir 'status.json')")
 
+# Forward the host's gh auth into the worker env (issue #56).
+if (-not $env:CLI_DISPATCH_NO_GH_TOKEN -and -not $env:GH_TOKEN -and -not $env:GITHUB_TOKEN) {
+  if (Get-Command gh -ErrorAction SilentlyContinue) {
+    $tok = & gh auth token 2>$null
+    if ($LASTEXITCODE -eq 0 -and $tok) { $env:GH_TOKEN = "$tok".Trim() }
+  }
+}
+
+# --effort low|medium|high → thinking budget via MAX_THINKING_TOKENS. Best-effort:
+# claude honors the env; whether DeepSeek's API applies it is up to the API.
+$think = 0
+if (-not [string]::IsNullOrEmpty($effort)) {
+  $effort = $effort.ToLower()
+  $think = switch ($effort) {
+    'low'    { 1024 }
+    'medium' { 8192 }
+    'high'   { 31999 }
+    default  { Write-Error "claude-ds-stream: --effort must be low|medium|high (got '$effort')."; exit 2 }
+  }
+}
+
 # ---- DeepSeek env ----
 $env:ANTHROPIC_BASE_URL = "https://api.deepseek.com/anthropic"
 $env:ANTHROPIC_AUTH_TOKEN = $key
@@ -122,13 +146,14 @@ $env:ANTHROPIC_DEFAULT_OPUS_MODEL = $model
 $env:ANTHROPIC_DEFAULT_SONNET_MODEL = $model
 $env:ANTHROPIC_DEFAULT_HAIKU_MODEL = $flash
 $env:CLAUDE_CODE_SUBAGENT_MODEL = $flash
+if ($think -gt 0) { $env:MAX_THINKING_TOKENS = "$think" }
 
 # ---- parser env ----
 $env:CLAUDE_DS_SESSION_DIR = $sessionDir
 $env:CLAUDE_DS_PROMPT_PREVIEW = $prompt.Substring(0, [Math]::Min(120, $prompt.Length))
 $env:CLAUDE_DS_CWD = $cwd
 $env:CLAUDE_DS_BRANCH = $branch
-$env:CLAUDE_DS_MODEL = $model
+$env:CLAUDE_DS_MODEL = if ($think -gt 0) { "$model ($effort)" } else { $model }
 $env:CLAUDE_DS_RESUME = "$resume"
 
 # ---- claude arguments (buildClaudeArgs core) ----

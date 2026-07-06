@@ -122,6 +122,8 @@ echo "Installed shared helpers -> $BIN_DIR/stream-utils.sh, $LIBEXEC_DIR/parse-u
 # ---- Dashboard (backend-agnostic; always installed) ------------------------
 install -m 0755 "$SCRIPT_DIR/cli-dispatch-dashboard" "$BIN_DIR/cli-dispatch-dashboard"
 install -m 0644 "$SCRIPT_DIR/dashboard-server.mjs"   "$LIBEXEC_DIR/dashboard-server.mjs"
+install -m 0644 "$SCRIPT_DIR/public-page.mjs"        "$LIBEXEC_DIR/public-page.mjs"
+install -m 0644 "$SCRIPT_DIR/dashboard-utils.mjs"    "$LIBEXEC_DIR/dashboard-utils.mjs"
 install -m 0644 "$SCRIPT_DIR/pty-host.mjs"           "$LIBEXEC_DIR/pty-host.mjs"
 install -m 0644 "$SCRIPT_DIR/takeover-cmd.mjs"       "$LIBEXEC_DIR/takeover-cmd.mjs"
 mkdir -p "$LIBEXEC_DIR/vendor"
@@ -355,6 +357,16 @@ case ":$PATH:" in
     fi
     ;;
 esac
+
+# Write installed version stamp so status.md can detect staleness.
+_PLUGIN_JSON="$SCRIPT_DIR/../.claude-plugin/plugin.json"
+if [ -f "$_PLUGIN_JSON" ]; then
+  _VER="$(grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' "$_PLUGIN_JSON" 2>/dev/null | head -1 | sed 's/.*"\([^"]*\)"[^"]*$/\1/')"
+  if [ -n "$_VER" ]; then
+    mkdir -p "$CONFIG_DIR"
+    printf '%s' "$_VER" > "$CONFIG_DIR/.installed-version"
+  fi
+fi
 
 echo "Done."
 [ "$WANT_DS" -eq 1 ] && echo "  DeepSeek:    add your key to $CONFIG, then test: claude-ds -p 'Reply with exactly: OK'"

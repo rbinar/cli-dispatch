@@ -9,6 +9,17 @@ Run the checks below (read-only; do NOT print the key VALUE):
 
 ```bash
 echo "== DeepSeek backend (claude-ds) =="
+# Version staleness check: warn if installed copies don't match the current plugin.
+_PLUGIN_JSON=""
+[ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && _PLUGIN_JSON="$CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json"
+_INSTALLED_VER_FILE="$HOME/.config/cli-dispatch/.installed-version"
+if [ -f "$_INSTALLED_VER_FILE" ] && [ -f "$_PLUGIN_JSON" ]; then
+  _INSTALLED_VER="$(cat "$_INSTALLED_VER_FILE" 2>/dev/null)"
+  _CURRENT_VER="$(grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' "$_PLUGIN_JSON" 2>/dev/null | head -1 | sed 's/.*"\([^"]*\)"[^"]*$/\1/')"
+  if [ -n "$_INSTALLED_VER" ] && [ -n "$_CURRENT_VER" ] && [ "$_INSTALLED_VER" != "$_CURRENT_VER" ]; then
+    echo "WARNING: installed copies are stale (installed: $_INSTALLED_VER, current: $_CURRENT_VER) — re-run /cli-dispatch:setup"
+  fi
+fi
 command -v claude-ds >/dev/null 2>&1 && echo "wrapper: installed ($(command -v claude-ds))" || echo "wrapper: MISSING (run /cli-dispatch:setup)"
 command -v claude-ds-stream >/dev/null 2>&1 && echo "stream wrapper: installed ($(command -v claude-ds-stream))" || echo "stream wrapper: MISSING (run /cli-dispatch:setup)"
 CFG="${CLI_DISPATCH_CONFIG:-${CLAUDE_DS_CONFIG:-}}"; [ -n "$CFG" ] || { CFG="$HOME/.config/cli-dispatch/config"; [ -f "$CFG" ] || [ ! -f "$HOME/.config/claude-ds/config" ] || CFG="$HOME/.config/claude-ds/config"; }
@@ -102,6 +113,18 @@ command -v node >/dev/null 2>&1 && echo "node: found (required by all stream par
 **Native Windows** (PowerShell equivalent):
 
 ```powershell
+# Version staleness check
+$pluginJson = if ($env:CLAUDE_PLUGIN_ROOT) { Join-Path $env:CLAUDE_PLUGIN_ROOT '.claude-plugin/plugin.json' } else { '' }
+$installedVerFile = Join-Path $HOME '.config/cli-dispatch/.installed-version'
+if ($pluginJson -and (Test-Path $installedVerFile) -and (Test-Path $pluginJson)) {
+  try {
+    $installedVer = (Get-Content -Raw $installedVerFile).Trim()
+    $currentVer = (Get-Content -Raw $pluginJson | ConvertFrom-Json).version
+    if ($installedVer -and $currentVer -and $installedVer -ne $currentVer) {
+      "WARNING: installed copies are stale (installed: $installedVer, current: $currentVer) — re-run /cli-dispatch:setup"
+    }
+  } catch {}
+}
 if (Get-Command claude-ds -ErrorAction SilentlyContinue) { 'wrapper: installed' } else { 'wrapper: MISSING' }
 if (Get-Command claude-ds-stream -ErrorAction SilentlyContinue) { 'stream wrapper: installed' } else { 'stream wrapper: MISSING' }
 $cfg = if ($env:CLI_DISPATCH_CONFIG) { $env:CLI_DISPATCH_CONFIG } elseif ($env:CLAUDE_DS_CONFIG) { $env:CLAUDE_DS_CONFIG } elseif (Test-Path (Join-Path $HOME '.config/cli-dispatch/config')) { Join-Path $HOME '.config/cli-dispatch/config' } else { Join-Path $HOME '.config/claude-ds/config' }

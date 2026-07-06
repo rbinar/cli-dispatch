@@ -5,7 +5,7 @@
 # (-s read-only, no writes). Final answer -> stdout; live tool activity -> stderr.
 $ErrorActionPreference = "Stop"
 
-function Show-Usage { [Console]::Error.WriteLine('usage: cx-agent [--cwd <dir>] [--resume <id>] [--read-only] [--sandbox <mode>] [--model <m>] [--max-runtime <s>] [--idle-timeout <s>] [-q] "<task>"') }
+function Show-Usage { [Console]::Error.WriteLine('usage: cx-agent [--cwd <dir>] [--resume <id>] [--read-only] [--sandbox <mode>] [--model <m>] [--effort low|medium|high] [--max-runtime <s>] [--idle-timeout <s>] [-q] "<task>"') }
 function Need-Val($name, $idx, $argc) { if ($idx + 1 -ge $argc) { [Console]::Error.WriteLine("cx-agent: $name requires a value."); exit 1 } }
 
 $quiet = $false
@@ -20,6 +20,7 @@ while ($i -lt $argc) {
     '^--cwd$'          { Need-Val '--cwd' $i $argc; $fwd += @('--cwd', $args[$i+1]); $i += 2; continue }
     '^--resume$'       { Need-Val '--resume' $i $argc; $fwd += @('--resume', $args[$i+1]); $i += 2; continue }
     '^--model$'        { Need-Val '--model' $i $argc; $fwd += @('--model', $args[$i+1]); $i += 2; continue }
+    '^--effort$'       { Need-Val '--effort' $i $argc; $fwd += @('--effort', $args[$i+1]); $i += 2; continue }
     '^--sandbox$'      { Need-Val '--sandbox' $i $argc; $fwd += @('--sandbox', $args[$i+1]); $i += 2; continue }
     '^--max-runtime$'  { Need-Val '--max-runtime' $i $argc; $fwd += @('--max-runtime', $args[$i+1]); $i += 2; continue }
     '^--idle-timeout$' { Need-Val '--idle-timeout' $i $argc; $fwd += @('--idle-timeout', $args[$i+1]); $i += 2; continue }
