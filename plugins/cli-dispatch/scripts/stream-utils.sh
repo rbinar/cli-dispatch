@@ -39,6 +39,41 @@ kill_worker() {
   for p in $tree; do kill -KILL "$p" 2>/dev/null || true; done
 }
 
+# ---- watchdog: runtime cap + idle on status.json mtime ----
+
+# watchdog
+# Monitors the worker process for max runtime and idle timeout.
+# Expects the following caller-scope globals to be set:
+#   - PIPE_PID: The PID of the backend process or pipeline being monitored.
+#   - MAX_RUNTIME: The overall maximum run duration in seconds (0 to disable).
+#   - IDLE_TIMEOUT: The maximum idle duration in seconds (0 to disable).
+#   - SESSION_DIR: The session directory containing the timeout marker destination.
+#   - TRANSCRIPT: Path to the transcript file whose mtime indicates last activity.
+watchdog() {
+  local start now m target
+  target="$PIPE_PID"
+  start=$(date +%s)
+  while kill -0 "$PIPE_PID" 2>/dev/null; do
+    sleep 2
+    now=$(date +%s)
+    if [ "$MAX_RUNTIME" -gt 0 ] && [ "$((now - start))" -ge "$MAX_RUNTIME" ]; then
+      echo "runtime ${MAX_RUNTIME}s" > "$SESSION_DIR/.timeout"
+      [ -n "$target" ] && kill_worker "$target"
+      kill_tree "$PIPE_PID" -TERM
+      return 0
+    fi
+    if [ "$IDLE_TIMEOUT" -gt 0 ] && [ -f "$TRANSCRIPT" ]; then
+      m="$(mtime_of "$TRANSCRIPT")"; m="${m:-$start}"
+      if [ "$((now - m))" -ge "$IDLE_TIMEOUT" ]; then
+        echo "idle ${IDLE_TIMEOUT}s" > "$SESSION_DIR/.timeout"
+        [ -n "$target" ] && kill_worker "$target"
+        kill_tree "$PIPE_PID" -TERM
+        return 0
+      fi
+    fi
+  done
+}
+
 # ---- config resolution ----
 
 # Resolve and source the cli-dispatch config file (env wins; legacy claude-ds fallback).

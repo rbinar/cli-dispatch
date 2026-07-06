@@ -220,6 +220,28 @@ handle_interrupt() {
 trap 'handle_interrupt INT 130' INT
 trap 'handle_interrupt TERM 143' TERM
 
+# For the session record only: when no model was requested anywhere, surface opencode's own
+# config default so the dashboard can show the model actually used. NOT added to OC_ARGS —
+# opencode applies this default itself. No effort/reasoning config-default field exists for
+# OpenCode, so effort labeling is intentionally left as-is (unlike cx-stream's META_EFFORT).
+OC_META_MODEL=""
+if [ -z "$MODEL" ]; then
+  OC_CONFIG_FILE=""
+  if [ -n "${OPENCODE_CONFIG:-}" ]; then
+    OC_CONFIG_FILE="$OPENCODE_CONFIG"
+  elif [ -n "${OPENCODE_CONFIG_DIR:-}" ]; then
+    OC_CONFIG_FILE="$OPENCODE_CONFIG_DIR/opencode.jsonc"
+    [ -f "$OC_CONFIG_FILE" ] || OC_CONFIG_FILE="$OPENCODE_CONFIG_DIR/opencode.json"
+  else
+    _d="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
+    OC_CONFIG_FILE="$_d/opencode.jsonc"
+    [ -f "$OC_CONFIG_FILE" ] || OC_CONFIG_FILE="$_d/opencode.json"
+  fi
+  if [ -f "$OC_CONFIG_FILE" ]; then
+    OC_META_MODEL="$(sed -n 's/^[[:space:]]*"model"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$OC_CONFIG_FILE" 2>/dev/null | head -1)"
+  fi
+fi
+
 # opencode's stdout → parser (process substitution); opencode's stderr passes through to our
 # stderr. No stdin redirect needed (unlike codex's prompt-as-arg gotcha) — but redirect from
 # /dev/null anyway for parity/safety, since opencode is not expected to read stdin either.
@@ -228,7 +250,7 @@ opencode "${OC_ARGS[@]}" </dev/null > >(
   OC_PROMPT_PREVIEW="$(printf '%.120s' "$PROMPT")" \
   OC_CWD="$CWD" \
   OC_BRANCH="$BRANCH" \
-  OC_MODEL="$MODEL" \
+  OC_MODEL="${MODEL:-$OC_META_MODEL}" \
   OC_THREAD_ID="$([ "$RESUME" -eq 1 ] && printf '%s' "$RESUME_ID" || true)" \
   OC_RESUME="$RESUME" \
     node "$PARSER" > "$PARSER_OUT"
@@ -241,30 +263,6 @@ PIPE_PID="$OC_PID"
 
 # ---- watchdog: runtime cap + idle on status.json mtime (best-effort) ----
 TRANSCRIPT="$SESSION_DIR/transcript.jsonl"
-watchdog() {
-  local start now m target
-  target="${OC_PID:-$PIPE_PID}"
-  start=$(date +%s)
-  while kill -0 "$PIPE_PID" 2>/dev/null; do
-    sleep 2
-    now=$(date +%s)
-    if [ "$MAX_RUNTIME" -gt 0 ] && [ "$((now - start))" -ge "$MAX_RUNTIME" ]; then
-      echo "runtime ${MAX_RUNTIME}s" > "$SESSION_DIR/.timeout"
-      [ -n "$target" ] && kill_worker "$target"
-      kill_tree "$PIPE_PID" -TERM
-      return 0
-    fi
-    if [ "$IDLE_TIMEOUT" -gt 0 ] && [ -f "$TRANSCRIPT" ]; then
-      m="$(mtime_of "$TRANSCRIPT")"; m="${m:-$start}"
-      if [ "$((now - m))" -ge "$IDLE_TIMEOUT" ]; then
-        echo "idle ${IDLE_TIMEOUT}s" > "$SESSION_DIR/.timeout"
-        [ -n "$target" ] && kill_worker "$target"
-        kill_tree "$PIPE_PID" -TERM
-        return 0
-      fi
-    fi
-  done
-}
 WATCHDOG_PID=""
 if [ "$MAX_RUNTIME" -gt 0 ] || [ "$IDLE_TIMEOUT" -gt 0 ]; then
   echo "  guard:   max-runtime=${MAX_RUNTIME}s idle-timeout=${IDLE_TIMEOUT}s" >&2

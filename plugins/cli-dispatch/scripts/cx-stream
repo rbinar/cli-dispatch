@@ -322,30 +322,6 @@ PIPE_PID="$CODEX_PID"
 
 # ---- watchdog: runtime cap + idle on status.json mtime (best-effort) ----
 TRANSCRIPT="$SESSION_DIR/transcript.jsonl"
-watchdog() {
-  local start now m target
-  target="${CODEX_PID:-$PIPE_PID}"
-  start=$(date +%s)
-  while kill -0 "$PIPE_PID" 2>/dev/null; do
-    sleep 2
-    now=$(date +%s)
-    if [ "$MAX_RUNTIME" -gt 0 ] && [ "$((now - start))" -ge "$MAX_RUNTIME" ]; then
-      echo "runtime ${MAX_RUNTIME}s" > "$SESSION_DIR/.timeout"
-      [ -n "$target" ] && kill_worker "$target"
-      kill_tree "$PIPE_PID" -TERM
-      return 0
-    fi
-    if [ "$IDLE_TIMEOUT" -gt 0 ] && [ -f "$TRANSCRIPT" ]; then
-      m="$(mtime_of "$TRANSCRIPT")"; m="${m:-$start}"
-      if [ "$((now - m))" -ge "$IDLE_TIMEOUT" ]; then
-        echo "idle ${IDLE_TIMEOUT}s" > "$SESSION_DIR/.timeout"
-        [ -n "$target" ] && kill_worker "$target"
-        kill_tree "$PIPE_PID" -TERM
-        return 0
-      fi
-    fi
-  done
-}
 WATCHDOG_PID=""
 if [ "$MAX_RUNTIME" -gt 0 ] || [ "$IDLE_TIMEOUT" -gt 0 ]; then
   echo "  guard:   max-runtime=${MAX_RUNTIME}s idle-timeout=${IDLE_TIMEOUT}s" >&2
