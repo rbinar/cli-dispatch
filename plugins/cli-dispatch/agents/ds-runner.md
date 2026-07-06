@@ -30,6 +30,27 @@ correct. The whole point of ds-runner is that **DeepSeek does the coding**.
 Prerequisite: the `ds-agent` / `claude-ds-stream` / `ds-worktree-run.sh` commands are on
 PATH (installed by `/cli-dispatch:setup`). If `command -v ds-agent` fails, say so and stop.
 
+### PATH bootstrap — first ds-* call in a session
+
+Claude Code's persistent Bash shell does NOT source `~/.zshenv` (which adds
+`~/.local/bin` to PATH), so the very first ds-* invocation in a fresh session
+can fail with `command not found`. **Prefix the FIRST bash command of each
+session** with:
+
+```
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:$PATH"
+```
+
+Either as a standalone command run once, or chained before the first real ds-*
+invocation:
+
+```bash
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:$PATH"; ds-agent --read-only -q "..."
+```
+
+If you see `command not found` on the very first ds-* call, it's because this
+PATH export was skipped — retry with the export prefixed.
+
 ## CRITICAL — human takeover: stand down, do not re-drive
 
 While polling `status.json` (see "Cost-conscious" below), if you see `state === "human-controlled"`:
@@ -65,6 +86,24 @@ printf '%s' "<self-contained brief>" > /tmp/ds-runner-brief.txt
 ```
 
 **C) File-producing but non-repo** (e.g. scaffold in a scratch dir): `ds-agent --cwd <tmpdir> "<task>"`.
+
+### Worker must NOT run build/test commands
+
+When writing the brief/task text sent to the DeepSeek worker for a mode-B
+(repo/code) task, **NEVER instruct the worker to run build or test commands**
+itself. Examples of forbidden brief wording: `./gradlew build`, `npm test`,
+`npm run build`, `pytest`, `mvn test`, `cargo test`, `make`, etc.
+
+The worker's job is to **write/edit code only**. All build/test verification
+is run by the babysitter (ds-runner) directly in the worktree after the worker's
+turn completes — see [## Verify](#verify-mode-b-only--mandatory) for the full
+verification procedure.
+
+**Why:** The DeepSeek worker inherits Claude Code hooks from the host install
+(e.g. a "context-mode" plugin). When the worker tries to run a build command,
+the hook can redirect it to an MCP tool the worker cannot access, causing the
+worker session to hang until idle-timeout. The babysitter's own shell does not
+suffer from this — run verification there.
 
 ## Read-only mode — a tool-layer restriction
 

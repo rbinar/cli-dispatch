@@ -1,12 +1,41 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# --post-check mode: verify main repo wasn't dirtied by a worker
+if [ "${1:-}" = "--post-check" ]; then
+  if [ "$#" -ne 2 ]; then
+    echo "usage: ds-worktree-run.sh --post-check <repo-path>" >&2
+    exit 1
+  fi
+  REPO="$2"
+  git -C "$REPO" rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "Not a git repo: $REPO" >&2; exit 1; }
+  STATUS_OUT="$(git -C "$REPO" status --short)"
+  if [ -z "$STATUS_OUT" ]; then
+    echo ">>> post-check OK: $REPO is clean"
+    exit 0
+  fi
+  TIMESTAMP="$(date +%s)"
+  PATCH_FILE="${REPO}/../leaked-changes-${TIMESTAMP}.patch"
+  git -C "$REPO" diff > "$PATCH_FILE"
+  # Note: git diff does not cover untracked files; status --short above does list them.
+  echo ">>> post-check FAIL: $REPO is dirty — worker leaked changes outside worktree" >&2
+  echo ">>> patch saved: $PATCH_FILE" >&2
+  echo "$STATUS_OUT" >&2
+  exit 1
+fi
+
 if [ "$#" -lt 3 ]; then
-  echo "usage: ds-worktree-run.sh <repo-path> <branch> <brief-file>" >&2
+  echo "usage: ds-worktree-run.sh [--post-check <repo-path>] | <repo-path> <branch> <brief-file>" >&2
   exit 1
 fi
 REPO="$1"; BRANCH="$2"; BRIEF="$3"
-[ -d "$REPO/.git" ] || { echo "Not a git repo: $REPO" >&2; exit 1; }
+# A worktree's .git is a FILE (not a dir); main-repo .git is a DIR. Both are valid.
+# Use -e to accept either.
+[ -e "$REPO/.git" ] || { echo "Not a git repo: $REPO" >&2; exit 1; }
 [ -f "$BRIEF" ] || { echo "Brief file not found: $BRIEF" >&2; exit 1; }
+# NOTE (optional): if REPO itself is already a worktree (.git is a FILE, not a DIR),
+# nesting a worktree-of-a-worktree via the normal mode below is redundant. The
+# script still works correctly (git worktree add succeeds from a worktree), but
+# consider passing the main repo path instead for cleaner isolation.
 # Atomically claim a unique worktree path. mktemp -d claims the dir (O_EXCL),
 # rmdir releases it, then git worktree add re-creates it. If a race occurs
 # (another process created $WT between rmdir and git worktree add), retry once.
