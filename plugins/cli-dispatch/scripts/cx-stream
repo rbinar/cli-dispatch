@@ -116,10 +116,20 @@ if [ -n "$RESUME_ID" ]; then
   case "$RESUME_ID" in
     */*|*..*) echo "cx-stream: invalid --resume id" >&2; exit 1;;
   esac
+  # On resume, if a cwd was recorded in meta.json, restore it.
+  SESSIONS_ROOT="$(resolve_sessions_root)"
+  RECORDED_META="$SESSIONS_ROOT/$RESUME_ID/meta.json"
+  if [ -f "$RECORDED_META" ]; then
+    RECORDED_CWD="$(sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$RECORDED_META" 2>/dev/null || true)"
+    if [ -n "$RECORDED_CWD" ] && [ -d "$RECORDED_CWD" ]; then
+      CWD="$RECORDED_CWD"
+    fi
+  fi
 fi
 
 # Make CWD absolute.
 CWD="$(cd "$CWD" 2>/dev/null && pwd)" || { echo "cx-stream: bad --cwd" >&2; exit 1; }
+cd "$CWD"
 
 # ---- resolve the sandbox mode ----
 # Default to workspace-write for normal agentic work. --read-only is a REAL codex sandbox

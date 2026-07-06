@@ -123,10 +123,24 @@ if [ -n "$EFFORT" ]; then
   case "$EFFORT" in low|medium|high) ;; *) echo "cp-stream: --effort must be low|medium|high (got \"$EFFORT\")." >&2; exit 2;; esac
 fi
 
+COPILOT_RESUME_ID="${RESUME_ID:-}"
+if [ -n "$RESUME_ID" ]; then
+  if [[ "$RESUME_ID" =~ ^cp- ]]; then
+    SESSIONS_ROOT="$(resolve_sessions_root)"
+    RECORDED_META="$SESSIONS_ROOT/$RESUME_ID/meta.json"
+    if [ -f "$RECORDED_META" ]; then
+      RECORDED_THREAD_ID="$(sed -n 's/.*"threadId"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$RECORDED_META" 2>/dev/null || true)"
+      if [ -n "$RECORDED_THREAD_ID" ]; then
+        COPILOT_RESUME_ID="$RECORDED_THREAD_ID"
+      fi
+    fi
+  fi
+fi
+
 CP_ARGS=(-p "$PROMPT" --allow-all-tools --no-ask-user --add-dir "$CWD" --output-format json --no-color --no-auto-update)
 [ -n "$MODEL" ] && CP_ARGS+=(--model "$MODEL")
 [ -n "$EFFORT" ] && CP_ARGS+=("--reasoning-effort=$EFFORT")
-[ -n "$RESUME_ID" ] && CP_ARGS+=(--resume "$RESUME_ID")
+[ -n "$COPILOT_RESUME_ID" ] && CP_ARGS+=(--resume "$COPILOT_RESUME_ID")
 [ "${#PASS_ARGS[@]}" -gt 0 ] && CP_ARGS+=("${PASS_ARGS[@]}")
 
 RESUME=0

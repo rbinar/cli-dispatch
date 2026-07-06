@@ -229,7 +229,7 @@ function handleTool(type, ev, body) {
     countTool(toolName)
   } else if (/error|fail/i.test(statusStr)) {
     const result = asObj(body.result)
-    const msg = st.error ?? result.error ?? body.error ?? body.message ?? 'tool error'
+    const msg = firstString(st.error?.message, st.error, result.error?.message, result.error, body.error?.message, body.error, body.message) ?? 'tool error'
     errorText = String(msg)
     appendProgress(`✗ ${toolName}: ${clip(errorText, 160)}`)
   } else {
