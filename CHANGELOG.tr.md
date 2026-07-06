@@ -7,6 +7,36 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.26.1] — 2026-07-06 15:00
+
+### Düzeltildi
+
+- **`claude-ds-stream` artık kesintileri kaydediyor, session'ları sonsuza kadar
+  `running` durumunda bırakmıyor.** INT/TERM trap'i olmayan tek backend
+  wrapper'ıydı; bu yüzden kesintiye uğrayan bir DeepSeek session'ının
+  `status.json`'ı hiçbir zaman `running` durumundan çıkmıyordu. Diğer stream
+  wrapper'larının zaten kullandığı aynı interrupt-handling deseni geri
+  taşındı (parser çıkışının doğru sıralanması için yeni bir sıralama
+  işaretiyle birlikte); gerçek bir kesintiye karşı canlı doğrulandı ve artık
+  temiz şekilde `interrupted: INT` kaydediyor. `cp-stream` de kardeşlerinde
+  zaten var olan aynı sınırlı-bekleme parser mantığını ve eksik bir cleanup
+  güvenliğini kazandı.
+- **Dashboard sağlamlaştırma düzeltmeleri.** Log kuyruklama (`readHead`/
+  `readTail`) artık hatada dosya tanımlayıcısı (fd) sızdırmıyor. Yarıda kalan
+  bir devralma (takeover) işlemi daha önce bir worker'ı kalıcı olarak
+  "kullanımda" (409) raporlar hâlde sıkışmış bırakabiliyordu — artık
+  başarısızlıkta temiz şekilde sonlandırılıp serbest bırakılıyor. Süreç
+  ağacı toplama artık "process-list araması başarısız oldu" ile "worker'ın
+  gerçekten hiç çocuk süreci yok" durumlarını ayırt ediyor ve başarısızlığı
+  sessizce yanlış raporlamak yerine bir kez logluyor.
+- **Dokümantasyon gerçek davranışla yeniden senkronize edildi.** `--effort`
+  reasoning-seviyesi bayrağı artık DeepSeek, Antigravity ve Codex runner'ları
+  için de belgelendi (önceden yalnızca Copilot için belgeliydi, oysa dördü de
+  destekliyor). Codex'in `--no-network` bayrağı belgelendi. Antigravity
+  runner rehberi eksik olan "Model seçimi" ve "Resume" bölümlerini kazandı;
+  OpenCode runner rehberindeki eski versiyon notu düzeltildi; DeepSeek runner
+  rehberi "Read-only" ve "Resume" bölümlerini kazandı.
+
 ## [3.26.0] — 2026-07-06
 
 ### Eklendi

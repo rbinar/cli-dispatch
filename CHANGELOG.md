@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.26.1] — 2026-07-06 15:00
+
+### Fixed
+
+- **`claude-ds-stream` now records interruptions instead of leaving sessions
+  stuck `running` forever.** It was the only backend wrapper with no INT/TERM
+  trap, so an interrupted DeepSeek session's `status.json` never left the
+  `running` state. Backported the same interrupt-handling pattern the other
+  stream wrappers already use (with a new ordering marker so the parser exit
+  is sequenced correctly); verified live against a real interrupt, which now
+  cleanly records `interrupted: INT`. `cp-stream` also picked up the same
+  bounded-wait-for-parser handling its siblings already had, plus a missing
+  cleanup safeguard.
+- **Dashboard robustness fixes.** Log tailing (`readHead`/`readTail`) no
+  longer leaks file descriptors on error. A take-over action that failed
+  partway through could previously leave a worker permanently stuck
+  reporting "in use" (409) — it's now cleanly killed and released on
+  failure. Process-tree collection now tells the difference between "the
+  process-list lookup itself failed" and "the worker simply has no child
+  processes," and logs the failure once instead of silently mis-reporting
+  it.
+- **Documentation brought back in sync with actual behavior.** The
+  `--effort` reasoning-level flag is now documented for the DeepSeek,
+  Antigravity, and Codex runners (previously only documented for Copilot,
+  though all four support it). Codex's `--no-network` flag is documented.
+  The Antigravity runner guide gained its missing "Model selection" and
+  "Resume" sections; the OpenCode runner guide's stale version note was
+  corrected; the DeepSeek runner guide gained "Read-only" and "Resume"
+  sections.
+
 ## [3.26.0] — 2026-07-06
 
 ### Added
