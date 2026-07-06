@@ -19,6 +19,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import crypto from 'node:crypto'
+import https from 'node:https'
 import { fileURLToPath } from 'node:url'
 import { spawnSync, execSync } from 'node:child_process'
 // NOTE: pty-host.mjs / takeover-cmd.mjs are deliberately NOT imported statically here.
@@ -1066,6 +1067,30 @@ const server = http.createServer(async (req, res) => {
         }
       }
       return send(res, 200, result)
+    }
+
+    if (p === '/api/models/opencode' && req.method === 'GET') {
+      try {
+        const ids = await new Promise((resolve, reject) => {
+          const r = https.get('https://openrouter.ai/api/v1/models', { timeout: 5000 }, (pres) => {
+            let data = ''
+            pres.on('data', chunk => { data += chunk })
+            pres.on('end', () => {
+              try {
+                const json = JSON.parse(data)
+                // Return only the model id strings — never leak the full response
+                resolve((json.data || []).map(m => m.id).filter(Boolean))
+              } catch (e) { reject(e) }
+            })
+          })
+          r.on('error', reject)
+          r.on('timeout', () => { r.destroy(); reject(new Error('timeout')) })
+        })
+        return send(res, 200, ids)
+      } catch (e) {
+        console.error('opencode models fetch error:', e.message)
+        return send(res, 200, [])
+      }
     }
 
     if (p === '/api/config' && req.method === 'POST') {

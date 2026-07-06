@@ -524,6 +524,10 @@ async function renderConfigEditor() {
   const v = document.getElementById('view')
   const key = 'config'
   try {
+    // Fields that get a <datalist> with model-ID suggestions (suggestions only, free text still allowed).
+    // AG/CX/CP datalists are static (sourced from live CLI output or repo docs — see comments below).
+    // OC_MODEL/OC_MODELS datalists are populated from a live fetch to /api/models/opencode.
+    var modelFields = {AG_MODEL:1,AG_MODELS:1,CX_MODEL:1,CX_MODELS:1,CP_MODEL:1,CP_MODELS:1,OC_MODEL:1,OC_MODELS:1}
     const cfg = await j('/api/config')
     const groups = [
       { name: 'DeepSeek', keys: ['DEEPSEEK_API_KEY', 'DS_MODEL', 'DS_FLASH_MODEL'] },
@@ -558,7 +562,7 @@ async function renderConfigEditor() {
           html += '<input type="password" class="cfg-input" id="input_' + escAttr(k) + '" placeholder="enter new key to update, leave blank to keep current">'
           html += '<button class="tkbtn" onclick="saveConfig(\\'' + escAttr(k) + '\\', true)">Save</button>'
         } else {
-          html += '<input type="text" class="cfg-input" id="input_' + escAttr(k) + '" value="' + escAttr(item.value) + '">'
+          html += '<input type="text" class="cfg-input" id="input_' + escAttr(k) + '"' + (modelFields[k] ? ' list="dl_' + escAttr(k) + '"' : '') + ' value="' + escAttr(item.value) + '">'
           html += '<button class="tkbtn" onclick="saveConfig(\\'' + escAttr(k) + '\\', false)">Save</button>'
         }
         html += '<span id="err_' + escAttr(k) + '" class="err" style="margin-left:8px"></span>'
@@ -572,8 +576,39 @@ async function renderConfigEditor() {
       }
       html += '</div></div>'
     }
+    // Static <datalist> model-ID suggestions for AG/CX/CP backends.
+    // AG_MODEL/AG_MODELS options sourced from verified live output of "agy models" on this machine.
+    html += '<datalist id="dl_AG_MODEL"><option value="Gemini 3.5 Flash (Medium)"><option value="Gemini 3.5 Flash (High)"><option value="Gemini 3.5 Flash (Low)"><option value="Gemini 3.1 Pro (Low)"><option value="Gemini 3.1 Pro (High)"><option value="Claude Sonnet 4.6 (Thinking)"><option value="Claude Opus 4.6 (Thinking)"><option value="GPT-OSS 120B (Medium)"></datalist>'
+    html += '<datalist id="dl_AG_MODELS"><option value="Gemini 3.5 Flash (Medium)"><option value="Gemini 3.5 Flash (High)"><option value="Gemini 3.5 Flash (Low)"><option value="Gemini 3.1 Pro (Low)"><option value="Gemini 3.1 Pro (High)"><option value="Claude Sonnet 4.6 (Thinking)"><option value="Claude Opus 4.6 (Thinking)"><option value="GPT-OSS 120B (Medium)"></datalist>'
+    // CX_MODEL/CX_MODELS options sourced from verified live ~/.codex/models_cache.json on this machine.
+    html += '<datalist id="dl_CX_MODEL"><option value="gpt-5.5"><option value="gpt-5.4"><option value="gpt-5.4-mini"><option value="gpt-5.3-codex-spark"><option value="codex-auto-review"></datalist>'
+    html += '<datalist id="dl_CX_MODELS"><option value="gpt-5.5"><option value="gpt-5.4"><option value="gpt-5.4-mini"><option value="gpt-5.3-codex-spark"><option value="codex-auto-review"></datalist>'
+    // CP_MODEL/CP_MODELS options: "auto" and "gpt-5.4" verified live from "copilot --help" on this machine;
+    // "claude-sonnet-4.6" and "gpt-5.2" are repo-internal references (install.sh CP_MODEL comment examples), not CLI-verified.
+    html += '<datalist id="dl_CP_MODEL"><option value="auto"><option value="gpt-5.4"><option value="claude-sonnet-4.6"><option value="gpt-5.2"></datalist>'
+    html += '<datalist id="dl_CP_MODELS"><option value="auto"><option value="gpt-5.4"><option value="claude-sonnet-4.6"><option value="gpt-5.2"></datalist>'
+    // OC_MODEL/OC_MODELS datalists are created empty — populated from /api/models/opencode fetch below.
+    html += '<datalist id="dl_OC_MODEL"></datalist>'
+    html += '<datalist id="dl_OC_MODELS"></datalist>'
     html += '</div>'
     setView(key, html)
+    // Populate OpenCode (OpenRouter) model-ID datalists from live endpoint.
+    try {
+      var ocModels = await j('/api/models/opencode')
+      if (ocModels && ocModels.length > 0) {
+        for (var di = 0; di < 2; di++) {
+          var dlId = di === 0 ? 'dl_OC_MODEL' : 'dl_OC_MODELS'
+          var dl = document.getElementById(dlId)
+          if (dl) {
+            for (var mi = 0; mi < ocModels.length; mi++) {
+              var opt = document.createElement('option')
+              opt.value = ocModels[mi]
+              dl.appendChild(opt)
+            }
+          }
+        }
+      }
+    } catch(ocErr) { /* datalists stay empty on fetch failure — non-blocking */ }
   } catch (e) {
     setView(key, '<div class="err">Failed to load configuration: ' + esc(e.message) + '</div>')
   }
