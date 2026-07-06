@@ -158,6 +158,15 @@ candidate best fits the task** BEFORE invoking `ag-agent`:
    **one-line reason** why — required for auditability, not just the bare model name from
    `meta.json`.
 
+## Resume
+
+```bash
+ag-agent --resume <conv-id> "<follow-up>"
+```
+This forwards to `agy --conversation <conv-id>`. Unlike Codex's resume (which drops
+`--cwd`), `--cwd` **is** still honored/re-applied on an Antigravity resume run — no special
+caveat needed there.
+
 ## Verify (mode B only — MANDATORY)
 
 Never trust the agy worker's self-report on a code task. You may only report `status: verified ✓` if a real compilation, build, or test check executed directly by you in the worktree has successfully exited with a 0 code. You are strictly forbidden from claiming verification based on the worker's own logs, because "the diff looks reasonable", or because the changes appear complete.

@@ -39,6 +39,14 @@ The final text is printed to stdout; progress lives in `status.json`/`progress.l
 > If the output must be text-only with no disk writes, add `--read-only`
 > (`claude-ds-stream --read-only -p "$ARGUMENTS"`) — it denies Write/Edit/Bash.
 
+**Reasoning effort:**
+```bash
+ds-agent --effort high -q "$ARGUMENTS"
+```
+`--effort low|medium|high` maps to a thinking-token budget via `MAX_THINKING_TOKENS`
+(low=1024, medium=8192, high=31999), applied through the CLI wrapper's `--effort` flag.
+Best-effort — only honored if the DeepSeek Anthropic-compatible API respects the thinking budget.
+
 **Follow-up / fix** (continue the same DeepSeek session):
 ```bash
 claude-ds-stream --resume <session-id> -p "<follow-up>"

@@ -51,6 +51,29 @@ ag-agent -q "$ARGUMENTS"        # stdout = final answer only; progress in status
 > so `--read-only` is rejected. For a no-writes guarantee, isolate in a throwaway/worktree
 > `--cwd` and review the diff (the review step is your real safety boundary anyway).
 
+**Model selection:**
+```bash
+ag-agent --model "Gemini 3.5 Flash (High)" -q "$ARGUMENTS"
+```
+Pass the **exact** display-name string `agy models` prints, including the reasoning suffix
+(e.g. `"Gemini 3.5 Flash (High)"`) — not a loose slug like `gemini-3.5-flash`. List live
+models with:
+```bash
+agy models
+```
+An unrecognized name doesn't hard-error: `ag-stream` only prints a stderr WARNING and agy
+silently falls back to its own default, so an inexact name quietly runs the wrong model —
+exact-match matters. Omit `--model` to use agy's own default (or the `AG_MODEL` config value).
+
+**Reasoning effort:**
+```bash
+ag-agent --effort low "$ARGUMENTS"
+```
+`--effort low|medium|high` composes the model display-name suffix for you (e.g.
+`--model "Gemini 3.5 Flash" --effort low` → effective model `"Gemini 3.5 Flash (Low)"`).
+If `--model` is omitted, `ag-stream` picks the first `agy models` entry matching that
+effort suffix.
+
 **Follow-up / fix** (continue the same agy conversation):
 ```bash
 ag-agent --resume <conv-id> "<follow-up>"

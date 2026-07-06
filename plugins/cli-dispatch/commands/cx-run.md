@@ -30,6 +30,10 @@ Prerequisite: `cx-agent` / `cx-stream` installed (`/cli-dispatch:setup`, Codex b
    The sandbox defaults to `workspace-write` so file edits land in the worktree. Add
    `--sandbox read-only` or `--sandbox danger-full-access` (valid values: `read-only` |
    `workspace-write` | `danger-full-access`) as needed.
+
+   Network access inside `workspace-write` defaults **ON** (matching the other backends,
+   which have no sandbox and thus full network). Pass `--no-network` (or set `CX_NETWORK=0`
+   in the config) for a no-egress run. `--read-only` stays no-network regardless of this flag.
    Or use the bundled helper, which creates the worktree off `origin/main`, symlinks
    `node_modules`, runs `cx-stream` in it, and prints the cleanup command:
    ```bash
@@ -60,6 +64,13 @@ models (`--model <name>`): `gpt-5.5` (default, frontier coding), `gpt-5.4` (flag
 `gpt-5.4-mini` (fast/cheap — lighter tasks & subagents), `gpt-5.3-codex-spark` (ChatGPT Pro
 research preview). `gpt-5.2` / `gpt-5.3-codex` are deprecated. List live with `/model`
 inside codex; names move fast, so trust codex's picker over this list.
+
+**Reasoning effort:**
+```bash
+cx-agent --effort high --model gpt-5.4-mini --read-only -q "$ARGUMENTS"
+```
+`--effort low|medium|high` maps directly to Codex's `model_reasoning_effort` config override
+(passed as `-c model_reasoning_effort=<effort>`).
 
 **Follow-up / fix** (continue the same Codex thread):
 ```bash

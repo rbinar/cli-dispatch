@@ -54,13 +54,34 @@ directly** — no verification step needed for pure text.
 **B) Real repo / code task** (must change files in a repo): isolate in a git worktree so
 the main checkout is never touched:
 ```bash
+# 1. ds-worktree-run.sh opens an isolated worktree off origin/main (or the base stated
+#    in your task) — you don't run `git worktree add` yourself here.
 printf '%s' "<self-contained brief>" > /tmp/ds-runner-brief.txt
+
+# 2. It then runs DeepSeek agentically (its normal default mode) inside that worktree,
+#    via claude-ds-stream, and leaves the diff UNCOMMITTED. The session id is printed
+#    on stderr.
 "${CLAUDE_PLUGIN_ROOT}/scripts/ds-worktree-run.sh" <repo-path> <branch-name> /tmp/ds-runner-brief.txt
 ```
-This opens an isolated worktree (off origin/main), runs DeepSeek agentic inside it, and
-leaves the diff **uncommitted**. The session id is printed on stderr.
 
 **C) File-producing but non-repo** (e.g. scaffold in a scratch dir): `ds-agent --cwd <tmpdir> "<task>"`.
+
+## Read-only mode — a tool-layer restriction
+
+`ds-agent --read-only` forwards through to `claude-ds-stream`, which passes `--tools
+"Read,Grep,Glob"` to the underlying `claude` CLI. `--tools` is **restrictive** — it replaces
+the built-in tool set rather than denying specific tools — so Write/Edit/Bash are simply
+never made available to the worker, even though the session otherwise runs under
+bypassPermissions (which would make a denylist-style restriction like `--disallowed-tools`
+ineffective, since bypassPermissions skips the permission system those deny rules live in).
+
+This is a real restriction, stronger than nothing and stronger than a denylist would be
+under bypassPermissions — but it is **weaker** than Codex's kernel-level sandbox
+(`cx-agent --read-only` → macOS Seatbelt / Linux bwrap+seccomp, a genuine OS-enforced
+hard-block regardless of allowed tool names). Read/Grep/Glob are themselves non-mutating by
+design, but a sufficiently adversarial or confused prompt could in principle still find
+another way to affect the filesystem via an allowed tool's side effects. Worktree isolation
+is still recommended for real repo tasks as defense in depth.
 
 ## Worker model — fixed, no per-task selection
 
@@ -74,6 +95,14 @@ in your result.
 **Reasoning effort:** `ds-agent --effort low|medium|high` sets the worker's thinking budget
 (`MAX_THINKING_TOKENS` 1024/8192/31999). Best-effort — applied only if DeepSeek's
 Anthropic-compatible API honors the thinking budget; treat it as a hint, not a guarantee.
+
+## Resume
+
+```bash
+ds-agent --resume <session-id> "<follow-up>"
+```
+This forwards `--resume <id>` straight to `claude-ds-stream` — no special resume-only
+restrictions (no `--cwd`-drop or similar gotcha).
 
 ## Verify (mode B only — MANDATORY)
 
