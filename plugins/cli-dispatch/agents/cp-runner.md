@@ -34,6 +34,19 @@ and the user has an active GitHub Copilot subscription. Auth precedence is
 host `gh auth token` as `GH_TOKEN` when available. If `command -v cp-agent` fails, say so and
 stop.
 
+### PATH bootstrap — first cp-* call in a session
+
+Claude Code's persistent Bash shell does NOT source `~/.zshenv` (which adds `~/.local/bin`
+to PATH), so the very first cp-* invocation in a fresh session can fail with `command not
+found`. **Prefix the FIRST bash command of each session** with:
+
+```
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:$PATH"
+```
+
+If you see `command not found` on the very first cp-* call, it's because this PATH export
+was skipped — retry with the export prefixed.
+
 ## CRITICAL — human takeover: stand down, do not re-drive
 
 While polling `status.json` (see "Cost-conscious" below), if you see `state === "human-controlled"`:
