@@ -67,6 +67,12 @@ git -C <repo-path> worktree add "$WORKTREE" -b cx-runner-<branch-name> <base-ref
 printf '%s' "<self-contained brief>" > /tmp/cx-runner-brief.txt
 cx-agent --cwd "$WORKTREE" --max-runtime 600 "$(cat /tmp/cx-runner-brief.txt)"
 ```
+**Mode B worktree hard boundary (seatbelt + git worktree):**
+
+- **NEVER include git-metadata-writing commands in the worker brief when running with `--cwd "$WORKTREE"`** (for example `git commit`, `git branch`, `git checkout -b`, `git push`, etc.). When the worker runs inside a worktree, Seatbelt `workspace-write` cannot write to the real git metadata under `.git/worktrees/<name>` (outside the sandbox writable root), so these commands fail with `Operation not permitted`.
+- The worker brief must be scoped to **file edits / code changes only**. Any git-metadata operation (`branch`, `commit`, `push`, and related ref updates) must be done by cx-runner **after** the worker run completes.
+- This does **not** replace the existing policy that the babysitter should not commit/push without orchestrator approval; it adds a stronger constraint: do not delegate metadata writes to the worker at all, even though the babysitter may do them later when approved.
+
 The session/thread-id is printed on stderr. Sandbox defaults to `workspace-write` (files land
 in the worktree). Never pass `--ephemeral` to a session you intend to resume — it disables
 session persistence, so no thread-id is saved (nothing to resume).
