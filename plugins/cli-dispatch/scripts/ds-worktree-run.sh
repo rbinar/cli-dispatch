@@ -11,10 +11,28 @@ REPO="$1"; BRANCH="$2"; BRIEF="$3"
 # rmdir releases it, then git worktree add re-creates it. If a race occurs
 # (another process created $WT between rmdir and git worktree add), retry once.
 WT="$(mktemp -d /tmp/ds-wt-XXXXXX)" && rmdir "$WT"
-git -C "$REPO" fetch origin main >/dev/null 2>&1 || true
-git -C "$REPO" worktree add -b "$BRANCH" "$WT" origin/main || {
+# Resolve base ref
+BASE_REF=""
+LOCAL_BRANCH="$(git -C "$REPO" symbolic-ref --short HEAD 2>/dev/null || true)"
+if [ -n "$LOCAL_BRANCH" ]; then
+  BASE_REF="$LOCAL_BRANCH"
+else
+  REMOTE_HEAD="$(git -C "$REPO" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || true)"
+  if [ -n "$REMOTE_HEAD" ]; then
+    BASE_REF="$REMOTE_HEAD"
+  else
+    BASE_REF="origin/main"
+  fi
+fi
+
+# Fetch remote ref if applicable
+if [[ "$BASE_REF" == origin/* ]]; then
+  git -C "$REPO" fetch origin "${BASE_REF#origin/}" >/dev/null 2>&1 || true
+fi
+
+git -C "$REPO" worktree add -b "$BRANCH" "$WT" "$BASE_REF" || {
   WT="$(mktemp -d /tmp/ds-wt-XXXXXX)" && rmdir "$WT"
-  git -C "$REPO" worktree add -b "$BRANCH" "$WT" origin/main
+  git -C "$REPO" worktree add -b "$BRANCH" "$WT" "$BASE_REF"
 }
 _cleanup() { rm -f "$WT/node_modules" 2>/dev/null; echo ">>> Worktree: $WT  (branch: $BRANCH)"; echo ">>> Review the diff, then YOU handle git/PR/merge. Cleanup:"; echo "    rm -f \"$WT/node_modules\"; git -C \"$REPO\" worktree remove \"$WT\" --force; git -C \"$REPO\" worktree prune"; }
 trap _cleanup ERR INT TERM

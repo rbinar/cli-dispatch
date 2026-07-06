@@ -13,8 +13,21 @@ if (-not (Test-Path $BriefFile)) { Write-Error "Brief file not found: $BriefFile
 
 $WT = Join-Path ([System.IO.Path]::GetTempPath()) ("cx-wt-" + [System.IO.Path]::GetRandomFileName().Substring(0, 6))
 
-git -C $Repo fetch origin main 2>$null
-git -C $Repo worktree add -b $Branch $WT origin/main
+$baseRef = "origin/main"
+$localBranch = git -C $Repo symbolic-ref --short HEAD 2>$null
+if ($localBranch) {
+  $baseRef = $localBranch
+} else {
+  $remoteHead = git -C $Repo symbolic-ref --short refs/remotes/origin/HEAD 2>$null
+  if ($remoteHead) {
+    $baseRef = $remoteHead
+  }
+}
+if ($baseRef.StartsWith("origin/")) {
+  $refName = $baseRef.Substring(7)
+  git -C $Repo fetch origin $refName 2>$null
+}
+git -C $Repo worktree add -b $Branch $WT $baseRef
 
 $repoNM = Join-Path $Repo "node_modules"
 $wtNM = Join-Path $WT "node_modules"
