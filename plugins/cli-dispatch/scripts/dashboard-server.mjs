@@ -67,20 +67,38 @@ const isDir = (p) => { const s = safeStat(p); return s && s.isDirectory() }
 
 // Read first ~maxBytes of a file (for the opening user prompt).
 function readHead(file, maxBytes = 16384) {
+  let fd
   try {
-    const fd = fs.openSync(file, 'r'); const buf = Buffer.alloc(maxBytes)
-    const n = fs.readSync(fd, buf, 0, maxBytes, 0); fs.closeSync(fd)
+    fd = fs.openSync(file, 'r')
+    const buf = Buffer.alloc(maxBytes)
+    const n = fs.readSync(fd, buf, 0, maxBytes, 0)
     return buf.toString('utf8', 0, n)
-  } catch { return '' }
+  } catch {
+    return ''
+  } finally {
+    if (fd !== undefined) {
+      try { fs.closeSync(fd) } catch {}
+    }
+  }
 }
 // Read last ~maxBytes of a file (for the latest event / activity).
 function readTail(file, maxBytes = 65536) {
+  let fd
   try {
-    const st = fs.statSync(file); const start = Math.max(0, st.size - maxBytes)
-    const fd = fs.openSync(file, 'r'); const len = st.size - start; const buf = Buffer.alloc(len)
-    const n = fs.readSync(fd, buf, 0, len, start); fs.closeSync(fd)
+    const st = fs.statSync(file)
+    const start = Math.max(0, st.size - maxBytes)
+    fd = fs.openSync(file, 'r')
+    const len = st.size - start
+    const buf = Buffer.alloc(len)
+    const n = fs.readSync(fd, buf, 0, len, start)
     return buf.toString('utf8', 0, n)
-  } catch { return '' }
+  } catch {
+    return ''
+  } finally {
+    if (fd !== undefined) {
+      try { fs.closeSync(fd) } catch {}
+    }
+  }
 }
 const lines = (s) => s.split('\n').filter((l) => l.trim())
 const firstJSON = (txt) => { for (const l of lines(txt)) { try { return JSON.parse(l) } catch {} } return null }
@@ -610,10 +628,30 @@ const sleepMs = (ms) => new Promise((resolve) => { const t = setTimeout(resolve,
 // not missed.
 function collectProcTree(rootPid) {
   const all = []
+  let loggedError = false
   const visit = (pid) => {
     all.push(pid)
     let r
-    try { r = spawnSync('pgrep', ['-P', String(pid)], { encoding: 'utf8' }) } catch { return }
+    let spawnError = null
+    try {
+      r = spawnSync('pgrep', ['-P', String(pid)], { encoding: 'utf8' })
+      if (!r) {
+        spawnError = 'result is undefined'
+      } else if (r.error) {
+        spawnError = r.error.message || String(r.error)
+      } else if (r.status === null) {
+        spawnError = 'status is null'
+      }
+    } catch (err) {
+      spawnError = err.message || String(err)
+    }
+    if (spawnError) {
+      if (!loggedError) {
+        console.error('dashboard: pgrep unavailable — process tree may be incomplete: ' + spawnError)
+        loggedError = true
+      }
+      return
+    }
     if (!r || r.status !== 0 || !r.stdout) return   // no children (pgrep exits 1) or pgrep failed
     for (const line of r.stdout.split('\n')) {
       const child = parseInt(line.trim(), 10)
@@ -851,7 +889,12 @@ async function handleTakeover(req, res, rawId) {
   // FIX 4: persist the PTY child's pid/pgid so the out-of-process reaper (cli-dispatch-
   // clean.mjs) can kill an orphaned tree if dashboard-server itself dies. Not secret (unlike
   // the token) — safe to write to disk.
-  markTakeoverActive(statusFile, { host, ptyPid: ptyHandle.pid, ptyPgid: ptyHandle.pgid })
+  try {
+    markTakeoverActive(statusFile, { host, ptyPid: ptyHandle.pid, ptyPgid: ptyHandle.pgid })
+  } catch (e) {
+    try { entry.ptyHandle.kill() } catch { /* ignore */ }
+    return releaseAndFail(500, { error: 'failed to mark takeover active: ' + String((e && e.message) || e) })
+  }
   try { fs.appendFileSync(progressLog, `--- human takeover @ ${new Date().toISOString()} ---\n`) } catch { /* ignore */ }
 
   // If the PTY dies on its own (crash, `exit` typed inside codex, etc.) — not via an
