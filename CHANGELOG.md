@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.29.0] — 2026-07-08
+
+### Added
+
+- **Token accounting (#85).** `oc-stream-parse` now sums `step_finish` token
+  usage across all LLM calls into the standard
+  `input_tokens/cached_input_tokens/output_tokens/reasoning_output_tokens`
+  shape (previously: last-event snapshot in a nonstandard nested shape);
+  `cp-stream-parse` accumulates per-turn `assistant.message` outputTokens
+  (Copilot exposes no input-token count — intentionally omitted, not zero);
+  `ag-transcript-parse` documents in-code that agy 1.0.16 exposes no token
+  data at all (`usage` stays `null`). New dashboard endpoint
+  `GET /api/workers/aggregate` plus a compact per-backend usage panel in the
+  workers view, and a new read-only `/cli-dispatch:gain` skill reporting
+  per-backend token totals over session `status.json` files (handles both
+  old and new usage shapes).
+
+### Changed
+
+- **Runner definitions: haiku babysitting is now the default for ALL
+  delegations** (ds/ag/cx/cp/oc). Measured over a long real session,
+  sonnet/opus babysitters cost more Anthropic tokens than doing the work
+  natively (~\$338 vs ~\$143 API-equivalent), while haiku babysitters cost
+  ~\$80 — the orchestrator independently re-verifies diffs/tests anyway.
+  Cost-conscious sections gained lean-waiting rules: prefer one blocking
+  foreground call; if polling, 30-60s bounded sleeps; never read full
+  transcripts/diffs into the runner's own context.
+
+### Fixed
+
+- **cx-stream `--resume` fail-safe (#82 follow-up).** If a session died via
+  SIGKILL (or before its `threadId` was recorded) the provisional session
+  dir was never relocated, and a later `--resume` silently adopted the
+  invoking shell's cwd — in a real incident this wrote 11 files into the
+  wrong repository checkout. Resume now rescues provisional `cx-*` dirs by
+  threadId match, and refuses to run (exit 1) when no recorded cwd can be
+  found and no explicit `--cwd` was passed. `cx-stream.ps1` gains the
+  equivalent restore/rescue/fail-safe (it previously had no cwd restoration
+  at all).
+- **cx-stream `--resume` model drift (#84).** Resume now restores the
+  recorded model from `meta.json` (stripping the `" (effort)"` display
+  suffix) when no explicit `--model` is passed, instead of silently
+  re-resolving from the current config default.
+- **cp-stream-parse usage contamination.** An unrelated Task sub-agent's
+  `subagent.completed.totalTokens` could leak into `status.usage`; removed.
+- **dashboard-utils `collectProcTree`** gains `ps` / active-child-handle
+  fallbacks when `pgrep` is unavailable (no behavior change where `pgrep`
+  works).
+
 ## [3.28.0] — 2026-07-07 17:35
 
 ### Added
