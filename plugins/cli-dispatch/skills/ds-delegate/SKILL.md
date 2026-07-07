@@ -271,6 +271,15 @@ cp-stream --cwd <dir> -p "<task>"          # background/session-tracked variant 
 - **Same session dir** as the others, so `sessions` / `watch` / `resume` / `kill` all work.
 - **Babysitter subagent:** the `cp-runner` subagent manages a Copilot delegation in a sub-context.
 
+## Triviality gate
+
+Before delegating, ask three questions: (1) single file? (2) expected diff under
+~50 lines? (3) zero discovery/ambiguity — you could write the exact edit right
+now? If all three are yes, do NOT delegate — do it inline; the delegation's
+fixed cost (runner spawn + babysitting + your own merge/verify cycle) exceeds
+the work. If several such trivial fixes accumulate, batch them into one
+delegation instead (see "Batch small fixes" below).
+
 ## Batch small fixes
 
 When the orchestrator sees a delegation prompt with several small related fixes

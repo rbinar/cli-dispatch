@@ -63,12 +63,21 @@ async function processAgentFile(fp){
 ;(async()=>{
   // --- Worker section ---
   const byBackend=new Map()
-  let totalNoData=0, oldest='', newest=''
+  let totalNoData=0, trivialCount=0, oldest='', newest=''
   for(const d of fs.readdirSync(root)){
     const dir=path.join(root,d)
     try{ if(!fs.statSync(dir).isDirectory()) continue }catch{ continue }
     const st=read(path.join(dir,'status.json')), m=read(path.join(dir,'meta.json'))
     const backend=st.backend||m.backend||'deepseek'
+    const cf=read(path.join(dir,'changed-files.json'))
+    if(cf && typeof cf.diffstat === 'string') {
+      // diffstat like " 3 files changed, 120 insertions(+), 5 deletions(-)" —
+      // either part may be absent, so match them independently.
+      let total = 0
+      const mi = cf.diffstat.match(/(\d+) insertion/); if(mi) total += parseInt(mi[1], 10)
+      const md = cf.diffstat.match(/(\d+) deletion/);  if(md) total += parseInt(md[1], 10)
+      if(total > 0 && total < 50) trivialCount++;
+    }
     const row=byBackend.get(backend)||{sessions:0,input:0,output:0,noData:0}
     row.sessions++
     const u=usage(st.usage)
@@ -90,6 +99,9 @@ async function processAgentFile(fp){
   }
   console.log('')
   console.log(`sessions with no usage data: ${totalNoData}`)
+  console.log('')
+  // Count trivial delegations (diff < 50 lines)
+  if(trivialCount>0) console.log(`trivial delegations (diff < 50 lines): ${trivialCount} — cheaper done inline; batch or inline next time`)
 
   // --- Anthropic babysitting (subagent transcripts) ---
   // Structure: ~/.claude/projects/<project>/<sessionId>/subagents/agent-*.jsonl

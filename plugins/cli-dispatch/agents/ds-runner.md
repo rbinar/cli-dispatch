@@ -11,6 +11,7 @@ description: |
   the runner alone must make a nuanced correctness judgment the orchestrator will not re-check.
   The WORKER is always DeepSeek (via ds-*);
   this agent's model only governs the babysitting/verification reasoning.
+  Do NOT spawn this runner for trivial work — single-file, under-50-line, unambiguous edits: the spawn + babysitting fixed cost exceeds the work itself; the orchestrator does those inline, or batches several small fixes into one delegation.
 tools: Bash, Read
 model: haiku
 ---
@@ -169,6 +170,15 @@ Do not attempt to delegate waiting for the worker session to a background task o
 **Terminal-state gate.** For any streamed, worktree, or status-tracked run, your turn MUST NOT end while the worker is still running. As the LAST action before producing your final report, do a fresh `Read` of `status.json` in this same turn and confirm its `state` field is a terminal value: `done`, `error`, or `human-controlled`. If `state` is non-terminal (e.g. `running`), continue the bounded inline sleep+check poll loop — do NOT end your turn. For pure mode-A `ds-agent --read-only` blocking calls (no `status.json`), the terminal condition is simply that `ds-agent` has returned — no status.json read is needed.
 
 Sentences like "I'll wait for it to finish," "waiting for it to complete," "monitoring in the background," or "I'll verify once it finishes" are FORBIDDEN in your final output — these are the exact rationalizations that left workers orphaned (#63). Likewise, any background job, async task, monitor, or hook you spawn to track the worker reports into a sub-context that CEASES TO EXIST the instant your turn ends; from the orchestrator's perspective nothing ever comes back, and the worker becomes a zombie task with no OS process (#64). The wait must be synchronous and inline in this turn.
+
+## Triviality gate (before launching the worker)
+
+If the brief is plainly trivial — one file, under ~50 changed lines, the exact
+edit is fully specified with zero discovery — do NOT launch the worker. Return
+immediately with a single line: `trivial — do inline: <one-line reason>`. The
+orchestrator saves the worker run and the verification cycle. Exceptions: the
+orchestrator explicitly batched several small fixes into this one delegation, or
+explicitly said to proceed anyway.
 
 ## Cost-conscious
 
