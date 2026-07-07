@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.28.0] — 2026-07-07 17:35
+
+### Added
+
+- **Dracula color palette for the dashboard.** The dashboard client UI
+  (`public-page.mjs`) moved from the old GitHub-dark tones to the Dracula
+  palette (background `#282a36`, purple `#bd93f9` accent, cyan `#8be9fd`
+  links, green `#50fa7b` / yellow `#f1fa8c` status, red `#ff5555` error).
+  The flow view's step rows also gained a diff-style treatment:
+  success/error result lines get a faint tinted background (green/red)
+  matching diff +/- styling, and thinking steps are now purple-italic
+  instead of plain gray-italic. Scope is palette + step styling only —
+  sidebar/title-bar chrome is unchanged. Verified live via Playwright
+  screenshots plus the full test suite.
+
+### Fixed
+
+- **ds-runner sessions could fail on the very first command with "command
+  not found"** (Fixes #77), because Claude Code's persistent Bash shell
+  doesn't source `~/.zshenv`. `ds-runner.md` now documents the required
+  inline `PATH` export as the first command of a session; `cp-runner.md`
+  gained the same note for consistency (docs-only, no issue).
+- **DeepSeek worker briefs could hang until idle-timeout when asked to run
+  a build/test command directly** (Fixes #69), since the worker inherits
+  host Claude Code hooks (e.g. context-mode) that can redirect the command
+  to an MCP tool the worker can't reach. Worker briefs must no longer
+  instruct the worker to run build/test commands — the babysitter
+  (ds-runner) now runs all verification itself, in its own shell.
+- **A worker could silently leak edits outside its assigned worktree back
+  into the main checkout** (Fixes #68), since `--cwd` isolation isn't a
+  hard filesystem boundary. Added `ds-worktree-run.sh --post-check
+  <repo-path>`, which fails loudly (with a saved patch file) if the main
+  checkout is left dirty after a worker run, instead of relying on a
+  babysitter to remember a manual check.
+- **Codex worker briefs for worktree tasks could fail mid-task with
+  "Operation not permitted"** (Fixes #70), because Codex's sandbox can
+  edit files inside a worktree but can't write to the worktree's real git
+  metadata (which lives outside the sandbox's writable root, under the
+  main repo's `.git/worktrees/`). `cx-runner.md` now scopes worker briefs
+  to file edits only — all git-metadata operations (commit/branch/push)
+  happen in cx-runner itself, after the worker's turn.
+- **`oc-stream --resume` passed our own `oc-<id>` session id straight to
+  OpenCode**, which doesn't recognize it and fails with "Session not
+  found" (Fixes #72), the same class of bug already fixed for cx/cp-stream.
+  Also fixed a self-corrupting variant where a successful resume with the
+  wrong raw id would overwrite the correctly-recorded thread id in
+  `meta.json`, permanently breaking future resumes of that session.
+  `oc-runner.md` also gained guidance that the OpenCode (kimi) worker
+  degrades on broad/multi-part tasks and should get narrow, single-step
+  briefs instead.
+- **A logged-out Antigravity session would burn a full `ag-stream` run
+  producing zero events before landing on a generic, unexplained error**
+  (Fixes #73). A fresh (non-resume) run now does a cheap, bounded auth
+  preflight check before launching the real backgrounded run; on a
+  confirmed auth failure it now writes a clear, Turkish-language auth
+  error immediately and exits 3, instead of silently proceeding to an
+  empty, confusing failure.
+
 ## [3.27.0] — 2026-07-07
 
 ### Added

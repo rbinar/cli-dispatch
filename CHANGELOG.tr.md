@@ -7,6 +7,71 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.28.0] — 2026-07-07 17:35
+
+### Eklendi
+
+- **Dashboard için Dracula renk paleti.** Dashboard client UI'si
+  (`public-page.mjs`) eski GitHub-dark tonlarından Dracula paletine
+  taşındı (arka plan `#282a36`, mor `#bd93f9` vurgu, camgöbeği `#8be9fd`
+  link, yeşil `#50fa7b` / sarı `#f1fa8c` durum, kırmızı `#ff5555` hata).
+  Flow görünümündeki adım satırları da diff-tarzı bir görünüm kazandı:
+  başarı/hata sonuç satırları diff +/- stiline benzer soluk tonlu bir
+  arka plan (yeşil/kırmızı) alıyor, thinking adımları ise düz gri-italik
+  yerine artık mor-italik. Kapsam yalnızca palet + adım stilidir —
+  sidebar/title-bar chrome değişmedi. Canlı Playwright ekran
+  görüntüleriyle ve tam test suite'iyle doğrulandı.
+
+### Düzeltildi
+
+- **ds-runner session'ları ilk komutta "command not found" hatasıyla
+  başarısız olabiliyordu** (Fixes #77) — çünkü Claude Code'un kalıcı Bash
+  shell'i `~/.zshenv`'i source etmiyor. `ds-runner.md` artık session'ın
+  ilk komutu olarak gereken inline `PATH` export'unu belgeliyor;
+  `cp-runner.md`'ye de tutarlılık için aynı not eklendi (yalnızca
+  döküman, issue yok).
+- **DeepSeek worker brief'leri doğrudan bir build/test komutu
+  çalıştırmaya yönlendirildiğinde idle-timeout'a kadar askıda
+  kalabiliyordu** (Fixes #69) — worker, host Claude Code hook'larını
+  (ör. context-mode) miras aldığından, bu hook komutu worker'ın
+  erişemediği bir MCP tool'una yönlendirebiliyordu. Worker brief'leri
+  artık worker'a build/test komutu çalıştırmasını söylememeli — tüm
+  doğrulamayı artık babysitter (ds-runner) kendi shell'inde yapıyor.
+- **Bir worker, kendisine atanan worktree dışına sessizce değişiklik
+  sızdırıp ana checkout'u kirletebiliyordu** (Fixes #68) — çünkü `--cwd`
+  izolasyonu sert bir dosya sistemi sınırı değil. `ds-worktree-run.sh
+  --post-check <repo-path>` eklendi: bir worker çalışmasından sonra ana
+  checkout kirli kalmışsa (kaydedilmiş bir patch dosyasıyla birlikte)
+  yüksek sesle başarısız oluyor, artık babysitter'ın manuel kontrolü
+  hatırlamasına güvenilmiyor.
+- **Codex worker brief'leri worktree görevlerinde "Operation not
+  permitted" hatasıyla yarıda başarısız olabiliyordu** (Fixes #70) —
+  çünkü Codex'in sandbox'ı worktree içindeki dosyaları düzenleyebiliyor
+  ama worktree'nin gerçek git meta verisine (ana repo'nun
+  `.git/worktrees/` altında, sandbox'ın yazılabilir kökü dışında yaşar)
+  yazamıyor. `cx-runner.md` artık worker brief'lerini yalnızca dosya
+  düzenlemeleriyle sınırlıyor — tüm git-meta veri işlemleri
+  (commit/branch/push) worker'ın turu bittikten sonra cx-runner'ın
+  kendisinde gerçekleşiyor.
+- **`oc-stream --resume`, kendi `oc-<id>` session id'mizi doğrudan
+  OpenCode'a geçiyordu**, bu da tanınmayıp "Session not found" hatasına
+  yol açıyordu (Fixes #72) — cx/cp-stream için zaten düzeltilmiş olan
+  hatayla aynı sınıf. Ayrıca yanlış ham id ile başarılı bir resume'un
+  `meta.json`'daki doğru kaydedilmiş thread id'yi üzerine yazarak o
+  session'ın gelecekteki resume'larını kalıcı olarak bozduğu kendi
+  kendini bozan bir varyant da düzeltildi. `oc-runner.md`'ye ayrıca
+  OpenCode (kimi) worker'ının geniş/çok-parçalı görevlerde bozulduğu,
+  bunun yerine dar, tek-adımlı brief'ler verilmesi gerektiği rehberliği
+  eklendi.
+- **Oturumu kapanmış bir Antigravity session'ı, sıfır event üreten bir
+  tam `ag-stream` çalıştırması boyunca yakılıp genel, açıklamasız bir
+  hatayla sonuçlanabiliyordu** (Fixes #73). Şimdi taze (resume olmayan)
+  bir çalıştırma, gerçek arka plan çalıştırmasını başlatmadan önce ucuz,
+  sınırlı bir auth preflight kontrolü yapıyor; onaylanmış bir auth
+  hatasında artık boş, kafa karıştırıcı bir başarısızlığa sessizce devam
+  etmek yerine hemen net, Türkçe bir auth hatası yazıyor ve exit 3 ile
+  çıkıyor.
+
 ## [3.27.0] — 2026-07-07
 
 ### Eklendi
