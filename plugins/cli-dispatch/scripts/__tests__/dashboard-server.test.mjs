@@ -329,3 +329,45 @@ test('GET /api/clean detects human-controlled stale session', async () => {
     rmSync(sessionsDir, { recursive: true, force: true })
   }
 })
+
+test('GET /api/workers/aggregate sums worker usage by backend', async () => {
+  const sessionsDir = mkdtempSync(path.join(tmpdir(), 'dash-usage-'))
+  const port = 19000 + Math.floor(Math.random() * 1000)
+
+  const seed = (id, meta, status) => {
+    const dir = path.join(sessionsDir, id)
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(path.join(dir, 'meta.json'), JSON.stringify(meta))
+    writeFileSync(path.join(dir, 'status.json'), JSON.stringify(status))
+  }
+
+  seed('cx-1', { backend: 'codex', startedAt: '2026-01-01T00:00:00.000Z' }, {
+    backend: 'codex',
+    state: 'done',
+    usage: { input_tokens: 100, output_tokens: 20 }
+  })
+  seed('cx-2', { backend: 'codex', startedAt: '2026-01-02T00:00:00.000Z' }, {
+    backend: 'codex',
+    state: 'done',
+    usage: null
+  })
+  seed('oc-1', { backend: 'opencode', startedAt: '2026-01-03T00:00:00.000Z' }, {
+    backend: 'opencode',
+    state: 'done',
+    usage: { tokens: { input: 300, output: 45 } }
+  })
+
+  const child = startServer({ ...process.env, CLI_DISPATCH_SESSIONS_DIR: sessionsDir }, port)
+  let actualPort
+  try {
+    actualPort = await waitForServerReady(child)
+    const res = await httpRequest({ port: actualPort, method: 'GET', path: '/api/workers/aggregate' })
+    assert.equal(res.status, 200)
+    assert.deepEqual(res.body.codex, { inputTokens: 100, outputTokens: 20, sessions: 2, noDataSessions: 1 })
+    assert.deepEqual(res.body.opencode, { inputTokens: 300, outputTokens: 45, sessions: 1, noDataSessions: 0 })
+    assert.equal(res.body.antigravity, undefined)
+  } finally {
+    await stopServer(child)
+    rmSync(sessionsDir, { recursive: true, force: true })
+  }
+})

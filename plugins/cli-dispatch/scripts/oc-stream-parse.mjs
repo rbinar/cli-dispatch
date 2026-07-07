@@ -111,6 +111,14 @@ const touch = () => { status.lastActivityAt = new Date().toISOString(); status.e
 let finalText = ''        // last text part (the running/final answer) — OVERWRITE, not concat
 let errorText = ''        // surfaced error message, if OpenCode ever emits one at top level
 const emittedTools = new Set()
+const usageTotals = {
+  input_tokens: 0,
+  cached_input_tokens: 0,
+  output_tokens: 0,
+  reasoning_output_tokens: 0,
+}
+
+const finiteNumber = (n) => typeof n === 'number' && Number.isFinite(n) ? n : 0
 
 // Bump the tool counter + record lastTool for a named tool.
 const countTool = (name) => {
@@ -181,7 +189,11 @@ function handlePart(type, sessionID, part, topError) {
     case 'step_finish': {
       if (part && typeof part === 'object') {
         if (part.tokens && typeof part.tokens === 'object') {
-          status.usage = { tokens: part.tokens, cost: part.cost ?? 0 }
+          usageTotals.input_tokens += finiteNumber(part.tokens.input)
+          usageTotals.cached_input_tokens += finiteNumber(part.tokens.cache?.read)
+          usageTotals.output_tokens += finiteNumber(part.tokens.output)
+          usageTotals.reasoning_output_tokens += finiteNumber(part.tokens.reasoning)
+          status.usage = { ...usageTotals }
         }
       }
       touch(); writeStatus()

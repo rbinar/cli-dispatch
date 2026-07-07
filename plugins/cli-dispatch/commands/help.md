@@ -31,6 +31,7 @@ cat <<'HELP'
 │                                                                               │
 │  USAGE & HOUSEKEEPING                                                         │
 │    /cli-dispatch:balance        Usage / credits (all backends)               │
+│    /cli-dispatch:gain           Token totals by backend                      │
 │    /cli-dispatch:ds-balance     DeepSeek balance                             │
 │    /cli-dispatch:ag-balance     Antigravity / Gemini quota                   │
 │    /cli-dispatch:cx-balance     Codex / OpenAI rate limits                   │

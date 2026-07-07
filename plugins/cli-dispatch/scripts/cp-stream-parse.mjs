@@ -98,6 +98,7 @@ const touch = () => { status.lastActivityAt = new Date().toISOString(); status.e
 
 let finalText = ''        // captured answer text; deltas append, complete messages overwrite
 let errorText = ''        // surfaced error message, if GitHub Copilot emits one
+let outputTokensTotal = 0
 const emittedTools = new Set()
 const toolMeta = new Map() // toolCallId -> { name, args } — learned from tool.execution_start
                             // or assistant.message's nested toolRequests[], consulted by handleTool()
@@ -185,11 +186,10 @@ function usageFrom(ev, body) {
   if (tokens && typeof tokens === 'object') {
     const input = tokens.input ?? tokens.prompt_tokens ?? tokens.promptTokens ?? tokens.input_tokens ?? tokens.inputTokens
     const output = tokens.output ?? tokens.completion_tokens ?? tokens.completionTokens ?? tokens.output_tokens ?? tokens.outputTokens
-    const total = tokens.total ?? tokens.total_tokens ?? tokens.totalTokens ?? tokens.tokenCount ?? (typeof input === 'number' && typeof output === 'number' ? input + output : undefined)
-    status.usage = {
-      tokens: { input, output, total },
-      cost: body.cost ?? ev.cost ?? u.cost ?? 0
-    }
+    const usage = {}
+    if (input !== undefined) usage.input_tokens = input
+    if (output !== undefined) usage.output_tokens = output
+    if (Object.keys(usage).length) status.usage = usage
   } else {
     const input = ev.prompt_tokens ?? ev.promptTokens ?? ev.input_tokens ?? ev.inputTokens ??
                   body.prompt_tokens ?? body.promptTokens ?? body.input_tokens ?? body.inputTokens ??
@@ -197,15 +197,11 @@ function usageFrom(ev, body) {
     const output = ev.completion_tokens ?? ev.completionTokens ?? ev.output_tokens ?? ev.outputTokens ??
                    body.completion_tokens ?? body.completionTokens ?? body.output_tokens ?? body.outputTokens ??
                    u.completion_tokens ?? u.completionTokens ?? u.output_tokens ?? u.outputTokens
-    const total = ev.total_tokens ?? ev.totalTokens ?? ev.tokenCount ??
-                  body.total_tokens ?? body.totalTokens ?? body.tokenCount ??
-                  u.total_tokens ?? u.totalTokens ?? u.tokenCount ??
-                  (typeof input === 'number' && typeof output === 'number' ? input + output : undefined)
-    if (input !== undefined || output !== undefined || total !== undefined) {
-      status.usage = {
-        tokens: { input, output, total },
-        cost: body.cost ?? ev.cost ?? u.cost ?? 0
-      }
+    if (input !== undefined || output !== undefined) {
+      const usage = {}
+      if (input !== undefined) usage.input_tokens = input
+      if (output !== undefined) usage.output_tokens = output
+      status.usage = usage
     }
   }
 }
@@ -239,6 +235,11 @@ function handleTool(type, ev, body) {
 }
 
 function handleText(type, ev, body) {
+  if (typeof body.outputTokens === 'number' && Number.isFinite(body.outputTokens)) {
+    // Copilot CLI 1.0.69-0 exposes only per-turn outputTokens on assistant.message events; no input/prompt token count is exposed anywhere in the stream (verified against 47 real session transcripts) — input_tokens is intentionally omitted, not zero.
+    outputTokensTotal += body.outputTokens
+    status.usage = { output_tokens: outputTokensTotal }
+  }
   const text = textFrom(ev, body)
   if (text.trim()) {
     if (/delta|chunk|append/i.test(type) || ev.delta) finalText += text

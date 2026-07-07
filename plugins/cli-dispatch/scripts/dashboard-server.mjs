@@ -275,6 +275,25 @@ function listWorkers(skipParentIndex = false) {
   return out
 }
 
+function workerUsageAggregate() {
+  const out = {}
+  for (const w of listWorkers(true)) {
+    const backend = w.backend || 'deepseek'
+    const row = out[backend] || { inputTokens: 0, outputTokens: 0, sessions: 0, noDataSessions: 0 }
+    row.sessions++
+    const inTok = w.usage && typeof w.usage.inTok === 'number' && Number.isFinite(w.usage.inTok) ? w.usage.inTok : null
+    const outTok = w.usage && typeof w.usage.outTok === 'number' && Number.isFinite(w.usage.outTok) ? w.usage.outTok : null
+    if (inTok === null && outTok === null) {
+      row.noDataSessions++
+    } else {
+      if (inTok !== null) row.inputTokens += inTok
+      if (outTok !== null) row.outputTokens += outTok
+    }
+    out[backend] = row
+  }
+  return out
+}
+
 function findStaleSessions(staleSecs) {
   const now = Date.now()
   const items = []
@@ -1045,6 +1064,7 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/stream') return sse(req, res, u.searchParams.get('watch') || 'sessions')
     if (p === '/api/sessions') return send(res, 200, listSessions())
     if (p === '/api/workers') return send(res, 200, listWorkers())
+    if (p === '/api/workers/aggregate') return send(res, 200, workerUsageAggregate())
 
     if (p === '/api/clean' && req.method === 'GET') {
       let staleSecs = parseInt(u.searchParams.get('staleSecs'), 10)
@@ -1352,4 +1372,3 @@ function listen(port, tries = 12) {
   })
 }
 listen(PORT)
-

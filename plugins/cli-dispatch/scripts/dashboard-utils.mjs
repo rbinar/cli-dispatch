@@ -158,8 +158,28 @@ export function toolSummary(_name, input) {
 export function collectProcTree(rootPid) {
   const all = []
   let loggedError = false
-  const visit = (pid) => {
-    all.push(pid)
+  const childPidsFromPs = (pid) => {
+    const r = spawnSync('ps', ['-axo', 'ppid=,pid='], { encoding: 'utf8' })
+    if (!r || r.error || r.status !== 0 || !r.stdout) {
+      const msg = r && r.error ? (r.error.message || String(r.error)) : 'ps failed'
+      throw new Error(msg)
+    }
+    const children = []
+    for (const line of r.stdout.split('\n')) {
+      const m = line.trim().match(/^(\d+)\s+(\d+)$/)
+      if (!m) continue
+      if (Number(m[1]) === pid) children.push(Number(m[2]))
+    }
+    return children
+  }
+  const childPidsFromActiveHandles = (pid) => {
+    if (pid !== process.pid || typeof process._getActiveHandles !== 'function') return []
+    return process._getActiveHandles()
+      .filter(h => h && h.constructor && h.constructor.name === 'ChildProcess')
+      .map(h => h.pid)
+      .filter(child => Number.isInteger(child) && child > 0)
+  }
+  const childPids = (pid) => {
     let r
     let spawnError = null
     try {
@@ -174,18 +194,28 @@ export function collectProcTree(rootPid) {
     } catch (err) {
       spawnError = err.message || String(err)
     }
-    if (spawnError) {
-      if (!loggedError) {
-        console.error('dashboard: pgrep unavailable — process tree may be incomplete: ' + spawnError)
-        loggedError = true
-      }
-      return
+    if (!spawnError && r && r.status === 0 && r.stdout) {
+      return r.stdout.split('\n')
+        .map(line => parseInt(line.trim(), 10))
+        .filter(child => Number.isInteger(child) && child > 0)
     }
-    if (!r || r.status !== 0 || !r.stdout) return   // no children (pgrep exits 1) or pgrep failed
-    for (const line of r.stdout.split('\n')) {
-      const child = parseInt(line.trim(), 10)
-      if (Number.isInteger(child) && child > 0) visit(child)
+    if (!spawnError && r && r.status === 1 && !r.stdout && !r.stderr) return []
+    try {
+      return childPidsFromPs(pid)
+    } catch (err) {
+      spawnError = spawnError || (err.message || String(err))
     }
+    const activeChildren = childPidsFromActiveHandles(pid)
+    if (activeChildren.length) return activeChildren
+    if (spawnError && !loggedError) {
+      console.error('dashboard: pgrep/ps unavailable — process tree may be incomplete: ' + spawnError)
+      loggedError = true
+    }
+    return []
+  }
+  const visit = (pid) => {
+    all.push(pid)
+    for (const child of childPids(pid)) visit(child)
   }
   visit(rootPid)
   return all

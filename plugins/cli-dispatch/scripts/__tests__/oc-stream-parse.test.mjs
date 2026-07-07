@@ -189,3 +189,53 @@ test('oc-stream-parse: genuine tool error results in fatal error state', async (
   // Clean up
   rmSync(testDir, { recursive: true, force: true })
 })
+
+test('oc-stream-parse: accumulates step_finish token usage across LLM calls', async () => {
+  const events = [
+    {
+      type: 'step_finish',
+      sessionID: 'sess-123',
+      part: {
+        reason: 'tool-calls',
+        tokens: {
+          input: 100,
+          output: 10,
+          reasoning: 2,
+          cache: { read: 7, write: 0 }
+        }
+      }
+    },
+    {
+      type: 'text',
+      sessionID: 'sess-123',
+      part: { type: 'text', text: 'done' }
+    },
+    {
+      type: 'step_finish',
+      sessionID: 'sess-123',
+      part: {
+        reason: 'stop',
+        tokens: {
+          input: 250,
+          output: 30,
+          reasoning: 4,
+          cache: { read: 11, write: 0 }
+        }
+      }
+    }
+  ]
+
+  const result = await runParser(events)
+  assert.equal(result.code, 0)
+
+  const statusPath = path.join(testDir, 'status.json')
+  const status = JSON.parse(readFileSync(statusPath, 'utf8'))
+  assert.deepEqual(status.usage, {
+    input_tokens: 350,
+    cached_input_tokens: 18,
+    output_tokens: 40,
+    reasoning_output_tokens: 6
+  })
+
+  rmSync(testDir, { recursive: true, force: true })
+})

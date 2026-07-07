@@ -83,6 +83,7 @@ const status = {
   startedAt: meta.startedAt,
   lastActivityAt: new Date().toISOString(),
   finalResultPreview: '',
+  // agy 1.0.16 exposes no token/usage data in any transcript event (verified against real session transcripts: content/created_at/error/source/status/step_index/thinking/tool_calls/type only) — usage stays null, there is nothing to extract.
   usage: null,
 }
 const { flush: flushStatus, write: writeStatus } = createStatusWriter(statusFile, status)

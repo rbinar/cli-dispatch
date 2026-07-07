@@ -74,6 +74,8 @@ input.cfg-input:focus{border-color:var(--acc);outline:none}
 #cleanPanel{margin:8px 14px;padding:10px;border:1px solid var(--bd);border-radius:8px;background:var(--panel);max-width:600px}
 #cleanPanel .clean-item{padding:4px 0;border-bottom:1px solid var(--bd);font-size:12px}
 #cleanPanel .clean-item:last-child{border-bottom:none}
+.usage-aggregate{padding:6px 8px;border-bottom:1px solid var(--bd);color:var(--dim);font-size:11px}
+.usage-aggregate .urow{padding:1px 0}.usage-aggregate b{color:var(--fg)}
 </style></head><body>
 <header><b>cli-dispatch</b> <span class="muted">dashboard</span><span class="grow"></span>
 <span class="small muted" id="meta"></span><button class="tkbtn" id="cleanBtn" onclick="openCleanPanel()" style="font-size:11px;padding:2px 8px">Clean stale sessions</button><span class="small muted">· read-only by default · opt-in takeover</span></header>
@@ -167,6 +169,7 @@ const fmtDT=(iso)=>{const d=iso?new Date(iso):null;return d&&!isNaN(d)?d.toLocal
 // closest equivalent short label ("parent/leaf") without guessing at the origin repo.
 const shortProj=(cwd)=>{if(!cwd) return '';const parts=cwd.split('/').filter(Boolean);return parts.slice(-2).join('/')}
 const shortSessionProj=(project)=>project.replace(/^-/,'').split('-').slice(-2).join('/')
+const fmtTok=(num)=>{num=Number(num)||0;if(num>=1000000)return (num/1000000).toFixed(1).replace(/\\.0$/,'')+'M';if(num>=1000)return (num/1000).toFixed(1).replace(/\\.0$/,'')+'K';return String(Math.round(num))}
 const fmtUsage=(u,detailed)=>{
   if(!u) return null
   const inTok=u.inTok, outTok=u.outTok, costUsd=u.costUsd
@@ -223,12 +226,15 @@ async function loadList(){
       const it=E(h); it.onclick=()=>openSession(s); frag.appendChild(it); sig.push(h)
     })
   }else if(mode==='w'){
-    const ws=await j('/api/workers')
+    const pair=await Promise.all([j('/api/workers'),j('/api/workers/aggregate')])
+    const ws=pair[0], agg=pair[1]||{}
     const wCounts={all:ws.length,running:0,human:0,done:0,error:0}
     ws.forEach(w=>{ const k=workerBucket(w); wCounts[k]=(wCounts[k]||0)+1 })
     fb.style.display='flex'
     fb.innerHTML=[['all',wCounts.all],['running',wCounts.running],['human',wCounts.human],['done',wCounts.done],['error',wCounts.error]].map(([k,n])=>'<span class="fchip'+(wFlt===k?' on':'')+'" onclick="setWFilter(\\''+k+'\\')">'+k+'<span class="c">'+n+'</span></span>').join('')
     document.getElementById('meta').textContent=ws.length+' workers'
+    const aggRows=Object.keys(agg).sort().map(k=>{const a=agg[k]||{},nd=Number(a.noDataSessions)||0;return '<div class="urow"><b>'+esc(k)+':</b> '+esc(fmtTok(a.inputTokens))+' in / '+esc(fmtTok(a.outputTokens))+' out'+(nd?' ('+nd+' sessions no data)':'')+'</div>'}).join('')
+    if(aggRows){ const ae=E('<div class="usage-aggregate" id="usageAggregate">'+aggRows+'</div>'); frag.appendChild(ae); sig.push('agg:'+aggRows) }
     const shown=wFlt==='all'?ws:ws.filter(w=>workerBucket(w)===wFlt)
     shown.forEach(w=>{
       const bucket=workerBucket(w)

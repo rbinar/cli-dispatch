@@ -127,3 +127,29 @@ test('ag-transcript-parse: non-zero donefile with no finalText sets status.state
 
   rmSync(testDir, { recursive: true, force: true })
 })
+
+test('ag-transcript-parse: usage remains null because agy exposes no token data', async () => {
+  const { closed } = spawnParser()
+
+  await sleep(POLL_MARGIN_MS)
+
+  writeFileSync(transcriptPath, JSON.stringify({
+    source: 'MODEL',
+    type: 'PLANNER_RESPONSE',
+    content: 'Complete.',
+    tool_calls: []
+  }) + '\n')
+
+  await sleep(POLL_MARGIN_MS)
+  writeFileSync(doneFilePath, '0')
+
+  const code = await closed
+  assert.equal(code, 0)
+
+  const statusPath = path.join(testDir, 'status.json')
+  const status = JSON.parse(readFileSync(statusPath, 'utf8'))
+  assert.equal(status.state, 'done')
+  assert.equal(status.usage, null)
+
+  rmSync(testDir, { recursive: true, force: true })
+})

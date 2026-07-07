@@ -88,3 +88,39 @@ test('cp-stream-parse: assistant.reasoning_delta without ephemeral flag is still
 
   rmSync(testDir, { recursive: true, force: true })
 })
+
+test('cp-stream-parse: accumulates assistant.message outputTokens without subagent totalTokens contamination', async () => {
+  const events = [
+    {
+      type: 'assistant.message',
+      sessionId: 'sess-123',
+      data: { content: 'First answer chunk.', outputTokens: 87 }
+    },
+    {
+      type: 'subagent.completed',
+      data: {
+        toolCallId: 'task-1',
+        agentName: 'general-purpose',
+        model: 'claude-sonnet-5',
+        totalToolCalls: 9,
+        totalTokens: 9268974,
+        durationMs: 12345
+      }
+    },
+    {
+      type: 'assistant.message',
+      sessionId: 'sess-123',
+      data: { content: 'Final answer.', outputTokens: 13 }
+    }
+  ]
+
+  const result = await runParser(events)
+  assert.equal(result.code, 0)
+
+  const statusPath = path.join(testDir, 'status.json')
+  assert.ok(existsSync(statusPath))
+  const status = JSON.parse(readFileSync(statusPath, 'utf8'))
+  assert.deepEqual(status.usage, { output_tokens: 100 })
+
+  rmSync(testDir, { recursive: true, force: true })
+})
