@@ -68,14 +68,15 @@ $model = if ($cfg["CX_MODEL"]) { $cfg["CX_MODEL"] } elseif ($cfg["CODEX_MODEL"])
 $maxRuntime = ConvertTo-Int $env:CX_MAX_RUNTIME
 $idleTimeout = ConvertTo-Int $env:CX_IDLE_TIMEOUT
 $passArgs = @()
+$explicitCwd = $false
 function Need-Val($name, $idx, $argc) { if ($idx + 1 -ge $argc) { Write-Error "cx-stream: $name requires a value."; exit 1 } }
 $i = 0
 $argc = $args.Count
 while ($i -lt $argc) {
   $a = $args[$i]
   switch -Regex ($a) {
-    '^--cwd$'          { Need-Val '--cwd' $i $argc; $cwd = $args[$i+1]; $i += 2; continue }
-    '^--cwd=(.*)'      { $cwd = $matches[1]; $i += 1; continue }
+    '^--cwd$'          { Need-Val '--cwd' $i $argc; $cwd = $args[$i+1]; $explicitCwd = $true; $i += 2; continue }
+    '^--cwd=(.*)'      { $cwd = $matches[1]; $explicitCwd = $true; $i += 1; continue }
     '^--resume$'       { Need-Val '--resume' $i $argc; $resumeId = $args[$i+1]; $i += 2; continue }
     '^--resume=(.*)'   { $resumeId = $matches[1]; $i += 1; continue }
     '^--model$'        { Need-Val '--model' $i $argc; $model = $args[$i+1]; $i += 2; continue }
@@ -104,6 +105,61 @@ if ([string]::IsNullOrWhiteSpace($prompt)) { Write-Error "cx-stream: empty promp
 # The resume id becomes a session-dir path component → reject path traversal early.
 if (-not [string]::IsNullOrEmpty($resumeId)) {
   if ($resumeId -match '[\\/]' -or $resumeId -match '\.\.') { Write-Error "cx-stream: invalid --resume id"; exit 1 }
+}
+
+# On resume, restore recorded cwd from the session's meta.json.
+# Resolve sessions root (same logic as the session-bookkeeping block below).
+if (-not [string]::IsNullOrEmpty($resumeId)) {
+  $resumeSessionsRoot = if ($env:CLI_DISPATCH_SESSIONS_DIR) { $env:CLI_DISPATCH_SESSIONS_DIR } else { $env:CLAUDE_DS_SESSIONS_DIR }
+  if ([string]::IsNullOrEmpty($resumeSessionsRoot)) {
+    $cacheRoot = if ($env:XDG_CACHE_HOME) { $env:XDG_CACHE_HOME } else { Join-Path $HOME ".cache" }
+    $newRoot = Join-Path $cacheRoot "cli-dispatch/sessions"; $oldRoot = Join-Path $cacheRoot "claude-ds/sessions"
+    $resumeSessionsRoot = if ((Test-Path $newRoot) -or (-not (Test-Path $oldRoot))) { $newRoot } else { $oldRoot }
+  }
+  $recordedMeta = Join-Path $resumeSessionsRoot "$resumeId/meta.json"
+  if (Test-Path $recordedMeta) {
+    try {
+      $meta = Get-Content -Raw $recordedMeta | ConvertFrom-Json
+      if ($meta.cwd -and (Test-Path $meta.cwd)) { $cwd = $meta.cwd }
+    } catch {}
+  } else {
+    # Session may have been killed before relocation (SIGKILL, crash, etc.) —
+    # scan provisional cx-*/ dirs for a meta.json whose threadId matches.
+    $rescueCount = 0
+    $rescueDir = ""
+    Get-ChildItem -Path (Join-Path $resumeSessionsRoot "cx-*") -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+      $candMeta = Join-Path $_.FullName "meta.json"
+      if (Test-Path $candMeta) {
+        try {
+          $cand = Get-Content -Raw $candMeta | ConvertFrom-Json
+          if ($cand.threadId -eq $resumeId) { $rescueCount++; $script:rescueDir = $_.FullName }
+        } catch {}
+      }
+    }
+    if ($rescueCount -eq 1) {
+      $finalDir = Join-Path $resumeSessionsRoot $resumeId
+      if (-not (Test-Path $finalDir)) {
+        try { Move-Item -Force $rescueDir $finalDir -ErrorAction Stop } catch {}
+      }
+      $recordedMeta = Join-Path $resumeSessionsRoot "$resumeId/meta.json"
+      if (Test-Path $recordedMeta) {
+        try {
+          $meta = Get-Content -Raw $recordedMeta | ConvertFrom-Json
+          if ($meta.cwd -and (Test-Path $meta.cwd)) { $cwd = $meta.cwd }
+        } catch {}
+      }
+    }
+  }
+  # Fail-safe: if we still have no meta.json and the caller did not pass --cwd
+  # explicitly, refuse to run. Silently adopting the invoking shell's cwd is
+  # exactly the bug being fixed — it can write files into the wrong repo checkout.
+  if (-not (Test-Path $recordedMeta) -and -not $explicitCwd) {
+    Write-Error "cx-stream: unknown session '$resumeId' — recorded cwd not found."
+    Write-Error "  The session may have been killed before its working directory was saved."
+    Write-Error "  Resuming without the original cwd is unsafe (it would silently adopt the"
+    Write-Error "  invoking shell's cwd). Pass --cwd <path> explicitly to proceed."
+    exit 1
+  }
 }
 
 # Make cwd absolute.

@@ -69,6 +69,7 @@ SANDBOX=""                       # explicit --sandbox passthrough (overrides def
 case "${CX_NETWORK:-1}" in 0|false|no|off) NETWORK=0;; *) NETWORK=1;; esac
 MODEL="${CX_MODEL:-${CODEX_MODEL:-}}"
 EXPLICIT_MODEL=0
+EXPLICIT_CWD=0
 EFFORT="${CX_EFFORT:-}"
 MAX_RUNTIME="${CX_MAX_RUNTIME:-0}"
 IDLE_TIMEOUT="${CX_IDLE_TIMEOUT:-0}"
@@ -76,8 +77,8 @@ PASS_ARGS=()
 need_val() { [ "$2" -ge 2 ] || { echo "cx-stream: $1 requires a value." >&2; exit 1; }; }
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --cwd)            need_val --cwd "$#";    CWD="$2"; shift 2;;
-    --cwd=*)          CWD="${1#*=}"; shift;;
+    --cwd)            need_val --cwd "$#";    CWD="$2"; EXPLICIT_CWD=1; shift 2;;
+    --cwd=*)          CWD="${1#*=}"; EXPLICIT_CWD=1; shift;;
     --resume)         need_val --resume "$#"; RESUME_ID="$2"; shift 2;;
     --resume=*)       RESUME_ID="${1#*=}"; shift;;
     --model)          need_val --model "$#";  MODEL="$2"; EXPLICIT_MODEL=1; shift 2;;
@@ -121,15 +122,58 @@ if [ -n "$RESUME_ID" ]; then
   SESSIONS_ROOT="$(resolve_sessions_root)"
   RECORDED_META="$SESSIONS_ROOT/$RESUME_ID/meta.json"
   if [ -f "$RECORDED_META" ]; then
-    RECORDED_CWD="$(sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$RECORDED_META" 2>/dev/null || true)"
+    RECORDED_CWD="$(json_field "$RECORDED_META" cwd || true)"
     if [ -n "$RECORDED_CWD" ] && [ -d "$RECORDED_CWD" ]; then
       CWD="$RECORDED_CWD"
     fi
-    RECORDED_MODEL="$(sed -n 's/.*"model"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$RECORDED_META" 2>/dev/null || true)"
-    RECORDED_MODEL="${RECORDED_MODEL% (*}"
-    if [ "$EXPLICIT_MODEL" -eq 0 ] && [ -n "$RECORDED_MODEL" ]; then
-      MODEL="$RECORDED_MODEL"
+    if [ "$EXPLICIT_MODEL" -eq 0 ]; then
+      RECORDED_MODEL="$(json_field "$RECORDED_META" model || true)"
+      RECORDED_MODEL="${RECORDED_MODEL% (*}"
+      if [ -n "$RECORDED_MODEL" ]; then
+        MODEL="$RECORDED_MODEL"
+      fi
     fi
+  else
+    # Session was killed before relocation (SIGKILL, crash, etc.) — scan provisional
+    # cx-*/ dirs for a meta.json whose threadId matches RESUME_ID.
+    RESCUE_COUNT=0
+    RESCUE_DIR=""
+    for _cand in "$SESSIONS_ROOT"/cx-*/meta.json; do
+      [ -f "$_cand" ] || continue
+      _tid="$(json_field "$_cand" threadId || true)"
+      if [ "$_tid" = "$RESUME_ID" ]; then
+        RESCUE_COUNT=$((RESCUE_COUNT + 1))
+        RESCUE_DIR="$(dirname "$_cand")"
+      fi
+    done
+    if [ "$RESCUE_COUNT" -eq 1 ]; then
+      _prov="$(basename "$RESCUE_DIR")"
+      relocate_session_dir "$SESSIONS_ROOT" "$RESCUE_DIR" "$_prov" "$RESUME_ID" "cx-stream" "thread dir" "  thread:  " >/dev/null
+      RECORDED_META="$SESSIONS_ROOT/$RESUME_ID/meta.json"
+      if [ -f "$RECORDED_META" ]; then
+        RECORDED_CWD="$(json_field "$RECORDED_META" cwd || true)"
+        if [ -n "$RECORDED_CWD" ] && [ -d "$RECORDED_CWD" ]; then
+          CWD="$RECORDED_CWD"
+        fi
+        if [ "$EXPLICIT_MODEL" -eq 0 ]; then
+          RECORDED_MODEL="$(json_field "$RECORDED_META" model || true)"
+          RECORDED_MODEL="${RECORDED_MODEL% (*}"
+          if [ -n "$RECORDED_MODEL" ]; then
+            MODEL="$RECORDED_MODEL"
+          fi
+        fi
+      fi
+    fi
+  fi
+  # Fail-safe: if we still have no meta.json and the caller did not pass --cwd
+  # explicitly, refuse to run. Silently adopting the invoking shell's cwd is
+  # exactly the bug being fixed — it can write files into the wrong repo checkout.
+  if [ ! -f "$RECORDED_META" ] && [ "$EXPLICIT_CWD" -eq 0 ]; then
+    echo "cx-stream: unknown session \"$RESUME_ID\" — recorded cwd not found." >&2
+    echo "  The session may have been killed before its working directory was saved." >&2
+    echo "  Resuming without the original cwd is unsafe (it would silently adopt the" >&2
+    echo "  invoking shell's cwd). Pass --cwd <path> explicitly to proceed." >&2
+    exit 1
   fi
 fi
 
