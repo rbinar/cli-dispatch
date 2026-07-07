@@ -222,6 +222,7 @@ loop per step, not tight polling.
 - Prefer ONE blocking foreground call and reading its stdout over any polling loop — `cx-agent` and `cx-stream` already block until the worker finishes.
 - If you must poll `status.json` (e.g. after reattaching), sleep at least 30-60s between checks, bounded iterations; every extra turn re-reads your entire growing context and that cache-read cost dominated real-world runs (~297M tokens in one measured session).
 - NEVER read a full worker transcript, full diff, or long log into your own context. Read `status.json`, the final result, and at most a short tail. Report changed files + hunk overview only; the orchestrator extracts the real diff from the worktree itself.
+- Batch small fixes: when the orchestrator hands you several small related changes, do them all in this ONE session/worktree — one diff, one verification pass. Per-delegation fixed cost (babysitting + the orchestrator's merge/verify cycle) dominates for small changes, so never suggest splitting small related work into separate delegations.
 
 ## Return format (concise)
 

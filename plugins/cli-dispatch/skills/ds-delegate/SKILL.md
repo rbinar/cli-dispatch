@@ -271,6 +271,16 @@ cp-stream --cwd <dir> -p "<task>"          # background/session-tracked variant 
 - **Same session dir** as the others, so `sessions` / `watch` / `resume` / `kill` all work.
 - **Babysitter subagent:** the `cp-runner` subagent manages a Copilot delegation in a sub-context.
 
+## Batch small fixes
+
+When the orchestrator sees a delegation prompt with several small related fixes
+(expected ~50 lines per fix, fixes are related), combine them into a SINGLE
+delegation with an itemized checklist rather than multiple delegations. The
+economics favor one worker, one diff, one verify cycle — per-delegation fixed
+costs (babysitting subagent invocation + orchestrator merge/verify) dominate for
+small changes, so splitting them across separate delegations multiplies that
+overhead for no benefit.
+
 ## Role
 The worker (claude-ds = DeepSeek, ag-agent = Antigravity/Gemini, cx-agent = Codex/OpenAI,
 oc-agent = OpenCode/OpenRouter, or cp-agent = GitHub Copilot) does the work; you =
