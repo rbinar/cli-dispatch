@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.30.1] — 2026-07-08
+
+### Added
+
+- **`/cli-dispatch:gain --log`** appends a timestamped JSON snapshot of the
+  report (`{ts, workers, trivialDelegations, anthropic}`) to
+  `~/.cache/cli-dispatch/gain-history.jsonl`, one line per run — history
+  survives `/cli-dispatch:clean`. Default behavior unchanged without the flag.
+
 ## [3.30.0] — 2026-07-08
 
 ### Added

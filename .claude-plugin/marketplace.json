@@ -3,12 +3,12 @@
   "name": "cli-dispatch",
   "description": "cli-dispatch — görevi uygun işçi CLI'a delege eden çok-backend hub: DeepSeek/claude-ds, Antigravity-Gemini/ag-agent, OpenAI Codex CLI/cx-agent, OpenCode/OpenRouter/oc-agent ve GitHub Copilot CLI/cp-agent.",
   "owner": { "name": "rbinar", "url": "https://github.com/rbinar" },
-  "metadata": { "version": "3.30.0" },
+  "metadata": { "version": "3.30.1" },
   "plugins": [
     {
       "name": "cli-dispatch",
       "description": "Görevleri doğru işçi CLI'a delege eden çok-backend hub. DeepSeek/claude-ds, Antigravity-Gemini/ag-agent, OpenAI Codex CLI/cx-agent, OpenCode via OpenRouter/oc-agent ve GitHub Copilot CLI/cp-agent backend'lerini destekler; setup sırasında backend seçimi, ds/ag/cx/oc/cp-runner subagent'ları ve tek komutluk ds/ag/cx/oc/cp-agent akışı sunar. Session takibi (canlı izleme + resume), Codex'e özel gerçek read-only sandbox notu, global MCP izolasyonu, runtime/idle timeout güvenlik ağı, worktree izolasyonu ve isteğe bağlı eksik CLI otomatik kurulumu içerir.",
-      "version": "3.30.0",
+      "version": "3.30.1",
       "category": "development",
       "keywords": ["cli-dispatch", "delegation", "deepseek", "antigravity", "gemini", "codex", "openai", "opencode", "openrouter", "copilot", "github-copilot", "subagent", "worker", "claude-code", "dashboard"],
       "source": "./plugins/cli-dispatch"
