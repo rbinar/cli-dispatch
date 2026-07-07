@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.30.0] — 2026-07-08
+
+### Added
+
+- **Post-run diff artifacts in all 5 stream CLIs.** On worker completion,
+  if the cwd is a dirty git worktree, the shared `write_diff_artifacts()`
+  writes `diff.patch` (tracked diff + no-index patches for untracked
+  files, `git apply`-able on a clean checkout) and `changed-files.json`
+  (per-file status + diffstat) into the session dir. The orchestrator
+  merges from these two small files instead of visiting the worktree;
+  artifacts survive worktree cleanup. Best-effort, never changes exit
+  codes.
+- **`--verify-cmd <cmd>` in all 5 stream CLIs** (env fallback
+  `CLI_DISPATCH_VERIFY_CMD`): after a clean worker exit, runs the command
+  in the worker cwd and records `{cmd, exit, tail}` into
+  `status.json.verify`. Non-zero verify exit is recorded, not escalated.
+- **`/cli-dispatch:gain` reports the Anthropic babysitting side**: a
+  second table summing `message.usage` from all subagent transcripts
+  under `~/.claude/projects` per model (streamed line-by-line), plus a
+  babysitter-output/worker-output ratio and total worker input
+  offloaded. Only `claude-*` models are counted — claude-ds (DeepSeek)
+  workers write the same transcript layout and are excluded. Documented
+  as an upper bound (covers ALL subagents on the machine).
+- **4-layer triviality guard** — stop delegating work cheaper done
+  inline (single-file, under-50-line, unambiguous edits): runner
+  frontmatter warnings at spawn-decision time; a 3-question Triviality
+  gate in the ds-delegate skill; a runner-side early-exit that returns
+  `trivial — do inline: <reason>` without launching the worker; and a
+  `/cli-dispatch:gain` counter flagging completed delegations whose
+  diffstat totals under 50 lines.
+- **Batch-small-fixes guidance** in all 5 runner defs + the ds-delegate
+  skill: several small related changes go into ONE delegation/worktree —
+  per-delegation fixed cost dominates for small changes.
+
 ## [3.29.0] — 2026-07-08
 
 ### Added
