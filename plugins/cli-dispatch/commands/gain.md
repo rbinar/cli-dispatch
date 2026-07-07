@@ -9,13 +9,20 @@ Read-only token accounting summary over worker session `status.json` files,
 plus Anthropic babysitting token usage from ALL subagent transcripts on this machine
 (the latter is an upper bound — it includes non-cli-dispatch subagents too).
 
+Pass `--log` to ALSO append a timestamped JSON snapshot of the report to
+`~/.cache/cli-dispatch/gain-history.jsonl` (one line per run), so runs can be
+compared over time even after `/cli-dispatch:clean` deletes old session dirs.
+
 ```bash
+ARGS="$*"
+GAIN_LOG=0
+case " $ARGS " in *" --log "*) GAIN_LOG=1;; esac
 CACHE="${XDG_CACHE_HOME:-$HOME/.cache}"
 ROOT="${CLI_DISPATCH_SESSIONS_DIR:-${CLAUDE_DS_SESSIONS_DIR:-}}"
 [ -n "$ROOT" ] || { ROOT="$CACHE/cli-dispatch/sessions"; [ -d "$ROOT" ] || ROOT="$CACHE/claude-ds/sessions"; }
 [ -d "$ROOT" ] || { echo "(no sessions dir: $ROOT)"; exit 0; }
 
-ROOT="$ROOT" node <<'EOF'
+ROOT="$ROOT" GAIN_LOG="$GAIN_LOG" node <<'EOF'
 const fs=require('fs'), path=require('path'), readline=require('readline'), os=require('os')
 const root=process.env.ROOT
 const read=p=>{try{return JSON.parse(fs.readFileSync(p,'utf8'))}catch{return{}}}
@@ -156,6 +163,19 @@ async function processAgentFile(fp){
     const ratio=totalWorkerOutput>0?((totalAnthroOutput/totalWorkerOutput)*100).toFixed(1):'-'
     console.log('')
     console.log(`ratio: babysitter output ≈ ${ratio}% of worker output  |  worker input offloaded: ${fmt(totalWorkerInput)} tokens`)
+  }
+
+  // --- optional history snapshot (--log) ---
+  if(process.env.GAIN_LOG==='1'){
+    const snap={ts:new Date().toISOString(),workers:{},trivialDelegations:trivialCount,anthropic:{}}
+    for(const [b,r] of byBackend) snap.workers[b]={sessions:r.sessions,input:r.input,output:r.output,noData:r.noData}
+    for(const [m,a] of anthroByModel) snap.anthropic[m]={agents:a.agents.size,input:a.input,output:a.output,cacheW:a.cacheW,cacheR:a.cacheR}
+    const histFile=path.join(path.dirname(root),'gain-history.jsonl')
+    try{
+      fs.appendFileSync(histFile,JSON.stringify(snap)+'\n')
+      console.log('')
+      console.log(`logged → ${histFile}`)
+    }catch(e){ console.log(`(history log failed: ${e.message})`) }
   }
 })()
 ```
