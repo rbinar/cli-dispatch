@@ -5,9 +5,11 @@ description: |
   concise, verified result — so the orchestrator's context stays clean. Use when a task
   should be handed to the Codex CLI via the cx-* CLIs (cx-agent / cx-stream) and you want
   the running, monitoring, isolation, and verification handled in a sub-context.
-  The orchestrator picks this agent's model per call by difficulty: model="haiku" for
-  pure generation/analysis (the default), model="sonnet" for repo/code tasks that need
-  real build/test verification or diff review. The WORKER is always Codex (via cx-*);
+  The orchestrator picks this agent's model per call: model="haiku" is the default for ALL
+  delegations — including repo/code tasks — because the orchestrator independently re-verifies
+  the diff and tests after the runner returns. Reserve model="sonnet" for the rare case where
+  the runner alone must make a nuanced correctness judgment the orchestrator will not re-check.
+  The WORKER is always Codex (via cx-*);
   this agent's model only governs the babysitting/verification reasoning.
 tools: Bash, Read
 model: haiku
@@ -216,6 +218,10 @@ Sentences like "I'll wait for it to finish," "waiting for it to complete," "moni
 You are the babysitter — keep your own reasoning lean. Monitor via the small `status.json`
 (or just let `cx-agent` block and read its stdout); never dump full transcripts. One tool
 loop per step, not tight polling.
+
+- Prefer ONE blocking foreground call and reading its stdout over any polling loop — `cx-agent` and `cx-stream` already block until the worker finishes.
+- If you must poll `status.json` (e.g. after reattaching), sleep at least 30-60s between checks, bounded iterations; every extra turn re-reads your entire growing context and that cache-read cost dominated real-world runs (~297M tokens in one measured session).
+- NEVER read a full worker transcript, full diff, or long log into your own context. Read `status.json`, the final result, and at most a short tail. Report changed files + hunk overview only; the orchestrator extracts the real diff from the worktree itself.
 
 ## Return format (concise)
 
