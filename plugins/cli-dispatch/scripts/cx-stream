@@ -15,7 +15,8 @@
 # Usage:
 #   cx-stream [--cwd <dir>] [--resume <session-id>] [--read-only] [--sandbox <mode>] \
 #             [--no-network] [--model <m>] [--effort low|medium|high] \
-#             [--max-runtime <s>] [--idle-timeout <s>] -p "<prompt>" [extra codex flags]
+#             [--max-runtime <s>] [--idle-timeout <s>] [--verify-cmd <cmd>] \
+#             -p "<prompt>" [extra codex flags]
 #   echo "<prompt>" | cx-stream [--cwd <dir>]
 #
 # Session directory: ${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<thread-id>/ (legacy: claude-ds)
@@ -73,6 +74,7 @@ EXPLICIT_CWD=0
 EFFORT="${CX_EFFORT:-}"
 MAX_RUNTIME="${CX_MAX_RUNTIME:-0}"
 IDLE_TIMEOUT="${CX_IDLE_TIMEOUT:-0}"
+VERIFY_CMD="${CLI_DISPATCH_VERIFY_CMD:-}"
 PASS_ARGS=()
 need_val() { [ "$2" -ge 2 ] || { echo "cx-stream: $1 requires a value." >&2; exit 1; }; }
 while [ "$#" -gt 0 ]; do
@@ -97,6 +99,8 @@ while [ "$#" -gt 0 ]; do
     --max-runtime=*)  MAX_RUNTIME="${1#*=}"; shift;;
     --idle-timeout)   need_val --idle-timeout "$#"; IDLE_TIMEOUT="$2"; shift 2;;
     --idle-timeout=*) IDLE_TIMEOUT="${1#*=}"; shift;;
+    --verify-cmd)     need_val --verify-cmd "$#"; VERIFY_CMD="$2"; shift 2;;
+    --verify-cmd=*)   VERIFY_CMD="${1#*=}"; shift;;
     *)                PASS_ARGS+=("$1"); shift;;
   esac
 done
@@ -443,6 +447,7 @@ else
   fi
   printf '%s' "$CODEX_RC" > "$DONEFILE"
 fi
+WORKER_RC="${CODEX_RC:-0}"
 
 # ---- H2: consult the parser's result; turn-level errors must propagate ----
 # codex frequently emits a turn-level error (turn.failed / item.type:"error") yet still
@@ -452,6 +457,20 @@ if ! surface_status_error "$SESSION_DIR" "cx-stream: codex turn failed"; then
   [ "$CODEX_RC" -eq 0 ] && CODEX_RC=1
 fi
 
+# Optional verify hook (clean worker exit only; never affects exit code).
+if [ "$WORKER_RC" -eq 0 ] && [ -n "$VERIFY_CMD" ]; then
+  VERIFY_OUTPUT="$(mktemp -t cx-verify-out-XXXXXX)"
+  VERIFY_TAIL="$(mktemp -t cx-verify-tail-XXXXXX)"
+  VERIFY_RC=0
+  set +e
+  ( cd "$CWD" && bash -c "$VERIFY_CMD" ) > "$VERIFY_OUTPUT" 2>&1
+  VERIFY_RC=$?
+  set -e
+  tail -n 20 "$VERIFY_OUTPUT" > "$VERIFY_TAIL" || true
+  record_verify_result "$SESSION_DIR" "$VERIFY_CMD" "$VERIFY_RC" "$VERIFY_TAIL" || true
+  rm -f "$VERIFY_OUTPUT" "$VERIFY_TAIL"
+fi
+
 # ---- relocate the provisional session dir to the real thread id (best-effort) ----
 if [ "$RESUME" -eq 0 ]; then
   THREAD_ID="$(json_field "$SESSION_DIR/meta.json" threadId || true)"
@@ -459,6 +478,8 @@ if [ "$RESUME" -eq 0 ]; then
   # the discovered "  thread:  <id>" line, and prints the resulting dir for us to capture.
   SESSION_DIR="$(relocate_session_dir "$SESSIONS_ROOT" "$SESSION_DIR" "$SESSION_ID" "$THREAD_ID" "cx-stream" "thread dir" "  thread:  ")"
 fi
+
+write_diff_artifacts "$SESSION_DIR" "$CWD" || true
 
 # ---- print ONLY the final agent message on stdout ----
 # Prefer codex's -o file (clean final message); fall back to the parser's captured

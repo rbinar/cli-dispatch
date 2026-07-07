@@ -140,6 +140,118 @@ reconcile_session_error() {
   ' || true
 }
 
+# ---- diff artifact extraction ----
+
+# write_diff_artifacts <session_dir> <cwd>
+#
+# Best-effort capture of git edits in <cwd> into <session_dir>/:
+# - diff.patch: git diff against HEAD plus no-index patches for untracked files
+# - changed-files.json: JSON list of changed files + final git diff --stat line
+#
+# No-op if <cwd> is not a git worktree or `git status --porcelain` is empty.
+write_diff_artifacts() {
+  local dir="$1" cwd="$2"
+  local status_lines diffstat changed_file tmp_changes
+
+  # Not a git worktree (or git not available) → no artifacts.
+  git -C "$cwd" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+
+  status_lines="$(git -C "$cwd" status --short --untracked-files=all 2>/dev/null || true)"
+  [ -z "$status_lines" ] && return 0
+
+  mkdir -p "$dir" 2>/dev/null || true
+  git -C "$cwd" diff HEAD > "$dir/diff.patch" 2>/dev/null || true
+  diffstat="$(git -C "$cwd" diff --stat HEAD | tail -n 1 || true)"
+
+  # Track changed file entries as status<TAB>path lines for node-style JSON serialization.
+  tmp_changes="$(mktemp)"
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    local code="${line:0:2}"
+    local file="${line:3}"
+    local fstatus=""
+
+    if [ "$code" = "??" ]; then
+      fstatus="??"
+    else
+      fstatus="${code:0:1}"
+      [ -z "${fstatus// }" ] && fstatus="${code:1:1}"
+      case "$fstatus" in
+        M|A|D) ;;
+        R|C) fstatus="A" ;;
+        *) fstatus="" ;;
+      esac
+    fi
+    [ -z "$fstatus" ] && continue
+
+    if [ "$fstatus" = "??" ] && [ -f "$cwd/$file" ]; then
+      git -C "$cwd" diff --no-index -- /dev/null "$file" >> "$dir/diff.patch" 2>/dev/null || true
+    fi
+    printf '%s\t%s\n' "$fstatus" "$file" >> "$tmp_changes"
+  done <<< "$status_lines"
+
+  CLI_DISPATCH_DA_DIR="$dir" \
+  CLI_DISPATCH_DA_DIFFSTAT="$diffstat" \
+  CLI_DISPATCH_DA_CHANGES="$tmp_changes" \
+  node -e '
+    const fs = require("fs");
+    const p = require("path");
+    const dir = process.env.CLI_DISPATCH_DA_DIR;
+    const diffstat = process.env.CLI_DISPATCH_DA_DIFFSTAT || "";
+    const changes = [];
+    try {
+      const raw = fs.readFileSync(process.env.CLI_DISPATCH_DA_CHANGES, "utf8");
+      for (const row of raw.split("\n")) {
+        if (!row) continue;
+        const tab = row.indexOf("\t");
+        if (tab < 0) continue;
+        const st = row.slice(0, tab);
+        const f = row.slice(tab + 1);
+        changes.push({ path: f, status: st });
+      }
+    } catch {}
+    try {
+      fs.writeFileSync(
+        p.join(dir, "changed-files.json"),
+        JSON.stringify({ files: changes, diffstat }, null, 2) + "\n"
+      );
+    } catch {}
+  ' || true
+  rm -f "$tmp_changes"
+}
+
+# ---- verify result recording ----
+
+# record_verify_result <session_dir> <cmd> <exit> <tail-file>
+record_verify_result() {
+  local dir="$1" cmd="$2" rc="$3" tail_file="$4"
+  local exit_code="${rc:-0}"
+  CLI_DISPATCH_RV_DIR="$dir" \
+  CLI_DISPATCH_RV_CMD="$cmd" \
+  CLI_DISPATCH_RV_EXIT="$exit_code" \
+  CLI_DISPATCH_RV_TAIL_FILE="$tail_file" \
+  node -e '
+    const fs = require("fs");
+    const p = require("path");
+    const dir = process.env.CLI_DISPATCH_RV_DIR;
+    const cmd = process.env.CLI_DISPATCH_RV_CMD || "";
+    const rc = Number(process.env.CLI_DISPATCH_RV_EXIT);
+    const tailFile = process.env.CLI_DISPATCH_RV_TAIL_FILE;
+    let tail = "";
+    try { tail = fs.readFileSync(tailFile, "utf8"); } catch {}
+    let status = {};
+    try { status = JSON.parse(fs.readFileSync(p.join(dir, "status.json"), "utf8")); } catch {}
+    status.verify = {
+      cmd,
+      exit: Number.isFinite(rc) ? rc : 0,
+      tail,
+    };
+    try {
+      fs.writeFileSync(p.join(dir, "status.json"), JSON.stringify(status, null, 2) + "\n");
+    } catch {}
+  ' || true
+}
+
 # ---- sessions-root resolution ----
 
 # Resolve the sessions root directory (env wins; legacy claude-ds fallback).

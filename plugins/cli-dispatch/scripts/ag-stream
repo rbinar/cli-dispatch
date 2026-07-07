@@ -11,7 +11,7 @@
 # Usage:
 #   ag-stream [--cwd <dir>] [--resume <conv-id>] [--read-only] [--model <m>] \
 #             [--effort low|medium|high] [--max-runtime <s>] [--idle-timeout <s>] \
-#             -p "<prompt>" [extra agy flags]
+#             [--verify-cmd <cmd>] -p "<prompt>" [extra agy flags]
 #   echo "<prompt>" | ag-stream [--cwd <dir>]
 #
 # Session directory: ${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<conv-id>/ (legacy: claude-ds)
@@ -62,6 +62,7 @@ MODEL="${AG_MODEL:-}"
 EFFORT="${AG_EFFORT:-}"
 MAX_RUNTIME="${AG_MAX_RUNTIME:-0}"
 IDLE_TIMEOUT="${AG_IDLE_TIMEOUT:-0}"
+VERIFY_CMD="${CLI_DISPATCH_VERIFY_CMD:-}"
 PASS_ARGS=()
 need_val() { [ "$2" -ge 2 ] || { echo "ag-stream: $1 requires a value." >&2; exit 1; }; }
 while [ "$#" -gt 0 ]; do
@@ -82,6 +83,8 @@ while [ "$#" -gt 0 ]; do
     --max-runtime=*)  MAX_RUNTIME="${1#*=}"; shift;;
     --idle-timeout)   need_val --idle-timeout "$#"; IDLE_TIMEOUT="$2"; shift 2;;
     --idle-timeout=*) IDLE_TIMEOUT="${1#*=}"; shift;;
+    --verify-cmd)     need_val --verify-cmd "$#"; VERIFY_CMD="$2"; shift 2;;
+    --verify-cmd=*)   VERIFY_CMD="${1#*=}"; shift;;
     *)                PASS_ARGS+=("$1"); shift;;
   esac
 done
@@ -440,5 +443,20 @@ else
 fi
 
 wait "$PARSER_PID" 2>/dev/null || true
+
+if [ ! -f "$SESSION_DIR/.timeout" ] && [ "${AGY_RC:-0}" -eq 0 ] && [ -n "$VERIFY_CMD" ]; then
+  VERIFY_OUTPUT="$(mktemp -t ag-verify-out-XXXXXX)"
+  VERIFY_TAIL="$(mktemp -t ag-verify-tail-XXXXXX)"
+  VERIFY_RC=0
+  set +e
+  ( cd "$CWD" && bash -c "$VERIFY_CMD" ) > "$VERIFY_OUTPUT" 2>&1
+  VERIFY_RC=$?
+  set -e
+  tail -n 20 "$VERIFY_OUTPUT" > "$VERIFY_TAIL" || true
+  record_verify_result "$SESSION_DIR" "$VERIFY_CMD" "$VERIFY_RC" "$VERIFY_TAIL" || true
+  rm -f "$VERIFY_OUTPUT" "$VERIFY_TAIL"
+fi
+
+write_diff_artifacts "$SESSION_DIR" "$CWD" || true
 rm -f "$PIDFILE" "$SESSION_DIR/.timeout"
 exit "$AGY_RC"

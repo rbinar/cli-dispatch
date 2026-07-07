@@ -17,7 +17,8 @@
 #
 # Usage:
 #   oc-stream [--cwd <dir>] [--resume <session-id>] [--model <slug>] \
-#             [--max-runtime <s>] [--idle-timeout <s>] -p "<prompt>" [extra opencode flags]
+#             [--max-runtime <s>] [--idle-timeout <s>] [--verify-cmd <cmd>] \
+#             -p "<prompt>" [extra opencode flags]
 #   echo "<prompt>" | oc-stream [--cwd <dir>]
 #
 # Session directory: ${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<sessionID>/
@@ -64,6 +65,7 @@ HAVE_PROMPT=0
 MODEL="${OC_MODEL:-${OPENCODE_MODEL:-}}"
 MAX_RUNTIME="${OC_MAX_RUNTIME:-0}"
 IDLE_TIMEOUT="${OC_IDLE_TIMEOUT:-0}"
+VERIFY_CMD="${CLI_DISPATCH_VERIFY_CMD:-}"
 PASS_ARGS=()
 need_val() { [ "$2" -ge 2 ] || { echo "oc-stream: $1 requires a value." >&2; exit 1; }; }
 while [ "$#" -gt 0 ]; do
@@ -82,6 +84,8 @@ while [ "$#" -gt 0 ]; do
     --max-runtime=*)  MAX_RUNTIME="${1#*=}"; shift;;
     --idle-timeout)   need_val --idle-timeout "$#"; IDLE_TIMEOUT="$2"; shift 2;;
     --idle-timeout=*) IDLE_TIMEOUT="${1#*=}"; shift;;
+    --verify-cmd)     need_val --verify-cmd "$#"; VERIFY_CMD="$2"; shift 2;;
+    --verify-cmd=*)   VERIFY_CMD="${1#*=}"; shift;;
     *)                PASS_ARGS+=("$1"); shift;;
   esac
 done
@@ -342,6 +346,20 @@ if ! surface_status_error "$SESSION_DIR" "oc-stream: opencode turn failed"; then
   [ "$OC_RC" -eq 0 ] && OC_RC=1
 fi
 
+# Optional verify hook (clean worker exit only; never affects exit code).
+if [ "${OC_RC:-0}" -eq 0 ] && [ -n "$VERIFY_CMD" ]; then
+  VERIFY_OUTPUT="$(mktemp -t oc-verify-out-XXXXXX)"
+  VERIFY_TAIL="$(mktemp -t oc-verify-tail-XXXXXX)"
+  VERIFY_RC=0
+  set +e
+  ( cd "$CWD" && bash -c "$VERIFY_CMD" ) > "$VERIFY_OUTPUT" 2>&1
+  VERIFY_RC=$?
+  set -e
+  tail -n 20 "$VERIFY_OUTPUT" > "$VERIFY_TAIL" || true
+  record_verify_result "$SESSION_DIR" "$VERIFY_CMD" "$VERIFY_RC" "$VERIFY_TAIL" || true
+  rm -f "$VERIFY_OUTPUT" "$VERIFY_TAIL"
+fi
+
 # ---- relocate the provisional session dir to the real sessionID (best-effort) ----
 if [ "$RESUME" -eq 0 ]; then
   REAL_ID="$(json_field "$SESSION_DIR/meta.json" threadId || true)"
@@ -349,6 +367,8 @@ if [ "$RESUME" -eq 0 ]; then
   # the discovered "  session: <id>" line, and prints the resulting dir for us to capture.
   SESSION_DIR="$(relocate_session_dir "$SESSIONS_ROOT" "$SESSION_DIR" "$SESSION_ID" "$REAL_ID" "oc-stream" "session dir" "  session: ")"
 fi
+
+write_diff_artifacts "$SESSION_DIR" "$CWD" || true
 
 # ---- print ONLY the final answer on stdout ----
 # No -o <file> equivalent exists for opencode — the parser's captured finalText (printed to

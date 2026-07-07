@@ -18,7 +18,7 @@
 # Usage:
 #   cp-stream [--cwd <dir>] [--resume <session-id>] [--model <slug>] \
 #             [--effort low|medium|high] [--max-runtime <s>] [--idle-timeout <s>] \
-#             -p "<prompt>" [extra copilot flags]
+#             [--verify-cmd <cmd>] -p "<prompt>" [extra copilot flags]
 #   echo "<prompt>" | cp-stream [--cwd <dir>]
 #
 # Session directory: ${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<sessionID>/
@@ -67,6 +67,7 @@ MODEL="${CP_MODEL:-${COPILOT_MODEL:-}}"
 EFFORT="${CP_EFFORT:-}"
 MAX_RUNTIME="${CP_MAX_RUNTIME:-0}"
 IDLE_TIMEOUT="${CP_IDLE_TIMEOUT:-0}"
+VERIFY_CMD="${CLI_DISPATCH_VERIFY_CMD:-}"
 PASS_ARGS=()
 need_val() { [ "$2" -ge 2 ] || { echo "cp-stream: $1 requires a value." >&2; exit 1; }; }
 while [ "$#" -gt 0 ]; do
@@ -86,6 +87,8 @@ while [ "$#" -gt 0 ]; do
     --max-runtime=*)  MAX_RUNTIME="${1#*=}"; shift;;
     --idle-timeout)   need_val --idle-timeout "$#"; IDLE_TIMEOUT="$2"; shift 2;;
     --idle-timeout=*) IDLE_TIMEOUT="${1#*=}"; shift;;
+    --verify-cmd)     need_val --verify-cmd "$#"; VERIFY_CMD="$2"; shift 2;;
+    --verify-cmd=*)   VERIFY_CMD="${1#*=}"; shift;;
     *)                PASS_ARGS+=("$1"); shift;;
   esac
 done
@@ -312,6 +315,20 @@ if ! surface_status_error "$SESSION_DIR" "cp-stream: copilot turn failed"; then
   [ "$CP_RC" -eq 0 ] && CP_RC=1
 fi
 
+# Optional verify hook (clean worker exit only; never affects exit code).
+if [ "$CP_RC" -eq 0 ] && [ -n "$VERIFY_CMD" ]; then
+  VERIFY_OUTPUT="$(mktemp -t cp-verify-out-XXXXXX)"
+  VERIFY_TAIL="$(mktemp -t cp-verify-tail-XXXXXX)"
+  VERIFY_RC=0
+  set +e
+  ( cd "$CWD" && bash -c "$VERIFY_CMD" ) > "$VERIFY_OUTPUT" 2>&1
+  VERIFY_RC=$?
+  set -e
+  tail -n 20 "$VERIFY_OUTPUT" > "$VERIFY_TAIL" || true
+  record_verify_result "$SESSION_DIR" "$VERIFY_CMD" "$VERIFY_RC" "$VERIFY_TAIL" || true
+  rm -f "$VERIFY_OUTPUT" "$VERIFY_TAIL"
+fi
+
 # ---- relocate the provisional session dir to the real sessionID (best-effort) ----
 if [ "$RESUME" -eq 0 ]; then
   REAL_ID="$(json_field "$SESSION_DIR/meta.json" threadId || true)"
@@ -319,6 +336,8 @@ if [ "$RESUME" -eq 0 ]; then
   # the discovered "  session: <id>" line, and prints the resulting dir for us to capture.
   SESSION_DIR="$(relocate_session_dir "$SESSIONS_ROOT" "$SESSION_DIR" "$SESSION_ID" "$REAL_ID" "cp-stream" "session dir" "  session: ")"
 fi
+
+write_diff_artifacts "$SESSION_DIR" "$CWD" || true
 
 # ---- print ONLY the final answer on stdout ----
 # No -o <file> equivalent exists for copilot — the parser's captured finalText (printed to
