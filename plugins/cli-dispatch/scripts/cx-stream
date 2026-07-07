@@ -68,6 +68,7 @@ SANDBOX=""                       # explicit --sandbox passthrough (overrides def
 # stays no-network regardless (see below). 1=on, 0=off.
 case "${CX_NETWORK:-1}" in 0|false|no|off) NETWORK=0;; *) NETWORK=1;; esac
 MODEL="${CX_MODEL:-${CODEX_MODEL:-}}"
+EXPLICIT_MODEL=0
 EFFORT="${CX_EFFORT:-}"
 MAX_RUNTIME="${CX_MAX_RUNTIME:-0}"
 IDLE_TIMEOUT="${CX_IDLE_TIMEOUT:-0}"
@@ -79,8 +80,8 @@ while [ "$#" -gt 0 ]; do
     --cwd=*)          CWD="${1#*=}"; shift;;
     --resume)         need_val --resume "$#"; RESUME_ID="$2"; shift 2;;
     --resume=*)       RESUME_ID="${1#*=}"; shift;;
-    --model)          need_val --model "$#";  MODEL="$2"; shift 2;;
-    --model=*)        MODEL="${1#*=}"; shift;;
+    --model)          need_val --model "$#";  MODEL="$2"; EXPLICIT_MODEL=1; shift 2;;
+    --model=*)        MODEL="${1#*=}"; EXPLICIT_MODEL=1; shift;;
     --effort)         need_val --effort "$#"; EFFORT="$2"; shift 2;;
     --effort=*)       EFFORT="${1#*=}"; shift;;
     --sandbox)        need_val --sandbox "$#"; SANDBOX="$2"; shift 2;;
@@ -123,6 +124,11 @@ if [ -n "$RESUME_ID" ]; then
     RECORDED_CWD="$(sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$RECORDED_META" 2>/dev/null || true)"
     if [ -n "$RECORDED_CWD" ] && [ -d "$RECORDED_CWD" ]; then
       CWD="$RECORDED_CWD"
+    fi
+    RECORDED_MODEL="$(sed -n 's/.*"model"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$RECORDED_META" 2>/dev/null || true)"
+    RECORDED_MODEL="${RECORDED_MODEL% (*}"
+    if [ "$EXPLICIT_MODEL" -eq 0 ] && [ -n "$RECORDED_MODEL" ]; then
+      MODEL="$RECORDED_MODEL"
     fi
   fi
 fi
