@@ -275,6 +275,25 @@ function listWorkers(skipParentIndex = false) {
   return out
 }
 
+function findStaleSessions(staleSecs) {
+  const now = Date.now()
+  const items = []
+  if (!isDir(WORKERS_ROOT)) return items
+  for (const d of fs.readdirSync(WORKERS_ROOT)) {
+    const dir = path.join(WORKERS_ROOT, d)
+    try { if (!fs.statSync(dir).isDirectory()) continue } catch { continue }
+    const st = readJSON(path.join(dir, 'status.json')) || {}
+    const m = readJSON(path.join(dir, 'meta.json')) || {}
+    const state = st.state || m.state || '?'
+    let mtime = 0
+    try { mtime = fs.statSync(path.join(dir, 'status.json')).mtimeMs } catch {}
+    if ((state === 'running' || state === 'human-controlled') && mtime && (now - mtime > staleSecs * 1000)) {
+      items.push({ id: d, backend: st.backend || m.backend || '?', state, idleMs: now - mtime })
+    }
+  }
+  return items
+}
+
 function workerFlow(id) {
   const dir = path.join(WORKERS_ROOT, id)
   const steps = []
@@ -1026,6 +1045,37 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/stream') return sse(req, res, u.searchParams.get('watch') || 'sessions')
     if (p === '/api/sessions') return send(res, 200, listSessions())
     if (p === '/api/workers') return send(res, 200, listWorkers())
+
+    if (p === '/api/clean' && req.method === 'GET') {
+      let staleSecs = parseInt(u.searchParams.get('staleSecs'), 10)
+      if (!Number.isFinite(staleSecs) || staleSecs <= 0) staleSecs = 600
+      const items = findStaleSessions(staleSecs)
+      return send(res, 200, { root: WORKERS_ROOT, staleSecs, count: items.length, items })
+    }
+
+    if (p === '/api/clean' && req.method === 'POST') {
+      let staleSecs = 600
+      try {
+        const body = await readBody(req)
+        if (body && typeof body.staleSecs === 'number' && Number.isFinite(body.staleSecs) && body.staleSecs > 0) {
+          staleSecs = body.staleSecs
+        }
+      } catch (e) {
+        return send(res, 400, { error: 'invalid JSON body' })
+      }
+      const items = findStaleSessions(staleSecs)
+      let removed = 0
+      const failed = []
+      for (const item of items) {
+        try {
+          fs.rmSync(path.join(WORKERS_ROOT, item.id), { recursive: true, force: true })
+          removed++
+        } catch (e) {
+          failed.push({ id: item.id, error: e.message })
+        }
+      }
+      return send(res, 200, { removed, failed, count: items.length })
+    }
 
     if (p === '/api/config' && req.method === 'GET') {
       const configPath = resolveConfigPath()

@@ -94,6 +94,13 @@ let finalText = ''        // last agent_message text (the running/final answer)
 let errorText = ''        // surfaced error/turn.failed message
 const emittedItems = new Set()
 
+function isModelMismatchAdvisory(text) {
+  if (typeof text !== 'string') return false
+  return /recorded with model/i.test(text)
+    && /resuming with/i.test(text)
+    && (/may affect/i.test(text) || /performance/i.test(text))
+}
+
 // Bump the tool counter + record lastTool for a named tool/item kind.
 const countTool = (name) => {
   status.lastTool = name
@@ -249,10 +256,17 @@ function finalize(code) {
   }
   closeAll()
   const out = finalText
-  // errorText is AUTHORITATIVE: a turn-level error (turn.failed / top-level error /
-  // item.type:"error") means the turn failed even if codex's process exited 0 and even
-  // if a partial agent_message was emitted. Only a clean run with no errorText is "done".
-  if (errorText) status.state = 'error'
+  const hasFinalOutput = out.trim().length > 0
+  const cleanExit = code == null || code === 0
+  const onlyModelMismatchAdvisory = errorText
+    && isModelMismatchAdvisory(errorText)
+    && cleanExit
+    && hasFinalOutput
+  // errorText is AUTHORITATIVE for turn.failed / top-level error / item.type:"error",
+  // because those can indicate a failed turn even when codex exits 0. The one carve-out is
+  // Codex's model-mismatch advisory, which is emitted as item.type:"error" without severity;
+  // treat it as non-fatal only when the process exits cleanly and a real final answer exists.
+  if (errorText && !onlyModelMismatchAdvisory) status.state = 'error'
   else if (out) status.state = 'done'
   else status.state = (code === 0 ? 'done' : 'error')
   if (status.state === 'error' && errorText) status.error = errorText

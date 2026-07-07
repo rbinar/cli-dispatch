@@ -71,9 +71,13 @@ input.cfg-input:focus{border-color:var(--acc);outline:none}
 .cfg-row:last-child{border-bottom:none}
 .cfg-label{font-weight:bold;display:flex;align-items:center;gap:8px}
 .cfg-field{display:flex;align-items:center;margin-top:4px}
+#cleanPanel{margin:8px 14px;padding:10px;border:1px solid var(--bd);border-radius:8px;background:var(--panel);max-width:600px}
+#cleanPanel .clean-item{padding:4px 0;border-bottom:1px solid var(--bd);font-size:12px}
+#cleanPanel .clean-item:last-child{border-bottom:none}
 </style></head><body>
 <header><b>cli-dispatch</b> <span class="muted">dashboard</span><span class="grow"></span>
-<span class="small muted" id="meta"></span><span class="small muted">· read-only by default · opt-in takeover</span></header>
+<span class="small muted" id="meta"></span><button class="tkbtn" id="cleanBtn" onclick="openCleanPanel()" style="font-size:11px;padding:2px 8px">Clean stale sessions</button><span class="small muted">· read-only by default · opt-in takeover</span></header>
+<div id="cleanPanel" style="display:none"></div>
 <div class="layout">
  <div class="rail">
    <div class="tabs"><div class="tab on" id="tabCC">Claude Code</div><div class="tab" id="tabW">cli-dispatch workers</div><div class="tab" id="tabConfig">Configuration</div></div>
@@ -611,6 +615,66 @@ async function renderConfigEditor() {
     } catch(ocErr) { /* datalists stay empty on fetch failure — non-blocking */ }
   } catch (e) {
     setView(key, '<div class="err">Failed to load configuration: ' + esc(e.message) + '</div>')
+  }
+}
+let _cleanStaleSecs = 600
+let _cleanCount = 0
+
+function closeCleanPanel() {
+  document.getElementById('cleanPanel').style.display = 'none'
+}
+
+function fmtCleanDuration(ms) {
+  if (typeof ms !== 'number' || ms < 0) return '?'
+  if (ms < 1000) return Math.round(ms) + 'ms'
+  if (ms < 60000) return (ms / 1000).toFixed(1) + 's'
+  if (ms < 3600000) return Math.floor(ms / 60000) + 'm ' + Math.round((ms % 60000) / 1000) + 's'
+  return (ms / 3600000).toFixed(1) + 'h'
+}
+
+async function openCleanPanel() {
+  const panel = document.getElementById('cleanPanel')
+  panel.style.display = 'block'
+  panel.innerHTML = 'Scanning…'
+  try {
+    const data = await j('/api/clean')
+    _cleanStaleSecs = data.staleSecs
+    _cleanCount = data.count
+    if (data.count === 0) {
+      panel.innerHTML = '<div style="padding:8px;color:var(--dim)">Nothing to clean — all sessions are fresh.</div>'
+      return
+    }
+    let html = '<div style="margin-bottom:8px;color:var(--dim)">Found <b>' + data.count + '</b> stale session(s) in <code>' + esc(data.root) + '</code> (idle &gt; ' + data.staleSecs + 's):</div>'
+    for (var i = 0; i < data.items.length; i++) {
+      var item = data.items[i]
+      html += '<div class="clean-item">' + esc(item.backend) + ' · ' + esc(item.id) + ' · idle ' + fmtCleanDuration(item.idleMs) + '</div>'
+    }
+    html += '<button class="tkbtn" onclick="confirmClean()" style="margin-top:8px">Confirm delete ' + data.count + '</button>'
+    html += ' <button class="tkbtn" onclick="closeCleanPanel()" style="margin-top:8px">Cancel</button>'
+    panel.innerHTML = html
+  } catch (e) {
+    panel.innerHTML = '<div class="err">Failed: ' + esc(e.message) + '</div>'
+  }
+}
+
+async function confirmClean() {
+  const panel = document.getElementById('cleanPanel')
+  panel.innerHTML = 'Deleting…'
+  try {
+    const res = await fetch('/api/clean', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ staleSecs: _cleanStaleSecs }) })
+    const body = await res.json()
+    var html = '<div style="margin-bottom:8px">Removed <b>' + body.removed + '</b> of <b>' + body.count + '</b> stale sessions.</div>'
+    if (body.failed && body.failed.length) {
+      html += '<div style="color:var(--err)">Failures:</div>'
+      for (var fi = 0; fi < body.failed.length; fi++) {
+        html += '<div class="clean-item" style="color:var(--err)">' + esc(body.failed[fi].id) + ': ' + esc(body.failed[fi].error) + '</div>'
+      }
+    }
+    html += '<button class="tkbtn" onclick="closeCleanPanel()" style="margin-top:8px">Close</button>'
+    panel.innerHTML = html
+    loadList()
+  } catch (e) {
+    panel.innerHTML = '<div class="err">Delete failed: ' + esc(e.message) + '</div>'
   }
 }
 function reopen(sid){ fetch('/api/sessions').then(r=>r.json()).then(ss=>{const s=ss.find(x=>x.id===sid); if(s) openSession(s)}) }

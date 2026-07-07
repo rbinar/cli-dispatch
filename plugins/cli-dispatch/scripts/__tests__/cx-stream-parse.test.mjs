@@ -6,6 +6,7 @@ import path from 'node:path'
 
 const parserScript = path.resolve('plugins/cli-dispatch/scripts/cx-stream-parse.mjs')
 const testDir = path.resolve('plugins/cli-dispatch/scripts/__tests__/tmp-test-cx-session')
+const modelMismatchAdvisory = 'This session was recorded with model `gpt-5.5` but is resuming with `gpt-5.3-codex-spark`. Consider switching back to `gpt-5.5` as it may affect Codex performance.'
 
 function runParser(events, envOverrides = {}) {
   return new Promise((resolve, reject) => {
@@ -152,6 +153,54 @@ test('cx-stream-parse: item.type "error" sets status.state=error and status.erro
   const status = JSON.parse(readFileSync(statusPath, 'utf8'))
   assert.equal(status.state, 'error')
   assert.equal(status.error, 'Something broke.')
+
+  rmSync(testDir, { recursive: true, force: true })
+})
+
+test('cx-stream-parse: model mismatch advisory with final output is done, not error', async () => {
+  const events = [
+    {
+      type: 'item.completed',
+      item: { id: '1', type: 'error', message: modelMismatchAdvisory }
+    },
+    {
+      type: 'item.completed',
+      item: { id: '2', type: 'agent_message', text: 'Here is the completed answer.' }
+    }
+  ]
+
+  const result = await runParser(events)
+  assert.equal(result.code, 0)
+
+  const statusPath = path.join(testDir, 'status.json')
+  const status = JSON.parse(readFileSync(statusPath, 'utf8'))
+  assert.equal(status.state, 'done')
+  assert.equal(status.error, undefined)
+  assert.equal(status.finalResultPreview, 'Here is the completed answer.')
+
+  const metaPath = path.join(testDir, 'meta.json')
+  const meta = JSON.parse(readFileSync(metaPath, 'utf8'))
+  assert.equal(meta.state, 'done')
+  assert.equal(meta.error, undefined)
+
+  rmSync(testDir, { recursive: true, force: true })
+})
+
+test('cx-stream-parse: model mismatch advisory without final output is still error', async () => {
+  const events = [
+    {
+      type: 'item.completed',
+      item: { id: '1', type: 'error', message: modelMismatchAdvisory }
+    }
+  ]
+
+  const result = await runParser(events)
+  assert.equal(result.code, 0)
+
+  const statusPath = path.join(testDir, 'status.json')
+  const status = JSON.parse(readFileSync(statusPath, 'utf8'))
+  assert.equal(status.state, 'error')
+  assert.equal(status.error, modelMismatchAdvisory)
 
   rmSync(testDir, { recursive: true, force: true })
 })

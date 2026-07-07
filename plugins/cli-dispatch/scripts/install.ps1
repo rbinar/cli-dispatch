@@ -1,4 +1,5 @@
 #!/usr/bin/env pwsh
+# Note: re-running setup (/cli-dispatch:setup) is required after every plugin version bump to keep ~/.local in sync.
 # Usage: install.ps1 [-Backends deepseek,codex | all]
 # Native Windows supports the DeepSeek and Codex backends; Antigravity needs a pseudo-TTY
 # (not available on native Windows) — install it under WSL instead.

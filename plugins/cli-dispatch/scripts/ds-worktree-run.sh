@@ -1,26 +1,37 @@
 #!/usr/bin/env bash
 set -euo pipefail
+
+# ---- shared repo-dirty check (used by both --post-check and normal-run guard) ----
+# Returns 0 (clean) or 1 (dirty). On dirty: saves a patch of the changes and prints
+# the FAIL message + status output to stderr (caller decides what to do with exit code).
+_check_repo_clean() {
+  local repo="$1"
+  git -C "$repo" rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "Not a git repo: $repo" >&2; return 1; }
+  local status_out
+  status_out="$(git -C "$repo" status --short)"
+  if [ -z "$status_out" ]; then
+    echo ">>> post-check OK: $repo is clean"
+    return 0
+  fi
+  local ts patch_file
+  ts="$(date +%s)"
+  patch_file="${repo}/../leaked-changes-${ts}.patch"
+  git -C "$repo" diff > "$patch_file"
+  # Note: git diff does not cover untracked files; status --short above does list them.
+  echo ">>> post-check FAIL: $repo is dirty — worker leaked changes outside worktree" >&2
+  echo ">>> patch saved: $patch_file" >&2
+  echo "$status_out" >&2
+  return 1
+}
+
 # --post-check mode: verify main repo wasn't dirtied by a worker
 if [ "${1:-}" = "--post-check" ]; then
   if [ "$#" -ne 2 ]; then
     echo "usage: ds-worktree-run.sh --post-check <repo-path>" >&2
     exit 1
   fi
-  REPO="$2"
-  git -C "$REPO" rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "Not a git repo: $REPO" >&2; exit 1; }
-  STATUS_OUT="$(git -C "$REPO" status --short)"
-  if [ -z "$STATUS_OUT" ]; then
-    echo ">>> post-check OK: $REPO is clean"
-    exit 0
-  fi
-  TIMESTAMP="$(date +%s)"
-  PATCH_FILE="${REPO}/../leaked-changes-${TIMESTAMP}.patch"
-  git -C "$REPO" diff > "$PATCH_FILE"
-  # Note: git diff does not cover untracked files; status --short above does list them.
-  echo ">>> post-check FAIL: $REPO is dirty — worker leaked changes outside worktree" >&2
-  echo ">>> patch saved: $PATCH_FILE" >&2
-  echo "$STATUS_OUT" >&2
-  exit 1
+  _check_repo_clean "$2"
+  exit
 fi
 
 if [ "$#" -lt 3 ]; then
@@ -75,3 +86,12 @@ echo ">>> Worktree: $WT  (branch: $BRANCH)"
 echo ">>> Review the diff, then YOU handle git/PR/merge. Cleanup:"
 echo "    rm -f \"$WT/node_modules\"; git -C \"$REPO\" worktree remove \"$WT\" --force; git -C \"$REPO\" worktree prune"
 git -C "$WT" status --short
+# Post-run: verify the MAIN repo wasn't dirtied by the worker (issue #68).
+# The worker should only write inside $WT; a dirty $REPO means it resolved an absolute
+# path back into the main checkout — undetected until now because nothing called the
+# --post-check guard automatically.
+if _check_repo_clean "$REPO"; then
+  exit 0
+else
+  exit 1
+fi

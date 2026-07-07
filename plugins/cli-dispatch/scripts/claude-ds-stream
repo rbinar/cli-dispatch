@@ -176,7 +176,16 @@ fi
 # under bypassPermissions. NB: --disallowed-tools does NOT work here — bypassPermissions
 # skips the permission system that deny rules live in, so denied tools still run.
 if [ "$READ_ONLY" -eq 1 ]; then
-  CLAUDE_ARGS+=(--tools "Read,Grep,Glob")
+  # --strict-mcp-config (already in CLAUDE_ARGS) + an explicit empty --mcp-config
+  # together give an unambiguous "zero MCP servers, project or global" guarantee
+  # instead of relying on implicit absence-of-flag behavior.
+  # NOTE: this does NOT close the hooks-based gap — hooks (PreToolUse/PostToolUse)
+  # are a separate mechanism from tool/MCP config and can still execute arbitrary
+  # local code on Read/Grep calls regardless of these flags. That is exactly why
+  # the post-run read-only integrity guard (below) exists.
+  EMPTY_MCP_CONFIG="$(mktemp -t ds-mcp-empty-XXXXXX.json)"
+  printf '{"mcpServers":{}}' > "$EMPTY_MCP_CONFIG"
+  CLAUDE_ARGS+=(--tools "Read,Grep,Glob" --mcp-config "$EMPTY_MCP_CONFIG")
 fi
 if [ "${#PASS_ARGS[@]}" -gt 0 ]; then
   CLAUDE_ARGS+=("${PASS_ARGS[@]}")
@@ -223,6 +232,7 @@ cleanup() {
   _pid="$(cat "$PIDFILE" 2>/dev/null || true)"
   [ -n "$_pid" ] && kill_worker "$_pid" 2>/dev/null || true
   rm -f "${PARSER_DONE:-}" 2>/dev/null || true
+  [ -n "${EMPTY_MCP_CONFIG:-}" ] && rm -f "$EMPTY_MCP_CONFIG" 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -301,32 +311,35 @@ if [ "$TAKEOVER_STATE" = "human-controlled" ]; then
   exit 0
 fi
 
-# Reconcile session state the parser can't infer from stdin EOF alone: a timeout kill or
-# a claude crash (nonzero exit / bad cwd / no output) should read "error", not "done".
+# ---- post-run read-only integrity guard (defense-in-depth against hooks bypass) ----
+# Hooks (PreToolUse/PostToolUse) fire on Read/Grep calls and can execute arbitrary
+# local code regardless of --tools/--mcp-config flags. This guard detects any writes
+# that leaked through despite --read-only — it does NOT revert them, only reports.
+READONLY_VIOLATION=""
+if [ "$READ_ONLY" -eq 1 ]; then
+  RO_STATUS="$(git -C "$CWD" status --short 2>/dev/null || true)"
+  if [ -n "$RO_STATUS" ]; then
+    RO_COUNT="$(printf '%s\n' "$RO_STATUS" | wc -l | tr -d ' ')"
+    echo ">>> READ-ONLY VIOLATION: $RO_COUNT file(s) modified in $CWD despite --read-only" >&2
+    echo "$RO_STATUS" >&2
+    READONLY_VIOLATION="read-only violation: ${RO_COUNT} file(s) modified despite --read-only"
+  fi
+fi
+
+# Reconcile session state the parser can't infer from stdin EOF alone: a timeout kill,
+# a claude crash (nonzero exit / bad cwd / no output), or a read-only violation should
+# read "error", not "done". Read-only violation takes priority — it means the safety
+# guarantee itself broke, which is more important than claude's own exit code.
 ERR=""
-if [ -f "$TIMEOUT_FILE" ]; then
+if [ -n "$READONLY_VIOLATION" ]; then
+  ERR="$READONLY_VIOLATION"
+elif [ -f "$TIMEOUT_FILE" ]; then
   ERR="timeout: $(cat "$TIMEOUT_FILE" 2>/dev/null)"
 elif [ "${CLAUDE_RC:-0}" -ne 0 ]; then
   ERR="claude exited $CLAUDE_RC"
 fi
 if [ -n "$ERR" ]; then
-  CLAUDE_DS_SESSION_DIR="$SESSION_DIR" CLAUDE_DS_ERR="$ERR" CLAUDE_DS_EXIT="$CLAUDE_RC" node -e '
-    const fs = require("fs"), p = require("path")
-    const d = process.env.CLAUDE_DS_SESSION_DIR, err = process.env.CLAUDE_DS_ERR, rc = Number(process.env.CLAUDE_DS_EXIT)
-    const isTimeout = err.indexOf("timeout") === 0
-    let s = {}; try { s = JSON.parse(fs.readFileSync(p.join(d, "status.json"), "utf8")) } catch {}
-    // Non-timeout failures only reach this block when CLAUDE_RC (PIPESTATUS[0]) is non-zero,
-    // so force "error" unconditionally — matching ag/cx/oc/cp-stream, which record error on
-    // ANY non-zero exit regardless of parsed output. Dropping the old finalResultPreview
-    // leniency fixes the crash-with-output case: claude prints a full result then segfaults on
-    // teardown (exit 139) must read "error"/139, not a green "done".
-    const st = "error"
-    s.state = st; s.error = err
-    try { fs.writeFileSync(p.join(d, "status.json"), JSON.stringify(s, null, 2) + "\n") } catch {}
-    let m = {}; try { m = JSON.parse(fs.readFileSync(p.join(d, "meta.json"), "utf8")) } catch {}
-    m.state = st; m.exitCode = rc; m.error = err
-    try { fs.writeFileSync(p.join(d, "meta.json"), JSON.stringify(m, null, 2) + "\n") } catch {}
-  ' || true
+  reconcile_session_error "$SESSION_DIR" "$ERR" "${CLAUDE_RC:-0}"
 fi
 
 rm -f "$PIDFILE" "$TIMEOUT_FILE"

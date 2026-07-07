@@ -1,12 +1,63 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, rmSync, utimesSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import http from 'node:http'
 import {
   readHead, readTail, collectProcTree, mapFlow
 } from '../dashboard-utils.mjs'
+
+// ---- dashboard-server.mjs spawn helpers (mirror takeover-integration.test.mjs pattern) ----
+const SELF_DIR = path.dirname(fileURLToPath(import.meta.url))
+const SERVER_PATH = path.join(SELF_DIR, '..', 'dashboard-server.mjs')
+
+function startServer(env, port) {
+  return spawn(process.execPath, [SERVER_PATH, '--port', String(port), '--no-open'], {
+    env,
+    stdio: ['ignore', 'ignore', 'pipe'],
+  })
+}
+
+function waitForServerReady(child, timeoutMs = 8000) {
+  return new Promise((resolve, reject) => {
+    let buf = ''
+    const timer = setTimeout(() => reject(new Error('server did not start in time; stderr: ' + buf)), timeoutMs)
+    child.stderr.on('data', (chunk) => {
+      buf += chunk.toString()
+      const m = buf.match(/http:\/\/127\.0\.0\.1:(\d+)/)
+      if (m) { clearTimeout(timer); resolve(parseInt(m[1], 10)) }
+    })
+    child.once('exit', (code) => { clearTimeout(timer); reject(new Error('server exited ' + code)) })
+  })
+}
+
+function stopServer(child) {
+  return new Promise((resolve) => {
+    if (child.exitCode !== null || child.signalCode !== null) return resolve()
+    const timer = setTimeout(() => { try { child.kill('SIGKILL') } catch {}; resolve() }, 4000)
+    child.once('exit', () => { clearTimeout(timer); resolve() })
+    try { child.kill('SIGTERM') } catch { clearTimeout(timer); resolve() }
+  })
+}
+
+function httpRequest({ port, method, path: reqPath }) {
+  return new Promise((resolve, reject) => {
+    const req = http.request({ hostname: '127.0.0.1', port, method, path: reqPath }, (res) => {
+      let body = ''
+      res.on('data', (c) => { body += c })
+      res.on('end', () => {
+        let json = null
+        try { json = JSON.parse(body) } catch {}
+        resolve({ status: res.statusCode, body: json, raw: body })
+      })
+    })
+    req.on('error', reject)
+    req.end()
+  })
+}
 
 // ---- readHead / readTail ----
 
@@ -203,4 +254,78 @@ test('dashboard-utils: mapFlow records tool_use steps with a spawnsAgent link fo
   assert.equal(toolStep.name, 'Task')
   assert.equal(toolStep.spawnsAgent, 'agent-abc')
   assert.equal(toolStep.ok, true)
+})
+
+// ---- /api/clean integration tests (real dashboard-server.mjs spawn) ----
+
+test('GET /api/clean detects stale running session, ignores fresh session', async () => {
+  const sessionsDir = mkdtempSync(path.join(tmpdir(), 'dash-clean-'))
+  const now = Date.now()
+  const staleId = 'stale-session-1'
+  const freshId = 'fresh-session-1'
+  const port = 18800 + Math.floor(Math.random() * 1000)
+
+  // Seed a stale session (state: running, status.json mtime well past 600s)
+  const staleDir = path.join(sessionsDir, staleId)
+  mkdirSync(staleDir, { recursive: true })
+  writeFileSync(path.join(staleDir, 'status.json'), JSON.stringify({ state: 'running', backend: 'deepseek' }))
+  writeFileSync(path.join(staleDir, 'meta.json'), JSON.stringify({ backend: 'deepseek' }))
+  const staleStatusPath = path.join(staleDir, 'status.json')
+  const oldTime = new Date(now - 2000 * 1000)
+  utimesSync(staleStatusPath, oldTime, oldTime)
+
+  // Seed a fresh session (state: running, mtime left at "now")
+  const freshDir = path.join(sessionsDir, freshId)
+  mkdirSync(freshDir, { recursive: true })
+  writeFileSync(path.join(freshDir, 'status.json'), JSON.stringify({ state: 'running', backend: 'deepseek' }))
+  writeFileSync(path.join(freshDir, 'meta.json'), JSON.stringify({ backend: 'deepseek' }))
+
+  const child = startServer({ ...process.env, CLI_DISPATCH_SESSIONS_DIR: sessionsDir }, port)
+  let actualPort
+  try {
+    actualPort = await waitForServerReady(child)
+    const res = await httpRequest({ port: actualPort, method: 'GET', path: '/api/clean?staleSecs=600' })
+    assert.equal(res.status, 200)
+    assert.equal(res.body.root, sessionsDir)
+    assert.equal(res.body.staleSecs, 600)
+    assert.ok(res.body.count >= 1, 'expected at least 1 stale session')
+    const staleIds = res.body.items.map(item => item.id)
+    assert.ok(staleIds.includes(staleId), 'stale session should be in items')
+    assert.ok(!staleIds.includes(freshId), 'fresh session should NOT be in items')
+    const staleItem = res.body.items.find(item => item.id === staleId)
+    assert.ok(staleItem)
+    assert.equal(staleItem.state, 'running')
+  } finally {
+    await stopServer(child)
+    rmSync(sessionsDir, { recursive: true, force: true })
+  }
+})
+
+test('GET /api/clean detects human-controlled stale session', async () => {
+  const sessionsDir = mkdtempSync(path.join(tmpdir(), 'dash-clean-hc-'))
+  const now = Date.now()
+  const hcId = 'hc-stale-1'
+  const port = 18900 + Math.floor(Math.random() * 1000)
+
+  const hcDir = path.join(sessionsDir, hcId)
+  mkdirSync(hcDir, { recursive: true })
+  writeFileSync(path.join(hcDir, 'status.json'), JSON.stringify({ state: 'human-controlled', backend: 'codex' }))
+  writeFileSync(path.join(hcDir, 'meta.json'), JSON.stringify({ backend: 'codex' }))
+  const hcStatusPath = path.join(hcDir, 'status.json')
+  const oldTime = new Date(now - 2000 * 1000)
+  utimesSync(hcStatusPath, oldTime, oldTime)
+
+  const child = startServer({ ...process.env, CLI_DISPATCH_SESSIONS_DIR: sessionsDir }, port)
+  let actualPort
+  try {
+    actualPort = await waitForServerReady(child)
+    const res = await httpRequest({ port: actualPort, method: 'GET', path: '/api/clean?staleSecs=600' })
+    assert.equal(res.status, 200)
+    assert.equal(res.body.count, 1)
+    assert.equal(res.body.items[0].id, hcId)
+    assert.equal(res.body.items[0].state, 'human-controlled')
+  } finally {
+    await stopServer(child)
+    rmSync(sessionsDir, { recursive: true, force: true })
+  }
 })

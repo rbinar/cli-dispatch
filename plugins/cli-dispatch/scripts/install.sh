@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Note: re-running setup (/cli-dispatch:setup) is required after every plugin version bump to keep ~/.local in sync.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_DIR="$HOME/.local/bin"

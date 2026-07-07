@@ -284,6 +284,12 @@ handle_interrupt() {
   # after the bound and reconcile anyway.
   [ -n "${CODEX_PID:-}" ] && kill_tree "$CODEX_PID" -TERM 2>/dev/null || true
   for _ in $(seq 1 30); do [ -e "${PARSER_DONE:-/nonexistent}" ] && break; sleep 0.1; done
+  if [ "$RESUME" -eq 0 ]; then
+    THREAD_ID="$(json_field "$SESSION_DIR/meta.json" threadId || true)"
+    if [ -n "$THREAD_ID" ]; then
+      SESSION_DIR="$(relocate_session_dir "$SESSIONS_ROOT" "$SESSION_DIR" "$SESSION_ID" "$THREAD_ID" "cx-stream" "thread dir" "  thread:  ")"
+    fi
+  fi
   reconcile_session_error "$SESSION_DIR" "interrupted: $sig" "$rc"
   cleanup
   exit "$rc"

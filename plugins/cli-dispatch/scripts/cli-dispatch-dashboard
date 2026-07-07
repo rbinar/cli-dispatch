@@ -5,6 +5,10 @@
 # Flags: --port <N> (default 7878; auto-increments if busy), --no-open. Binds 127.0.0.1 only.
 set -euo pipefail
 
+# Version staleness check
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/version-check.sh" 2>/dev/null || true
+command -v cli_dispatch_warn_if_stale >/dev/null 2>&1 && cli_dispatch_warn_if_stale
+
 command -v node >/dev/null 2>&1 || { echo "cli-dispatch-dashboard: 'node' not found in PATH (required)." >&2; exit 1; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -16,6 +16,10 @@
 # real no-writes guarantee.
 set -euo pipefail
 
+# Version staleness check
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/version-check.sh" 2>/dev/null || true
+command -v cli_dispatch_warn_if_stale >/dev/null 2>&1 && cli_dispatch_warn_if_stale
+
 usage() { echo 'usage: cx-agent [--cwd <dir>] [--resume <session-id>] [--read-only] [--sandbox <mode>] [--no-network] [--model <m>] [--effort low|medium|high] [--max-runtime <s>] [--idle-timeout <s>] [-q] "<task>"' >&2; }
 
 QUIET=0

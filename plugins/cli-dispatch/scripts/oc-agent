@@ -17,6 +17,10 @@
 # review the diff yourself (same posture as the Antigravity/agy backend — see oc-runner.md).
 set -euo pipefail
 
+# Version staleness check
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/version-check.sh" 2>/dev/null || true
+command -v cli_dispatch_warn_if_stale >/dev/null 2>&1 && cli_dispatch_warn_if_stale
+
 usage() { echo 'usage: oc-agent [--cwd <dir>] [--resume <session-id>] [--model <slug>] [--max-runtime <s>] [--idle-timeout <s>] [-q] "<task>"' >&2; }
 
 QUIET=0
