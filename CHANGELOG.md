@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.30.3] — 2026-07-09
+
+### Changed
+
+- **Runner defs: explicit never-opus rule for the babysitter model.** Task
+  difficulty never escalates a `*-runner`'s own model — the worker does the
+  work, the runner only monitors/verifies, and the orchestrator re-verifies
+  anyway. Measured per delegation: opus ~20x, sonnet ~12x haiku babysitting
+  cost with zero quality gain.
+
 ## [3.30.2] — 2026-07-09
 
 ### Fixed
