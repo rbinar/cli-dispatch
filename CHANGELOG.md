@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.30.2] — 2026-07-09
+
+### Fixed
+
+- **`/cli-dispatch:gain` babysitting table now counts runner subagents only**
+  (#87). A subagent counts as a runner when it actually invoked a wrapper CLI
+  (`claude-ds`/`ds-agent`/`ag-*`/`cx-*`/`oc-*`/`cp-*`) in a Bash tool call;
+  non-runner subagents (reviewers, explorers, unrelated projects) collapse to a
+  one-line total and no longer inflate the babysitter/worker ratio (~8x on real
+  data). The `--log` snapshot gains an `otherSubagents {agents, output}` field.
+
 ## [3.30.1] — 2026-07-08
 
 ### Added
