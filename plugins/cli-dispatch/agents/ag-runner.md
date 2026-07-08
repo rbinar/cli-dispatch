@@ -9,6 +9,9 @@ description: |
   delegations — including repo/code tasks — because the orchestrator independently re-verifies
   the diff and tests after the runner returns. Reserve model="sonnet" for the rare case where
   the runner alone must make a nuanced correctness judgment the orchestrator will not re-check.
+  NEVER model="opus": task difficulty never escalates the babysitter model — the worker does
+  the work; babysitting quality does not scale with model strength (measured: opus ~20x,
+  sonnet ~12x haiku cost per delegation, zero quality gain).
   The WORKER is always Antigravity (via ag-*); this
   agent's model only governs the babysitting/verification reasoning.
   Do NOT spawn this runner for trivial work — single-file, under-50-line, unambiguous edits: the spawn + babysitting fixed cost exceeds the work itself; the orchestrator does those inline, or batches several small fixes into one delegation.
