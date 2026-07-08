@@ -6,8 +6,10 @@ allowed-tools: Bash
 # cli-dispatch gain
 
 Read-only token accounting summary over worker session `status.json` files,
-plus Anthropic babysitting token usage from ALL subagent transcripts on this machine
-(the latter is an upper bound — it includes non-cli-dispatch subagents too).
+plus Anthropic babysitting token usage from runner subagent transcripts on this
+machine (a subagent counts as a runner when it actually invoked a wrapper CLI —
+`ds-agent`, `cx-stream`, etc. — in a Bash tool call; other subagents are
+summarized in one line and excluded from the ratio).
 
 Pass `--log` to ALSO append a timestamped JSON snapshot of the report to
 `~/.cache/cli-dispatch/gain-history.jsonl` (one line per run), so runs can be
@@ -41,15 +43,27 @@ function usage(u){
 }
 const fmt=n=>String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g,',')
 
+// A runner babysitter actually EXECUTES a wrapper CLI in a Bash tool call; other
+// subagents at most mention the names (or read the scripts via a path prefix, which
+// the leading [^/] boundary excludes). Bare-name invocation is how the runner defs work.
+const RUNNER_RE=/(?:^|[;&|(]\s*|\s)(?:claude-ds(?:-stream)?|ds-agent|ds-worktree-run(?:\.sh)?|ag-agent|ag-stream|cx-agent|cx-stream|oc-agent|oc-stream|cp-agent|cp-stream)(?=\s|$)/
+
 async function processAgentFile(fp){
   return new Promise((resolve)=>{
     const rl=readline.createInterface({input:fs.createReadStream(fp),crlfDelay:Infinity})
     const models=new Map()
+    let isRunner=false
     rl.on('line',line=>{
       try{
         const obj=JSON.parse(line)
         const msg=obj&&obj.message
-        if(!msg||!msg.usage||!msg.model) return
+        if(!msg) return
+        if(!isRunner&&Array.isArray(msg.content)){
+          for(const c of msg.content){
+            if(c&&c.type==='tool_use'&&c.name==='Bash'&&c.input&&typeof c.input.command==='string'&&RUNNER_RE.test(c.input.command)){ isRunner=true; break }
+          }
+        }
+        if(!msg.usage||!msg.model) return
         // Only Anthropic models: claude-ds (DeepSeek) workers write the same
         // transcript layout under ~/.claude/projects — exclude them and synthetics.
         if(!String(msg.model).startsWith('claude-')) return
@@ -62,8 +76,8 @@ async function processAgentFile(fp){
         d.cacheR+=num(u.cache_read_input_tokens)||0
       }catch{}
     })
-    rl.on('close',()=>resolve(models))
-    rl.on('error',()=>resolve(new Map()))
+    rl.on('close',()=>resolve({models,isRunner}))
+    rl.on('error',()=>resolve({models:new Map(),isRunner:false}))
   })
 }
 
@@ -130,9 +144,19 @@ async function processAgentFile(fp){
     }
   }catch{}
 
+  // Runner babysitters get the full table + ratio; everything else (reviewers,
+  // explorers, unrelated projects) is summarized in one line — it is not a
+  // cli-dispatch cost and used to make the ratio meaningless.
   const anthroByModel=new Map()
+  let otherAgents=0, otherOutput=0
   for(const fp of agentFiles){
-    const fileModels=await processAgentFile(fp)
+    const {models:fileModels,isRunner}=await processAgentFile(fp)
+    if(!isRunner){
+      let sawModel=false
+      for(const [,data] of fileModels){ otherOutput+=data.output; sawModel=true }
+      if(sawModel) otherAgents++
+      continue
+    }
     for(const [model,data] of fileModels){
       if(!anthroByModel.has(model)){
         anthroByModel.set(model,{agents:new Set(),input:0,output:0,cacheW:0,cacheR:0})
@@ -152,7 +176,7 @@ async function processAgentFile(fp){
     let totalAnthroOutput=0
 
     console.log('')
-    console.log('Anthropic babysitting (subagent transcripts, all projects on this machine)')
+    console.log('Anthropic babysitting (runner subagents only, all projects on this machine)')
     console.log('model                 agents      input     output     cacheW      cacheR')
     console.log('-------------------- ---------- ---------- ---------- ---------- ----------')
     for(const [model,am] of [...anthroByModel.entries()].sort((a,b)=>a[0].localeCompare(b[0]))){
@@ -164,10 +188,13 @@ async function processAgentFile(fp){
     console.log('')
     console.log(`ratio: babysitter output ≈ ${ratio}% of worker output  |  worker input offloaded: ${fmt(totalWorkerInput)} tokens`)
   }
+  if(otherAgents>0){
+    console.log(`other (non-runner) subagents: ${otherAgents} agents, output ${fmt(otherOutput)} — excluded from ratio`)
+  }
 
   // --- optional history snapshot (--log) ---
   if(process.env.GAIN_LOG==='1'){
-    const snap={ts:new Date().toISOString(),workers:{},trivialDelegations:trivialCount,anthropic:{}}
+    const snap={ts:new Date().toISOString(),workers:{},trivialDelegations:trivialCount,anthropic:{},otherSubagents:{agents:otherAgents,output:otherOutput}}
     for(const [b,r] of byBackend) snap.workers[b]={sessions:r.sessions,input:r.input,output:r.output,noData:r.noData}
     for(const [m,a] of anthroByModel) snap.anthropic[m]={agents:a.agents.size,input:a.input,output:a.output,cacheW:a.cacheW,cacheR:a.cacheR}
     const histFile=path.join(path.dirname(root),'gain-history.jsonl')
