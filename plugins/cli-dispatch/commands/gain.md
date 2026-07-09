@@ -85,6 +85,7 @@ async function processAgentFile(fp){
   // --- Worker section ---
   const byBackend=new Map()
   let totalNoData=0, trivialCount=0, oldest='', newest=''
+  const trivialSessions=[]
   for(const d of fs.readdirSync(root)){
     const dir=path.join(root,d)
     try{ if(!fs.statSync(dir).isDirectory()) continue }catch{ continue }
@@ -97,7 +98,10 @@ async function processAgentFile(fp){
       let total = 0
       const mi = cf.diffstat.match(/(\d+) insertion/); if(mi) total += parseInt(mi[1], 10)
       const md = cf.diffstat.match(/(\d+) deletion/);  if(md) total += parseInt(md[1], 10)
-      if(total > 0 && total < 50) trivialCount++;
+      if(total > 0 && total < 50) {
+        trivialCount++;
+        trivialSessions.push({sessionId: d, cwd: m.cwd || '', backend, startedAt: m.startedAt || '', diffstat: cf.diffstat})
+      }
     }
     const row=byBackend.get(backend)||{sessions:0,input:0,output:0,noData:0}
     row.sessions++
@@ -123,6 +127,49 @@ async function processAgentFile(fp){
   console.log('')
   // Count trivial delegations (diff < 50 lines)
   if(trivialCount>0) console.log(`trivial delegations (diff < 50 lines): ${trivialCount} — cheaper done inline; batch or inline next time`)
+
+  // Cluster trivial sessions by (cwd, backend), chaining consecutive startedAt
+  // values under a 15-minute window — flags likely retry-as-new-delegation
+  // instead of /cli-dispatch:resume (same task re-run from scratch repeatedly).
+  const RETRY_WINDOW_MS=15*60*1000
+  const trivialGroups=new Map()
+  for(const s of trivialSessions){
+    if(!s.cwd) continue // can't cluster what has no location
+    const key=s.cwd+' '+s.backend
+    if(!trivialGroups.has(key)) trivialGroups.set(key,[])
+    trivialGroups.get(key).push(s)
+  }
+  const trivialClusters=[]
+  for(const [,list] of trivialGroups){
+    list.sort((a,b)=>(a.startedAt||'').localeCompare(b.startedAt||''))
+    let current=[], prevTime=null
+    for(const s of list){
+      const t=Date.parse(s.startedAt)
+      const valid=Number.isFinite(t)
+      if(current.length>0 && valid && prevTime!=null && (t-prevTime)<=RETRY_WINDOW_MS){
+        current.push(s)
+      } else {
+        if(current.length>=2) trivialClusters.push(current)
+        current=[s]
+      }
+      prevTime=valid?t:null
+    }
+    if(current.length>=2) trivialClusters.push(current)
+  }
+  const trivialClusterRecords=trivialClusters.map(c=>({
+    cwd:c[0].cwd, backend:c[0].backend,
+    sessionIds:c.map(s=>s.sessionId),
+    count:c.length,
+    firstStartedAt:c[0].startedAt,
+    lastStartedAt:c[c.length-1].startedAt
+  }))
+  if(trivialClusterRecords.length>0){
+    console.log('possible retry-as-new-delegation clusters (same cwd+backend, <15min apart):')
+    for(const c of trivialClusterRecords){
+      const hhmmss=t=>(t||'').slice(11,19)||'?'
+      console.log(`  ${c.cwd} (${c.backend}): ${c.sessionIds.join(', ')}  (${c.count} sessions, ${hhmmss(c.firstStartedAt)} → ${hhmmss(c.lastStartedAt)})`)
+    }
+  }
 
   // --- Anthropic babysitting (subagent transcripts) ---
   // Structure: ~/.claude/projects/<project>/<sessionId>/subagents/agent-*.jsonl
@@ -194,7 +241,7 @@ async function processAgentFile(fp){
 
   // --- optional history snapshot (--log) ---
   if(process.env.GAIN_LOG==='1'){
-    const snap={ts:new Date().toISOString(),workers:{},trivialDelegations:trivialCount,anthropic:{},otherSubagents:{agents:otherAgents,output:otherOutput}}
+    const snap={ts:new Date().toISOString(),workers:{},trivialDelegations:trivialCount,trivialClusters:trivialClusterRecords,anthropic:{},otherSubagents:{agents:otherAgents,output:otherOutput}}
     for(const [b,r] of byBackend) snap.workers[b]={sessions:r.sessions,input:r.input,output:r.output,noData:r.noData}
     for(const [m,a] of anthroByModel) snap.anthropic[m]={agents:a.agents.size,input:a.input,output:a.output,cacheW:a.cacheW,cacheR:a.cacheR}
     const histFile=path.join(path.dirname(root),'gain-history.jsonl')

@@ -7,6 +7,27 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.30.7] — 2026-07-09
+
+### Eklendi
+
+- **`/cli-dispatch:gain` artık trivial delegasyonlar arasında "muhtemelen
+  yeni-delegasyon-olarak-retry" kümelerini işaretliyor** (#91). Trivial
+  session'lar (diffstat 1-49 satır) `(cwd, backend)`'e göre gruplanıyor,
+  `startedAt`'e göre sıralanıyor ve ardışık başlangıç zamanları arasındaki
+  fark 15 dakikadan azsa aynı kümeye zincirleniyor. Boyutu ≥2 olan kümeler
+  — mevcut "trivial delegations (diff < 50 lines): N" satırının hemen
+  ardından — şu satırı basıyor: `<cwd> (<backend>): <sessionId1>,
+  <sessionId2>, ...  (N sessions, <first time> → <last time>)`. Bu, aynı
+  görevin `/cli-dispatch:resume` ile devam ettirilmek yerine (her biri
+  tam babysitting maliyetini tekrar ödeyen) birden fazla yepyeni
+  delegasyon olarak retry edildiği durumları gün yüzüne çıkarıyor. `--log`
+  anlık görüntüleri de eşleşen bir `trivialClusters` dizi alanı kazanıyor
+  (küme başına `{cwd, backend, sessionIds, count, firstStartedAt,
+  lastStartedAt}`) — böylece zaman içinde bu örüntünün artıp azalmadığı
+  takip edilebiliyor. Tamamen eklemeli bir değişiklik — `trivialCount` ve
+  diğer tüm gain çıktısı değişmedi.
+
 ## [3.30.6] — 2026-07-09
 
 ### Düzeltildi

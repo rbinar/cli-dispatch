@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.30.7] — 2026-07-09
+
+### Added
+
+- **`/cli-dispatch:gain` now flags "possible retry-as-new-delegation"
+  clusters among trivial delegations** (#91). Trivial sessions (diffstat
+  1-49 lines) are grouped by `(cwd, backend)`, sorted by `startedAt`, and
+  chained into a cluster whenever consecutive start times are under 15
+  minutes apart. Clusters of size ≥2 print a line —
+  `<cwd> (<backend>): <sessionId1>, <sessionId2>, ...  (N sessions, <first
+  time> → <last time>)` — right after the existing "trivial delegations
+  (diff < 50 lines): N" line, surfacing cases where the same task was
+  retried as several brand-new delegations (each paying full babysitting
+  cost again) instead of continued via `/cli-dispatch:resume`. `--log`
+  snapshots gain a matching `trivialClusters` array field (`{cwd, backend,
+  sessionIds, count, firstStartedAt, lastStartedAt}` per cluster) for
+  tracking the pattern over time. Purely additive — `trivialCount` and all
+  other gain output are unchanged.
+
 ## [3.30.6] — 2026-07-09
 
 ### Fixed
