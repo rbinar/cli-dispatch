@@ -42,12 +42,20 @@ case "$ACTION" in
   uninstall)
     launchctl unload "$PLIST" 2>/dev/null || true; rm -f "$PLIST"; echo "removed schedule ($LABEL).";;
   install)
+    # launchd runs jobs with a minimal PATH (no shell rc sourced) — a node installed via nvm/
+    # Homebrew/volta/asdf is invisible there even though it resolves fine interactively, which
+    # made the scheduled clean silently fail every run for anyone not on system node. Bake the
+    # resolved node dir into the job's own PATH; cli-dispatch-clean also probes common install
+    # locations at runtime as a second line of defense.
+    NODE_DIR="$(dirname "$(command -v node 2>/dev/null || echo /usr/bin/node)")"
+    JOB_PATH="$NODE_DIR:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
     cat > "$PLIST" <<PL
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>Label</key><string>$LABEL</string>
   <key>ProgramArguments</key><array><string>$BIN</string><string>--remove</string><string>--quiet</string>$OLDER_ARG</array>
+  <key>EnvironmentVariables</key><dict><key>PATH</key><string>$JOB_PATH</string></dict>
   <key>StartCalendarInterval</key><dict><key>Hour</key><integer>$HH</integer><key>Minute</key><integer>$MM</integer></dict>
   <key>StandardOutPath</key><string>$LOG</string>
   <key>StandardErrorPath</key><string>$LOG</string>

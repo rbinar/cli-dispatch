@@ -6,6 +6,22 @@
 #   cli-dispatch-clean [--remove] [--stale-secs N] [--older-than DAYS] [--quiet]
 set -euo pipefail
 
+# launchd/cron run with a minimal PATH (no shell rc sourced) — node installed via a version
+# manager or Homebrew is invisible there even though it resolves fine interactively. This is
+# the #1 cause of the scheduled auto-clean (/cli-dispatch:clean-schedule) silently failing
+# every run. Probe common install locations before giving up.
+if ! command -v node >/dev/null 2>&1; then
+  for cand in "$HOME/.local/share/fnm/aliases/default/bin" "$HOME/.volta/bin" "$HOME/.asdf/shims" /opt/homebrew/bin /usr/local/bin; do
+    [ -x "$cand/node" ] && { PATH="$cand:$PATH"; break; }
+  done
+  if ! command -v node >/dev/null 2>&1; then
+    nvm_dir="${NVM_DIR:-$HOME/.nvm}"
+    if [ -d "$nvm_dir/versions/node" ]; then
+      latest="$(ls -1 "$nvm_dir/versions/node" 2>/dev/null | sort -V | tail -1)"
+      [ -n "$latest" ] && [ -x "$nvm_dir/versions/node/$latest/bin/node" ] && PATH="$nvm_dir/versions/node/$latest/bin:$PATH"
+    fi
+  fi
+fi
 command -v node >/dev/null 2>&1 || { echo "cli-dispatch-clean: 'node' not found in PATH (required)." >&2; exit 1; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

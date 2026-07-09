@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.30.8] — 2026-07-10
+
+### Fixed
+
+- **`/cli-dispatch:clean-schedule`'s scheduled auto-clean silently failed
+  every run for anyone whose `node` isn't on the system PATH** (nvm,
+  Homebrew, volta, asdf) — launchd/cron run jobs with a minimal PATH (no
+  shell rc sourced), so `cli-dispatch-clean` exited immediately with
+  `'node' not found in PATH`, logged to `clean.log` and nowhere else,
+  leaving stale worker session dirs to accumulate indefinitely with no
+  visible error. `cli-dispatch-clean` now probes common node install
+  locations (fnm, volta, asdf, Homebrew, the highest installed nvm
+  version) before giving up, fixing every already-scheduled job the next
+  time it runs — no re-install needed. The `clean-schedule` launchd
+  install path also now bakes the resolved node dir into the job's own
+  `EnvironmentVariables.PATH` for new installs.
+
 ## [3.30.7] — 2026-07-09
 
 ### Added

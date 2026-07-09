@@ -7,6 +7,24 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.30.8] — 2026-07-10
+
+### Düzeltildi
+
+- **`/cli-dispatch:clean-schedule`'ın zamanlanmış otomatik temizliği,
+  `node`'u sistem PATH'inde olmayan herkes için (nvm, Homebrew, volta, asdf)
+  her çalıştırmada sessizce başarısız oluyordu** — launchd/cron, job'ları
+  minimal bir PATH ile çalıştırır (shell rc dosyası kaynaklanmaz), bu yüzden
+  `cli-dispatch-clean` `'node' not found in PATH` hatasıyla anında çıkıyor,
+  bu sadece `clean.log`'a yazılıyor ve başka hiçbir yerde görünmüyordu —
+  stale worker session dizinleri görünür bir hata olmadan sınırsız birikmeye
+  devam ediyordu. `cli-dispatch-clean` artık pes etmeden önce yaygın node
+  kurulum konumlarını (fnm, volta, asdf, Homebrew, en yüksek kurulu nvm
+  sürümü) yokluyor — zaten zamanlanmış her job, yeniden kurulum gerekmeden
+  bir sonraki çalışmasında düzeliyor. `clean-schedule`'ın launchd kurulum
+  yolu da artık yeni kurulumlar için çözümlenmiş node dizinini job'ın kendi
+  `EnvironmentVariables.PATH`'ine gömüyor.
+
 ## [3.30.7] — 2026-07-09
 
 ### Eklendi
