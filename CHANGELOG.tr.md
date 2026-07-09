@@ -7,6 +7,28 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.30.6] — 2026-07-09
+
+### Düzeltildi
+
+- **`ag-runner`'ın mode-B (worktree ile izole edilmiş) doğrulaması,
+  tamamlanmış işi sessizce kaybedebiliyordu** (#90). agy worker'ı timeout
+  olduğunda veya çalışma sırasında nonzero exit verdiğinde, runner yine de
+  temiz görünen bir nihai rapor yazabiliyordu (ör. "MOSTLY COMPLETE ✓,
+  tests passing") — oysa dosya değişiklikleri sadece geçici worktree'de
+  vardı ve hiçbir zaman hedef repo'ya merge edilmemişti. Gerçek bir olayda,
+  build/test'i geçen bir `/var/folders` worktree'si sessizce kayboldu, çünkü
+  hiçbir şey onu otomatik olarak geri taşımıyordu ve worktree reboot/
+  cleanup'ta siliniyordu. Zorunlu mode-B doğrulama protokolüne **Rule 3**
+  eklendi: bir worktree çalıştırması temiz bitmediğinde, runner commit
+  edilmemiş worktree değişikliklerini kontrol etmeli, bunları ya hedef
+  repo'ya kurtarmalı ya da temizlikten önce kalıcı bir `git diff` patch'i
+  (mümkünse `/tmp`/`/var/folders` yerine hedef repo içinde bir yolda)
+  dökmeli, ve herhangi bir build/test sonucunu hangi ağaca karşı çalıştığını
+  belirterek rapor etmeli. `Return format` bölümündeki status satırına,
+  `verified ✓`/`FAILED`'dan ayrı, tam olarak bu durum için üçüncü bir değer
+  eklendi: `INCOMPLETE — STRANDED`.
+
 ## [3.30.5] — 2026-07-09
 
 ### Düzeltildi

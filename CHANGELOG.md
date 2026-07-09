@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.30.6] — 2026-07-09
+
+### Fixed
+
+- **`ag-runner`'s mode-B (worktree-isolated) verification could silently drop
+  finished work** (#90). If the agy worker timed out or exited nonzero
+  mid-run, the runner could still write a clean-looking final report (e.g.
+  "MOSTLY COMPLETE ✓, tests passing") even though the file changes existed
+  only in the temporary worktree and were never merged back to the target
+  repo — a real incident where a `/var/folders` worktree with a passing
+  build/test run was silently lost, since nothing ports it back
+  automatically and the worktree gets swept on reboot/cleanup. Added
+  **Rule 3** to the mandatory mode-B verify protocol: whenever a worktree
+  run doesn't end cleanly, the runner must check for uncommitted worktree
+  changes, either rescue them into the target repo or dump a durable
+  `git diff` patch (preferring a path inside the target repo over
+  `/tmp`/`/var/folders`) before any cleanup, and report any build/test
+  result qualified with which tree it ran against. The `Return format`
+  status line gains a third value, `INCOMPLETE — STRANDED`, distinct from
+  `verified ✓`/`FAILED`, for exactly this case.
+
 ## [3.30.5] — 2026-07-09
 
 ### Fixed
