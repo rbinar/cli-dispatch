@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# cli-dispatch-wait — block until a cli-dispatch worker session reaches a terminal state
+# (done|error|killed), polling status.json silently. Exists so *-runner babysitter
+# subagents don't have to hand-roll `sleep 30 && cat status.json` poll loops — the loop
+# below prints NOTHING while polling (zero token cost); it only prints a compact summary
+# once the session finishes (or the optional --timeout is hit).
+#   cli-dispatch-wait <session-id> [--timeout SECS] [--poll SECS]
+# Exit codes: 0 done, 1 error/killed/bad-args/no-such-session, 2 timeout.
+set -euo pipefail
+
+usage() {
+  echo "usage: cli-dispatch-wait <session-id> [--timeout SECS] [--poll SECS]"
+  echo "tip:   /cli-dispatch:sessions  to list session ids"
+}
+
+if [ $# -eq 0 ]; then
+  usage
+  exit 1
+fi
+
+case "$1" in
+  -h|--help)
+    usage
+    exit 0
+    ;;
+esac
+
+SID="$1"; shift
+
+TIMEOUT=0
+POLL=10
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --timeout) TIMEOUT="${2:-0}"; shift 2 ;;
+    --poll)    POLL="${2:-10}"; shift 2 ;;
+    *)         usage; exit 1 ;;
+  esac
+done
+
+ROOT="${CLI_DISPATCH_SESSIONS_DIR:-${CLAUDE_DS_SESSIONS_DIR:-}}"
+[ -n "$ROOT" ] || { _c="${XDG_CACHE_HOME:-$HOME/.cache}"; ROOT="$_c/cli-dispatch/sessions"; [ -d "$ROOT" ] || [ ! -d "$_c/claude-ds/sessions" ] || ROOT="$_c/claude-ds/sessions"; }
+DIR="$ROOT/$SID"
+
+if [ ! -d "$DIR" ]; then
+  echo "no such session: $SID (use /cli-dispatch:sessions to list them)"
+  exit 1
+fi
+
+print_summary() {
+  CLI_DISPATCH_SESSION_DIR="$DIR" node -e '
+    const fs = require("fs");
+    const dir = process.env.CLI_DISPATCH_SESSION_DIR;
+    let state = "", usage = null, finalResultPreview = "";
+    try {
+      const s = JSON.parse(fs.readFileSync(dir + "/status.json", "utf8"));
+      state = s.state || "";
+      usage = s.usage != null ? s.usage : null;
+      finalResultPreview = s.finalResultPreview || "";
+    } catch {}
+    let diffstat = "(none)";
+    try {
+      const c = JSON.parse(fs.readFileSync(dir + "/changed-files.json", "utf8"));
+      if (c.diffstat) diffstat = c.diffstat;
+    } catch {}
+    console.log("state: " + state);
+    console.log("usage: " + JSON.stringify(usage));
+    console.log("diffstat: " + diffstat);
+    console.log("finalResultPreview: " + finalResultPreview);
+  '
+  echo "progress.log (tail):"
+  tail -n 20 "$DIR/progress.log" 2>/dev/null || echo "(no progress)"
+}
+
+START=$(date +%s)
+
+while :; do
+  STATE=$(CLI_DISPATCH_SESSION_DIR="$DIR" node -e "try{process.stdout.write(JSON.parse(require('fs').readFileSync(process.env.CLI_DISPATCH_SESSION_DIR+'/status.json','utf8')).state||'')}catch{}" 2>/dev/null)
+
+  # Terminal = anything other than running/human-controlled (done|error|killed, in practice).
+  if [ "$STATE" != "running" ] && [ "$STATE" != "human-controlled" ]; then
+    break
+  fi
+
+  if [ "$TIMEOUT" -gt 0 ]; then
+    NOW=$(date +%s)
+    ELAPSED=$((NOW - START))
+    if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
+      print_summary
+      echo "TIMEOUT after ${ELAPSED}s, state still: ${STATE:-unknown}"
+      exit 2
+    fi
+  fi
+
+  sleep "$POLL"
+done
+
+print_summary
+
+[ "$STATE" = "done" ] && exit 0
+exit 1

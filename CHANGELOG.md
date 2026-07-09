@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.30.4] — 2026-07-09
+
+### Added
+
+- **`cli-dispatch-wait <session-id> [--timeout SECS] [--poll SECS]`** — a
+  blocking wait primitive for `*-runner` babysitters (#88). Polls
+  `status.json` via a plain shell loop (zero LLM tokens) until the session
+  reaches a terminal state (`done`/`error`/`killed`), then prints a compact
+  summary (state, usage, diffstat, `finalResultPreview`, last 20 lines of
+  `progress.log`). Exit 0 if done, 1 if error/killed, 2 on timeout. Replaces
+  hand-rolled `sleep 30 && cat status.json` poll loops in runner agent defs
+  — measured at ~1.38B tokens of runner-only cache-read across 493 runner
+  subagents, dominated by poll-turn context re-reads. Installed alongside
+  `cli-dispatch-clean`/`cli-dispatch-dashboard` (backend-agnostic; Windows
+  twin `cli-dispatch-wait.ps1`). `ag/ds/cx/oc/cp-runner.md` now recommend it
+  as the preferred primitive for blocking on an already-running background
+  session — additive to, not a replacement for, the existing synchronous-
+  wait / terminal-state-gate requirements.
+
 ## [3.30.3] — 2026-07-09
 
 ### Changed

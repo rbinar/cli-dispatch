@@ -139,6 +139,10 @@ install -m 0755 "$SCRIPT_DIR/cli-dispatch-clean"     "$BIN_DIR/cli-dispatch-clea
 install -m 0644 "$SCRIPT_DIR/cli-dispatch-clean.mjs" "$LIBEXEC_DIR/cli-dispatch-clean.mjs"
 echo "Installed cleaner -> cli-dispatch-clean (engine -> $LIBEXEC_DIR/cli-dispatch-clean.mjs); use /cli-dispatch:clean or schedule it with /cli-dispatch:clean-schedule"
 
+# ---- Blocking-wait tool (backend-agnostic; always installed) ---------------
+install -m 0755 "$SCRIPT_DIR/cli-dispatch-wait" "$BIN_DIR/cli-dispatch-wait"
+echo "Installed waiter -> cli-dispatch-wait (blocks until a session reaches a terminal state; zero-token polling for *-runner subagents)"
+
 # ---- DeepSeek backend (claude-ds family) -----------------------------------
 if [ "$WANT_DS" -eq 1 ]; then
   install -m 0755 "$SCRIPT_DIR/claude-ds"        "$BIN_DIR/claude-ds"

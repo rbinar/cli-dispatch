@@ -7,6 +7,28 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.30.4] — 2026-07-09
+
+### Eklendi
+
+- **`cli-dispatch-wait <session-id> [--timeout SECS] [--poll SECS]`** —
+  `*-runner` babysitter'ları için engelleyici (blocking) bir bekleme
+  primitifi (#88). `status.json`'ı düz bir shell döngüsüyle (sıfır LLM
+  token'ı) session terminal bir duruma (`done`/`error`/`killed`) ulaşana
+  kadar poll'luyor, ardından kısa bir özet basıyor (durum, kullanım,
+  diffstat, `finalResultPreview`, `progress.log`'un son 20 satırı). Done
+  ise exit 0, error/killed ise 1, timeout'ta 2. Runner agent tanımlarındaki
+  elle yazılmış `sleep 30 && cat status.json` poll döngülerinin yerini
+  alıyor — 493 runner subagent genelinde ~1.38B token'lık runner-only
+  cache-read'e karşılık geliyor, ağırlıklı olarak poll-turu context
+  yeniden-okumalarından kaynaklanıyor. `cli-dispatch-clean` /
+  `cli-dispatch-dashboard` ile birlikte kuruluyor (backend-agnostic;
+  Windows ikizi `cli-dispatch-wait.ps1`). `ag/ds/cx/oc/cp-runner.md`
+  dosyaları artık bunu, zaten çalışan bir arka plan session'ında
+  bloklamak için tercih edilen primitif olarak öneriyor — mevcut
+  senkron-bekleme / terminal-durum-kapısı gereksinimlerinin yerine değil,
+  onlara ek olarak.
+
 ## [3.28.0] — 2026-07-07 17:35
 
 ### Eklendi

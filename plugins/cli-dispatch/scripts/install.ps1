@@ -70,6 +70,11 @@ Set-Content -Path (Join-Path $BinDir "cli-dispatch-clean.cmd") -Value (New-Shim 
 Copy-Item -Force (Join-Path $ScriptDir "cli-dispatch-clean.mjs") (Join-Path $LibExecDir "cli-dispatch-clean.mjs")
 Write-Host "Installed cleaner -> $BinDir\cli-dispatch-clean.ps1 (+ .cmd shim; engine -> $LibExecDir\cli-dispatch-clean.mjs)"
 
+# Blocking-wait tool (backend-agnostic; always installed).
+Copy-Item -Force (Join-Path $ScriptDir "cli-dispatch-wait.ps1") (Join-Path $BinDir "cli-dispatch-wait.ps1")
+Set-Content -Path (Join-Path $BinDir "cli-dispatch-wait.cmd") -Value (New-Shim "cli-dispatch-wait") -Encoding ASCII
+Write-Host "Installed waiter -> $BinDir\cli-dispatch-wait.ps1 (+ .cmd shim; blocks until a session reaches a terminal state)"
+
 # ---- DeepSeek backend (claude-ds family) ----
 if ($wantDS) {
   Copy-Item -Force (Join-Path $ScriptDir "claude-ds.ps1") (Join-Path $BinDir "claude-ds.ps1")
