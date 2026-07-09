@@ -204,3 +204,43 @@ test('cx-stream-parse: model mismatch advisory without final output is still err
 
   rmSync(testDir, { recursive: true, force: true })
 })
+
+test('cx-stream-parse: usagePartial=true after turn.completed, stays true if process is killed before finalize', async () => {
+  if (existsSync(testDir)) rmSync(testDir, { recursive: true, force: true })
+  const proc = spawn('node', [parserScript], {
+    env: { ...process.env, CX_SESSION_DIR: testDir, CX_THREAD_ID: 'sess-kill' }
+  })
+  proc.stdin.write(JSON.stringify({
+    type: 'turn.completed',
+    usage: { input_tokens: 500, output_tokens: 75 }
+  }) + '\n')
+  // Wait longer than the status writer's throttle window (200ms) so the
+  // throttled write actually flushes to disk before we kill the process.
+  await new Promise((resolve) => setTimeout(resolve, 400))
+  proc.kill('SIGKILL')
+  await new Promise((resolve) => proc.on('close', resolve))
+
+  const statusPath = path.join(testDir, 'status.json')
+  assert.ok(existsSync(statusPath))
+  const status = JSON.parse(readFileSync(statusPath, 'utf8'))
+  assert.deepEqual(status.usage, { input_tokens: 500, output_tokens: 75 })
+  assert.equal(status.usagePartial, true)
+
+  rmSync(testDir, { recursive: true, force: true })
+})
+
+test('cx-stream-parse: usagePartial cleared to false after normal stream end', async () => {
+  const events = [
+    { type: 'turn.completed', usage: { input_tokens: 500, output_tokens: 75 } },
+    { type: 'item.completed', item: { id: '1', type: 'agent_message', text: 'Done.' } }
+  ]
+  const result = await runParser(events)
+  assert.equal(result.code, 0)
+
+  const statusPath = path.join(testDir, 'status.json')
+  const status = JSON.parse(readFileSync(statusPath, 'utf8'))
+  assert.equal(status.usagePartial, false)
+  assert.deepEqual(status.usage, { input_tokens: 500, output_tokens: 75 })
+
+  rmSync(testDir, { recursive: true, force: true })
+})

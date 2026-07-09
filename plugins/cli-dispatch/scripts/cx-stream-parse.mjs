@@ -81,6 +81,7 @@ const status = {
   lastActivityAt: new Date().toISOString(),
   finalResultPreview: '',
   usage: null,
+  usagePartial: false,
 }
 // status.json throttled writes — delegated to parse-utils createStatusWriter.
 const { flush: flushStatus, write: writeStatus } = createStatusWriter(statusFile, status)
@@ -221,7 +222,10 @@ function handleEvent(ev) {
   if (t === 'item.updated') { renderItem(ev.item, 'updated'); return }
   if (t === 'item.completed') { renderItem(ev.item, 'completed'); return }
   if (t === 'turn.completed') {
-    if (ev.usage && typeof ev.usage === 'object') status.usage = ev.usage
+    if (ev.usage && typeof ev.usage === 'object') {
+      status.usage = ev.usage
+      status.usagePartial = true
+    }
     touch(); writeStatus()
     return
   }
@@ -272,6 +276,7 @@ function finalize(code) {
   if (status.state === 'error' && errorText) status.error = errorText
   status.finalResultPreview = (out || '').replace(/\s+/g, ' ').slice(0, 300)
   status.lastActivityAt = new Date().toISOString()
+  status.usagePartial = false
   flushStatus() // force the final snapshot (cancels any pending throttled write)
   meta.endedAt = new Date().toISOString()
   meta.exitCode = code ?? 0

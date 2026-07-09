@@ -7,6 +7,28 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.30.5] — 2026-07-09
+
+### Düzeltildi
+
+- **DeepSeek (claude-ds) ve Codex worker session'ları sert kill/timeout/
+  çökme durumunda token kullanımını kalıcı olarak kaybedebiliyordu** (#89).
+  `status.json.usage` yalnızca son stream event'inde yazılıyordu (DeepSeek
+  için `result`; Codex için pratikte genelde tur-başı `turn.completed` ile
+  ulaşılıyor). Süreç bu event'ten önce ölürse, token'ların çoğu veya tamamı
+  zaten harcanmış olsa bile `usage` sonsuza dek `null` kalıyordu.
+  `ds-stream-parse.mjs` artık her `assistant` stream event'inden
+  (`message.id`'ye göre dedupe edilmiş, `dashboard-utils.mjs`'nin
+  `sumUsageFromEvents()` fonksiyonuyla aynı toplama mantığı) kademeli
+  olarak kullanım biriktiriyor ve event'ler geldikçe `status.json`'a
+  yazıyor; `cx-stream-parse.mjs`'nin mevcut tur-başı `turn.completed`
+  kullanım yazımı da artık aynı işareti taşıyor. İkisi de kaydedilen
+  kullanım henüz nihai toplam olmadığı sürece yeni bir
+  `status.usagePartial: true` bayrağı taşıyor, gerçek nihai kullanım
+  geldiğinde temizleniyor — böylece `/cli-dispatch:gain` (veya başka bir
+  şey) gerçek bir nihai toplamı, öldürülmüş bir session'dan kalan
+  en-iyi-çaba anlık görüntüsünden ayırt edebiliyor.
+
 ## [3.30.4] — 2026-07-09
 
 ### Eklendi

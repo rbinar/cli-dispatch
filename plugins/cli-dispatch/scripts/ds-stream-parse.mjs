@@ -74,6 +74,7 @@ const status = {
   lastActivityAt: new Date().toISOString(),
   finalResultPreview: '',
   usage: null,
+  usagePartial: false,
 }
 // status.json throttled writes — delegated to parse-utils createStatusWriter.
 const { flush: flushStatus, write: writeStatus } = createStatusWriter(statusFile, status)
@@ -81,6 +82,8 @@ flushStatus() // initial snapshot, written immediately
 
 const emittedToolUseIds = new Set()
 const emittedToolResultIds = new Set()
+const seenUsageMsgIds = new Set()
+const usageAccum = { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 }
 let finalText = ''
 let streamedText = ''
 let pendingText = '' // coalesced streamed text; flushed as a single terse progress line
@@ -137,7 +140,20 @@ function handleEvent(ev) {
   }
 
   if (ev.type === 'assistant') {
-    const content = ev.message?.content
+    const msg = ev.message
+    const content = msg?.content
+    const mid = msg?.id
+    const u = msg?.usage
+    if (u && typeof u === 'object' && (!mid || !seenUsageMsgIds.has(mid))) {
+      if (mid) seenUsageMsgIds.add(mid)
+      usageAccum.input_tokens += u.input_tokens || 0
+      usageAccum.output_tokens += u.output_tokens || 0
+      usageAccum.cache_creation_input_tokens += u.cache_creation_input_tokens || 0
+      usageAccum.cache_read_input_tokens += u.cache_read_input_tokens || 0
+      status.usage = { ...usageAccum }
+      status.usagePartial = true
+      writeStatus()
+    }
     for (const block of content ?? []) {
       if (block.type === 'tool_use' && typeof block.id === 'string' && typeof block.name === 'string') {
         if (!emittedToolUseIds.has(block.id)) {
@@ -196,6 +212,7 @@ function handleEvent(ev) {
     
     if (Object.keys(u).length > 0) {
       status.usage = u
+      status.usagePartial = false
     }
     touch()
     writeStatus()

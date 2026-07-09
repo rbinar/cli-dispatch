@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.30.5] — 2026-07-09
+
+### Fixed
+
+- **DeepSeek (claude-ds) and Codex worker sessions could permanently lose
+  token usage on a hard kill/timeout/crash** (#89). `status.json.usage` was
+  written only on the final stream event (`result` for DeepSeek; in
+  practice usually reached per-turn via `turn.completed` for Codex). If the
+  process died before that event, `usage` stayed `null` forever even though
+  most or all tokens had already been spent. `ds-stream-parse.mjs` now
+  accumulates usage incrementally from every `assistant` stream event
+  (deduped by `message.id`, reusing the same accumulation logic as
+  `dashboard-utils.mjs`'s `sumUsageFromEvents()`) and writes it to
+  `status.json` as events arrive; `cx-stream-parse.mjs`'s existing per-turn
+  `turn.completed` usage write now carries the same marker. Both set a new
+  `status.usagePartial: true` flag while the recorded usage is not yet the
+  authoritative final total, clearing it once the true final usage lands —
+  so `/cli-dispatch:gain` (or anything else) can tell a genuine final total
+  apart from a best-effort snapshot left behind by a killed session.
+
 ## [3.30.4] — 2026-07-09
 
 ### Added
