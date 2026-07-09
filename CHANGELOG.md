@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.30.9] — 2026-07-10
+
+### Changed
+
+- **`/cli-dispatch:setup`'s distributable "delegation priority" persistent-instructions
+  block now includes a resume-vs-new-delegation rule.** When a delegated worker's output
+  needs a follow-up (an edit didn't persist, wrong scope, a small correction), the block
+  now tells the orchestrator to continue with `/cli-dispatch:resume <session-id>` instead
+  of launching a fresh `*-runner`/`*-agent` delegation for the same task — a fresh
+  delegation pays full babysitting cost again for what should be one continued
+  conversation. Also points at `/cli-dispatch:gain`'s retry-cluster detection (#91) as the
+  signal to watch for. Previously this guidance only lived in one user's private global
+  `CLAUDE.md`, so it never reached anyone who installs the plugin fresh and opts into the
+  setup-time reminder.
+
 ## [3.30.8] — 2026-07-10
 
 ### Fixed

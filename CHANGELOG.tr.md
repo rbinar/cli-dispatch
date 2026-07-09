@@ -7,6 +7,21 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.30.9] — 2026-07-10
+
+### Değiştirildi
+
+- **`/cli-dispatch:setup`'ın dağıtılabilir "delegation priority" kalıcı-talimat bloğu
+  artık bir resume-vs-yeni-delegation kuralı içeriyor.** Delege edilmiş bir worker'ın
+  çıktısı düzeltme gerektirdiğinde (edit persist olmadı, yanlış kapsam, küçük bir
+  düzeltme), blok artık orkestratöre aynı iş için yeni bir `*-runner`/`*-agent`
+  delegasyonu başlatmak yerine `/cli-dispatch:resume <session-id>` ile devam etmesini
+  söylüyor — yeni bir delegasyon, tek bir devam eden konuşma olması gereken şey için tam
+  babysitting maliyetini tekrar ödüyor. Ayrıca `/cli-dispatch:gain`'in retry-cluster
+  tespitini (#91) izlenmesi gereken sinyal olarak işaret ediyor. Daha önce bu rehberlik
+  sadece bir kullanıcının özel global `CLAUDE.md`'sinde yaşıyordu, yani plugin'i
+  taze kurup setup-zamanı hatırlatmayı seçen hiç kimseye ulaşmıyordu.
+
 ## [3.30.8] — 2026-07-10
 
 ### Düzeltildi

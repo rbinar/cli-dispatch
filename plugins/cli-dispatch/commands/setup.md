@@ -179,6 +179,15 @@ Follow these steps:
    - `cp-runner` (GitHub Copilot) — medium/hard tasks.
    - `oc-runner` (OpenCode/OpenRouter) — medium tasks.
 
+   **If a delegated worker's output needs a follow-up** (an edit didn't persist, wrong scope,
+   a constraint was violated, a small correction is needed) — continue with
+   `/cli-dispatch:resume <same-session-id> "<follow-up>"`. Do NOT launch a new `*-runner`/
+   `*-agent` delegation for the same task: that pays full babysitting cost again (new runner
+   spawn, new verification pass) for what should be one continued conversation. `/cli-dispatch:gain`
+   flags same-cwd, same-backend, <15-minute clusters of trivial (diff < 50 lines) delegations
+   as likely instances of this — treat a flagged cluster as a signal to resume instead of
+   re-delegating next time.
+
    Pick the runner's own babysitter model (sonnet/opus) by task difficulty. Also: when you
    hit a friction point, bug, or improvement idea while using cli-dispatch itself, consider
    filing it as a GitHub issue at https://github.com/rbinar/cli-dispatch/issues (only if the
