@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.32.0] — 2026-07-11
+
+### Changed
+
+- **Dashboard: layout rework — Configuration moves to a header gear, backend usage moves
+  to a Workers overview.** The Configuration rail tab (which had no list to show) is now a
+  `⚙` header button opening the same config editor in the main pane; the rail keeps two
+  tabs, renamed **Sessions** and **Workers** (no more wrapped labels). The per-backend
+  token aggregate leaves the rail: the Workers tab's empty state now renders an overview
+  card grid (one card per backend — in/out tokens plus a "N sessions no data" note), so
+  the main pane's empty space does the work instead of the list column. Empty states show
+  guidance text instead of the bare `←` arrow.
+
+### Added
+
+- **Dashboard: draggable rail width + responsive breakpoint.** The session list column is
+  resizable (260–400px) via a drag handle, persisted to `localStorage`; below ~1100px the
+  side panel collapses and the rail narrows so the dashboard stays usable at half-screen
+  laptop widths.
+
+### Fixed
+
+- **Dashboard: two rail-rendering bugs.** (1) The rail-width restore script ran
+  `Number(null)` → `0` when nothing was stored, silently clamping every fresh visitor's
+  rail to the 260px minimum instead of the 320px default. (2) `loadList()` had no
+  staleness guard, so a slow in-flight fetch from the previous tab could resolve late and
+  overwrite the just-rendered list of the newly selected tab; a generation counter now
+  discards stale responses.
+
 ## [3.31.0] — 2026-07-11
 
 ### Changed

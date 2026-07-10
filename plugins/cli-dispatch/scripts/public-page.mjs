@@ -2,14 +2,19 @@ export const PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>cli
 <link rel="stylesheet" href="/vendor/xterm.css">
 <script src="/vendor/xterm.js"></script>
 <script src="/vendor/xterm-addon-fit.js"></script>
-<script>(function(){var t=localStorage.getItem("cli-dispatch-theme");t=t||(window.matchMedia("(prefers-color-scheme:light)").matches?"light":"dark");document.documentElement.setAttribute("data-theme",t)})()</script><style>
+<script>(function(){var t=localStorage.getItem("cli-dispatch-theme");t=t||(window.matchMedia("(prefers-color-scheme:light)").matches?"light":"dark");document.documentElement.setAttribute("data-theme",t);var rs=localStorage.getItem("cli-dispatch-rail-w");if(rs!==null){var rw=Number(rs);if(!isNaN(rw)&&rw>0){rw=Math.max(260,Math.min(400,rw));document.documentElement.style.setProperty("--rail-w",rw+"px")}}})()</script><style>
+:root{--rail-w:320px;--side-w:320px}
 html[data-theme="dark"]{--bg:#0a0a0a;--panel:#111111;--bd:#2e2e2e;--fg:#ededed;--dim:#8f8f8f;--accent:#52a9ff;--success:#3dd68c;--warning:#ffb224;--error:#ff6369;--hover:#1a1a1a;--code-bg:#161616;--err-bg:rgba(255,99,105,.08);--ok-bg:rgba(61,214,140,.07);--wk-panel:#0a1628;--human:#a371f7;--term-bg:#000000}html[data-theme="light"]{--bg:#fafafa;--panel:#ffffff;--bd:#eaeaea;--fg:#171717;--dim:#666666;--accent:#0070f3;--success:#0f9d58;--warning:#a35200;--error:#e5484d;--hover:#f2f2f2;--code-bg:#f5f5f5;--err-bg:rgba(229,72,77,.06);--ok-bg:rgba(15,157,88,.06);--wk-panel:#f0f6ff;--human:#a371f7;--term-bg:#000000}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}.step,.term-wrap,.term-flow,.md-code,.md-pre,#tkTerm{font-family:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace}
 header{padding:8px 14px;border-bottom:1px solid var(--bd);display:flex;gap:10px;align-items:center}
 header b{color:var(--accent)} .grow{flex:1}
-.layout{display:grid;grid-template-columns:320px 1fr 320px;height:calc(100vh - 41px)}
-.rail{border-right:1px solid var(--bd);overflow:auto}
-.side-panel{border-left:1px solid var(--bd);overflow:auto;padding:14px}
+.layout{display:grid;grid-template-columns:var(--rail-w) 5px 1fr var(--side-w);height:calc(100vh - 41px)}
+.drag-handle{width:5px;cursor:col-resize;background:transparent;display:flex;align-items:center;justify-content:center;transition:background-color .15s;grid-column:2;grid-row:1}
+.drag-handle::before{content:"";width:1px;height:24px;background:var(--bd)}
+.drag-handle:hover{background:var(--hover)}
+.rail{border-right:1px solid var(--bd);overflow:auto;grid-column:1;grid-row:1}
+.side-panel{border-left:1px solid var(--bd);overflow:auto;padding:14px;grid-column:4;grid-row:1}
+.side-panel:empty{display:none}
 .tabs{display:flex;border-bottom:1px solid var(--bd)} .tab{flex:1;padding:8px;text-align:center;cursor:pointer;color:var(--dim)}
 .tab.on{color:var(--fg);border-bottom:2px solid var(--fg)}
 .filter{display:flex;gap:6px;padding:6px 8px;border-bottom:1px solid var(--bd);flex-wrap:wrap}
@@ -21,7 +26,7 @@ header b{color:var(--accent)} .grow{flex:1}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}
 .busy{background:var(--success)}.idle{background:var(--warning)}.closed{background:var(--bd)}
 .muted{color:var(--dim)}.small{font-size:11px}
-.main{overflow:auto;padding:14px}
+.main{overflow:auto;padding:14px;grid-column:3;grid-row:1}
 .crumb{margin-bottom:10px;color:var(--dim)}.crumb a{color:var(--accent);cursor:pointer;text-decoration:none}
 .badge{border:1px solid var(--bd);border-radius:6px;padding:1px 7px;font-size:11px;color:var(--dim);margin-left:6px}
 .step{padding:6px 10px;border-left:2px solid var(--bd);margin:4px 0}
@@ -74,23 +79,28 @@ input.cfg-input:focus{border-color:var(--accent);outline:none}
 #cleanPanel{margin:8px 14px;padding:10px;border:1px solid var(--bd);border-radius:8px;background:var(--panel);max-width:600px}
 #cleanPanel .clean-item{padding:4px 0;border-bottom:1px solid var(--bd);font-size:12px}
 #cleanPanel .clean-item:last-child{border-bottom:none}
-.usage-aggregate{padding:6px 8px;border-bottom:1px solid var(--bd);color:var(--dim);font-size:11px}
-.usage-aggregate .urow{padding:1px 0}.usage-aggregate b{color:var(--fg)}
+.worker-overview{padding:4px}
+.worker-overview-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.worker-overview-card{background:var(--panel);border:1px solid var(--bd);border-radius:8px;padding:8px}
+.worker-overview-card .worker-overview-name{font-weight:700;margin-bottom:4px}
+body.dragging-rail,body.dragging-rail *{user-select:none}
+@media (max-width:1100px){.layout{grid-template-columns:min(var(--rail-w),260px) 1fr}.drag-handle{display:none}.main{grid-column:2}.rail{grid-column:1}.side-panel{display:none}}
 </style></head><body>
 <header><b>cli-dispatch</b> <span class="muted">dashboard</span><span class="grow"></span>
-<span class="small muted" id="meta"></span><button class="tkbtn" id="cleanBtn" onclick="openCleanPanel()" style="font-size:11px;padding:2px 8px">Clean stale sessions</button><span class="small muted">· read-only by default · opt-in takeover</span><button class="tkbtn" id="themeBtn" onclick="var h=document.documentElement;var n=h.getAttribute('data-theme')==='light'?'dark':'light';h.setAttribute('data-theme',n);localStorage.setItem('cli-dispatch-theme',n);this.textContent=n==='dark'?'☀':'☾'" title="Toggle theme" style="font-size:13px;padding:2px 8px;margin-left:6px">☀</button><script>document.getElementById("themeBtn").textContent=document.documentElement.getAttribute("data-theme")==="dark"?"☀":"☾"</script></header>
+<span class="small muted" id="meta"></span><button class="tkbtn" id="cleanBtn" onclick="openCleanPanel()" style="font-size:11px;padding:2px 8px">Clean stale sessions</button><span class="small muted">· read-only by default · opt-in takeover</span><button class="tkbtn" id="themeBtn" onclick="var h=document.documentElement;var n=h.getAttribute('data-theme')==='light'?'dark':'light';h.setAttribute('data-theme',n);localStorage.setItem('cli-dispatch-theme',n);this.textContent=n==='dark'?'☀':'☾'" title="Toggle theme" style="font-size:13px;padding:2px 8px">☀</button><button class="tkbtn" id="configBtn" onclick="openConfigView()" title="Configuration" style="font-size:13px;padding:2px 8px;margin-left:6px">⚙</button><script>document.getElementById("themeBtn").textContent=document.documentElement.getAttribute("data-theme")==="dark"?"☀":"☾"</script></header>
 <div id="cleanPanel" style="display:none"></div>
 <div class="layout">
  <div class="rail">
-   <div class="tabs"><div class="tab on" id="tabCC">Claude Code</div><div class="tab" id="tabW">cli-dispatch workers</div><div class="tab" id="tabConfig">Configuration</div></div>
+   <div class="tabs"><div class="tab on" id="tabCC">Sessions</div><div class="tab" id="tabW">Workers</div></div>
    <div id="filter" class="filter"></div>
    <div id="list"></div>
  </div>
- <div class="main"><div class="crumb" id="crumb">Select a session…</div><div id="takeover"></div><div id="view" class="empty">←</div></div>
+ <div class="drag-handle" id="railDrag" title="Resize rail"></div>
+ <div class="main"><div class="crumb" id="crumb">Select a session…</div><div id="takeover"></div><div id="view" class="empty">Select a session from the list</div></div>
  <div class="side-panel" id="sidePanel"></div>
 </div>
 <script>
-let mode='cc', sel=null, flt='busy', wFlt='all'
+let mode='cc', sel=null, flt='busy', wFlt='all', loadListGen=0
 // "High overhead" heuristic: flag a worker row when its babysitter (the Claude Code runner
 // that dispatched it) burned more than HIGH_OVERHEAD_RATIO times the OUTPUT tokens the worker
 // itself produced on its own (usually cheaper) backend — i.e. delegation likely cost MORE
@@ -102,6 +112,58 @@ let mode='cc', sel=null, flt='busy', wFlt='all'
 const HIGH_OVERHEAD_RATIO = 4
 function setFilter(k){ flt=k; loadList() }
 function setWFilter(k){ wFlt=k; loadList() }
+const RAIL_MIN=260, RAIL_MAX=400
+let railDragState={active:false,pointerId:-1,startX:0,startW:0}
+function clampRailW(n){ n=Number(n); if(isNaN(n)) return 320; if(n<RAIL_MIN) return RAIL_MIN; if(n>RAIL_MAX) return RAIL_MAX; return n}
+function updateRailHandle(e){
+  if(!railDragState.active) return
+  const w=clampRailW(railDragState.startW + e.clientX - railDragState.startX)
+  document.documentElement.style.setProperty('--rail-w',w+'px')
+}
+function finalizeRailDrag(e){
+  if(!railDragState.active) return
+  if(railDragState.pointerId===e.pointerId){
+    try{ document.getElementById('railDrag').releasePointerCapture(e.pointerId) }catch(ex){}
+  }
+  railDragState.active=false
+  railDragState.pointerId=-1
+  document.removeEventListener('pointermove',updateRailHandle)
+  document.removeEventListener('pointerup',finalizeRailDrag)
+  document.removeEventListener('pointercancel',finalizeRailDrag)
+  document.body.classList.remove('dragging-rail')
+  localStorage.setItem('cli-dispatch-rail-w',clampRailW(document.documentElement.style.getPropertyValue('--rail-w')?Number(document.documentElement.style.getPropertyValue('--rail-w').replace('px','')):320))
+}
+function initRailDrag(){
+  const h=document.getElementById('railDrag')
+  if(!h) return
+  h.addEventListener('pointerdown', (e)=>{
+    e.preventDefault()
+    const rw=clampRailW(parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--rail-w')))
+    railDragState={active:true,pointerId:e.pointerId,startX:e.clientX,startW:rw}
+    h.setPointerCapture(e.pointerId)
+    document.body.classList.add('dragging-rail')
+    document.addEventListener('pointermove',updateRailHandle)
+    document.addEventListener('pointerup',finalizeRailDrag)
+    document.addEventListener('pointercancel',finalizeRailDrag)
+  })
+}
+function hasOpenDetailView(){ return !!(window._cur && (window._cur.type==='session' || window._cur.type==='sub' || window._cur.type==='worker' || window._cur.type==='config')) }
+function setEmptyMainState(){
+  const text=mode==='w'?'Select a worker from the list':'Select a session from the list'
+  const v=document.getElementById('view')
+  if(v._k==='empty:'+mode && v._h===text) return
+  v._k='empty:'+mode; v._h=text; v.className='empty'; v.innerHTML=text
+}
+function workersOverviewHtml(agg){
+  const keys=Object.keys(agg||{}).sort()
+  if(!keys.length) return '<div class="empty">No usage data yet.</div>'
+  const cards=keys.map(k=>{
+    const a=agg[k]||{}
+    const nd=Number(a.noDataSessions)||0
+    return '<div class="worker-overview-card"><div class="worker-overview-name">'+esc(k)+'</div><div class="small muted">'+esc(fmtTok(a.inputTokens))+' in / '+esc(fmtTok(a.outputTokens))+' out</div>'+(nd?'<div class="small muted">'+nd+' sessions no data</div>':'')+'</div>'
+  }).join('')
+  return '<div class="worker-overview"><div class="worker-overview-grid">'+cards+'</div></div>'
+}
 // Live updates via Server-Sent Events. One detail stream for the open item; it
 // pushes a 'change' event whenever the watched file/dir changes (fs.watch).
 let detailES=null, detailSpec=null, detailTimer=null
@@ -213,9 +275,13 @@ async function loadList(){
   const el=document.getElementById('list')
   const fb=document.getElementById('filter')
   // Build first, swap once at the end — never blank the rail while the fetch is in flight.
+  // Generation guard: a tab switch mid-fetch must not let the stale response win the rail.
+  const gen=++loadListGen
   const frag=document.createDocumentFragment(); const sig=[]
+  let agg=null
   if(mode==='cc'){
     const ss=await j('/api/sessions')
+    if(gen!==loadListGen) return
     const counts={busy:0,idle:0,closed:0}; ss.forEach(s=>counts[s.status]=(counts[s.status]||0)+1)
     fb.style.display='flex'
     fb.innerHTML=[['all',ss.length],['busy',counts.busy],['idle',counts.idle],['closed',counts.closed]].map(([k,n])=>'<span class="fchip'+(flt===k?' on':'')+'" onclick="setFilter(\\''+k+'\\')">'+k+'<span class="c">'+n+'</span></span>').join('')
@@ -227,14 +293,14 @@ async function loadList(){
     })
   }else if(mode==='w'){
     const pair=await Promise.all([j('/api/workers'),j('/api/workers/aggregate')])
-    const ws=pair[0], agg=pair[1]||{}
+    if(gen!==loadListGen) return
+    const ws=pair[0], a=pair[1]||{}
+    agg=a
     const wCounts={all:ws.length,running:0,human:0,done:0,error:0}
     ws.forEach(w=>{ const k=workerBucket(w); wCounts[k]=(wCounts[k]||0)+1 })
     fb.style.display='flex'
     fb.innerHTML=[['all',wCounts.all],['running',wCounts.running],['human',wCounts.human],['done',wCounts.done],['error',wCounts.error]].map(([k,n])=>'<span class="fchip'+(wFlt===k?' on':'')+'" onclick="setWFilter(\\''+k+'\\')">'+k+'<span class="c">'+n+'</span></span>').join('')
     document.getElementById('meta').textContent=ws.length+' workers'
-    const aggRows=Object.keys(agg).sort().map(k=>{const a=agg[k]||{},nd=Number(a.noDataSessions)||0;return '<div class="urow"><b>'+esc(k)+':</b> '+esc(fmtTok(a.inputTokens))+' in / '+esc(fmtTok(a.outputTokens))+' out'+(nd?' ('+nd+' sessions no data)':'')+'</div>'}).join('')
-    if(aggRows){ const ae=E('<div class="usage-aggregate" id="usageAggregate">'+aggRows+'</div>'); frag.appendChild(ae); sig.push('agg:'+aggRows) }
     const shown=wFlt==='all'?ws:ws.filter(w=>workerBucket(w)===wFlt)
     shown.forEach(w=>{
       const bucket=workerBucket(w)
@@ -251,21 +317,18 @@ async function loadList(){
       const h='<div class="item'+(sel===w.id?' sel':'')+'"><div><span class="dot '+dot+'"></span>'+esc(w.backend)+' <span class="c">'+(w.model?esc(w.model):'default')+'</span> <span class="'+badgeCls+'">'+esc(badge)+'</span>'+(isHighOverhead(w)?' <span class="badge warn">high overhead</span>':'')+'</div>'+(proj?'<div class="small muted">'+esc(proj)+'</div>':'')+(w.parentSession?'<div class="small muted">from '+esc(shortSessionProj(w.parentSession.project))+'</div>':'')+'<div class="small muted">'+esc(w.prompt||w.id.slice(0,8))+'</div><div class="small muted">'+esc(fmtDT(w.started))+(w.lastTool?' · '+esc(w.lastTool):'')+usageLine+'</div></div>'
       const it=E(h); it.onclick=()=>openWorker(w); frag.appendChild(it); sig.push(h)
     })
-  }else if(mode==='config'){
-    fb.style.display='none'
-    document.getElementById('meta').textContent='configuration'
-    const h='<div style="padding:14px;color:var(--dim)">Configure backend API keys and model defaults.</div>'
-    if(el._sig===h) return
-    el._sig=h
-    el.innerHTML=h
-    return
   }
   // Skip the swap when nothing visible changed; otherwise keep the rail's scroll position.
   const s2=mode+'|'+sig.join('\\n')
-  if(el._sig===s2) return
-  el._sig=s2
-  const rail=el.parentElement; const sc=rail.scrollTop
-  el.replaceChildren(frag); rail.scrollTop=sc
+  const sameSig=el._sig===s2
+  if(!sameSig){
+    el._sig=s2
+    const rail=el.parentElement; const sc=rail.scrollTop
+    el.replaceChildren(frag); rail.scrollTop=sc
+  }
+  if(sel || hasOpenDetailView()) return
+  if(mode==='w'){ setView('workers-overview', workersOverviewHtml(agg)) }
+  else if(mode==='cc'){ setEmptyMainState() }
 }
 // worker progress.log lines already carry a leading glyph per event type (written by
 // {ag,cx,ds,oc,cp}-*-parse.mjs — see appendProgress() call sites); map that glyph to the
@@ -328,7 +391,7 @@ function babysitterUsageHtml(w, workerUsage){
 }
 function workerPanelHtml(lw){ if(!lw||!lw.length) return ''
   return '<details class="panel wk"><summary>Worker sessions (ds/ag/cx/oc/cp) <span class="badge">'+lw.length+'</span></summary><div class="sabody">'+lw.map(w=>'<span class="sa" onclick="openWorkerById(\\''+escAttr(w.id)+'\\')">'+esc(w.backend)+' ('+(w.model?esc(w.model):'default')+'): '+esc(w.prompt||w.id.slice(0,12))+' <span class="c">'+esc(w.stale?'stale':w.state)+'</span></span>').join('')+'</div></details>' }
-function openWorkerById(id){ fetch('/api/workers').then(r=>r.json()).then(ws=>{const w=ws.find(x=>x.id===id); if(!w) return; mode='w'; document.getElementById('tabW').classList.add('on'); document.getElementById('tabCC').classList.remove('on'); document.getElementById('tabConfig').classList.remove('on'); openWorker(w)}) }
+function openWorkerById(id){ fetch('/api/workers').then(r=>r.json()).then(ws=>{const w=ws.find(x=>x.id===id); if(!w) return; mode='w'; document.getElementById('tabW').classList.add('on'); document.getElementById('tabCC').classList.remove('on'); openWorker(w)}) }
 function chipHtml(a){const t=fmtTime(a.startedAt);return '<span class="sa'+(a.active?' act':'')+'" onclick="openSub(\\''+escAttr(a.agentId)+'\\','+(a.active?'true':'false')+')">'+(a.active?'● ':'')+esc(a.agentType)+': '+esc(a.description||a.agentId.slice(0,8))+(a.spawnDepth>1?' ·d'+a.spawnDepth:'')+(a.model?' <span class="badge">'+esc(a.model)+'</span>':'')+(t?' <span class="c">'+t+'</span>':'')+'</span>'}
 async function openSession(s){
   sel=s.id; mode='cc'
@@ -498,7 +561,7 @@ async function openConfigView() {
   document.getElementById('takeover').innerHTML = ''
   document.getElementById('crumb').innerHTML = 'Configuration'
   const v = document.getElementById('view')
-  v.className = ''
+  v._k='config'; v._h=null; v.className = ''
   v.innerHTML = 'loading…'
   loadList()
   await renderConfigEditor()
@@ -684,10 +747,10 @@ async function confirmClean() {
   }
 }
 function reopen(sid){ fetch('/api/sessions').then(r=>r.json()).then(ss=>{const s=ss.find(x=>x.id===sid); if(s) openSession(s)}) }
-function back(){ watchDetail(null); takeoverTeardown(); { const tk=document.getElementById('takeover'); tk.style.display='none'; tk.innerHTML='' } sel=null; window._cur=null; document.getElementById('crumb').textContent='Select a session…'; const v=document.getElementById('view'); v._k=null; v._h=null; v.className='empty'; v.innerHTML='←'; document.getElementById('sidePanel').innerHTML=''; loadList() }
-document.getElementById('tabCC').onclick=()=>{mode='cc';document.getElementById('tabCC').classList.add('on');document.getElementById('tabW').classList.remove('on');document.getElementById('tabConfig').classList.remove('on');back()}
-document.getElementById('tabW').onclick=()=>{mode='w';wFlt='all';document.getElementById('tabW').classList.add('on');document.getElementById('tabCC').classList.remove('on');document.getElementById('tabConfig').classList.remove('on');back()}
-document.getElementById('tabConfig').onclick=()=>{mode='config';document.getElementById('tabConfig').classList.add('on');document.getElementById('tabCC').classList.remove('on');document.getElementById('tabW').classList.remove('on');openConfigView()}
+function back(){ watchDetail(null); takeoverTeardown(); { const tk=document.getElementById('takeover'); tk.style.display='none'; tk.innerHTML='' } sel=null; window._cur=null; document.getElementById('sidePanel').innerHTML=''; if(mode==='w'){document.getElementById('crumb').textContent='Workers'; setEmptyMainState()}else{document.getElementById('crumb').textContent='Sessions'; setEmptyMainState()} loadList() }
+document.getElementById('tabCC').onclick=()=>{mode='cc';document.getElementById('tabCC').classList.add('on');document.getElementById('tabW').classList.remove('on');back()}
+document.getElementById('tabW').onclick=()=>{mode='w';wFlt='all';document.getElementById('tabW').classList.add('on');document.getElementById('tabCC').classList.remove('on');back()}
+initRailDrag()
 loadList()
 // Live list: SSE pushes a change whenever sessions/workers state changes (busy/idle flips, new runs).
 const listES=new EventSource('/api/stream?watch=sessions')

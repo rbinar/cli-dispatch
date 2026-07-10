@@ -7,6 +7,34 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.32.0] — 2026-07-11
+
+### Değiştirildi
+
+- **Dashboard: yerleşim revizyonu — Configuration header'a, backend kullanım istatistikleri
+  Workers genel görünümüne taşındı.** Gösterecek listesi olmayan Configuration rail tab'ı
+  artık header'da bir `⚙` düğmesi; aynı config editörünü main pane'de açıyor. Rail iki
+  tab'a indi ve adları **Sessions** / **Workers** oldu (satır sarma bitti). Backend başına
+  token toplamı rail'den çıktı: Workers tab'ının boş durumu artık kart grid'i olarak genel
+  görünüm çiziyor (backend başına bir kart — in/out token + "N sessions no data" notu);
+  boş main pane alanı iş görüyor, liste kolonu daralmıyor. Boş durumlar çıplak `←` oku
+  yerine yönlendirme metni gösteriyor.
+
+### Eklendi
+
+- **Dashboard: sürüklenebilir rail genişliği + responsive kırılım.** Liste kolonu bir
+  sürükleme tutamacıyla 260–400px arası yeniden boyutlandırılabiliyor, `localStorage`'da
+  kalıcı; ~1100px altında yan panel kapanıyor ve rail daralıyor — yarım ekran laptop
+  genişliğinde kullanılabilir kalıyor.
+
+### Düzeltildi
+
+- **Dashboard: iki rail render hatası.** (1) Rail genişliği geri yükleme script'i kayıt
+  yokken `Number(null)` → `0` çalıştırıp her yeni ziyaretçinin rail'ini 320px varsayılan
+  yerine 260px minimuma sabitliyordu. (2) `loadList()`'te bayatlık koruması yoktu; önceki
+  tab'ın yavaş fetch'i geç dönüp yeni seçilen tab'ın listesinin üzerine yazabiliyordu;
+  artık bir nesil sayacı bayat yanıtları çöpe atıyor.
+
 ## [3.31.0] — 2026-07-11
 
 ### Değiştirildi
