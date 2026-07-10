@@ -7,6 +7,28 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.30.10] — 2026-07-10
+
+### Değiştirildi
+
+- **Runner tanımları: beş `*-runner` description'ından "nadir durumlar için sonnet ayır"
+  kaçış kapısı kaldırıldı.** 509 runner agent üzerinde yapılan ölçümde, "her zaman haiku"
+  kuralına rağmen yalnızca %18'i gerçekten haiku'da çalışmıştı — sonnet/opus override'ları
+  sıfır kalite kazancıyla ~%65 saf babysitting maliyeti ekliyordu (orkestratör diff'i ve
+  testleri zaten yeniden doğruluyor). Description'lar artık model override geçmeyi açıkça
+  yasaklıyor; frontmatter `model: haiku` sabit kalıyor.
+  ([#95](https://github.com/rbinar/cli-dispatch/issues/95))
+
+### Eklendi
+
+- **cp-stream-parse: gerçek bir GitHub Copilot `assistant.message` fixture'ıyla regresyon
+  testi.** [#96](https://github.com/rbinar/cli-dispatch/issues/96) araştırması, parser'ın
+  `outputTokens`'ı 3.29.0'dan beri zaten doğru yakaladığını gösterdi — `usage: null` kalan
+  session'ların tamamı o fix'ten önceydi. Bir production transcript satırı artık
+  `output_tokens`'ın `status.json`'a yazıldığını assert eden test fixture'ı; yakalama yolu
+  bir daha sessizce gerileyemez. (Copilot CLI input-token verisi hiç yaymıyor — upstream
+  kısıt, kod içinde belgeli.)
+
 ## [3.30.9] — 2026-07-10
 
 ### Değiştirildi

@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.30.10] — 2026-07-10
+
+### Changed
+
+- **Runner defs: removed the "reserve sonnet for rare cases" escape hatch from all five
+  `*-runner` descriptions.** Measured across 509 runner agents, only 18% actually ran on
+  haiku despite the "always haiku" rule — sonnet/opus overrides added ~65% pure babysitting
+  cost with zero quality gain (the orchestrator re-verifies the diff and tests anyway).
+  The descriptions now state a hard prohibition against passing a model override; frontmatter
+  stays pinned to `model: haiku`. ([#95](https://github.com/rbinar/cli-dispatch/issues/95))
+
+### Added
+
+- **cp-stream-parse: regression test with a real GitHub Copilot `assistant.message`
+  fixture.** Investigation of [#96](https://github.com/rbinar/cli-dispatch/issues/96) showed
+  the parser already captures `outputTokens` correctly since 3.29.0 — the `usage: null`
+  sessions all predate that fix. A production transcript line is now a test fixture
+  asserting `output_tokens` lands in `status.json`, so the capture path can't silently
+  regress again. (Copilot CLI emits no input-token data — upstream limitation, documented
+  in-code.)
+
 ## [3.30.9] — 2026-07-10
 
 ### Changed

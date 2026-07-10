@@ -5,10 +5,10 @@ description: |
   concise, verified result — so the orchestrator's context stays clean. Use when a task
   should be handed to DeepSeek via the ds-* CLIs (ds-agent / ds-worktree-run.sh) and you
   want the running, monitoring, isolation, and verification handled in a sub-context.
-  The orchestrator picks this agent's model per call: model="haiku" is the default for ALL
-  delegations — including repo/code tasks — because the orchestrator independently re-verifies
-  the diff and tests after the runner returns. Reserve model="sonnet" for the rare case where
-  the runner alone must make a nuanced correctness judgment the orchestrator will not re-check.
+  This agent's model is pinned to haiku in frontmatter. NEVER pass a model override when
+  spawning this runner — measured across 509 runner agents, sonnet/opus overrides added ~65%
+  pure babysitting cost with zero quality gain (the orchestrator independently re-verifies the
+  diff and tests after the runner returns, so babysitter reasoning quality is not load-bearing).
   NEVER model="opus": task difficulty never escalates the babysitter model — the worker does
   the work; babysitting quality does not scale with model strength (measured: opus ~20x,
   sonnet ~12x haiku cost per delegation, zero quality gain).

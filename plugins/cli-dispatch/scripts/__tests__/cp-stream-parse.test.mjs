@@ -124,3 +124,34 @@ test('cp-stream-parse: accumulates assistant.message outputTokens without subage
 
   rmSync(testDir, { recursive: true, force: true })
 })
+
+// Real-world event extracted from a production cp-agent transcript:
+//   session d4426d07-1a9c-438b-b473-b5d22952cbfa, transcript.jsonl line 15
+//   Copilot emitted assistant.message with outputTokens:523 during a
+//   claude-sonnet-5 delegation (2026-07-06).  This verifies the parser
+//   accumulates outputTokens from the field we found in Phase 1 analysis.
+//
+// The fixture file at fixtures/real-assistant-message-outputTokens.json
+// contains the exact JSONL line from the transcript (unmodified).
+test('cp-stream-parse: real GitHub Copilot assistant.message event with outputTokens', async () => {
+  const fixturePath = path.join(
+    path.dirname(new URL(import.meta.url).pathname),
+    'fixtures', 'real-assistant-message-outputTokens.json'
+  )
+  const realEvent = JSON.parse(readFileSync(fixturePath, 'utf8'))
+
+  assert.equal(realEvent.type, 'assistant.message')
+  assert.equal(realEvent.data.outputTokens, 523)
+
+  const result = await runParser([realEvent])
+  assert.equal(result.code, 0)
+
+  const statusPath = path.join(testDir, 'status.json')
+  assert.ok(existsSync(statusPath))
+  const status = JSON.parse(readFileSync(statusPath, 'utf8'))
+  assert.equal(status.state, 'done')
+  assert.equal(status.usage.output_tokens, 523,
+    'parser must accumulate outputTokens from assistant.message events')
+
+  rmSync(testDir, { recursive: true, force: true })
+})
