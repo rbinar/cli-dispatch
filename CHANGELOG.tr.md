@@ -7,6 +7,21 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.31.0] — 2026-07-11
+
+### Değiştirildi
+
+- **Dashboard: Vercel/Geist görsel yeniden tasarımı + koyu/açık tema anahtarı.** Web
+  arayüzü Dracula paletini bırakıp Vercel tarzı tasarım token'larına geçti — koyu
+  (`#0a0a0a` zemin, `#52a9ff` vurgu) ve açık (`#fafafa`/beyaz, `#0070f3` vurgu) temalar
+  `html[data-theme]` üzerinde çift CSS değişken seti olarak tanımlı. Header'daki ☀/☾
+  düğmesi temayı değiştirip `localStorage`'a kaydediyor; ilk boyama `prefers-color-scheme`
+  tercihini izliyor (inline head script sayesinde parlama yok). Tipografi arayüz için
+  sistem sans yığınına geçti, veri/log için monospace korundu; panel/chip'ler 1px
+  `var(--bd)` kenarlık ve 6–8px köşe yarıçapı aldı. Önceden sabit kodlanmış tüm renkler
+  değişkene çevrildi, iki tema da doğru render ediyor. Saf görsel yenileme — davranış,
+  API veya DOM yapısı değişmedi.
+
 ## [3.30.10] — 2026-07-10
 
 ### Değiştirildi

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.31.0] — 2026-07-11
+
+### Changed
+
+- **Dashboard: Vercel/Geist visual redesign with a dark/light theme toggle.** The web UI
+  drops the Dracula palette for Vercel-style design tokens — dark (`#0a0a0a` background,
+  `#52a9ff` accent) and light (`#fafafa`/white, `#0070f3` accent) themes defined as dual
+  CSS variable sets on `html[data-theme]`. A ☀/☾ button in the header flips the theme and
+  persists it to `localStorage`; first paint follows `prefers-color-scheme` (no flash,
+  set by an inline head script). Typography moves to the system sans stack for chrome and
+  keeps monospace for data/logs; panels/chips get 1px `var(--bd)` borders and 6–8px radii.
+  All previously hardcoded colors were converted to variables so both themes render
+  correctly. Pure visual reskin — no behavior, API, or DOM-structure changes.
+
 ## [3.30.10] — 2026-07-10
 
 ### Changed
