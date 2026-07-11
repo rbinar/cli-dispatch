@@ -75,6 +75,12 @@ Copy-Item -Force (Join-Path $ScriptDir "cli-dispatch-wait.ps1") (Join-Path $BinD
 Set-Content -Path (Join-Path $BinDir "cli-dispatch-wait.cmd") -Value (New-Shim "cli-dispatch-wait") -Encoding ASCII
 Write-Host "Installed waiter -> $BinDir\cli-dispatch-wait.ps1 (+ .cmd shim; blocks until a session reaches a terminal state)"
 
+# Gain-report tool (backend-agnostic; always installed).
+Copy-Item -Force (Join-Path $ScriptDir "cli-dispatch-gain.ps1") (Join-Path $BinDir "cli-dispatch-gain.ps1")
+Set-Content -Path (Join-Path $BinDir "cli-dispatch-gain.cmd") -Value (New-Shim "cli-dispatch-gain") -Encoding ASCII
+Copy-Item -Force (Join-Path $ScriptDir "gain-report.mjs") (Join-Path $LibExecDir "gain-report.mjs")
+Write-Host "Installed gain reporter -> $BinDir\cli-dispatch-gain.ps1 (+ .cmd shim; engine -> $LibExecDir\gain-report.mjs)"
+
 # ---- DeepSeek backend (claude-ds family) ----
 if ($wantDS) {
   Copy-Item -Force (Join-Path $ScriptDir "claude-ds.ps1") (Join-Path $BinDir "claude-ds.ps1")

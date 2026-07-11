@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# cli-dispatch-gain — CLI wrapper for cli-dispatch token/accounting reporting.
+# Resolves node defensively for cron/launchd-style minimal PATHs.
+set -euo pipefail
+
+if ! command -v node >/dev/null 2>&1; then
+  for cand in "$HOME/.local/share/fnm/aliases/default/bin" "$HOME/.volta/bin" "$HOME/.asdf/shims" /opt/homebrew/bin /usr/local/bin; do
+    [ -x "$cand/node" ] && { PATH="$cand:$PATH"; break; }
+  done
+  if ! command -v node >/dev/null 2>&1; then
+    nvm_dir="${NVM_DIR:-$HOME/.nvm}"
+    if [ -d "$nvm_dir/versions/node" ]; then
+      latest="$(ls -1 "$nvm_dir/versions/node" 2>/dev/null | sort -V | tail -1)"
+      [ -n "$latest" ] && [ -x "$nvm_dir/versions/node/$latest/bin/node" ] && PATH="$nvm_dir/versions/node/$latest/bin:$PATH"
+    fi
+  fi
+fi
+command -v node >/dev/null 2>&1 || { echo "cli-dispatch-gain: 'node' not found in PATH (required)." >&2; exit 1; }
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENGINE="${CLI_DISPATCH_GAIN_ENGINE:-}"
+if [ -z "$ENGINE" ]; then
+  for cand in "$HOME/.local/share/cli-dispatch/gain-report.mjs" "$HOME/.local/share/claude-ds/gain-report.mjs" "$SCRIPT_DIR/gain-report.mjs"; do
+    if [ -f "$cand" ]; then ENGINE="$cand"; break; fi
+  done
+fi
+[ -n "$ENGINE" ] && [ -f "$ENGINE" ] || { echo "cli-dispatch-gain: gain-report.mjs not found (run /cli-dispatch:setup)." >&2; exit 1; }
+
+exec node "$ENGINE" "$@"

@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.33.0] — 2026-07-11
+
+### Changed
+
+- **Runner defs: `cli-dispatch-wait` is now the mandatory wait primitive in all five
+  runners.** Measured 2026-07-11: runners averaged 60+ Anthropic turns and ~2.5M
+  cache-read tokens each because the defs offered the blocking wait as a mere suggestion
+  and runners kept hand-rolling `sleep && cat status.json` poll loops (issue #88, fresh
+  data in comments). All five defs now state `cli-dispatch-wait <session-id>` is the ONLY
+  sanctioned way to wait for a terminal state; a bounded long-sleep poll loop is permitted
+  solely as a fallback when the binary isn't installed.
+
+### Added
+
+- **Standalone `cli-dispatch-gain` CLI.** The token-accounting script moves out of the
+  `/cli-dispatch:gain` command body into `scripts/gain-report.mjs`, with `cli-dispatch-gain`
+  / `cli-dispatch-gain.ps1` wrappers (defensive node resolution for cron/launchd, same
+  pattern as `cli-dispatch-clean`) installed by `install.sh` / `install.ps1` — so weekly
+  `cli-dispatch-gain --log` snapshots can run from the OS scheduler without Claude. The
+  command now prefers the installed binary and falls back to the plugin-root script.
+- **Gain: turns-per-runner metric.** The babysitting section reports average babysitter
+  turns per runner and warns when runners exceed 20 turns (the polling signature); both
+  figures land in the `--log` snapshot for trend tracking.
+
+### Fixed
+
+- **Gain: Codex "input offloaded" was inflated ~13x.** Codex CLI's `turn.completed` usage
+  reports cache-INCLUSIVE `input_tokens` (`cached_input_tokens` is a subset, measured
+  65–95% of it); gain summed the raw field as fresh input, reporting 204.6M for 132
+  sessions where the real fresh input was ~15.6M. `usage()` now subtracts
+  `cached_input_tokens` when present. ([#99](https://github.com/rbinar/cli-dispatch/issues/99))
+
 ## [3.32.0] — 2026-07-11
 
 ### Changed

@@ -7,6 +7,37 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.33.0] — 2026-07-11
+
+### Değiştirildi
+
+- **Runner tanımları: `cli-dispatch-wait` artık beş runner'da da zorunlu bekleme
+  primitifi.** 2026-07-11 ölçümü: tanımlar blocking wait'i yalnızca öneri olarak sunduğu
+  için runner'lar `sleep && cat status.json` döngüsü kurmaya devam etti — runner başına
+  60+ Anthropic turn ve ~2.5M cache-read token (issue #88, taze veri yorumlarda). Beş
+  tanım da artık `cli-dispatch-wait <session-id>`'yi terminal durumu beklemenin TEK onaylı
+  yolu ilan ediyor; sınırlı uzun-uykulu poll döngüsü yalnız binary kurulu değilse fallback.
+
+### Eklendi
+
+- **Bağımsız `cli-dispatch-gain` CLI.** Token muhasebesi script'i `/cli-dispatch:gain`
+  komut gövdesinden `scripts/gain-report.mjs`'e taşındı; `cli-dispatch-gain` /
+  `cli-dispatch-gain.ps1` sarmalayıcıları (cron/launchd için savunmacı node çözümleme,
+  `cli-dispatch-clean` deseni) `install.sh` / `install.ps1` ile kuruluyor — haftalık
+  `cli-dispatch-gain --log` anlık görüntüleri Claude olmadan OS zamanlayıcısından
+  çalışabiliyor. Komut kurulu binary'yi tercih ediyor, plugin-kökü script'e düşüyor.
+- **Gain: runner başına turn metriği.** Babysitting bölümü runner başına ortalama
+  babysitter turn sayısını raporluyor ve 20 turn'u aşan runner'ları uyarıyor (polling
+  imzası); iki değer de trend takibi için `--log` anlık görüntüsüne yazılıyor.
+
+### Düzeltildi
+
+- **Gain: Codex "input offloaded" ~13x şişikti.** Codex CLI'ın `turn.completed` usage'ı
+  cache-DAHİL `input_tokens` raporluyor (`cached_input_tokens` bunun alt kümesi, ölçülen
+  %65–95); gain ham alanı fresh input olarak topluyordu — 132 session için 204.6M
+  raporlanırken gerçek fresh input ~15.6M'di. `usage()` artık varsa
+  `cached_input_tokens`'ı düşüyor. ([#99](https://github.com/rbinar/cli-dispatch/issues/99))
+
 ## [3.32.0] — 2026-07-11
 
 ### Değiştirildi

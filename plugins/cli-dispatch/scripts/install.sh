@@ -143,6 +143,11 @@ echo "Installed cleaner -> cli-dispatch-clean (engine -> $LIBEXEC_DIR/cli-dispat
 install -m 0755 "$SCRIPT_DIR/cli-dispatch-wait" "$BIN_DIR/cli-dispatch-wait"
 echo "Installed waiter -> cli-dispatch-wait (blocks until a session reaches a terminal state; zero-token polling for *-runner subagents)"
 
+# ---- Gain-report tool (backend-agnostic; always installed) -----------------
+install -m 0755 "$SCRIPT_DIR/cli-dispatch-gain" "$BIN_DIR/cli-dispatch-gain"
+install -m 0644 "$SCRIPT_DIR/gain-report.mjs" "$LIBEXEC_DIR/gain-report.mjs"
+echo "Installed gain reporter -> cli-dispatch-gain (engine -> $LIBEXEC_DIR/gain-report.mjs); run /cli-dispatch:gain for worker + babysitting accounting"
+
 # ---- DeepSeek backend (claude-ds family) -----------------------------------
 if [ "$WANT_DS" -eq 1 ]; then
   install -m 0755 "$SCRIPT_DIR/claude-ds"        "$BIN_DIR/claude-ds"
