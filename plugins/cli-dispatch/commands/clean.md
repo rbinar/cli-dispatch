@@ -1,5 +1,5 @@
 ---
-description: Clean up stale worker session dirs (running-but-dead) and optionally old finished ones
+description: Clean up stale worker session dirs (running-but-dead), leftover worktree artifacts, and optionally old finished sessions
 allowed-tools: Bash
 ---
 
@@ -12,22 +12,43 @@ thread-id/session-id) leaves `status.json`
 stuck at `state:"running"` forever — it shows up as **stale** in `/cli-dispatch:sessions` and
 the dashboard, and never gets removed. This command finds and (with `--remove`) deletes them.
 
+It also sweeps **leftover worktree artifacts**: real-repo-changing runs are isolated in a git
+worktree (see CLAUDE.md's "runner/babysitter pattern") named `<backend>-wt-*` (`ds-wt-*`,
+`ag-wt-*`, `cx-wt-*`, `oc-wt-*`, `cp-wt-*`) under `/tmp` / `$TMPDIR` (`$env:TEMP` on Windows). A
+runner that crashes or is killed before its own cleanup leaves that worktree behind forever;
+this sweep finds and (with `--remove`) deletes those too.
+
 **Detection** = `status.json` mtime: `state:"running"` with no write for longer than the
 stale window ⇒ dead. **Default is a dry-run** (lists only); pass `--remove` to delete.
 
-- `--remove` — actually delete (default: dry-run, just list).
-- `--stale-secs N` — idle window before a `running` dir counts as stale (default `600` = 10 min;
-  deliberately larger than the dashboard's 90 s so a live-but-quiet turn is never deleted).
-- `--older-than DAYS` — ALSO prune finished (`done`/`error`) dirs whose `meta.startedAt` is
-  older than DAYS. Omit to leave all finished sessions alone.
+- `--remove` — actually delete (default: dry-run, just list). Applies to both the session
+  cleanup and the worktree sweep.
+- `--stale-secs N` — idle window before a `running` session dir counts as stale (default
+  `600` = 10 min; deliberately larger than the dashboard's 90 s so a live-but-quiet turn is
+  never deleted).
+- `--older-than DAYS` — ALSO prune finished (`done`/`error`) session dirs whose
+  `meta.startedAt` is older than DAYS. Omit to leave all finished sessions alone.
 - `--preserve-verdicts` — archive `verdict.json` and `verdict-diff.patch` into
   `<sessions-root>/verdict-archive/` before removal.
+- `--worktree-days N` — idle window (dir mtime) before a `*-wt-*` worktree artifact counts as
+  stale (default `3` days).
+- `--skip-worktrees` — disable the worktree-artifact sweep entirely (session cleanup only).
+- `--quiet` — suppress non-essential output for both the session cleanup and the worktree
+  sweep (used by the scheduled auto-clean).
 
-A genuinely-running worker (recent `status.json` write) is NEVER touched.
+A genuinely-running worker (recent `status.json` write) is NEVER touched. A worktree with
+uncommitted changes (`git status --porcelain` non-empty) is NEVER touched either — it is
+reported as `DIRTY (skipped, uncommitted changes)` so you can rescue it by hand. A `*-wt-*`
+dir that isn't a valid git worktree (broken/missing `.git`) is also left alone and reported as
+`SKIP (git status failed — not a valid worktree?)`. After deleting a worktree, if its source
+repo can be resolved from the worktree's `.git` gitdir pointer, `git worktree prune` is run
+against that source repo (best-effort — silently skipped if the source repo no longer exists
+or can't be resolved) so the source repo's own `git worktree list` doesn't keep a dangling
+administrative entry.
 
 ```bash
 ARGS="$*"   # pass through the command args (e.g. --remove --older-than 7)
-REMOVE=0; STALE_SECS=600; OLDER_DAYS=0; PRESERVE_VERDICTS=0
+REMOVE=0; STALE_SECS=600; OLDER_DAYS=0; PRESERVE_VERDICTS=0; WT_DAYS=3; SKIP_WORKTREES=0; QUIET=0
 set -- $ARGS
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -35,11 +56,80 @@ while [ "$#" -gt 0 ]; do
     --stale-secs) STALE_SECS="$2"; shift 2;;
     --older-than) OLDER_DAYS="$2"; shift 2;;
     --preserve-verdicts) PRESERVE_VERDICTS=1; shift;;
+    --worktree-days) WT_DAYS="$2"; shift 2;;
+    --skip-worktrees) SKIP_WORKTREES=1; shift;;
+    --quiet) QUIET=1; shift;;
     *) shift;;
   esac
 done
 case "$STALE_SECS" in ''|*[!0-9]*) STALE_SECS=600;; esac
 case "$OLDER_DAYS"  in ''|*[!0-9]*) OLDER_DAYS=0;; esac
+case "$WT_DAYS"     in ''|*[!0-9]*) WT_DAYS=3;; esac
+
+# ---- worktree artifact sweep -------------------------------------------------------------
+# Real-repo-changing runs are isolated in a git worktree named <backend>-wt-* under /tmp /
+# $TMPDIR (see CLAUDE.md "runner/babysitter pattern"); a runner that crashes or is killed
+# before its own cleanup leaves that worktree behind forever. Dirty worktrees (uncommitted
+# changes) are never touched.
+wtlog() { [ "$QUIET" -eq 1 ] || echo "$@"; }
+if [ "$SKIP_WORKTREES" -ne 1 ]; then
+  GIT_BIN="$(command -v git 2>/dev/null || true)"
+  if [ -z "$GIT_BIN" ]; then
+    for cand in /usr/bin/git /opt/homebrew/bin/git /usr/local/bin/git; do
+      [ -x "$cand" ] && { GIT_BIN="$cand"; break; }
+    done
+  fi
+  WT_FOUND=0; WT_DIRTY=0; WT_REMOVED=0; WT_SKIPPED=0
+  PRUNED_REPOS=""
+  sweep_wt_dir() {
+    local base="$1" wt gitdir_line src_repo git_out git_rc
+    [ -d "$base" ] || return 0
+    while IFS= read -r -d '' wt; do
+      [ -d "$wt" ] || continue
+      WT_FOUND=$((WT_FOUND + 1))
+      if [ -z "$GIT_BIN" ]; then
+        wtlog "  SKIP (git unavailable) $wt"; WT_SKIPPED=$((WT_SKIPPED + 1)); continue
+      fi
+      git_rc=0
+      git_out="$("$GIT_BIN" -C "$wt" status --porcelain 2>/dev/null)" || git_rc=$?
+      if [ "$git_rc" -ne 0 ]; then
+        wtlog "  SKIP (git status failed — not a valid worktree?) $wt"; WT_SKIPPED=$((WT_SKIPPED + 1)); continue
+      fi
+      if [ -n "$git_out" ]; then
+        wtlog "  DIRTY (skipped, uncommitted changes) $wt"; WT_DIRTY=$((WT_DIRTY + 1)); continue
+      fi
+      wtlog "  worktree stale (clean, idle > ${WT_DAYS}d): $wt"
+      if [ "$REMOVE" -eq 1 ]; then
+        src_repo=""
+        if [ -f "$wt/.git" ]; then
+          gitdir_line="$(sed -n 's/^gitdir: //p' "$wt/.git" 2>/dev/null | head -1)"
+          case "$gitdir_line" in
+            */.git/worktrees/*) src_repo="${gitdir_line%/.git/worktrees/*}";;
+          esac
+        fi
+        rm -rf "$wt"
+        WT_REMOVED=$((WT_REMOVED + 1))
+        if [ -n "$src_repo" ] && [ -d "$src_repo" ]; then
+          case " $PRUNED_REPOS " in
+            *" $src_repo "*) ;;
+            *) "$GIT_BIN" -C "$src_repo" worktree prune >/dev/null 2>&1 || true; PRUNED_REPOS="$PRUNED_REPOS $src_repo";;
+          esac
+        fi
+      fi
+    done < <(find "$base" -mindepth 1 -maxdepth 1 -type d -name '*-wt-*' -mtime +"$WT_DAYS" -print0 2>/dev/null)
+  }
+  wtlog "worktree artifact sweep (pattern *-wt-*, older than ${WT_DAYS}d):"
+  sweep_wt_dir "/tmp"
+  if [ -n "${TMPDIR:-}" ] && [ "${TMPDIR%/}" != "/tmp" ]; then sweep_wt_dir "${TMPDIR%/}"; fi
+  WT_ELIGIBLE=$((WT_FOUND - WT_DIRTY - WT_SKIPPED))
+  if [ "$WT_FOUND" -eq 0 ]; then
+    wtlog "  none found."
+  elif [ "$REMOVE" -eq 1 ]; then
+    wtlog "  removed $WT_REMOVED worktree(s), skipped $WT_DIRTY dirty, $WT_SKIPPED unreadable."
+  else
+    wtlog "  DRY-RUN — $WT_ELIGIBLE of $WT_FOUND candidate(s) would be deleted ($WT_DIRTY dirty, $WT_SKIPPED unreadable — both kept). Re-run with --remove to delete."
+  fi
+fi
 
 CACHE="${XDG_CACHE_HOME:-$HOME/.cache}"
 ROOT="${CLI_DISPATCH_SESSIONS_DIR:-${CLAUDE_DS_SESSIONS_DIR:-}}"
@@ -115,7 +205,68 @@ EOF
 **Native Windows** (PowerShell equivalent):
 
 ```powershell
-param([switch]$Remove, [switch]$PreserveVerdicts, [int]$StaleSecs = 600, [int]$OlderThan = 0)
+param([switch]$Remove, [switch]$PreserveVerdicts, [int]$StaleSecs = 600, [int]$OlderThan = 0, [int]$WorktreeDays = 3, [switch]$SkipWorktrees, [switch]$Quiet)
+
+# ---- worktree artifact sweep -------------------------------------------------------------
+# Real-repo-changing runs are isolated in a git worktree named <backend>-wt-* under
+# $env:TEMP (see CLAUDE.md "runner/babysitter pattern"); a runner that crashes or is killed
+# before its own cleanup leaves that worktree behind forever. Dirty worktrees (uncommitted
+# changes) are never touched.
+function Write-WtLog($msg) { if (-not $Quiet) { Write-Host $msg } }
+if (-not $SkipWorktrees) {
+  $gitCmd = Get-Command git -ErrorAction SilentlyContinue
+  if (-not $gitCmd) {
+    $gitCandidates = @(
+      (Join-Path $env:ProgramFiles "Git\bin\git.exe"),
+      (Join-Path ${env:ProgramFiles(x86)} "Git\bin\git.exe"),
+      (Join-Path $env:LOCALAPPDATA "Programs\Git\bin\git.exe")
+    )
+    foreach ($cand in $gitCandidates) { if ($cand -and (Test-Path $cand)) { $gitCmd = $cand; break } }
+  }
+  $gitBin = if ($gitCmd -is [System.Management.Automation.CommandInfo]) { $gitCmd.Source } else { $gitCmd }
+  $tmpRoot = $env:TEMP
+  Write-WtLog "worktree artifact sweep (pattern *-wt-*, older than ${WorktreeDays}d):"
+  $wtFound = 0; $wtDirty = 0; $wtRemoved = 0; $wtSkipped = 0; $prunedRepos = @()
+  if ($tmpRoot -and (Test-Path $tmpRoot)) {
+    $cutoff = (Get-Date).AddDays(-$WorktreeDays)
+    $candidates = Get-ChildItem -Path $tmpRoot -Directory -Filter "*-wt-*" -ErrorAction SilentlyContinue |
+      Where-Object { $_.LastWriteTime -lt $cutoff }
+    foreach ($wt in $candidates) {
+      $wtFound++
+      if (-not $gitBin) { Write-WtLog "  SKIP (git unavailable) $($wt.FullName)"; $wtSkipped++; continue }
+      $statusOut = & $gitBin -C $wt.FullName status --porcelain 2>$null
+      if ($LASTEXITCODE -ne 0) { Write-WtLog "  SKIP (git status failed - not a valid worktree?) $($wt.FullName)"; $wtSkipped++; continue }
+      if ($statusOut) { Write-WtLog "  DIRTY (skipped, uncommitted changes) $($wt.FullName)"; $wtDirty++; continue }
+      Write-WtLog "  worktree stale (clean, idle > ${WorktreeDays}d): $($wt.FullName)"
+      if ($Remove) {
+        $srcRepo = $null
+        $gitFile = Join-Path $wt.FullName ".git"
+        if (Test-Path $gitFile -PathType Leaf) {
+          try {
+            $gitdirLine = (Get-Content -Raw $gitFile) -split "`r?`n" | Where-Object { $_ -match '^gitdir:\s*(.+)$' } | Select-Object -First 1
+            if ($gitdirLine -match '^gitdir:\s*(.+)$') {
+              $gitdirPath = $Matches[1].Trim()
+              $marker = [regex]::Escape("$([System.IO.Path]::DirectorySeparatorChar).git$([System.IO.Path]::DirectorySeparatorChar)worktrees$([System.IO.Path]::DirectorySeparatorChar)")
+              if ($gitdirPath -match "(.+?)$marker") { $srcRepo = $Matches[1] }
+              elseif ($gitdirPath -match "(.+?)/\.git/worktrees/") { $srcRepo = $Matches[1] }
+            }
+          } catch {}
+        }
+        Remove-Item -Recurse -Force $wt.FullName
+        $wtRemoved++
+        if ($srcRepo -and (Test-Path $srcRepo) -and ($prunedRepos -notcontains $srcRepo)) {
+          try { & $gitBin -C $srcRepo worktree prune 2>$null | Out-Null } catch {}
+          $prunedRepos += $srcRepo
+        }
+      }
+    }
+  }
+  $wtEligible = $wtFound - $wtDirty - $wtSkipped
+  if ($wtFound -eq 0) { Write-WtLog "  none found." }
+  elseif ($Remove) { Write-WtLog "  removed $wtRemoved worktree(s), skipped $wtDirty dirty, $wtSkipped unreadable." }
+  else { Write-WtLog "  DRY-RUN - $wtEligible of $wtFound candidate(s) would be deleted ($wtDirty dirty, $wtSkipped unreadable - both kept). Re-run with -Remove to delete." }
+}
+
 $cache = if ($env:XDG_CACHE_HOME) { $env:XDG_CACHE_HOME } else { Join-Path $HOME '.cache' }
 $root = if ($env:CLI_DISPATCH_SESSIONS_DIR) { $env:CLI_DISPATCH_SESSIONS_DIR } elseif ($env:CLAUDE_DS_SESSIONS_DIR) { $env:CLAUDE_DS_SESSIONS_DIR } elseif (Test-Path (Join-Path $cache 'cli-dispatch/sessions')) { Join-Path $cache 'cli-dispatch/sessions' } else { Join-Path $cache 'claude-ds/sessions' }
 if (-not (Test-Path $root)) { "(no sessions dir: $root)"; return }

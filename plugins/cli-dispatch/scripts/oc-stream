@@ -336,6 +336,22 @@ else
     [ -f "$SESSION_DIR/status.json" ] && OC_STATE="$(json_field "$SESSION_DIR/status.json" state || true)"
     if [ "$OC_STATE" = "done" ] || [ -z "$OC_STATE" ]; then
       reconcile_session_error "$SESSION_DIR" "opencode exited with code $OC_RC" "$OC_RC"
+    elif [ "$OC_STATE" = "error" ]; then
+      # The parser already flagged state=error itself (top-level {"type":"error",...} event
+      # detected in the JSON stream — see the H2 comment below), so don't clobber its more
+      # specific error message via reconcile_session_error. BUT its finalize() always calls
+      # finalize(0) on stdin EOF (it never sees opencode's real process exit code), so
+      # meta.exitCode is hardcoded to 0 regardless of how opencode actually exited. Patch
+      # just that field so a real nonzero exit isn't lost as 0.
+      CLI_DISPATCH_FIX_DIR="$SESSION_DIR" CLI_DISPATCH_FIX_RC="$OC_RC" node -e '
+        const fs = require("fs"), p = require("path")
+        const dir = process.env.CLI_DISPATCH_FIX_DIR
+        const rc = Number(process.env.CLI_DISPATCH_FIX_RC)
+        const f = p.join(dir, "meta.json")
+        let m = {}; try { m = JSON.parse(fs.readFileSync(f, "utf8")) } catch {}
+        m.exitCode = rc
+        try { fs.writeFileSync(f, JSON.stringify(m, null, 2) + "\n") } catch (e) { process.stderr.write("exitCode patch: cannot write meta.json: " + e.message + "\n") }
+      ' || echo "oc-stream: exitCode patch failed — meta.json may show exitCode:0 for a real nonzero exit" >&2
     fi
   fi
   printf '%s' "$OC_RC" > "$DONEFILE"

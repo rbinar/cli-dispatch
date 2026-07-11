@@ -84,7 +84,26 @@ function Reconcile-SessionError($dir, $err, $exitCode) {
   }
 }
 
-function Write-DiffArtifacts($dir, $cwd) {
+function Snapshot-DirtyPaths($cwd) {
+  # Call BEFORE launching the worker (once $cwd is fully resolved). Returns the set of paths
+  # already dirty/untracked in $cwd, in the same `git status --short --untracked-files=all`
+  # field layout Write-DiffArtifacts parses (path = characters 4..). Write-DiffArtifacts drops
+  # these from the run's reported changed-files so a worker isn't credited/blamed for pre-run
+  # dirt. Silent no-op (empty) if git is unavailable or $cwd is not a git worktree.
+  # (PowerShell equivalent of bash stream-utils.sh snapshot_dirty_paths.)
+  if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return @() }
+  $null = git -C $cwd rev-parse --is-inside-work-tree 2>$null
+  if ($LASTEXITCODE -ne 0) { return @() }
+  $lines = & git -C $cwd status --short --untracked-files=all 2>$null
+  $set = @()
+  foreach ($line in $lines) {
+    if ([string]::IsNullOrWhiteSpace($line)) { continue }
+    if ($line.Length -gt 3) { $set += $line.Substring(3) }
+  }
+  return , $set
+}
+
+function Write-DiffArtifacts($dir, $cwd, $preexistingDirty = @()) {
   $null = git -C $cwd rev-parse --is-inside-work-tree 2>$null
   if ($LASTEXITCODE -ne 0) { return }
 
@@ -102,7 +121,14 @@ function Write-DiffArtifacts($dir, $cwd) {
     $diffstat = ($diffStatLines[-1]).Trim()
   }
 
+  # Paths already dirty/untracked BEFORE the worker launched (snapshot). Excluded from the
+  # reported files list below and recorded under preexistingDirty; diff.patch is left untouched
+  # (still a full working-tree diff against HEAD, pre-existing dirt included).
+  $preSet = @{}
+  foreach ($p in $preexistingDirty) { if (-not [string]::IsNullOrWhiteSpace($p)) { $preSet[$p] = $true } }
+
   $changes = @()
+  $preexisting = @()
   foreach ($line in $statusLines) {
     if ([string]::IsNullOrWhiteSpace($line)) { continue }
     $code = $line.Substring(0, 2)
@@ -128,6 +154,11 @@ function Write-DiffArtifacts($dir, $cwd) {
       & git -C $cwd diff --no-index -- /dev/null $file 2>$null | Add-Content -Path $diffPatchPath -Encoding UTF8
     }
 
+    # Exclude paths that were already dirty/untracked before the worker ran — the run must
+    # only be credited/blamed for paths it touched. Still recorded (preexistingDirty) for
+    # visibility; the diff.patch append above is unaffected.
+    if ($preSet.ContainsKey($file)) { $preexisting += $file; continue }
+
     $changes += [PSCustomObject]@{
       path   = $file
       status = $fstatus
@@ -136,8 +167,9 @@ function Write-DiffArtifacts($dir, $cwd) {
 
   $changedFilesPath = Join-Path $dir "changed-files.json"
   $jsonObj = [PSCustomObject]@{
-    files    = $changes
-    diffstat = $diffstat
+    files            = $changes
+    diffstat         = $diffstat
+    preexistingDirty = $preexisting
   }
   $jsonObj | ConvertTo-Json -Depth 5 | Set-Content -Path $changedFilesPath -Encoding UTF8
 }
@@ -388,6 +420,10 @@ $env:CX_MODEL = $cxModelLabel
 $env:CX_THREAD_ID = if ($resume -eq 1) { $resumeId } else { "" }
 $env:CX_RESUME = "$resume"
 
+# ---- snapshot pre-existing dirt BEFORE launch ($cwd is fully resolved/absolute above) so the
+# run's changed-files.json excludes files already dirty/untracked before the worker started. ----
+$preexistingDirty = Snapshot-DirtyPaths $cwd
+
 # ---- watchdog: runtime cap + idle on transcript mtime (best-effort; mirrors claude-ds-stream.ps1) ----
 $timeoutFile = Join-Path $sessionDir '.timeout'
 Remove-Item -Force $timeoutFile -ErrorAction SilentlyContinue
@@ -395,17 +431,25 @@ $watchJob = $null
 if ($maxRuntime -gt 0 -or $idleTimeout -gt 0) {
   [Console]::Error.WriteLine("  guard:   max-runtime=${maxRuntime}s idle-timeout=${idleTimeout}s")
   $watchJob = Start-Job -ScriptBlock {
-    param($sessionDir, $maxRuntime, $idleTimeout)
+    param($sessionDir, $maxRuntime, $idleTimeout, $mainPid)
     $start = Get-Date
     $transcript = Join-Path $sessionDir 'transcript.jsonl'
     $tf = Join-Path $sessionDir '.timeout'
     $procId = $null
     for ($n = 0; $n -lt 160; $n++) {
-      $matchingProcs = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-           Where-Object { $_.CommandLine -and $_.CommandLine -match '\bexec\b' -and $_.CommandLine.Contains('--json') -and $_.Name -match 'codex' })
-      if ($matchingProcs.Count -eq 1) { $procId = $matchingProcs[0].ProcessId; break }
-      if ($matchingProcs.Count -gt 1) {
-        [Console]::Error.WriteLine("  guard:   multiple matching processes ($($matchingProcs.Count)) for codex exec, skipping kill to avoid wrong-process termination")
+      # Prefer the EXACT worker: the direct child of the wrapper ($mainPid) running codex exec
+      # --json — deterministic single PID. System-wide match is the last-resort fallback (e.g.
+      # codex launched via a shim, so the real process is a grandchild, not a direct child).
+      $scoped = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+           Where-Object { $_.ParentProcessId -eq $mainPid -and $_.CommandLine -and $_.CommandLine -match '\bexec\b' -and $_.CommandLine.Contains('--json') -and $_.Name -match 'codex' })
+      if ($scoped.Count -eq 1) { $procId = $scoped[0].ProcessId; break }
+      if ($scoped.Count -eq 0) {
+        $matchingProcs = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+             Where-Object { $_.CommandLine -and $_.CommandLine -match '\bexec\b' -and $_.CommandLine.Contains('--json') -and $_.Name -match 'codex' })
+        if ($matchingProcs.Count -eq 1) { $procId = $matchingProcs[0].ProcessId; break }
+        if ($matchingProcs.Count -gt 1) {
+          [Console]::Error.WriteLine("  guard:   multiple matching processes ($($matchingProcs.Count)) for codex exec, skipping kill to avoid wrong-process termination")
+        }
       }
       Start-Sleep -Milliseconds 250
     }
@@ -424,7 +468,7 @@ if ($maxRuntime -gt 0 -or $idleTimeout -gt 0) {
         }
       }
     }
-  } -ArgumentList $sessionDir, $maxRuntime, $idleTimeout
+  } -ArgumentList $sessionDir, $maxRuntime, $idleTimeout, $PID
 }
 
 $rc = 0
@@ -574,7 +618,7 @@ try {
   }
 
   # ---- extract diff artifacts ----
-  Write-DiffArtifacts -dir $sessionDir -cwd $cwd
+  Write-DiffArtifacts -dir $sessionDir -cwd $cwd -preexistingDirty $preexistingDirty
 
   # ---- print ONLY the final agent message on stdout (codex -o file; clean) ----
   if ((Test-Path $outFile.FullName) -and (Get-Item $outFile.FullName).Length -gt 0) {

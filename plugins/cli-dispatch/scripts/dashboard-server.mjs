@@ -45,6 +45,18 @@ const PROJECTS_DIR = path.join(HOME, '.claude', 'projects')
 const parentIndexCache = new Map() // keyed by CC session id -> { mtime, workerIds: string[] }
 const subagentCache = new Map() // keyed by subagent file path -> { mtime, matchedWorkerIds: string[], usage: { inTok: number, outTok: number } | null }
 const sessionTailCache = new Map() // keyed by CC session .jsonl path -> { mtime, head, tail, model, foundTail } — the readHead/readTail/parse result, invalidated by mtime
+
+// Bounded-size cache write: these three caches accumulate one entry per file/session seen
+// across the dashboard's lifetime with no natural eviction, which is an unbounded-growth
+// (memory leak) risk on long-running installs. Insertion-order (Map's native order) is good
+// enough here — real LRU (promoting on read) isn't worth the complexity for a dashboard cache.
+const CACHE_MAX = 500
+function cacheSet(map, key, value) {
+  if (map.size >= CACHE_MAX && !map.has(key)) {
+    map.delete(map.keys().next().value) // evict oldest insertion-order entry
+  }
+  map.set(key, value)
+}
 const CC_SESSIONS_DIR = path.join(HOME, '.claude', 'sessions')
 const CACHE = process.env.XDG_CACHE_HOME || path.join(HOME, '.cache')
 const WORKERS_ROOT = process.env.CLI_DISPATCH_SESSIONS_DIR || process.env.CLAUDE_DS_SESSIONS_DIR ||
@@ -168,7 +180,7 @@ function listSessions() {
             } catch {}
           }
           derived = { mtime: st.mtimeMs, head, tail, model }
-          sessionTailCache.set(file, derived)
+          cacheSet(sessionTailCache, file, derived)
         }
         const { head, tail, model } = derived
         const lv = live[id]
@@ -390,7 +402,7 @@ function buildWorkerParentIndex() {
           }
         }
       }
-      parentIndexCache.set(s.sessionId, { mtime: currentMtime, workerIds: workerIdsInSession })
+      cacheSet(parentIndexCache, s.sessionId, { mtime: currentMtime, workerIds: workerIdsInSession })
     }
 
     const subagentMatchesForSession = new Map()
@@ -438,7 +450,7 @@ function buildWorkerParentIndex() {
               }
             }
             cachedSub = { mtime: currentSubMtime, matchedWorkerIds, usage }
-            subagentCache.set(filePath, cachedSub)
+            cacheSet(subagentCache, filePath, cachedSub)
           }
 
           for (const wid of cachedSub.matchedWorkerIds) {

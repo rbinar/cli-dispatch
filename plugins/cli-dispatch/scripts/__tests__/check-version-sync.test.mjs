@@ -2,10 +2,13 @@ import { test, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
+import os from 'node:os'
 
 import { checkVersionSync } from '../check-version-sync.mjs'
 
-const testRoot = path.resolve('plugins/cli-dispatch/scripts/__tests__')
+// Fixture roots go to the OS temp dir (not a repo-relative path) so the test is
+// cwd-independent and a stray run never leaves junk in the working tree.
+const testRoot = os.tmpdir()
 const tempDirs = new Set()
 
 afterEach(() => {

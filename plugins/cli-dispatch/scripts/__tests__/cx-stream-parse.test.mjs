@@ -1,11 +1,19 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { rmSync, readFileSync, existsSync } from 'node:fs'
+import { rmSync, readFileSync, existsSync, mkdtempSync } from 'node:fs'
 import path from 'node:path'
+import os from 'node:os'
+import { fileURLToPath } from 'node:url'
 
-const parserScript = path.resolve('plugins/cli-dispatch/scripts/cx-stream-parse.mjs')
-const testDir = path.resolve('plugins/cli-dispatch/scripts/__tests__/tmp-test-cx-session')
+// Absolute, cwd-independent: works whether the test runner is invoked from the
+// repo root or from plugins/cli-dispatch/scripts/ (see check-version-sync.test.mjs
+// / dashboard-server.test.mjs for the same idiom).
+const SELF_DIR = path.dirname(fileURLToPath(import.meta.url))
+const parserScript = path.join(SELF_DIR, '..', 'cx-stream-parse.mjs')
+// Use the OS temp dir (not a repo-relative path) so a stray run never leaves
+// a junk directory behind in the working tree.
+const testDir = mkdtempSync(path.join(os.tmpdir(), 'cli-dispatch-test-cx-session-'))
 const modelMismatchAdvisory = 'This session was recorded with model `gpt-5.5` but is resuming with `gpt-5.3-codex-spark`. Consider switching back to `gpt-5.5` as it may affect Codex performance.'
 
 function runParser(events, envOverrides = {}) {

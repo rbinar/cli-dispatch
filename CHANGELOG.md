@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.42.0] — 2026-07-11
+
+### Added
+
+- **`/cli-dispatch:clean` now sweeps stale worktree leftovers.** cli-dispatch
+  worktrees (`ds-wt-*`, `ag-wt-*`, `cx-wt-*`, `oc-wt-*`, `cp-wt-*`) abandoned
+  under `/tmp`/`$TMPDIR` (`$env:TEMP` on Windows) are removed once older than
+  a threshold (`--worktree-days N`, default 3; `--skip-worktrees` opts out).
+  Dirty worktrees (uncommitted changes) are never deleted — they are reported
+  and skipped, as are broken/non-git `*-wt-*` dirs. After deletion the source
+  repo (resolved from the worktree's `.git` gitdir pointer) gets a best-effort
+  `git worktree prune`. Implemented in `cli-dispatch-clean`, its `.ps1` twin,
+  and both fenced blocks of `commands/clean.md`; `git` is probed defensively
+  for minimal-PATH launchd/cron/Scheduled-Task runs.
+- **Integration tests for `/cli-dispatch:kill`'s bash block**
+  (`__tests__/kill-flow.test.mjs`, 8 tests). The fenced bash is extracted from
+  `kill.md` and exercised against real throwaway process trees in a fake
+  session dir: worker.pid tree-kill, terminal-state guard (`done`/
+  `human-controlled` skipped), no clobber of a parser-written terminal
+  `error`, legacy `pgrep` fallback, and bad-input errors.
+
+### Fixed
+
+- **`oc-stream` no longer reports `exitCode: 0` for a real nonzero exit when
+  the parser flagged `state: error`** — same fix `cx-stream` got in 3.41.0:
+  reconcile is still skipped (the parser's specific error message wins), but
+  `meta.json`'s `exitCode` is now patched with OpenCode's real exit code.
+- **`ag-stream`'s preflight/auth block no longer references a broken
+  `$SCRIPT_DIR/parse-utils.mjs` path.** In a real install the script lives in
+  `~/.local/bin` while `parse-utils.mjs` lives in
+  `~/.local/share/cli-dispatch/` — the legacy references now use the robust
+  `PARSE_UTILS` resolution added in 3.41.0.
+- **Windows watchdog/kill PID resolution is now deterministic**
+  (`claude-ds-stream.ps1`, `cx-stream.ps1`). The `Win32_Process` command-line
+  substring scan is scoped to direct children of the wrapper's own `$PID`,
+  yielding a single precise worker PID; the old system-wide scan remains only
+  as a last-resort fallback. The streaming launch pipeline and the
+  `worker.pid` contract (wrapper tree-root PID) are untouched.
+- **Windows `changed-files.json` no longer credits/blames a worker for
+  pre-existing dirt** (`claude-ds-stream.ps1`, `cx-stream.ps1`) — parity with
+  3.41.0's bash fix: dirty/untracked paths are snapshotted before launch,
+  excluded from `files`, and recorded under `preexistingDirty`; `diff.patch`
+  still carries the full working-tree diff.
+- **The test suite is now cwd-independent.** Six test files
+  (`ag-transcript-parse`, `cp/cx/ds/oc-stream-parse`, `check-version-sync`)
+  resolved fixtures/parsers relative to `process.cwd()`, so running
+  `node --test` from `plugins/cli-dispatch/scripts/` failed ~20 tests and
+  littered a junk `scripts/plugins/...` tree. Paths are now
+  `import.meta.url`-based and temp dirs use `os.tmpdir()` + `mkdtemp`; the
+  suite is green from any cwd and writes nothing into the repo.
+- **Dashboard module-level caches are now bounded** (`dashboard-server.mjs`):
+  `parentIndexCache`, `subagentCache`, and `sessionTailCache` share a
+  500-entry cap with oldest-insertion eviction — no behavior change, just no
+  more unbounded growth.
+
 ## [3.41.0] — 2026-07-11
 
 ### Fixed

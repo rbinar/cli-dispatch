@@ -7,6 +7,63 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.42.0] — 2026-07-11
+
+### Eklendi
+
+- **`/cli-dispatch:clean` artık eski worktree artıklarını süpürüyor.**
+  `/tmp`/`$TMPDIR` (Windows'ta `$env:TEMP`) altında terk edilmiş cli-dispatch
+  worktree'leri (`ds-wt-*`, `ag-wt-*`, `cx-wt-*`, `oc-wt-*`, `cp-wt-*`) bir
+  eşikten (`--worktree-days N`, varsayılan 3; `--skip-worktrees` devre dışı
+  bırakır) eski olunca siliniyor. Dirty worktree'ler (commit edilmemiş
+  değişiklik) ASLA silinmiyor — raporlanıp atlanıyor; bozuk/git-olmayan
+  `*-wt-*` dizinleri de öyle. Silme sonrası kaynak repo (worktree'nin `.git`
+  gitdir işaretçisinden çözümlenir) best-effort `git worktree prune` alıyor.
+  `cli-dispatch-clean`, `.ps1` ikizi ve `commands/clean.md`'nin her iki
+  fenced bloğunda uygulandı; minimal-PATH launchd/cron/Scheduled-Task
+  koşuları için `git` savunmacı şekilde aranıyor.
+- **`/cli-dispatch:kill`'in bash bloğu için entegrasyon testleri**
+  (`__tests__/kill-flow.test.mjs`, 8 test). Fenced bash `kill.md`'den
+  çıkarılıp sahte session dizininde gerçek tek-kullanımlık process
+  ağaçlarına karşı sınanıyor: worker.pid tree-kill, terminal-state guard
+  (`done`/`human-controlled` atlanır), parser'ın yazdığı terminal `error`'ın
+  ezilmemesi, legacy `pgrep` fallback ve hatalı-girdi durumları.
+
+### Düzeltildi
+
+- **`oc-stream`, parser `state: error` bayraklamışken gerçek sıfır-dışı
+  çıkış için artık `exitCode: 0` raporlamıyor** — cx-stream'in 3.41.0'da
+  aldığı fix'in aynısı: reconcile yine atlanıyor (parser'ın spesifik hata
+  mesajı kazanır) ama `meta.json`'daki `exitCode` artık OpenCode'un gerçek
+  çıkış koduyla yamalanıyor.
+- **`ag-stream`'in preflight/auth bloğu artık kırık
+  `$SCRIPT_DIR/parse-utils.mjs` path'ine referans vermiyor.** Gerçek
+  kurulumda script `~/.local/bin`'de, `parse-utils.mjs` ise
+  `~/.local/share/cli-dispatch/`'te — eski referanslar 3.41.0'da eklenen
+  sağlam `PARSE_UTILS` çözümlemesini kullanıyor.
+- **Windows watchdog/kill PID çözümlemesi artık deterministik**
+  (`claude-ds-stream.ps1`, `cx-stream.ps1`). `Win32_Process` komut-satırı
+  substring taraması, wrapper'ın kendi `$PID`'inin doğrudan çocuklarına
+  scope'landı — tek ve kesin worker PID'i veriyor; eski sistem-geneli tarama
+  yalnız son-çare fallback olarak kaldı. Streaming launch pipeline'ı ve
+  `worker.pid` sözleşmesi (wrapper tree-root PID) hiç değişmedi.
+- **Windows `changed-files.json` artık önceden var olan kiri worker'a mal
+  etmiyor** (`claude-ds-stream.ps1`, `cx-stream.ps1`) — 3.41.0'daki bash
+  fix'iyle parite: dirty/untracked path'ler launch öncesi snapshot'lanıyor,
+  `files`'tan düşülüyor ve `preexistingDirty` altında kaydediliyor;
+  `diff.patch` yine tam working-tree diff'ini taşıyor.
+- **Test suite artık cwd'den bağımsız.** Altı test dosyası
+  (`ag-transcript-parse`, `cp/cx/ds/oc-stream-parse`, `check-version-sync`)
+  fixture/parser path'lerini `process.cwd()`'ye göre çözüyordu; `node --test`
+  `plugins/cli-dispatch/scripts/` içinden koşulunca ~20 test kırılıyor ve
+  `scripts/plugins/...` çöp ağacı oluşuyordu. Path'ler artık
+  `import.meta.url` tabanlı, geçici dizinler `os.tmpdir()` + `mkdtemp`;
+  suite her cwd'den yeşil ve repoya hiçbir şey yazmıyor.
+- **Dashboard modül-seviyesi cache'leri artık sınırlı**
+  (`dashboard-server.mjs`): `parentIndexCache`, `subagentCache` ve
+  `sessionTailCache` 500 girdilik ortak bir tavanı en-eski-eklenen atılarak
+  paylaşıyor — davranış değişikliği yok, yalnız sınırsız büyüme yok.
+
 ## [3.41.0] — 2026-07-11
 
 ### Düzeltildi

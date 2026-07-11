@@ -103,8 +103,28 @@ function Record-VerifyResult {
   Write-JsonFile -Path $statusPath -Object $status -Label "status.json" | Out-Null
 }
 
+function Snapshot-DirtyPaths {
+  # Call BEFORE launching the worker (once $Cwd is fully resolved). Returns the set of paths
+  # already dirty/untracked in $Cwd, in the same `git status --short --untracked-files=all`
+  # field layout Write-DiffArtifacts parses (path = characters 4..). Write-DiffArtifacts drops
+  # these from the run's reported changed-files so a worker isn't credited/blamed for pre-run
+  # dirt. Silent no-op (empty) if git is unavailable or $Cwd is not a git worktree.
+  # (PowerShell equivalent of bash stream-utils.sh snapshot_dirty_paths.)
+  param([string]$Cwd)
+  if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return @() }
+  $inside = (git -C "$Cwd" rev-parse --is-inside-work-tree 2>$null)
+  if ($inside -ne "true") { return @() }
+  $lines = git -C "$Cwd" status --short --untracked-files=all 2>$null
+  $set = @()
+  foreach ($line in ($lines -split "`n")) {
+    if ([string]::IsNullOrWhiteSpace($line)) { continue }
+    if ($line.Length -gt 3) { $set += $line.Substring(3) }
+  }
+  return $set
+}
+
 function Write-DiffArtifacts {
-  param([string]$SessionDir, [string]$Cwd)
+  param([string]$SessionDir, [string]$Cwd, [string[]]$PreexistingDirty = @())
   $insideWorktree = (git -C "$Cwd" rev-parse --is-inside-work-tree 2>$null)
   if ($insideWorktree -ne "true") { return }
   $statusLines = git -C "$Cwd" status --short --untracked-files=all 2>$null
@@ -115,7 +135,14 @@ function Write-DiffArtifacts {
   git -C "$Cwd" diff HEAD > (Join-Path $SessionDir "diff.patch") 2>$null
   $diffstat = (git -C "$Cwd" diff --stat HEAD | Select-Object -Last 1)
 
+  # Paths already dirty/untracked BEFORE the worker launched (snapshot). Excluded from the
+  # reported files list below and recorded under preexistingDirty; diff.patch is left untouched
+  # (still a full working-tree diff against HEAD, pre-existing dirt included).
+  $preSet = @{}
+  foreach ($p in $PreexistingDirty) { if (-not [string]::IsNullOrWhiteSpace($p)) { $preSet[$p] = $true } }
+
   $changes = @()
+  $preexisting = @()
   foreach ($line in ($statusLines -split "`n")) {
     if ([string]::IsNullOrWhiteSpace($line)) { continue }
     $code = if ($line.Length -ge 2) { $line.Substring(0, 2) } else { $line.Trim() }
@@ -143,15 +170,31 @@ function Write-DiffArtifacts {
       git -C "$Cwd" diff --no-index -- /dev/null "$file" >> (Join-Path $SessionDir "diff.patch") 2>$null
     }
 
+    # Exclude paths that were already dirty/untracked before the worker ran — the run must
+    # only be credited/blamed for paths it touched. Still recorded (preexistingDirty) for
+    # visibility; the diff.patch append above is unaffected.
+    if ($preSet.ContainsKey($file)) { $preexisting += $file; continue }
+
     $changes += @{ path = $file; status = $status }
   }
 
-  $payload = @{ files = $changes; diffstat = $diffstat }
+  $payload = @{ files = $changes; diffstat = $diffstat; preexistingDirty = $preexisting }
   Write-JsonFile -Path (Join-Path $SessionDir "changed-files.json") -Object $payload -Label "changed-files.json" | Out-Null
 }
 
 function Find-WorkerPid {
-  param([string]$SessionId)
+  param([string]$SessionId, [int]$ParentPid = 0)
+  # Prefer the EXACT worker: the direct child of this wrapper ($ParentPid) carrying the
+  # stream-json signature. This is deterministic (one process) and avoids the system-wide scan
+  # below matching both a .cmd shim and its node grandchild (which trips the multi-match guard
+  # and skips the kill). The parser (node ds-stream-parse.mjs) has no "stream-json" in its
+  # argv, and this watchdog/wrapper (pwsh) is excluded by name, so exactly the worker matches.
+  if ($ParentPid -gt 0) {
+    $scoped = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+      Where-Object { $_.ParentProcessId -eq $ParentPid -and $_.CommandLine -and $_.CommandLine.Contains($SessionId) -and $_.CommandLine.Contains("stream-json") -and $_.Name -notmatch 'pwsh|powershell' })
+    if ($scoped.Count -eq 1) { return [int]$scoped[0].ProcessId }
+  }
+  # Last-resort fallback: system-wide command-line substring match (pre-precise-PID behavior).
   $matchingProcs = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
     Where-Object { $_.CommandLine -and $_.CommandLine.Contains($SessionId) -and $_.CommandLine.Contains("stream-json") })
   if ($matchingProcs.Count -gt 1) {
@@ -432,6 +475,10 @@ if ($readOnly -eq 1) {
 }
 if ($passArgs.Count -gt 0) { $claudeArgs += $passArgs }
 
+# ---- snapshot pre-existing dirt BEFORE launch ($cwd is fully resolved above) so the run's
+# changed-files.json excludes files already dirty/untracked before the worker started. ----
+$preexistingDirty = Snapshot-DirtyPaths -Cwd $cwd
+
 # ---- timeout/idle watchdog ----
 $pidfile = Join-Path $sessionDir '.claude.pid'
 $timeoutFile = Join-Path $sessionDir '.timeout'
@@ -442,16 +489,24 @@ $watchJob = $null
 if ($maxRuntime -gt 0 -or $idleTimeout -gt 0) {
   [Console]::Error.WriteLine("  guard:  max-runtime=${maxRuntime}s idle-timeout=${idleTimeout}s")
   $watchJob = Start-Job -ScriptBlock {
-    param($sid, $sessionDir, $maxRuntime, $idleTimeout, $pidfile, $timeoutFile)
+    param($sid, $sessionDir, $maxRuntime, $idleTimeout, $pidfile, $timeoutFile, $mainPid)
     $start = Get-Date
     $transcript = Join-Path $sessionDir "transcript.jsonl"
     $watchPid = 0
     for ($n = 0; $n -lt 160; $n++) {
-      $matchingProcs = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-        Where-Object { $_.CommandLine -and $_.CommandLine.Contains($sid) -and $_.CommandLine.Contains("stream-json") })
-      if ($matchingProcs.Count -eq 1) { $watchPid = [int]$matchingProcs[0].ProcessId; break }
-      if ($matchingProcs.Count -gt 1) {
-        [Console]::Error.WriteLine("  guard:  multiple matching processes ($($matchingProcs.Count)) for session $sid, skipping kill to avoid wrong-process termination")
+      # Prefer the EXACT worker: the direct child of the wrapper ($mainPid) carrying the
+      # stream-json signature — deterministic single PID (excludes the node parser and this
+      # pwsh watchdog job). System-wide substring scan is the last-resort fallback only.
+      $scoped = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object { $_.ParentProcessId -eq $mainPid -and $_.CommandLine -and $_.CommandLine.Contains($sid) -and $_.CommandLine.Contains("stream-json") -and $_.Name -notmatch 'pwsh|powershell' })
+      if ($scoped.Count -eq 1) { $watchPid = [int]$scoped[0].ProcessId; break }
+      if ($scoped.Count -eq 0) {
+        $matchingProcs = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+          Where-Object { $_.CommandLine -and $_.CommandLine.Contains($sid) -and $_.CommandLine.Contains("stream-json") })
+        if ($matchingProcs.Count -eq 1) { $watchPid = [int]$matchingProcs[0].ProcessId; break }
+        if ($matchingProcs.Count -gt 1) {
+          [Console]::Error.WriteLine("  guard:  multiple matching processes ($($matchingProcs.Count)) for session $sid, skipping kill to avoid wrong-process termination")
+        }
       }
       Start-Sleep -Milliseconds 250
     }
@@ -476,7 +531,7 @@ if ($maxRuntime -gt 0 -or $idleTimeout -gt 0) {
         }
       }
     }
-  } -ArgumentList $sid, $sessionDir, $maxRuntime, $idleTimeout, $pidfile, $timeoutFile
+  } -ArgumentList $sid, $sessionDir, $maxRuntime, $idleTimeout, $pidfile, $timeoutFile, $PID
 }
 
 $runStarted = $false
@@ -556,7 +611,7 @@ try {
       Set-Location -LiteralPath $originalLocation.Path
     }
 
-    Write-DiffArtifacts -SessionDir $sessionDir -Cwd $cwd
+    Write-DiffArtifacts -SessionDir $sessionDir -Cwd $cwd -PreexistingDirty $preexistingDirty
 
     if (-not [string]::IsNullOrWhiteSpace($err)) {
       $currentState = Get-JsonField (Join-Path $sessionDir "status.json") "state"
@@ -599,7 +654,7 @@ try {
       if ($pidFromFile -gt 0 -and $pidFromFile -ne $PID) {
         $pidToKill = $pidFromFile
       } else {
-        $pidToKill = Find-WorkerPid -SessionId $sid
+        $pidToKill = Find-WorkerPid -SessionId $sid -ParentPid $PID
       }
       Kill-WorkerTree -Pid $pidToKill
       Reconcile-SessionError -Directory $sessionDir -ErrorMessage "interrupted: $interruptedSignal" -ExitCode $claudeRc

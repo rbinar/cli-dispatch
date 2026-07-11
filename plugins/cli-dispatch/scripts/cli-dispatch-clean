@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
-# cli-dispatch-clean — remove stale worker session dirs (running-but-dead). Resolves the
-# shared engine cli-dispatch-clean.mjs (installed share dir → legacy claude-ds → next to this
-# script) and runs it. Default is a DRY-RUN; pass --remove to delete. Used both by hand and by
-# the scheduled auto-clean (/cli-dispatch:clean-schedule).
+# cli-dispatch-clean — remove stale worker session dirs (running-but-dead), AND sweep stale
+# leftover git worktree artifacts (*-wt-* dirs under /tmp and $TMPDIR that a crashed/killed
+# runner never cleaned up — see CLAUDE.md "runner/babysitter pattern": real repo changes are
+# isolated in a worktree, and a runner that dies before its own cleanup leaves that worktree
+# behind forever). Session cleanup is delegated to the shared engine cli-dispatch-clean.mjs
+# (installed share dir → legacy claude-ds → next to this script); the worktree sweep runs
+# directly in this launcher (pure bash — no node dependency, and no session-dir schema
+# involved). Default is a DRY-RUN; pass --remove to delete. Used both by hand and by the
+# scheduled auto-clean (/cli-dispatch:clean-schedule).
 #   cli-dispatch-clean [--remove] [--stale-secs N] [--older-than DAYS] [--quiet]
+#                       [--worktree-days N] [--skip-worktrees]
 set -euo pipefail
 
 # launchd/cron run with a minimal PATH (no shell rc sourced) — node installed via a version
@@ -33,4 +39,100 @@ if [ -z "$ENGINE" ]; then
 fi
 [ -n "$ENGINE" ] && [ -f "$ENGINE" ] || { echo "cli-dispatch-clean: cli-dispatch-clean.mjs not found (run /cli-dispatch:setup)." >&2; exit 1; }
 
-exec node "$ENGINE" "$@"
+# ---- worktree artifact sweep -------------------------------------------------------------
+# Parse just the flags this launcher owns (--worktree-days, --skip-worktrees); everything
+# else (including --remove and --quiet, which the worktree sweep also honors) is forwarded
+# to the engine unmodified, same as before.
+REMOVE=0; QUIET=0; WT_DAYS=3; SKIP_WORKTREES=0
+ENGINE_ARGS=()
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --remove) REMOVE=1; ENGINE_ARGS+=("$1"); shift;;
+    --quiet) QUIET=1; ENGINE_ARGS+=("$1"); shift;;
+    --worktree-days) WT_DAYS="${2:-3}"; shift 2;;
+    --skip-worktrees) SKIP_WORKTREES=1; shift;;
+    *) ENGINE_ARGS+=("$1"); shift;;
+  esac
+done
+case "$WT_DAYS" in ''|*[!0-9]*) WT_DAYS=3;; esac
+
+wtlog() { [ "$QUIET" -eq 1 ] || echo "$@"; }
+
+if [ "$SKIP_WORKTREES" -ne 1 ]; then
+  # Defensive git resolution — same rationale as the node probe above: launchd/cron give a
+  # minimal PATH, so even an interactively-working git can be invisible here.
+  GIT_BIN="$(command -v git 2>/dev/null || true)"
+  if [ -z "$GIT_BIN" ]; then
+    for cand in /usr/bin/git /opt/homebrew/bin/git /usr/local/bin/git; do
+      [ -x "$cand" ] && { GIT_BIN="$cand"; break; }
+    done
+  fi
+
+  WT_FOUND=0; WT_DIRTY=0; WT_REMOVED=0; WT_SKIPPED=0
+  PRUNED_REPOS=""
+
+  sweep_wt_dir() {
+    local base="$1" wt gitdir_line src_repo git_out git_rc
+    [ -d "$base" ] || return 0
+    while IFS= read -r -d '' wt; do
+      [ -d "$wt" ] || continue
+      WT_FOUND=$((WT_FOUND + 1))
+      if [ -z "$GIT_BIN" ]; then
+        wtlog "  SKIP (git unavailable) $wt"
+        WT_SKIPPED=$((WT_SKIPPED + 1))
+        continue
+      fi
+      git_rc=0
+      git_out="$("$GIT_BIN" -C "$wt" status --porcelain 2>/dev/null)" || git_rc=$?
+      if [ "$git_rc" -ne 0 ]; then
+        wtlog "  SKIP (git status failed — not a valid worktree?) $wt"
+        WT_SKIPPED=$((WT_SKIPPED + 1))
+        continue
+      fi
+      if [ -n "$git_out" ]; then
+        wtlog "  DIRTY (skipped, uncommitted changes) $wt"
+        WT_DIRTY=$((WT_DIRTY + 1))
+        continue
+      fi
+      wtlog "  worktree stale (clean, idle > ${WT_DAYS}d): $wt"
+      if [ "$REMOVE" -eq 1 ]; then
+        # Resolve the source repo from the worktree's ".git" file BEFORE removing it, so
+        # `git worktree prune` can run against it afterward — best-effort only.
+        src_repo=""
+        if [ -f "$wt/.git" ]; then
+          gitdir_line="$(sed -n 's/^gitdir: //p' "$wt/.git" 2>/dev/null | head -1)"
+          case "$gitdir_line" in
+            */.git/worktrees/*) src_repo="${gitdir_line%/.git/worktrees/*}";;
+          esac
+        fi
+        rm -rf "$wt"
+        WT_REMOVED=$((WT_REMOVED + 1))
+        if [ -n "$src_repo" ] && [ -d "$src_repo" ]; then
+          case " $PRUNED_REPOS " in
+            *" $src_repo "*) ;;
+            *)
+              "$GIT_BIN" -C "$src_repo" worktree prune >/dev/null 2>&1 || true
+              PRUNED_REPOS="$PRUNED_REPOS $src_repo"
+              ;;
+          esac
+        fi
+      fi
+    done < <(find "$base" -mindepth 1 -maxdepth 1 -type d -name '*-wt-*' -mtime +"$WT_DAYS" -print0 2>/dev/null)
+  }
+
+  wtlog "worktree artifact sweep (pattern *-wt-*, older than ${WT_DAYS}d):"
+  sweep_wt_dir "/tmp"
+  if [ -n "${TMPDIR:-}" ] && [ "${TMPDIR%/}" != "/tmp" ]; then
+    sweep_wt_dir "${TMPDIR%/}"
+  fi
+  WT_ELIGIBLE=$((WT_FOUND - WT_DIRTY - WT_SKIPPED))
+  if [ "$WT_FOUND" -eq 0 ]; then
+    wtlog "  none found."
+  elif [ "$REMOVE" -eq 1 ]; then
+    wtlog "  removed $WT_REMOVED worktree(s), skipped $WT_DIRTY dirty, $WT_SKIPPED unreadable."
+  else
+    wtlog "  DRY-RUN — $WT_ELIGIBLE of $WT_FOUND candidate(s) would be deleted ($WT_DIRTY dirty, $WT_SKIPPED unreadable — both kept). Re-run with --remove to delete."
+  fi
+fi
+
+exec node "$ENGINE" "${ENGINE_ARGS[@]}"

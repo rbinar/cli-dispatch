@@ -246,7 +246,7 @@ if [ "$RESUME" -eq 0 ]; then
       process.stderr.write(err.stack + "\n");
       process.stdout.write("false");
     });
-  ' "$SCRIPT_DIR/parse-utils.mjs" "$PREFLIGHT_RC" "$PREFLIGHT_OUT" 2>/dev/null || echo "false")"
+  ' "$PARSE_UTILS" "$PREFLIGHT_RC" "$PREFLIGHT_OUT" 2>/dev/null || echo "false")"
 
   # Delete temp file.
   rm -f "$PREFLIGHT_OUT"
@@ -270,7 +270,7 @@ if [ "$RESUME" -eq 0 ]; then
           process.argv[7]
         );
       });
-    ' "$SCRIPT_DIR/parse-utils.mjs" "$SESSION_DIR" \
+    ' "$PARSE_UTILS" "$SESSION_DIR" \
       "Antigravity oturumu yok — kullanıcı 'agy' ile interaktif login olmalı veya GEMINI_API_KEY set edilmeli" \
       "3" "$CWD" "$BRANCH" "$MODEL"
 
