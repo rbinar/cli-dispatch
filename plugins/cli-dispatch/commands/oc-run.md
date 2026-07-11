@@ -52,7 +52,7 @@ oc-agent --model google/gemma-4-31b-it:free -q "$ARGUMENTS"
 ```
 Pass the **bare OpenRouter slug** — no `openrouter/` prefix — `oc-stream` prepends it. A few
 example free-tier slugs (`:free` suffix): `google/gemma-4-31b-it:free`,
-`deepseek/deepseek-v4:free`, `meta-llama/llama-4.1-8b-instruct:free`. The free catalog rotates
+`meta-llama/llama-3.3-70b-instruct:free`, `qwen/qwen3-coder:free`. The free catalog rotates
 often, so re-verify before relying on any of these. List live models OpenCode recognizes with:
 ```bash
 OPENROUTER_API_KEY=<key> opencode models openrouter

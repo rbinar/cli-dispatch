@@ -60,10 +60,13 @@ cx-agent --read-only -q "$ARGUMENTS"   # stdout = final answer; progress in stat
 cx-agent --model gpt-5.4-mini --read-only -q "$ARGUMENTS"
 ```
 Omit `--model` to use codex's own default (or the `CX_MODEL` config value). Current Codex
-models (`--model <name>`): `gpt-5.5` (default, frontier coding), `gpt-5.4` (flagship),
-`gpt-5.4-mini` (fast/cheap — lighter tasks & subagents), `gpt-5.3-codex-spark` (ChatGPT Pro
-research preview). `gpt-5.2` / `gpt-5.3-codex` are deprecated. List live with `/model`
-inside codex; names move fast, so trust codex's picker over this list.
+models (`--model <name>`), top priority first: `gpt-5.6-sol` (latest frontier agentic
+coding), `gpt-5.6-terra` (balanced agentic coding for everyday work), `gpt-5.6-luna`
+(fast/affordable — lighter tasks & subagents). Still available but no longer top-priority:
+`gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini` (fast/cheap alternative to `gpt-5.6-luna`),
+`gpt-5.3-codex-spark` (ultra-fast coding model). `gpt-5.2` / `gpt-5.3-codex` have been
+removed from the catalog entirely. List live with `/model` inside codex; names move fast,
+so trust codex's picker over this list.
 
 **Reasoning effort:**
 ```bash

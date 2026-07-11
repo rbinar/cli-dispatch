@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.43.1] — 2026-07-12
+
+### Changed
+
+- **Example model IDs across config templates and docs live-verified against
+  installed worker CLIs and provider docs, and refreshed where stale.**
+  Antigravity (`agy models` live output) and DeepSeek
+  (api-docs.deepseek.com) examples were checked and found already accurate —
+  no changes needed for those two backends.
+- **Codex:** `~/.codex/models_cache.json` (live catalog pulled from Codex's
+  own API) now surfaces a new `gpt-5.6-sol` / `gpt-5.6-terra` / `gpt-5.6-luna`
+  family ranked above `gpt-5.5`; `gpt-5.2` and `gpt-5.3-codex` have dropped
+  out of the catalog entirely. Updated the `CX_MODEL` example comment in
+  `scripts/install.sh` and `scripts/install.ps1`, the model list paragraph in
+  `commands/cx-run.md`, the "Model selection" block in
+  `skills/ds-delegate/SKILL.md`, `README.md`, and the dashboard's
+  `dl_CX_MODEL` / `dl_CX_MODELS` datalists in `scripts/public-page.mjs`
+  (three new options added).
+- **OpenCode:** live `opencode models openrouter` (343 models) confirms
+  `google/gemma-4-31b-it:free` is still valid, but `deepseek/deepseek-v4:free`
+  and `meta-llama/llama-4.1-8b-instruct:free` are no longer in the catalog.
+  Replaced both stale examples in `commands/oc-run.md` with
+  `meta-llama/llama-3.3-70b-instruct:free` and `qwen/qwen3-coder:free`.
+- **GitHub Copilot:** `copilot --help` confirms `gpt-5.4` and `auto`;
+  `gpt-5.2` could not be verified. Changed the `CP_MODEL` example in
+  `scripts/install.sh` from `gpt-5.2` to `gpt-5.4`, and removed `gpt-5.2`
+  entirely from the `dl_CP_MODEL` / `dl_CP_MODELS` datalists in
+  `scripts/public-page.mjs`.
+
 ## [3.43.0] — 2026-07-12
 
 ### Added

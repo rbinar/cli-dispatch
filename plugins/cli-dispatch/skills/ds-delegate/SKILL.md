@@ -207,9 +207,11 @@ cx-stream --cwd <dir> -p "<task>"       # background/session-tracked variant (po
   a genuine no-writes guarantee — no worktree needed for pure analysis. Sandbox defaults to
   `workspace-write` for agentic work; override with `--sandbox read-only|workspace-write|danger-full-access`.
 - **Model selection:** `--model <name>` (config default `CX_MODEL`; blank = codex's own default).
-  Current: `gpt-5.5` (default, frontier), `gpt-5.4` (flagship), `gpt-5.4-mini` (fast/cheap,
-  subagents), `gpt-5.3-codex-spark` (ChatGPT Pro preview). `gpt-5.2`/`gpt-5.3-codex` deprecated.
-  Run `/model` inside codex for the live list.
+  Current top priority: `gpt-5.6-sol` (frontier), `gpt-5.6-terra` (balanced), `gpt-5.6-luna`
+  (fast/cheap, subagents). Also still in the catalog: `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`
+  (fast/cheap, subagents), `gpt-5.3-codex-spark` (ultra-fast coding model). `gpt-5.2`/
+  `gpt-5.3-codex` removed from the catalog entirely. `codex` has no CLI command that lists
+  models — check `~/.codex/models_cache.json` or `/model` inside codex for the live list.
 - **Same session dir** as the others (`…/cli-dispatch/sessions/<id>/`), so `/cli-dispatch:sessions`
   / `watch` work for all three. The session id is the codex **thread-id**.
 - **How it works:** `codex exec --json` emits a clean JSONL stream → `cx-stream` pipes it

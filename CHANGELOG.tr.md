@@ -7,6 +7,36 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.43.1] — 2026-07-12
+
+### Değiştirildi
+
+- **Config şablonları ve dökümanlardaki örnek model ID'leri, kurulu işçi
+  CLI'lara ve sağlayıcı dokümanlarına karşı canlı doğrulandı, bayat olanlar
+  güncellendi.** Antigravity (`agy models` canlı çıktısı) ve DeepSeek
+  (api-docs.deepseek.com) örnekleri kontrol edildi ve zaten doğru bulundu —
+  bu iki backend için değişiklik gerekmedi.
+- **Codex:** `~/.codex/models_cache.json` (Codex'in kendi API'sinden çekilen
+  canlı katalog), `gpt-5.5`'in üzerinde öncelikli yeni bir
+  `gpt-5.6-sol` / `gpt-5.6-terra` / `gpt-5.6-luna` ailesi gösteriyor;
+  `gpt-5.2` ve `gpt-5.3-codex` katalogdan tamamen düşmüş. `scripts/install.sh`
+  ve `scripts/install.ps1`'deki `CX_MODEL` örnek yorum satırı,
+  `commands/cx-run.md`'deki model listesi paragrafı,
+  `skills/ds-delegate/SKILL.md`'deki "Model selection" bloğu, `README.md` ve
+  dashboard'un `scripts/public-page.mjs` içindeki `dl_CX_MODEL` /
+  `dl_CX_MODELS` datalist'leri güncellendi (üç yeni seçenek eklendi).
+- **OpenCode:** canlı `opencode models openrouter` (343 model),
+  `google/gemma-4-31b-it:free`'nin hâlâ geçerli olduğunu ama
+  `deepseek/deepseek-v4:free` ve `meta-llama/llama-4.1-8b-instruct:free`'nin
+  artık katalogda olmadığını doğruluyor. `commands/oc-run.md`'deki bu iki
+  bayat örnek `meta-llama/llama-3.3-70b-instruct:free` ve
+  `qwen/qwen3-coder:free` ile değiştirildi.
+- **GitHub Copilot:** `copilot --help`, `gpt-5.4` ve `auto`'yu doğruluyor;
+  `gpt-5.2` doğrulanamadı. `scripts/install.sh`'daki `CP_MODEL` örneği
+  `gpt-5.2`'den `gpt-5.4`'e değiştirildi ve `scripts/public-page.mjs`'deki
+  `dl_CP_MODEL` / `dl_CP_MODELS` datalist'lerinden `gpt-5.2` tamamen
+  kaldırıldı.
+
 ## [3.43.0] — 2026-07-12
 
 ### Eklendi

@@ -658,13 +658,14 @@ async function renderConfigEditor() {
     // AG_MODEL/AG_MODELS options sourced from verified live output of "agy models" on this machine.
     html += '<datalist id="dl_AG_MODEL"><option value="Gemini 3.5 Flash (Medium)"><option value="Gemini 3.5 Flash (High)"><option value="Gemini 3.5 Flash (Low)"><option value="Gemini 3.1 Pro (Low)"><option value="Gemini 3.1 Pro (High)"><option value="Claude Sonnet 4.6 (Thinking)"><option value="Claude Opus 4.6 (Thinking)"><option value="GPT-OSS 120B (Medium)"></datalist>'
     html += '<datalist id="dl_AG_MODELS"><option value="Gemini 3.5 Flash (Medium)"><option value="Gemini 3.5 Flash (High)"><option value="Gemini 3.5 Flash (Low)"><option value="Gemini 3.1 Pro (Low)"><option value="Gemini 3.1 Pro (High)"><option value="Claude Sonnet 4.6 (Thinking)"><option value="Claude Opus 4.6 (Thinking)"><option value="GPT-OSS 120B (Medium)"></datalist>'
-    // CX_MODEL/CX_MODELS options sourced from verified live ~/.codex/models_cache.json on this machine.
-    html += '<datalist id="dl_CX_MODEL"><option value="gpt-5.5"><option value="gpt-5.4"><option value="gpt-5.4-mini"><option value="gpt-5.3-codex-spark"><option value="codex-auto-review"></datalist>'
-    html += '<datalist id="dl_CX_MODELS"><option value="gpt-5.5"><option value="gpt-5.4"><option value="gpt-5.4-mini"><option value="gpt-5.3-codex-spark"><option value="codex-auto-review"></datalist>'
+    // CX_MODEL/CX_MODELS options sourced from verified live ~/.codex/models_cache.json on this machine (re-verified 2026-07-11).
+    html += '<datalist id="dl_CX_MODEL"><option value="gpt-5.6-sol"><option value="gpt-5.6-terra"><option value="gpt-5.6-luna"><option value="gpt-5.5"><option value="gpt-5.4"><option value="gpt-5.4-mini"><option value="gpt-5.3-codex-spark"><option value="codex-auto-review"></datalist>'
+    html += '<datalist id="dl_CX_MODELS"><option value="gpt-5.6-sol"><option value="gpt-5.6-terra"><option value="gpt-5.6-luna"><option value="gpt-5.5"><option value="gpt-5.4"><option value="gpt-5.4-mini"><option value="gpt-5.3-codex-spark"><option value="codex-auto-review"></datalist>'
     // CP_MODEL/CP_MODELS options: "auto" and "gpt-5.4" verified live from "copilot --help" on this machine;
-    // "claude-sonnet-4.6" and "gpt-5.2" are repo-internal references (install.sh CP_MODEL comment examples), not CLI-verified.
-    html += '<datalist id="dl_CP_MODEL"><option value="auto"><option value="gpt-5.4"><option value="claude-sonnet-4.6"><option value="gpt-5.2"></datalist>'
-    html += '<datalist id="dl_CP_MODELS"><option value="auto"><option value="gpt-5.4"><option value="claude-sonnet-4.6"><option value="gpt-5.2"></datalist>'
+    // "claude-sonnet-4.6" is a repo-internal reference (install.sh CP_MODEL comment example), not CLI-verified;
+    // "gpt-5.2" removed — never CLI-verified for copilot and has since dropped out of the Codex catalog too (2026-07-11).
+    html += '<datalist id="dl_CP_MODEL"><option value="auto"><option value="gpt-5.4"><option value="claude-sonnet-4.6"></datalist>'
+    html += '<datalist id="dl_CP_MODELS"><option value="auto"><option value="gpt-5.4"><option value="claude-sonnet-4.6"></datalist>'
     // OC_MODEL/OC_MODELS datalists are created empty — populated from /api/models/opencode fetch below.
     html += '<datalist id="dl_OC_MODEL"></datalist>'
     html += '<datalist id="dl_OC_MODELS"></datalist>'

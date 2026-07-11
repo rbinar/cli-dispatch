@@ -177,7 +177,7 @@ DS_FLASH_MODEL="deepseek-v4-flash"
 # For headless/CI, CODEX_API_KEY takes precedence over OPENAI_API_KEY.
 CODEX_API_KEY=""
 # Default model for the codex worker. Blank = codex's own default. Override per-call with
-# `cx-agent --model <name>`. Current models: gpt-5.5 (default), gpt-5.4, gpt-5.4-mini.
+# `cx-agent --model <name>`. gpt-5.6-sol/terra/luna rank above gpt-5.5, gpt-5.4, gpt-5.4-mini.
 CX_MODEL=""
 # Optional comma-separated candidate model list — when set, the cx-runner babysitter
 # picks the best fit from this list (same reasoning as an orchestrator-provided inline

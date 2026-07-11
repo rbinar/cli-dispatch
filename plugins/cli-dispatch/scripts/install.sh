@@ -108,8 +108,10 @@ BLOCK
 CODEX_API_KEY=""
 # Default model for the codex worker. Blank = codex's own default (varies by version).
 # Override per-call with `cx-agent --model <name>`. Env var read by cx-stream: CX_MODEL
-# (with CODEX_MODEL as fallback). Current models: gpt-5.5 (default), gpt-5.4,
-# gpt-5.4-mini (fast/cheap, subagents), gpt-5.3-codex-spark. Example: CX_MODEL="gpt-5.4-mini"
+# (with CODEX_MODEL as fallback). gpt-5.6-sol/terra/luna now rank above gpt-5.5
+# in the live catalog; gpt-5.5, gpt-5.4, gpt-5.4-mini (fast/cheap, subagents),
+# and gpt-5.3-codex-spark remain available. gpt-5.2/gpt-5.3-codex have dropped.
+# Example: CX_MODEL="gpt-5.6-luna"
 CX_MODEL=""
 # Optional comma-separated candidate model list — when set, the cx-runner babysitter
 # picks the best fit from this list (same reasoning as an orchestrator-provided inline
@@ -152,7 +154,7 @@ BLOCK
 # An active GitHub Copilot subscription is required.
 COPILOT_GITHUB_TOKEN=""
 # Default model slug for the copilot worker. Blank = copilot's own default.
-# Examples: claude-sonnet-4.6, gpt-5.2, auto. Override per-call with `cp-agent --model <slug>`.
+# Examples: claude-sonnet-4.6, gpt-5.4, auto. Override per-call with `cp-agent --model <slug>`.
 CP_MODEL=""
 # Optional comma-separated candidate model list — when set, the cp-runner babysitter
 # picks the best fit from this list (same reasoning as an orchestrator-provided inline
