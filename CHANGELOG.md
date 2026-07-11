@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.34.0] — 2026-07-11
+
+### Added
+
+- **Deterministic runner: `cli-dispatch-run` — babysit a delegation with zero LLM cost.**
+  New standalone CLI (bash + `.ps1` twin) that runs the mechanical part of a delegation
+  end-to-end without an LLM babysitter: launch a backend worktree run (`--backend
+  ds|ag|cx|oc|cp`), block on `cli-dispatch-wait` (bounded loop that detects
+  `human-controlled` takeovers and stands down), write `<session-dir>/verdict-diff.patch`
+  unconditionally BEFORE verification, run `--verify` commands via Node `child_process`
+  (macOS ships no `timeout(1)`), and emit `<session-dir>/verdict.json`
+  (`schemaVersion: 1`) with a 0–5 exit-code contract (0 done+verified, 1 verify failed,
+  2 worker error/killed, 3 timeout, 4 human takeover, 5 setup error) mirrored as the
+  process exit code — the orchestrator reads one small JSON instead of paying a runner
+  subagent's turns (measured: 60+ turns and ~2.5M cache-read tokens per LLM babysitter).
+  Pure core lives in `scripts/verdict-writer.mjs` (unit-tested); the PowerShell twin
+  supports ds/cx (the other backends are Unix-only). Installed by `install.sh` /
+  `install.ps1`. Design: `.specs/dev/sdd/deterministic-runner.md` rev.1, issue
+  [#100](https://github.com/rbinar/cli-dispatch/issues/100). LLM `*-runner` subagents
+  remain for delegations needing judgment.
+- **`cli-dispatch-run --cleanup-if-clean`** — opt-in worktree removal gated on a
+  two-signal AND (verdict exit code 0 AND empty `git status --short`), with an
+  integration-test suite including the issue #93 regression: a worktree holding
+  uncommitted work is never removed and its diff always survives in the session dir.
+
 ## [3.33.0] — 2026-07-11
 
 ### Changed

@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   cat <<'USAGE' >&2
-usage: cli-dispatch-run --backend <ds|ag|cx|oc|cp> --cwd <repo> [--prompt <text> | --prompt-file <path>] [--branch <name>] [--base-ref <ref>] [--model <slug>] [--effort low|medium|high] [--verify <cmd>] [--verify-timeout SECS] [--timeout SECS] [--resume <session-id>]
+usage: cli-dispatch-run --backend <ds|ag|cx|oc|cp> --cwd <repo> [--prompt <text> | --prompt-file <path>] [--branch <name>] [--base-ref <ref>] [--model <slug>] [--effort low|medium|high] [--verify <cmd>] [--verify-timeout SECS] [--timeout SECS] [--resume <session-id>] [--cleanup-if-clean]
 USAGE
 }
 
@@ -22,6 +22,59 @@ cleanup_tmp() {
   [ "${#TEMP_FILES[@]}" -gt 0 ] || return 0
   rm -f "${TEMP_FILES[@]}" 2>/dev/null || true
 }
+
+is_worktree_clean() {
+  local worktree="$1"
+  local status_out
+
+  [ -n "$worktree" ] || return 1
+  [ -d "$worktree" ] || return 1
+  status_out="$(git -C "$worktree" status --short 2>/dev/null || true)"
+  [ -z "$status_out" ]
+}
+
+cleanup_worktree_if_requested() {
+  local worktree_path="$1"
+  local verdict_exit_code="$2"
+
+  if [ -z "$worktree_path" ]; then
+    echo "cli-dispatch-run: no worktree path found; kept path unknown"
+    return 0
+  fi
+
+  if [ "$CLEANUP_IF_CLEAN" -ne 1 ]; then
+    echo "cli-dispatch-run: --cleanup-if-clean not set; kept worktree at $worktree_path"
+    return 0
+  fi
+
+  if [ "$verdict_exit_code" -ne 0 ]; then
+    echo "cli-dispatch-run: kept worktree because verdict exit code is $verdict_exit_code (expected 0): $worktree_path"
+    return 0
+  fi
+
+  if ! is_worktree_clean "$worktree_path"; then
+    local status_out
+    status_out="$(git -C "$worktree_path" status --short 2>/dev/null || true)"
+    echo "cli-dispatch-run: kept worktree because it is dirty:"
+    if [ -n "$status_out" ]; then echo "$status_out"; fi
+    echo "cli-dispatch-run: kept worktree at $worktree_path"
+    echo "cli-dispatch-run: manual cleanup: git -C \"$worktree_path\" worktree remove \"$worktree_path\" --force"
+    return 0
+  fi
+
+  if ! git -C "$worktree_path" worktree remove "$worktree_path" --force; then
+    echo "cli-dispatch-run: git worktree remove failed for clean worktree; fallback to rm -rf: $worktree_path"
+    rm -rf "$worktree_path"
+  fi
+
+  if [ -d "$worktree_path" ]; then
+    echo "cli-dispatch-run: clean signals met but worktree still present; kept at $worktree_path"
+    echo "cli-dispatch-run: manual cleanup: git -C \"$worktree_path\" worktree remove \"$worktree_path\" --force"
+  else
+    echo "cli-dispatch-run: removed clean worktree at $worktree_path"
+  fi
+}
+
 trap cleanup_tmp EXIT INT TERM
 
 BACKEND=""
@@ -36,6 +89,10 @@ VERIFY_TIMEOUT=600
 TIMEOUT=0
 RESUME=""
 VERIFY=()
+TEST_MODE=0
+TEST_WORKTREE=""
+TEST_EXIT_CODE=0
+CLEANUP_IF_CLEAN=0
 TEMP_FILES=()
 
 while [ "$#" -gt 0 ]; do
@@ -52,10 +109,22 @@ while [ "$#" -gt 0 ]; do
     --verify-timeout) need_val --verify-timeout "$#"; VERIFY_TIMEOUT="$2"; shift 2;;
     --timeout) need_val --timeout "$#"; TIMEOUT="$2"; shift 2;;
     --resume) need_val --resume "$#"; RESUME="$2"; shift 2;;
+    --cleanup-if-clean) CLEANUP_IF_CLEAN=1; shift;;
+    --_test-cleanup)
+      need_val --_test-cleanup "$#"
+      TEST_MODE=1
+      TEST_WORKTREE="$2"
+      TEST_EXIT_CODE="$3"
+      shift 3;;
     -h|--help) usage; exit 0;;
     *) echo "cli-dispatch-run: unknown arg: $1" >&2; usage; exit 5;;
   esac
 done
+
+if [ "$TEST_MODE" -eq 1 ]; then
+  cleanup_worktree_if_requested "$TEST_WORKTREE" "$TEST_EXIT_CODE"
+  exit 0
+fi
 
 if [ -z "$BACKEND" ] || [ -z "$CWD" ]; then
   usage
@@ -289,4 +358,5 @@ fi
 set -e
 
 printf '%s\n' "$VERDICT_JSON" > "$SESSION_DIR/verdict.json"
+cleanup_worktree_if_requested "$WORKTREE_PATH" "$BUILD_EXIT"
 exit "$BUILD_EXIT"

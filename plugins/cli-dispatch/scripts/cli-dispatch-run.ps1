@@ -6,7 +6,7 @@ param()
 $ErrorActionPreference = 'Stop'
 
 function Show-Usage {
-  Write-Host 'usage: cli-dispatch-run --backend <ds|ag|cx|oc|cp> --cwd <repo> [--prompt <text> | --prompt-file <path>] [--branch <name>] [--base-ref <ref>] [--model <slug>] [--effort low|medium|high] [--verify <cmd>] [--verify-timeout SECS] [--timeout SECS] [--resume <session-id>]'
+  Write-Host 'usage: cli-dispatch-run --backend <ds|ag|cx|oc|cp> --cwd <repo> [--prompt <text> | --prompt-file <path>] [--branch <name>] [--base-ref <ref>] [--model <slug>] [--effort low|medium|high] [--verify <cmd>] [--verify-timeout SECS] [--timeout SECS] [--resume <session-id>] [--cleanup-if-clean]'
 }
 
 function Need-Value {
@@ -30,6 +30,7 @@ $Verify = @()
 $VerifyTimeout = 600
 $Timeout = 0
 $Resume = ''
+$CleanupIfClean = $false
 
 $i = 0
 while ($i -lt $args.Count) {
@@ -46,6 +47,7 @@ while ($i -lt $args.Count) {
     '--verify-timeout' { Need-Value '--verify-timeout' $i $args.Count; $VerifyTimeout = [int]$args[$i + 1]; $i += 2 }
     '--timeout' { Need-Value '--timeout' $i $args.Count; $Timeout = [int]$args[$i + 1]; $i += 2 }
     '--resume' { Need-Value '--resume' $i $args.Count; $Resume = $args[$i + 1]; $i += 2 }
+    '--cleanup-if-clean' { $CleanupIfClean = $true; $i += 1 }
     '--help' { Show-Usage; exit 0 }
     '-h' { Show-Usage; exit 0 }
     default {
@@ -185,6 +187,59 @@ function Invoke-Verify {
   }
 
   return $result
+}
+
+function Test-WorktreeClean {
+  param([string]$Worktree)
+  if (-not $Worktree) { return $false }
+  if (-not (Test-Path $Worktree)) { return $false }
+  try {
+    $status = git -C $Worktree status --short
+    return [string]::IsNullOrWhiteSpace($status)
+  } catch {
+    return $false
+  }
+}
+
+function Invoke-CleanupWorktree {
+  param([string]$Worktree, [int]$VerdictExitCode)
+
+  if (-not $Worktree) {
+    Write-Host 'cli-dispatch-run: no worktree path found; kept path unknown'
+    return
+  }
+
+  if (-not $CleanupIfClean) {
+    Write-Host "cli-dispatch-run: --cleanup-if-clean not set; kept worktree at $Worktree"
+    return
+  }
+
+  if ($VerdictExitCode -ne 0) {
+    Write-Host "cli-dispatch-run: kept worktree because verdict exit code is $VerdictExitCode (expected 0): $Worktree"
+    return
+  }
+
+  if (-not (Test-WorktreeClean -Worktree $Worktree)) {
+    Write-Host "cli-dispatch-run: kept worktree because it is dirty:"
+    try { git -C $Worktree status --short | Write-Host } catch { }
+    Write-Host "cli-dispatch-run: kept worktree at $Worktree"
+    Write-Host "cli-dispatch-run: manual cleanup: git -C `"$Worktree`" worktree remove `"$Worktree`" --force"
+    return
+  }
+
+  try {
+    git -C $Worktree worktree remove $Worktree --force | Out-Null
+  } catch {
+    Write-Host "cli-dispatch-run: git worktree remove failed for clean worktree; fallback to rm -rf: $Worktree"
+    try { Remove-Item -Recurse -Force -LiteralPath $Worktree } catch { }
+  }
+
+  if (Test-Path $Worktree) {
+    Write-Host "cli-dispatch-run: clean signals met but worktree still present; kept at $Worktree"
+    Write-Host "cli-dispatch-run: manual cleanup: git -C `"$Worktree`" worktree remove `"$Worktree`" --force"
+  } else {
+    Write-Host "cli-dispatch-run: removed clean worktree at $Worktree"
+  }
 }
 
 if (-not $PromptFile) {
@@ -335,6 +390,8 @@ if ($verifyResultsPath) {
   $verdictExit = $LASTEXITCODE
 }
 Set-Content -Path (Join-Path $SessionDir 'verdict.json') -Value $verdictOut
+
+Invoke-CleanupWorktree -Worktree $WorktreePath -VerdictExitCode $verdictExit
 
 foreach ($tmp in $tmpFiles) { if (Test-Path $tmp) { Remove-Item -Force $tmp | Out-Null } }
 

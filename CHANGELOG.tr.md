@@ -7,6 +7,31 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.34.0] — 2026-07-11
+
+### Eklendi
+
+- **Deterministik runner: `cli-dispatch-run` — sıfır LLM maliyetiyle delegasyon
+  babysitting.** Yeni bağımsız CLI (bash + `.ps1` ikizi), delegasyonun mekanik kısmını
+  LLM babysitter olmadan uçtan uca yürütüyor: backend worktree çalıştırması başlat
+  (`--backend ds|ag|cx|oc|cp`), `cli-dispatch-wait` ile blokla (`human-controlled`
+  devralmayı algılayıp geri çekilen sınırlı döngü), doğrulamadan ÖNCE koşulsuz
+  `<session-dir>/verdict-diff.patch` yaz, `--verify` komutlarını Node `child_process`
+  ile çalıştır (macOS'ta `timeout(1)` yok) ve 0–5 exit-code sözleşmeli
+  (`0 tamam+doğrulandı, 1 verify başarısız, 2 worker hata/killed, 3 zaman aşımı,
+  4 insan devralması, 5 kurulum hatası`) `<session-dir>/verdict.json`
+  (`schemaVersion: 1`) üret — orkestratör runner subagent turn'leri (ölçülen: 60+ turn,
+  ~2.5M cache-read token/babysitter) yerine tek küçük JSON okuyor. Saf çekirdek
+  `scripts/verdict-writer.mjs`'te (birim testli); PowerShell ikizi ds/cx destekli
+  (diğer backend'ler Unix-only). `install.sh` / `install.ps1` kuruyor. Tasarım:
+  `.specs/dev/sdd/deterministic-runner.md` rev.1, issue
+  [#100](https://github.com/rbinar/cli-dispatch/issues/100). Muhakeme gerektiren
+  delegasyonlar için LLM `*-runner` subagent'ları duruyor.
+- **`cli-dispatch-run --cleanup-if-clean`** — iki-sinyal AND koşuluna bağlı (verdict
+  exit code 0 VE boş `git status --short`) opt-in worktree silme; issue #93
+  regresyonunu içeren entegrasyon test paketiyle: uncommitted iş taşıyan worktree asla
+  silinmiyor ve diff'i her zaman session dizininde yaşıyor.
+
 ## [3.33.0] — 2026-07-11
 
 ### Değiştirildi
