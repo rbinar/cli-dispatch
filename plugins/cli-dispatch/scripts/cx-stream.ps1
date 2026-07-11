@@ -462,6 +462,23 @@ try {
       }
       if ($codexState -eq "done" -or [string]::IsNullOrEmpty($codexState)) {
         Reconcile-SessionError -dir $sessionDir -err "codex exited with code $rc" -exitCode $rc
+      } elseif ($codexState -eq "error") {
+        # The parser already flagged state=error itself (turn.failed / item.type:"error"
+        # detected in the JSON stream), so don't clobber its more specific error message
+        # via Reconcile-SessionError. BUT its finalize() always calls finalize(0) on stdin
+        # EOF (it never sees codex's real process exit code), so meta.exitCode is
+        # hardcoded to 0 regardless of how codex actually exited. Patch just that field so
+        # a real nonzero exit isn't lost as 0. Mirrors the bash cx-stream fix.
+        $metaFile = Join-Path $sessionDir 'meta.json'
+        if (Test-Path $metaFile) {
+          try {
+            $m = Get-Content -Raw $metaFile | ConvertFrom-Json
+            $m.exitCode = [int]$rc
+            $m | ConvertTo-Json -Depth 10 | Set-Content -Path $metaFile -Encoding UTF8
+          } catch {
+            [Console]::Error.WriteLine("exitCode patch: cannot write meta.json: $($_.Exception.Message)")
+          }
+        }
       }
     }
     Set-Content -Path $doneFile -Value "$rc" -NoNewline -Encoding UTF8

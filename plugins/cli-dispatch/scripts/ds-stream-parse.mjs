@@ -18,7 +18,7 @@
 
 import { readFileSync, existsSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
-import { writeMetaFile, createStatusWriter, openSessionFiles, humanSize, clip } from './parse-utils.mjs'
+import { writeMetaFile, createStatusWriter, openSessionFiles, humanSize, clip, readJsonFile, TERMINAL_STATES } from './parse-utils.mjs'
 
 const dir = process.env.CLAUDE_DS_SESSION_DIR
 if (!dir) {
@@ -246,13 +246,28 @@ function finalize(code) {
   flushPending() // before closeAll — appendProgress no-ops once the fd is closed
   closeAll()
   const out = finalText || streamedText
-  status.state = out ? 'done' : (code === 0 ? 'done' : 'error')
+
+  // Reconcile-race guard (see cp-stream-parse.mjs finalize for the full rationale). On a
+  // wrapper-level kill/timeout, stream-utils.sh's reconcile_session_error() writes a TERMINAL
+  // error/killed record to status.json while this parser is still alive; the parser's later
+  // stdin-EOF finalize would otherwise clobber it with "done"/exitCode:0. If the on-disk record
+  // is already a terminal FAILURE (error/killed, never the success state 'done'), defer to it.
+  const onDiskStatus = readJsonFile(statusFile)
+  const reconciledTerminal = TERMINAL_STATES.has(onDiskStatus.state) && onDiskStatus.state !== 'done'
+  if (reconciledTerminal) {
+    status.state = onDiskStatus.state
+    if (typeof onDiskStatus.error === 'string' && onDiskStatus.error) status.error = onDiskStatus.error
+  } else {
+    status.state = out ? 'done' : (code === 0 ? 'done' : 'error')
+  }
   status.finalResultPreview = (out || '').replace(/\s+/g, ' ').slice(0, 300)
   status.lastActivityAt = new Date().toISOString()
   flushStatus() // force the final snapshot (cancels any pending throttled write)
   meta.endedAt = new Date().toISOString()
-  meta.exitCode = code ?? 0
+  const onDiskMeta = reconciledTerminal ? readJsonFile(metaFile) : {}
+  meta.exitCode = (reconciledTerminal && Number.isInteger(onDiskMeta.exitCode)) ? onDiskMeta.exitCode : (code ?? 0)
   meta.state = status.state
+  if (status.state === 'error' && status.error) meta.error = status.error
   writeMeta()
   // Print the final text to stdout — the caller (background task) gets the answer here.
   if (out) process.stdout.write(out.endsWith('\n') ? out : out + '\n')

@@ -52,6 +52,13 @@ if [ -z "$PARSER" ]; then
 fi
 [ -n "$PARSER" ] && [ -f "$PARSER" ] || { echo "ag-stream: ag-transcript-parse.mjs not found (set AG_PARSER)." >&2; exit 1; }
 
+# Resolve parse-utils.mjs the SAME way as the parser (installed to LIBEXEC, not next to this
+# wrapper in $BIN). The E7 conv-id ownership matching (select_owned_conv) imports it.
+PARSE_UTILS=""
+for cand in "$HOME/.local/share/cli-dispatch/parse-utils.mjs" "$HOME/.local/share/claude-ds/parse-utils.mjs" "$SCRIPT_DIR/parse-utils.mjs"; do
+  [ -f "$cand" ] && { PARSE_UTILS="$cand"; break; }
+done
+
 # ---- parse arguments ----
 CWD="$(pwd)"
 RESUME_ID=""
@@ -108,6 +115,11 @@ case "$IDLE_TIMEOUT" in ''|*[!0-9]*) IDLE_TIMEOUT=0;; esac
 
 # Make CWD absolute (last_conversations.json keys are absolute paths).
 CWD="$(cd "$CWD" 2>/dev/null && pwd)" || { echo "ag-stream: bad --cwd" >&2; exit 1; }
+
+# Snapshot dirty/untracked paths in $CWD BEFORE the worker runs, so write_diff_artifacts
+# (called after agy finishes, below) can exclude pre-existing dirt from the reported
+# changed-files list — see snapshot_dirty_paths in stream-utils.sh.
+PREEXISTING_DIRTY="$(snapshot_dirty_paths "$CWD")"
 
 AG_HOME="$HOME/.gemini/antigravity-cli"
 LC="$AG_HOME/cache/last_conversations.json"
@@ -272,12 +284,22 @@ if [ "$RESUME" -eq 0 ]; then
   fi
 fi
 
-# Snapshot pre-run state for conv-id discovery: the prior conv-id for THIS workspace, and
-# the set of existing brain/ dirs (so the fallback only ever picks a NEWLY-created one and
-# can never attach to an unrelated stale conversation).
-PRE_CID=""
-[ -f "$LC" ] && PRE_CID="$(json_field "$LC" "$CWD" || true)"
-PRE_BRAIN="$(ls "$BRAIN" 2>/dev/null | sort || true)"
+# Snapshot pre-run state for conv-id discovery (E7): the FULL set of pre-existing
+# conversation-ids — last_conversations.json values UNION existing brain/ subdirs — captured
+# BEFORE launch. Discovery then only ever considers conversations CREATED by this run.
+# (Includes the preflight ping's own conversation, created just above.) This is the anchor of
+# the same-cwd hijack fix: last_conversations.json is keyed by cwd and keeps only the LAST
+# writer, so a cwd-keyed lookup — or "newest brain dir" — can hand this run a PARALLEL
+# same-cwd run's conv-id. Snapshot + per-candidate ownership matching (see discover_cid /
+# select_owned_conv) attaches strictly to the conversation whose first user message is OURS.
+PRE_IDS_FILE="$(mktemp -t ag-preids-XXXXXX)"
+E7_LC="$LC" E7_BRAIN="$BRAIN" node --input-type=module -e '
+  import { readFileSync, readdirSync } from "node:fs"
+  const out = new Set()
+  try { const m = JSON.parse(readFileSync(process.env.E7_LC, "utf8")); for (const v of Object.values(m)) if (typeof v === "string" && v) out.add(v) } catch {}
+  try { for (const d of readdirSync(process.env.E7_BRAIN)) out.add(d) } catch {}
+  process.stdout.write([...out].join("\n"))
+' > "$PRE_IDS_FILE" 2>/dev/null || true
 
 # Process helpers: mtime_of, kill_tree, proc_tree, kill_worker — defined in stream-utils.sh
 # (sourced above). Defined BEFORE launch so the discovery-failure path can kill a hung agy.
@@ -291,37 +313,81 @@ AGY_PID="$(cat "$PIDFILE" 2>/dev/null || true)"
 [ -n "$AGY_PID" ] || { echo "ag-stream: failed to launch agy." >&2; rm -f "$PIDFILE"; exit 1; }
 
 # ---- discover the conversation-id this run created (or use the resume id) ----
+# select_owned_conv: enumerate conversation-ids that did NOT exist in the pre-launch snapshot
+# (last_conversations.json values ∪ brain/ subdirs, minus PRE_IDS_FILE), then return the one
+# whose FIRST user message is OUR prompt — never a parallel same-cwd run's. Prints the owned
+# conv-id or nothing (keep polling). The prompt is passed via env (may contain anything).
+select_owned_conv() {
+  E7_PROMPT="$PROMPT" E7_LC="$LC" E7_BRAIN="$BRAIN" E7_PRE="$PRE_IDS_FILE" E7_PU="$PARSE_UTILS" \
+  node --input-type=module -e '
+    import { readFileSync, readdirSync } from "node:fs"
+    import path from "node:path"
+    const { selectOwnedConversation } = await import("file://" + process.env.E7_PU)
+    const brain = process.env.E7_BRAIN
+    const pre = new Set()
+    try { for (const l of readFileSync(process.env.E7_PRE, "utf8").split("\n")) { const t = l.trim(); if (t) pre.add(t) } } catch {}
+    const ids = new Set()
+    try { const m = JSON.parse(readFileSync(process.env.E7_LC, "utf8")); for (const v of Object.values(m)) if (typeof v === "string" && v) ids.add(v) } catch {}
+    try { for (const d of readdirSync(brain)) ids.add(d) } catch {}
+    const candidates = []
+    for (const cid of ids) {
+      if (pre.has(cid)) continue
+      let text = null
+      try { text = readFileSync(path.join(brain, cid, ".system_generated", "logs", "transcript_full.jsonl"), "utf8") } catch {}
+      candidates.push({ cid, transcriptText: text })
+    }
+    const owned = selectOwnedConversation(process.env.E7_PROMPT || "", candidates)
+    if (owned) process.stdout.write(owned)
+  ' 2>/dev/null
+}
 discover_cid() {
   if [ "$RESUME" -eq 1 ]; then printf '%s' "$RESUME_ID"; return 0; fi
   local cid="" i
   for i in $(seq 1 120); do   # up to ~30s
-    if [ -f "$LC" ]; then
-      cid="$(json_field "$LC" "$CWD" || true)"
-      if [ -n "$cid" ] && [ "$cid" != "$PRE_CID" ]; then printf '%s' "$cid"; return 0; fi
+    cid="$(select_owned_conv)"
+    [ -n "$cid" ] && { printf '%s' "$cid"; return 0; }
+    if ! kill -0 "$AGY_PID" 2>/dev/null; then
+      # agy already exited — give the transcript one last chance to flush, then stop.
+      cid="$(select_owned_conv)"
+      [ -n "$cid" ] && { printf '%s' "$cid"; return 0; }
+      break
     fi
-    kill -0 "$AGY_PID" 2>/dev/null || break   # agy already exited
     sleep 0.25
   done
-  # Fallback (belt-and-suspenders): the NEWEST brain/ subdir that did NOT exist before we
-  # launched. Restricting to newly-created dirs prevents attaching to an unrelated stale
-  # conversation when last_conversations.json never updated (e.g. agy did nothing).
-  if [ -d "$BRAIN" ]; then
-    local d
-    for d in $(ls -t "$BRAIN" 2>/dev/null); do
-      case $'\n'"$PRE_BRAIN"$'\n' in *$'\n'"$d"$'\n'*) continue;; esac
-      printf '%s' "$d"; return 0
-    done
-  fi
   return 1
 }
 CID="$(discover_cid || true)"
 if [ -z "$CID" ]; then
-  echo "ag-stream: could not discover the agy conversation-id." >&2
+  # E7: discovery failed — either agy created no conversation, OR the only NEW conversation(s)
+  # belonged to a PARALLEL same-cwd run (first user message did not match OUR prompt). Writing
+  # an explicit error session is deliberately safer than silently attaching to a sibling's
+  # conversation (which would mislabel meta.json with our prompt while streaming the other
+  # task, leaving the real work untracked).
+  echo "ag-stream: could not identify the agy conversation this run created" >&2
+  echo "  (no NEW conversation matched this run's prompt — possible parallel same-cwd race)." >&2
+  SESSIONS_ROOT="$(resolve_sessions_root)"
+  CID_FAIL="discover-fail-$(date +%Y%m%d%H%M%S)-$((1000 + RANDOM % 9000))"
+  FAIL_DIR="$SESSIONS_ROOT/$CID_FAIL"
+  FAIL_BRANCH="$(git -C "$CWD" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  mkdir -p "$FAIL_DIR" 2>/dev/null || true
+  printf '%s' "$PROMPT" > "$FAIL_DIR/prompt.txt" 2>/dev/null || true
+  E7_DF_DIR="$FAIL_DIR" E7_DF_CWD="$CWD" E7_DF_BRANCH="$FAIL_BRANCH" E7_DF_MODEL="$MODEL" \
+  E7_DF_PROMPT="$(printf '%.120s' "$PROMPT")" node --input-type=module -e '
+    import { writeFileSync } from "node:fs"
+    import path from "node:path"
+    const dir = process.env.E7_DF_DIR, now = new Date().toISOString(), sId = path.basename(dir)
+    const err = "conv-id discovery failed: no new conversation matched this run'\''s prompt (possible parallel same-cwd race)"
+    const status = { sessionId: sId, backend: "antigravity", convId: "", state: "error", error: err, errorKind: "discovery", lastTool: null, toolCounts: {}, events: 0, startedAt: now, lastActivityAt: now, finalResultPreview: "", usage: null }
+    const meta = { sessionId: sId, backend: "antigravity", convId: "", promptPreview: process.env.E7_DF_PROMPT || "", cwd: process.env.E7_DF_CWD || "", branch: process.env.E7_DF_BRANCH || "", model: process.env.E7_DF_MODEL || "", startedAt: now, endedAt: now, exitCode: 1, state: "error", error: err, errorKind: "discovery" }
+    try { writeFileSync(path.join(dir, "status.json"), JSON.stringify(status, null, 2) + "\n") } catch {}
+    try { writeFileSync(path.join(dir, "meta.json"), JSON.stringify(meta, null, 2) + "\n") } catch {}
+  ' 2>/dev/null || true
+  echo "  dir:    $FAIL_DIR" >&2
   # Don't `wait` (a startup-hung agy never exits → infinite block). We own the process,
   # so kill the subtree, reap it, and bail.
   kill_worker "$AGY_PID"
   wait "$AGY_PID" 2>/dev/null || true
-  rm -f "$PIDFILE"
+  rm -f "$PIDFILE" "${PRE_IDS_FILE:-}"
   exit 1
 fi
 
@@ -362,7 +428,7 @@ cleanup() {
   [ -n "${WATCHDOG_PID:-}" ] && kill_tree "$WATCHDOG_PID" -TERM 2>/dev/null || true
   [ -n "${PARSER_PID:-}" ] && kill_tree "$PARSER_PID" -TERM 2>/dev/null || true
   [ -n "${AGY_PID:-}" ] && kill -TERM "$AGY_PID" 2>/dev/null || true
-  rm -f "${PIDFILE:-}" 2>/dev/null || true
+  rm -f "${PIDFILE:-}" "${PRE_IDS_FILE:-}" 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -458,5 +524,5 @@ if [ ! -f "$SESSION_DIR/.timeout" ] && [ "${AGY_RC:-0}" -eq 0 ] && [ -n "$VERIFY
 fi
 
 write_diff_artifacts "$SESSION_DIR" "$CWD" || true
-rm -f "$PIDFILE" "$SESSION_DIR/.timeout"
+rm -f "$PIDFILE" "${PRE_IDS_FILE:-}" "$SESSION_DIR/.timeout"
 exit "$AGY_RC"

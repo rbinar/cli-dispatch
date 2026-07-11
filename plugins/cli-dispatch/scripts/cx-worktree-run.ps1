@@ -11,6 +11,15 @@ $ErrorActionPreference = "Stop"
 if (-not (Test-Path (Join-Path $Repo ".git"))) { Write-Error "Not a git repo: $Repo"; exit 1 }
 if (-not (Test-Path $BriefFile)) { Write-Error "Brief file not found: $BriefFile"; exit 1 }
 
+# Locate cx-stream (PATH, else next to this script) — mirrors cx-agent.ps1's fallback so
+# this script doesn't hard-fail in an environment where /cli-dispatch:setup hasn't put
+# cx-stream on PATH.
+$stream = "cx-stream"
+if (-not (Get-Command $stream -ErrorAction SilentlyContinue)) {
+  $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+  $stream = Join-Path $scriptDir "cx-stream.ps1"
+}
+
 $WT = Join-Path ([System.IO.Path]::GetTempPath()) ("cx-wt-" + [System.IO.Path]::GetRandomFileName().Substring(0, 6))
 
 $baseRef = "origin/main"
@@ -44,7 +53,7 @@ $brief = Get-Content -Raw $BriefFile
 # propagate as this script's exit code (no more swallowing failures).
 $workerExitCode = 0
 try {
-  cx-stream --cwd $WT -p $brief
+  & $stream --cwd $WT -p $brief
   $workerExitCode = $LASTEXITCODE
 } catch {
   Write-Error $_.Exception.Message -ErrorAction Continue

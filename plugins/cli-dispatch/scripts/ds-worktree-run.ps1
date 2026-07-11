@@ -9,6 +9,19 @@ $ErrorActionPreference = "Stop"
 if (-not (Test-Path (Join-Path $Repo ".git"))) { Write-Error "Not a git repo: $Repo"; exit 1 }
 if (-not (Test-Path $BriefFile)) { Write-Error "Brief file not found: $BriefFile"; exit 1 }
 
+# Locate claude-ds-stream (PATH, else next to this script) — mirrors ds-agent.ps1's fallback
+# so this script doesn't hard-fail in an environment where /cli-dispatch:setup hasn't put
+# claude-ds-stream on PATH.
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$stream = (Get-Command claude-ds-stream -ErrorAction SilentlyContinue).Source
+if ([string]::IsNullOrWhiteSpace($stream)) {
+  $stream = Join-Path $ScriptDir "claude-ds-stream.ps1"
+}
+if (-not (Test-Path $stream)) {
+  [Console]::Error.WriteLine("ds-worktree-run.ps1: claude-ds-stream not found (run /cli-dispatch:setup).")
+  exit 1
+}
+
 $WT = Join-Path ([System.IO.Path]::GetTempPath()) ("ds-wt-" + [System.IO.Path]::GetRandomFileName().Substring(0, 6))
 
 $baseRef = "origin/main"
@@ -46,7 +59,7 @@ $brief = Get-Content -Raw $BriefFile
 # propagate as this script's exit code (no more swallowing failures).
 $workerExitCode = 0
 try {
-  claude-ds-stream --cwd $WT --dangerously-skip-permissions -p $brief
+  & $stream --cwd $WT --dangerously-skip-permissions -p $brief
   $workerExitCode = $LASTEXITCODE
 } catch {
   Write-Error $_.Exception.Message -ErrorAction Continue

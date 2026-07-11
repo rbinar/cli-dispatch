@@ -144,6 +144,22 @@ reconcile_session_error() {
 
 # ---- diff artifact extraction ----
 
+# snapshot_dirty_paths <cwd>
+#
+# Call BEFORE launching the worker (once $CWD is fully resolved — after any --cwd/resume
+# absolute-path resolution, before the backend process starts). Prints the set of paths
+# that are ALREADY dirty/untracked in <cwd>, one per line, in the same `git status --short
+# --untracked-files=all` field layout write_diff_artifacts parses below — so the two lists
+# are directly comparable. Callers stash the result in a script-global (e.g.
+# PREEXISTING_DIRTY="$(snapshot_dirty_paths "$CWD")"); write_diff_artifacts reads that
+# global, if set, to exclude pre-existing dirt from the run's reported changed-files.
+# Silent no-op (empty output) if <cwd> is not a git worktree or git is unavailable.
+snapshot_dirty_paths() {
+  local cwd="$1"
+  git -C "$cwd" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+  git -C "$cwd" status --short --untracked-files=all 2>/dev/null | cut -c4-
+}
+
 # write_diff_artifacts <session_dir> <cwd>
 #
 # Best-effort capture of git edits in <cwd> into <session_dir>/:
@@ -151,15 +167,26 @@ reconcile_session_error() {
 # - changed-files.json: JSON list of changed files + final git diff --stat line
 #
 # No-op if <cwd> is not a git worktree or `git status --porcelain` is empty.
+#
+# Excludes paths already dirty/untracked BEFORE the worker ran: if the caller-scope global
+# PREEXISTING_DIRTY is set (see snapshot_dirty_paths above), those paths are dropped from
+# the reported `files` list (a worker that never touched them must not get credited/blamed
+# for pre-run dirt) and instead recorded verbatim under changed-files.json's
+# `preexistingDirty` field for visibility. diff.patch is untouched — it still reflects the
+# full working-tree diff against HEAD, pre-existing dirt included.
 write_diff_artifacts() {
   local dir="$1" cwd="$2"
-  local status_lines diffstat changed_file tmp_changes
+  local status_lines diffstat changed_file tmp_changes tmp_pre
 
   # Not a git worktree (or git not available) → no artifacts.
   git -C "$cwd" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
 
   status_lines="$(git -C "$cwd" status --short --untracked-files=all 2>/dev/null || true)"
   [ -z "$status_lines" ] && return 0
+
+  # Pre-existing dirty/untracked paths captured before the worker launched (if any).
+  tmp_pre="$(mktemp)"
+  printf '%s\n' "${PREEXISTING_DIRTY:-}" | sed '/^$/d' > "$tmp_pre"
 
   mkdir -p "$dir" 2>/dev/null || true
   git -C "$cwd" diff HEAD > "$dir/diff.patch" 2>/dev/null || true
@@ -195,12 +222,19 @@ write_diff_artifacts() {
   CLI_DISPATCH_DA_DIR="$dir" \
   CLI_DISPATCH_DA_DIFFSTAT="$diffstat" \
   CLI_DISPATCH_DA_CHANGES="$tmp_changes" \
+  CLI_DISPATCH_DA_PRE="$tmp_pre" \
   node -e '
     const fs = require("fs");
     const p = require("path");
     const dir = process.env.CLI_DISPATCH_DA_DIR;
     const diffstat = process.env.CLI_DISPATCH_DA_DIFFSTAT || "";
+    const preSet = new Set();
+    try {
+      const raw = fs.readFileSync(process.env.CLI_DISPATCH_DA_PRE, "utf8");
+      for (const row of raw.split("\n")) { if (row) preSet.add(row); }
+    } catch {}
     const changes = [];
+    const preexistingDirty = [];
     try {
       const raw = fs.readFileSync(process.env.CLI_DISPATCH_DA_CHANGES, "utf8");
       for (const row of raw.split("\n")) {
@@ -209,17 +243,21 @@ write_diff_artifacts() {
         if (tab < 0) continue;
         const st = row.slice(0, tab);
         const f = row.slice(tab + 1);
+        // Exclude paths that were already dirty/untracked BEFORE the worker ran — a run
+        // must only be credited/blamed for paths it actually touched. Still recorded
+        // below (preexistingDirty) for visibility; diff.patch is unaffected.
+        if (preSet.has(f)) { preexistingDirty.push(f); continue; }
         changes.push({ path: f, status: st });
       }
     } catch {}
     try {
       fs.writeFileSync(
         p.join(dir, "changed-files.json"),
-        JSON.stringify({ files: changes, diffstat }, null, 2) + "\n"
+        JSON.stringify({ files: changes, diffstat, preexistingDirty }, null, 2) + "\n"
       );
     } catch {}
   ' || true
-  rm -f "$tmp_changes"
+  rm -f "$tmp_changes" "$tmp_pre"
 }
 
 # ---- verify result recording ----

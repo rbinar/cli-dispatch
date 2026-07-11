@@ -43,6 +43,13 @@ REPO="$1"; BRANCH="$2"; BRIEF="$3"
 # Use -e to accept either.
 [ -e "$REPO/.git" ] || { echo "Not a git repo: $REPO" >&2; exit 1; }
 [ -f "$BRIEF" ] || { echo "Brief file not found: $BRIEF" >&2; exit 1; }
+
+# Locate claude-ds-stream (PATH, else next to this script) — mirrors ds-agent's fallback so
+# this script doesn't hard-fail with exit 127 in an environment where /cli-dispatch:setup
+# hasn't put claude-ds-stream on PATH.
+STREAM="$(command -v claude-ds-stream 2>/dev/null || true)"
+[ -z "$STREAM" ] && STREAM="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/claude-ds-stream"
+[ -x "$STREAM" ] || { echo "ds-worktree-run.sh: claude-ds-stream not found (run /cli-dispatch:setup)." >&2; exit 1; }
 # NOTE (optional): if REPO itself is already a worktree (.git is a FILE, not a DIR),
 # nesting a worktree-of-a-worktree via the normal mode below is redundant. The
 # script still works correctly (git worktree add succeeds from a worktree), but
@@ -85,7 +92,7 @@ fi
 PRE_STATUS="$(git -C "$REPO" status --short 2>/dev/null || true)"
 echo ">>> Running claude-ds-stream (agentic, session-tracked) in $WT ..."
 # Stream variant: progress/status/transcript are written to a session dir (path on stderr).
-claude-ds-stream --cwd "$WT" --dangerously-skip-permissions -p "$(cat "$BRIEF")"
+"$STREAM" --cwd "$WT" --dangerously-skip-permissions -p "$(cat "$BRIEF")"
 echo ">>> Worktree: $WT  (branch: $BRANCH)"
 echo ">>> Review the diff, then YOU handle git/PR/merge. Cleanup:"
 echo "    rm -f \"$WT/node_modules\"; git -C \"$REPO\" worktree remove \"$WT\" --force; git -C \"$REPO\" worktree prune"

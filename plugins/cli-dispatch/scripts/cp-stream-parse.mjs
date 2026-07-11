@@ -27,7 +27,7 @@
 
 import { readFileSync, existsSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
-import { writeMetaFile, createStatusWriter, openSessionFiles, clip } from './parse-utils.mjs'
+import { writeMetaFile, createStatusWriter, openSessionFiles, clip, readJsonFile, TERMINAL_STATES } from './parse-utils.mjs'
 
 const dir = process.env.CP_SESSION_DIR
 if (!dir) {
@@ -164,9 +164,18 @@ function learnToolMeta(body) {
 function textFrom(ev, body) {
   const msg = asObj(ev.message)
   const delta = asObj(ev.delta)
+  // deltaContent / delta_content: Copilot CLI 1.0.70's assistant.message_delta events carry
+  // their streamed text ONLY in this field (verified against a real 1.0.70 transcript: 1168
+  // message_delta events, each with a `deltaContent` chunk and no text/content field). Without
+  // recognizing it none of the streamed text reached finalText/progress.log — a killed session
+  // lost all generated content and a live session showed no streaming. The final complete
+  // assistant.message still arrives in `content` and OVERWRITES the accumulation (see
+  // handleText), so recognizing deltas here does NOT double-count against the final message.
   return firstString(
     ev.text, ev.content, ev.markdown, ev.answer, ev.finalText, ev.final_text, ev.message,
+    ev.deltaContent, ev.delta_content,
     body.text, body.content, body.markdown, body.answer, body.finalText, body.final_text,
+    body.deltaContent, body.delta_content,
     msg.text, msg.content, delta.text, delta.content
   ) || ''
 }
@@ -323,20 +332,41 @@ function finalize(code) {
   }
   closeAll()
   const out = finalText
+
+  // Reconcile-race guard. On a wrapper-level kill/timeout, stream-utils.sh's
+  // reconcile_session_error() writes a TERMINAL error/killed record to status.json (with the
+  // real reason + exit code) while this parser is still alive — then cleanup() kills copilot,
+  // whose stdin EOF triggers THIS finalize asynchronously. The interrupted stream never set
+  // errorText, so the logic below would compute "done"/exitCode:0 and clobber the reconciled
+  // record, making the kill invisible to the dashboard/sessions/clean tooling. If the on-disk
+  // record is already a terminal FAILURE (error/killed — never the success state), defer to
+  // it: keep its state + error and only refresh the preview (E3-captured deltas are still
+  // worth surfacing). TERMINAL_STATES is {done,error,killed}; we exclude 'done' since the
+  // throttled writer never emits it pre-finalize, so a terminal non-done state can only come
+  // from an out-of-process reconcile/kill.
+  const onDiskStatus = readJsonFile(statusFile)
+  const reconciledTerminal = TERMINAL_STATES.has(onDiskStatus.state) && onDiskStatus.state !== 'done'
+
   // errorText is AUTHORITATIVE (mirrors cx-stream-parse.mjs's finalize logic): a reported
   // tool-state error or top-level error event means the turn failed even if the copilot
   // process exited 0. Only a clean run with no errorText is "done".
-  if (errorText) status.state = 'error'
+  if (reconciledTerminal) {
+    status.state = onDiskStatus.state
+    if (typeof onDiskStatus.error === 'string' && onDiskStatus.error) status.error = onDiskStatus.error
+  } else if (errorText) status.state = 'error'
   else if (out) status.state = 'done'
   else status.state = (code === 0 ? 'done' : 'error')
-  if (status.state === 'error' && errorText) status.error = errorText
+  if (status.state === 'error' && !status.error && errorText) status.error = errorText
   status.finalResultPreview = (out || '').replace(/\s+/g, ' ').slice(0, 300)
   status.lastActivityAt = new Date().toISOString()
   flushStatus() // force the final snapshot (cancels any pending throttled write)
   meta.endedAt = new Date().toISOString()
-  meta.exitCode = code ?? 0
+  // On a reconciled terminal record, preserve the wrapper's real exit code — our stdin-EOF
+  // path always sees code 0, which must not overwrite the recorded kill/timeout code.
+  const onDiskMeta = reconciledTerminal ? readJsonFile(metaFile) : {}
+  meta.exitCode = (reconciledTerminal && Number.isInteger(onDiskMeta.exitCode)) ? onDiskMeta.exitCode : (code ?? 0)
   meta.state = status.state
-  if (status.state === 'error' && errorText) meta.error = errorText
+  if (status.state === 'error' && status.error) meta.error = status.error
   writeMeta()
   // Print the final text to stdout — this is cp-stream's SOLE source of the answer (GitHub Copilot
   // has no -o <file> equivalent to codex's clean-output flag).

@@ -7,6 +7,74 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.41.0] — 2026-07-11
+
+### Düzeltildi
+
+- **`/cli-dispatch:kill` artık gerçek worker'ı `worker.pid` tree-kill ile
+  öldürüyor.** Komut process'leri `pgrep -f "$SID"` ile eşliyordu, ama
+  oc/cp/ag worker'ları session id'yi argv'lerinde hiç taşımıyor — yani hiçbir
+  sinyal gönderilmezken `status.json`'a sahte bir `killed` yazılıyor ve canlı
+  worker token yakmaya devam ediyordu (bitince kaydı ezebiliyordu da).
+  `kill.md` artık her `*-stream` wrapper'ının tam bu amaçla yazdığı
+  `$DIR/worker.pid`'i okuyor, snapshot'lanmış process ağacının tamamına
+  TERM→KILL uyguluyor (`stream-utils.sh`'ın takeover kill deseniyle aynı),
+  eski oturumlar için önceki `pgrep` yoluna — artık o da tree-kill yapıyor —
+  düşüyor ve `state: killed`'ı yalnızca status hâlâ non-terminal ise
+  zorluyor; parser'ın yazdığı terminal `error`/`done` asla ezilmiyor.
+- **`cp-stream` cleanup'ı artık native Copilot binary'sini öksüz
+  bırakmıyor.** Interrupt yolu tek bir `kill -TERM` ile yalnızca node
+  wrapper PID'ini öldürüyordu; child `copilot-darwin-arm64` init'e reparent
+  olup sonsuza dek çalışıyordu. `cleanup()` artık diğer tüm backend
+  wrapper'ları gibi `stream-utils.sh`'ın tree-kill'ini kullanıyor.
+- **Copilot CLI 1.0.70'in stream metni artık düşürülmüyor.**
+  `cp-stream-parse.mjs`'in `textFrom()`'u, `assistant.message_delta`
+  olaylarının metni taşıdığı `deltaContent` alanını tanımıyordu; canlı çıktı
+  `finalText`/`progress.log`'a hiç ulaşmıyordu — kill edilen oturum tüm
+  cevabını kaybediyordu. Delta'lar artık mevcut `handleText` yolundan
+  birikiyor; final `assistant.message` ekleme yerine üzerine yazıyor, yani
+  hiçbir şey çift sayılmıyor. Gerçek 1.0.70 olay şekliyle (final mesajlı ve
+  final'sız) yeni birim testlerle kapsandı.
+- **Parser `finalize()`'ı reconcile edilmiş terminal state'i artık ezmiyor —
+  beş backend'in tümünde.** Kill/timeout sonrası wrapper'ın
+  `reconcile_session_error`'ı doğru şekilde `state:"error"` yazıyordu, ama
+  parser'ın asenkron stdin-EOF finalize'ı bunu `done`/`exitCode:0` ile
+  eziyordu. `finalize()` artık önce diskteki `status.json`'u okuyor ve
+  hâlihazırda terminal `error`/`killed` kayda saygı gösteriyor
+  (`parse-utils.mjs`'in `TERMINAL_STATES`'i ile), reconcile edilmiş
+  `exitCode`'u koruyor. `ds-`, `cx-`, `oc-`, `cp-stream-parse.mjs` ve
+  `ag-transcript-parse.mjs`'e uygulandı.
+- **`cx-stream` hata durumunda gerçek worker exit code'unu kaydediyor.**
+  Parser zaten `state:"error"` kaydetmişse (ör. geçersiz model) wrapper'ın
+  reconcile bloğu tamamen atlanıyordu — codex 1 ile çıkmasına rağmen
+  `meta.json`'da `exitCode: 0` kalıyordu. Error dalı artık parser'ın daha
+  spesifik hata metnini korurken `meta.exitCode`'u gerçek `$CODEX_RC` ile
+  yamalıyor. `cx-stream.ps1`'e senkronlandı. (`oc-stream`'de aynı desen var
+  — takip işi olarak işaretlendi, burada değiştirilmedi.)
+- **`*-worktree-run.sh` kurulumsuz PATH'te artık 127 ile çıkmıyor.** Beş
+  script de sibling `*-stream`'i çıplak PATH çağrısıyla çalıştırıyordu;
+  artık `*-agent` wrapper'larının zaten kullandığı
+  `command -v X || X="$SCRIPT_DIR/X"` fallback'ini kullanıyorlar.
+  `ds-worktree-run.ps1`/`cx-worktree-run.ps1` twin'leri pwsh-idiomatik
+  eşdeğeriyle senkronlandı.
+- **Antigravity conversation-id keşfi artık paralel bir çalışmanın
+  oturumunu kaçıramıyor.** `discover_cid` conversation'ı launch sonrasında
+  paylaşımlı `last_conversations.json`'ın cwd anahtarından seçiyordu — aynı
+  cwd'de iki paralel çalışma birbirinin conversation'ına bağlanabiliyor,
+  bir conversation hiç session dizini almadan kalabiliyordu. Keşif artık
+  launch öncesi conversation-id kümesinin snapshot'ını alıyor, yalnızca yeni
+  id'leri değerlendiriyor ve sadece ilk `USER_INPUT`'u (`<USER_REQUEST>`
+  bloğu) bu çalışmanın kendi prompt'uyla eşleşen conversation'a bağlanıyor
+  (saf eşleştirme yardımcıları `parse-utils.mjs`'e eklendi, birim testli).
+  Hiçbir aday doğrulanamazsa çalışma sessizce yanlış bağlanmak yerine
+  `state:"error"` ile gürültülü şekilde başarısız oluyor.
+- **`changed-files.json` önceden kirli dosyaları artık worker'a mal
+  etmiyor.** Her `*-stream` wrapper'ı launch öncesi `git status --porcelain`
+  snapshot'ı alıyor; `write_diff_artifacts` bu path'leri `files`'tan çıkarıp
+  yeni bilgilendirici `preexistingDirty` alanına kaydediyor. `diff.patch`
+  değişmedi; temiz repolardaki çalışmalar yine `"preexistingDirty": []`
+  üretiyor (geriye uyumlu).
+
 ## [3.40.2] — 2026-07-11
 
 ### Değiştirildi

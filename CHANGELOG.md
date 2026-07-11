@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.41.0] — 2026-07-11
+
+### Fixed
+
+- **`/cli-dispatch:kill` now kills the real worker via `worker.pid` tree-kill.**
+  The command matched processes with `pgrep -f "$SID"`, but oc/cp/ag workers
+  never carry the session id in their argv — so no signal was ever sent while
+  a fake `killed` landed in `status.json` and the live worker kept burning
+  tokens (and could later clobber the record). `kill.md` now reads
+  `$DIR/worker.pid` (written by every `*-stream` wrapper for exactly this),
+  TERM→KILLs the whole snapshotted process tree (same pattern as
+  `stream-utils.sh`'s takeover kill), falls back to the old `pgrep` path —
+  now also tree-killing — for legacy sessions, and only forces
+  `state: killed` if the status is still non-terminal, so a parser-written
+  terminal `error`/`done` is never overwritten.
+- **`cp-stream` cleanup no longer orphans the native Copilot binary.** The
+  interrupt path killed only the node wrapper PID with a single `kill -TERM`;
+  the `copilot-darwin-arm64` child reparented to init and ran forever.
+  `cleanup()` now uses `stream-utils.sh`'s tree-kill like every other
+  backend wrapper.
+- **Copilot CLI 1.0.70 streamed text is no longer dropped.**
+  `cp-stream-parse.mjs`'s `textFrom()` didn't recognize the `deltaContent`
+  field that `assistant.message_delta` events carry text in, so live output
+  never reached `finalText`/`progress.log` — a killed session lost its entire
+  answer. Deltas now accumulate through the existing `handleText` path, and
+  a final `assistant.message` overwrites rather than appends, so nothing is
+  double-counted. Covered by new unit tests using the real 1.0.70 event
+  shape (with and without a final message).
+- **Parser `finalize()` no longer clobbers a reconciled terminal state — all
+  five backends.** After a kill/timeout, the wrapper's
+  `reconcile_session_error` correctly wrote `state:"error"`, but the parser's
+  async stdin-EOF finalize then overwrote it with `done`/`exitCode:0`.
+  `finalize()` now reads the on-disk `status.json` first and defers to an
+  already-terminal `error`/`killed` record (using `TERMINAL_STATES` from
+  `parse-utils.mjs`), preserving the reconciled `exitCode`. Applied to
+  `ds-`, `cx-`, `oc-`, `cp-stream-parse.mjs` and `ag-transcript-parse.mjs`.
+- **`cx-stream` records the real worker exit code on error.** When the parser
+  had already recorded `state:"error"` (e.g. invalid model), the wrapper's
+  reconcile block skipped entirely — leaving `exitCode: 0` in `meta.json`
+  despite codex exiting 1. The error branch now patches `meta.exitCode` with
+  the real `$CODEX_RC` while keeping the parser's more specific error text.
+  Synced to `cx-stream.ps1`. (`oc-stream` has the same pattern — flagged as
+  a follow-up, not changed here.)
+- **`*-worktree-run.sh` no longer exits 127 without an installed PATH.** All
+  five scripts invoked their sibling `*-stream` as a bare PATH call; they now
+  use the same `command -v X || X="$SCRIPT_DIR/X"` fallback the `*-agent`
+  wrappers already had. `ds-worktree-run.ps1`/`cx-worktree-run.ps1` twins
+  synced with the pwsh-idiomatic equivalent.
+- **Antigravity conversation-id discovery can no longer hijack a parallel
+  run's session.** `discover_cid` picked the conversation from the shared
+  `last_conversations.json` cwd key after launch — two same-cwd parallel
+  runs could attach to each other's conversation, leaving one conversation
+  with no session dir at all. Discovery now snapshots the pre-launch
+  conversation-id set, considers only new ids, and attaches solely to the
+  conversation whose first `USER_INPUT` (`<USER_REQUEST>` block) matches this
+  run's own prompt (pure matching helpers added to `parse-utils.mjs`, unit
+  tested). If no candidate verifies, the run fails loudly with
+  `state:"error"` instead of silently mis-attaching.
+- **`changed-files.json` no longer blames pre-existing dirty files on the
+  worker.** Every `*-stream` wrapper now snapshots `git status --porcelain`
+  before launch; `write_diff_artifacts` excludes those paths from `files`
+  and records them under a new informational `preexistingDirty` field.
+  `diff.patch` is unchanged, and runs in clean repos still produce
+  `"preexistingDirty": []` (backward compatible).
+
 ## [3.40.2] — 2026-07-11
 
 ### Changed

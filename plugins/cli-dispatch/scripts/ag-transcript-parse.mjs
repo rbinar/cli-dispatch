@@ -25,7 +25,7 @@
 
 import { readFileSync, existsSync, mkdirSync, statSync, readSync, openSync, closeSync } from 'node:fs'
 import path from 'node:path'
-import { writeMetaFile, createStatusWriter, openSessionFiles, humanSize, clip } from './parse-utils.mjs'
+import { writeMetaFile, createStatusWriter, openSessionFiles, humanSize, clip, readJsonFile, TERMINAL_STATES } from './parse-utils.mjs'
 
 const dir = process.env.AG_SESSION_DIR
 const transcriptPath = process.env.AG_TRANSCRIPT
@@ -175,15 +175,30 @@ function finalize() {
   let done = ''
   try { done = readFileSync(doneFile, 'utf8').trim() } catch { /* ignore */ }
   const isErr = done !== '0' && done !== ''
-  status.state = finalText && (done === '0' || done === '') ? 'done' : 'error'
-  if (isErr && !finalText) status.error = done
+
+  // Reconcile-race guard (see cp-stream-parse.mjs finalize for the full rationale). On a
+  // wrapper-level kill/timeout, ag-stream's reconcile_session_error() writes a TERMINAL
+  // error/killed record to status.json; this tail parser's own finalize would otherwise
+  // recompute state from the done sentinel and could clobber it. If the on-disk record is
+  // already a terminal FAILURE (error/killed, never the success state 'done'), defer to it.
+  const onDiskStatus = readJsonFile(statusFile)
+  const reconciledTerminal = TERMINAL_STATES.has(onDiskStatus.state) && onDiskStatus.state !== 'done'
+  if (reconciledTerminal) {
+    status.state = onDiskStatus.state
+    if (typeof onDiskStatus.error === 'string' && onDiskStatus.error) status.error = onDiskStatus.error
+  } else {
+    status.state = finalText && (done === '0' || done === '') ? 'done' : 'error'
+    if (isErr && !finalText) status.error = done
+  }
   status.finalResultPreview = clip(finalText, 300)
   status.lastActivityAt = new Date().toISOString()
   flushStatus()
   meta.endedAt = new Date().toISOString()
-  meta.exitCode = /^\d+$/.test(done) ? Number(done) : null
+  const onDiskMeta = reconciledTerminal ? readJsonFile(metaFile) : {}
+  if (reconciledTerminal && Number.isInteger(onDiskMeta.exitCode)) meta.exitCode = onDiskMeta.exitCode
+  else meta.exitCode = /^\d+$/.test(done) ? Number(done) : null
   meta.state = status.state
-  if (isErr && !finalText) meta.error = done
+  if (status.state === 'error' && status.error) meta.error = status.error
   writeMeta()
   if (finalText) process.stdout.write(finalText.endsWith('\n') ? finalText : finalText + '\n')
   process.exit(0)

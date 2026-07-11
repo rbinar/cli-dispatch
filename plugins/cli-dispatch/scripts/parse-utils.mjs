@@ -269,3 +269,62 @@ export function writeAuthErrorSession(dir, errorMsg, exitCode, cwd, branch, mode
   writeFileSync(join(dir, 'status.json'), JSON.stringify(status, null, 2) + '\n')
   writeFileSync(join(dir, 'meta.json'), JSON.stringify(meta, null, 2) + '\n')
 }
+
+// ---- Antigravity conversation-ownership matching (E7 race fix) --------------
+//
+// last_conversations.json is keyed by cwd, so two ag-stream runs in the SAME cwd both
+// overwrite the same key — the cwd lookup (and "newest brain dir") can hand a run the
+// SIBLING run's conversation-id, hijacking the session. These pure helpers let discovery
+// verify OWNERSHIP instead of trusting timing: agy embeds the submitted prompt verbatim in
+// the first USER_INPUT event's content, wrapped as <USER_REQUEST>…</USER_REQUEST> (verified
+// against real agy 1.0.x transcripts), so the conversation whose first user message is OUR
+// prompt is unambiguously the one THIS run launched.
+
+// Extract the text inside the first <USER_REQUEST>…</USER_REQUEST> block, or null if absent.
+export function extractUserRequest(content) {
+  if (typeof content !== 'string') return null
+  const m = content.match(/<USER_REQUEST>\n?([\s\S]*?)\n?<\/USER_REQUEST>/)
+  return m ? m[1] : null
+}
+
+// True iff a candidate conversation's first USER_INPUT content is OUR prompt. Prefers an
+// exact match on the extracted <USER_REQUEST> block (avoids substring false-positives when
+// a sibling run's prompt merely CONTAINS ours); falls back to containment only when the
+// wrapper is absent (older/edge transcript shape).
+export function conversationMatchesPrompt(firstUserContent, prompt) {
+  if (typeof firstUserContent !== 'string' || typeof prompt !== 'string') return false
+  const p = prompt.trim()
+  if (!p) return false
+  const req = extractUserRequest(firstUserContent)
+  if (req != null) return req.trim() === p
+  return firstUserContent.includes(p)
+}
+
+// Return the content of the first USER_INPUT event in a raw transcript_full.jsonl string,
+// or null if the file has no readable user event yet (transcript still materializing).
+export function firstUserInputContent(transcriptText) {
+  if (typeof transcriptText !== 'string' || !transcriptText) return null
+  for (const line of transcriptText.split('\n')) {
+    const t = line.trim()
+    if (!t) continue
+    let o
+    try { o = JSON.parse(t) } catch { continue }
+    if (o && o.type === 'USER_INPUT' && typeof o.content === 'string') return o.content
+  }
+  return null
+}
+
+// Given our prompt and the NEW candidate conversations (each { cid, transcriptText }), return
+// the cid of the one whose first user message is our prompt, or '' if none matches (yet).
+// Only ever returns a prompt-verified conversation — never a sibling run's — which is what
+// closes the same-cwd hijack window.
+export function selectOwnedConversation(prompt, candidates) {
+  if (!Array.isArray(candidates)) return ''
+  for (const c of candidates) {
+    if (!c || !c.cid) continue
+    const content = firstUserInputContent(c.transcriptText)
+    if (content == null) continue
+    if (conversationMatchesPrompt(content, prompt)) return String(c.cid)
+  }
+  return ''
+}

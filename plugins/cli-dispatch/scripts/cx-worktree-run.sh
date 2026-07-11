@@ -11,6 +11,13 @@ fi
 REPO="$1"; BRANCH="$2"; BRIEF="$3"
 [ -d "$REPO/.git" ] || { echo "Not a git repo: $REPO" >&2; exit 1; }
 [ -f "$BRIEF" ] || { echo "Brief file not found: $BRIEF" >&2; exit 1; }
+
+# Locate cx-stream (PATH, else next to this script) — mirrors cx-agent's fallback so this
+# script doesn't hard-fail with exit 127 in an environment where /cli-dispatch:setup hasn't
+# put cx-stream on PATH.
+STREAM="$(command -v cx-stream 2>/dev/null || true)"
+[ -z "$STREAM" ] && STREAM="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cx-stream"
+[ -x "$STREAM" ] || { echo "cx-worktree-run.sh: cx-stream not found (run /cli-dispatch:setup)." >&2; exit 1; }
 # Atomically claim a unique worktree path. mktemp -d claims the dir (O_EXCL),
 # rmdir releases it, then git worktree add re-creates it. If a race occurs
 # (another process created $WT between rmdir and git worktree add), retry once.
@@ -45,7 +52,7 @@ if [ -d "$REPO/node_modules" ] && [ ! -e "$WT/node_modules" ]; then
 fi
 echo ">>> Running cx-stream (Codex/OpenAI, session-tracked) in $WT ..."
 # Default sandbox workspace-write → edits land in $WT. Pass --read-only for an analysis run.
-cx-stream --cwd "$WT" -p "$(cat "$BRIEF")"
+"$STREAM" --cwd "$WT" -p "$(cat "$BRIEF")"
 echo ">>> Worktree: $WT  (branch: $BRANCH)"
 echo ">>> Review the diff, then YOU handle git/PR/merge. Cleanup:"
 echo "    rm -f \"$WT/node_modules\"; git -C \"$REPO\" worktree remove \"$WT\" --force; git -C \"$REPO\" worktree prune"

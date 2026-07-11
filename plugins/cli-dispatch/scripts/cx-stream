@@ -185,6 +185,11 @@ fi
 CWD="$(cd "$CWD" 2>/dev/null && pwd)" || { echo "cx-stream: bad --cwd" >&2; exit 1; }
 cd "$CWD"
 
+# Snapshot dirty/untracked paths in $CWD BEFORE the worker runs, so write_diff_artifacts
+# (called after codex finishes, below) can exclude pre-existing dirt from the reported
+# changed-files list — see snapshot_dirty_paths in stream-utils.sh.
+PREEXISTING_DIRTY="$(snapshot_dirty_paths "$CWD")"
+
 # ---- resolve the sandbox mode ----
 # Default to workspace-write for normal agentic work. --read-only is a REAL codex sandbox
 # (verified: codex honors -s read-only), so honor it as a genuine no-writes guarantee
@@ -443,6 +448,22 @@ else
     [ -f "$SESSION_DIR/status.json" ] && CODEX_STATE="$(json_field "$SESSION_DIR/status.json" state || true)"
     if [ "$CODEX_STATE" = "done" ] || [ -z "$CODEX_STATE" ]; then
       reconcile_session_error "$SESSION_DIR" "codex exited with code $CODEX_RC" "$CODEX_RC"
+    elif [ "$CODEX_STATE" = "error" ]; then
+      # The parser already flagged state=error itself (turn.failed / item.type:"error"
+      # detected in the JSON stream — see cx-stream-parse.mjs's H2 errorText logic), so
+      # don't clobber its more specific error message via reconcile_session_error. BUT its
+      # finalize() always calls finalize(0) on stdin EOF (it never sees codex's real
+      # process exit code), so meta.exitCode is hardcoded to 0 regardless of how codex
+      # actually exited. Patch just that field so a real nonzero exit isn't lost as 0.
+      CLI_DISPATCH_FIX_DIR="$SESSION_DIR" CLI_DISPATCH_FIX_RC="$CODEX_RC" node -e '
+        const fs = require("fs"), p = require("path")
+        const dir = process.env.CLI_DISPATCH_FIX_DIR
+        const rc = Number(process.env.CLI_DISPATCH_FIX_RC)
+        const f = p.join(dir, "meta.json")
+        let m = {}; try { m = JSON.parse(fs.readFileSync(f, "utf8")) } catch {}
+        m.exitCode = rc
+        try { fs.writeFileSync(f, JSON.stringify(m, null, 2) + "\n") } catch (e) { process.stderr.write("exitCode patch: cannot write meta.json: " + e.message + "\n") }
+      ' || echo "cx-stream: exitCode patch failed — meta.json may show exitCode:0 for a real nonzero exit" >&2
     fi
   fi
   printf '%s' "$CODEX_RC" > "$DONEFILE"
