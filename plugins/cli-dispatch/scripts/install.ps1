@@ -3,7 +3,7 @@
 # Usage: install.ps1 [-Backends deepseek,codex | all]
 # Native Windows supports the DeepSeek and Codex backends; Antigravity needs a pseudo-TTY
 # (not available on native Windows) — install it under WSL instead.
-param([string]$Backends = "deepseek", [switch]$InstallMissing)
+param([string]$Backends = "deepseek", [switch]$InstallMissing, [string]$PolicyInjection = "off", [switch]$NonInteractive)
 $ErrorActionPreference = "Stop"
 
 $backendList = ($Backends -replace '\s', '').ToLower()
@@ -157,15 +157,20 @@ if ($wantCX) {
   }
 }
 
-if (-not (Test-Path $Config)) {
-  New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
-  @'
-# cli-dispatch config — DO NOT COMMIT.
+# Idempotently append one backend's config block to $CfgPath (native Windows: deepseek +
+# codex only — Antigravity/OpenCode/Copilot are Unix-only). Mirrors install.sh's
+# ensure_config_block: never touches an existing block, only appends a missing one.
+function Ensure-ConfigBlock {
+  param([string]$CfgPath, [string]$Backend)
+  switch ($Backend) {
+    'deepseek' { $marker = 'DEEPSEEK_API_KEY='; $block = @'
 
 # --- DeepSeek backend (claude-ds) --- add your DeepSeek API key below.
 DEEPSEEK_API_KEY=""
 DS_MODEL="deepseek-v4-pro"
 DS_FLASH_MODEL="deepseek-v4-flash"
+'@ }
+    'codex' { $marker = 'CODEX_API_KEY='; $block = @'
 
 # --- Codex backend (cx-agent / cx-stream, OpenAI Codex CLI) --- OPTIONAL.
 # Auth: run `codex login` once (ChatGPT/OAuth — no key needed for personal use).
@@ -178,17 +183,65 @@ CX_MODEL=""
 # picks the best fit from this list (same reasoning as an orchestrator-provided inline
 # list). Leave empty to use only the single CX_MODEL default above.
 CX_MODELS=""
-'@ | Set-Content -Path $Config -Encoding UTF8
-  Write-Host "Created config template -> $Config"
-} else {
-  Write-Host "Config already exists -> $Config (left untouched)"
+'@ }
+    default { return $null }
+  }
+  if ((Test-Path $CfgPath) -and (Select-String -Path $CfgPath -Pattern "^$([regex]::Escape($marker))" -Quiet)) {
+    return $false  # unchanged
+  }
+  Add-Content -Path $CfgPath -Value $block -Encoding UTF8
+  return $true     # appended
 }
 
-# Open the config so the user can paste their key — only when the DeepSeek backend is
-# selected AND its key is still empty. Best-effort: never fail the install if opening fails.
-# Override the opener via $env:CLI_DISPATCH_EDITOR or $env:CLAUDE_DS_EDITOR (e.g. "code");
-# CLI_DISPATCH_EDITOR is preferred, CLAUDE_DS_EDITOR is the legacy fallback.
-if ($wantDS -and ((Get-Content $Config -Raw) -cmatch 'DEEPSEEK_API_KEY=""')) {
+$cfgCreated = $false; $cfgChanged = $false
+if (-not (Test-Path $Config)) {
+  New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
+  Set-Content -Path $Config -Value '# cli-dispatch config — DO NOT COMMIT.' -Encoding UTF8
+  $cfgCreated = $true
+}
+foreach ($b in @('deepseek', 'codex')) { if (Ensure-ConfigBlock -CfgPath $Config -Backend $b) { $cfgChanged = $true } }
+if ($cfgCreated) { Write-Host "Created config template -> $Config" }
+elseif ($cfgChanged) { Write-Host "Config updated (added missing backend blocks) -> $Config" }
+else { Write-Host "Config already complete -> $Config (left untouched)" }
+
+# Write the policy.json skeleton — only when -PolicyInjection on AND the file doesn't already
+# exist (never clobber an existing policy.json). Native Windows only has ds/cx runners
+# available (Antigravity/OpenCode/Copilot need a pseudo-TTY, WSL-only).
+$policyFile = Join-Path $ConfigDir "policy.json"
+if (($PolicyInjection -eq "on") -and (-not (Test-Path $policyFile))) {
+  New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
+  $runners = @()
+  if ($wantDS) { $runners += '"ds-runner"' }
+  if ($wantCX) { $runners += '"cx-runner"' }
+  $ver = "unknown"
+  try { $ver = (Get-Content -Raw (Join-Path $ScriptDir "..\.claude-plugin\plugin.json") | ConvertFrom-Json).version } catch {}
+  $now = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+  $runnersJoined = ($runners -join ", ")
+  @"
+{
+  "schemaVersion": 1,
+  "enabled": true,
+  "runners": [$runnersJoined],
+  "issueReminder": true,
+  "claudeMdBlock": false,
+  "pluginVersionAtSetup": "$ver",
+  "updatedAt": "$now"
+}
+"@ | Set-Content -Path $policyFile -Encoding UTF8
+  Write-Host "Created policy.json (injection ENABLED) -> $policyFile"
+}
+
+# Open the config so the user can paste their key — only when the config was created or
+# changed (a new backend block appended) AND the session is interactive. Best-effort: never
+# fail the install if opening fails. Override the opener via $env:CLI_DISPATCH_EDITOR or
+# $env:CLAUDE_DS_EDITOR (e.g. "code"); CLI_DISPATCH_EDITOR is preferred, CLAUDE_DS_EDITOR is
+# the legacy fallback.
+$interactive = -not ($NonInteractive -or -not [Environment]::UserInteractive)
+if (-not ($cfgCreated -or $cfgChanged)) {
+  Write-Host "Config: $Config (edit to add your keys)"
+} elseif (-not $interactive) {
+  Write-Host "Config: $Config (edit to add your keys)"
+} else {
   try {
     if ($env:CLI_DISPATCH_EDITOR) { Start-Process $env:CLI_DISPATCH_EDITOR $Config }
     elseif ($env:CLAUDE_DS_EDITOR) { Start-Process $env:CLAUDE_DS_EDITOR $Config }

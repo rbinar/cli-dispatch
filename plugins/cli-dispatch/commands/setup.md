@@ -105,27 +105,30 @@ Follow these steps:
    > places the binary on `PATH`; it never signs the user in or writes a key. The steps below
    > (DeepSeek key paste, OpenCode key + model pick, Antigravity `agy` sign-in, `codex login`, Copilot gh/token auth)
    > are unaffected by whether the CLI arrived via auto-install or was already present.
-   - **DeepSeek** — the user must add their API key themselves. While the key is still empty,
-     the installer **auto-opens** the config in the default editor. If it doesn't open, ask
-     the user to add their DeepSeek API key to the `DEEPSEEK_API_KEY=""` line in
-     `~/.config/cli-dispatch/config`.
+   - **DeepSeek** — the user must add their API key themselves. The installer only auto-opens
+     the config in the default editor during an *interactive* install (a real TTY) when the
+     config was just freshly created or a missing key block was added. Under the Claude-run
+     installer (`/cli-dispatch:setup`, invoked through the Bash tool, no TTY) the editor does
+     **not** open — instead the installer prints the config path; ask the user to paste their
+     DeepSeek API key into the `DEEPSEEK_API_KEY=""` line in `~/.config/cli-dispatch/config`
+     (the editor no longer auto-opens under the Claude-run installer).
      **You (Claude) must NEVER write/paste the API key** — only the user enters it.
    - **OpenCode** — grouped with DeepSeek's (both are paste-a-raw-key, no OAuth backends).
      The installer creates `OPENROUTER_API_KEY=""` and `OC_MODEL=""` placeholders in the
-     config. **Ordering matters here**: immediately after the installer runs, and
-     independently of / regardless of whether the auto-opened editor (below) has already
-     popped up, ask the user (via `AskUserQuestion`) to pick a default OpenCode model —
-     offer 2-3 curated free-tier OpenRouter slugs (e.g. `google/gemma-4-31b-it:free`; note
-     the free catalog rotates, so re-verify live with `opencode models openrouter` if a test
-     key is available) plus a "type your own" custom/freeform option — then write the chosen
-     slug into the `OC_MODEL=""` line in `~/.config/cli-dispatch/config` yourself (this is
-     NOT a secret, so Claude writing it is fine). Do this before/regardless of the key paste
-     to avoid a save-race between your programmatic `OC_MODEL` write and the user's manual
-     paste in the auto-opened editor — the two are independent file edits that just must not
-     race each other. While the key is still empty, the installer **auto-opens** the config
-     in the default editor (same mechanism as DeepSeek) for the user to paste
-     `OPENROUTER_API_KEY` themselves. **You (Claude) must NEVER write/paste the API key** —
-     only the user enters it.
+     config. **Ordering matters here**: immediately after the installer runs, ask the user
+     (via `AskUserQuestion`) to pick a default OpenCode model — offer 2-3 curated free-tier
+     OpenRouter slugs (e.g. `google/gemma-4-31b-it:free`; note the free catalog rotates, so
+     re-verify live with `opencode models openrouter` if a test key is available) plus a
+     "type your own" custom/freeform option — then write the chosen slug into the
+     `OC_MODEL=""` line in `~/.config/cli-dispatch/config` yourself (this is NOT a secret, so
+     Claude writing it is fine). Do the `OC_MODEL` write before prompting the user for the
+     key so your programmatic `OC_MODEL` edit and the user's manual key paste never race on
+     the same file. As with DeepSeek, the installer only auto-opens the config in an editor
+     during an *interactive* install with a real TTY; under the Claude-run installer it does
+     **not** open — instead the installer prints the config path; ask the user to paste their
+     `OPENROUTER_API_KEY` into that line themselves (the editor no longer auto-opens under the
+     Claude-run installer). **You (Claude) must NEVER write/paste the API key** — only the
+     user enters it.
    - **Antigravity** — normally needs no key: the user signs in once by running `agy`
      interactively (Google). For headless/CI, they can set `GEMINI_API_KEY` in the config
      instead. If `agy` was MISSING in step 1, share the install command the installer printed.
@@ -148,25 +151,108 @@ Follow these steps:
    cp-agent -q "Reply with exactly: OK"        # Copilot (after gh/token auth + subscription)
    ```
 
-7. **Offer to add a delegation-priority reminder to persistent instructions** so the user
-   doesn't need to re-explain the runner delegation order in every session. Use
-   `AskUserQuestion` (header: "Orchestration priority") with these choices:
-   - **"Global ~/.claude/CLAUDE.md"** — adds the reminder to the user's global CLAUDE.md,
-     so it applies to all projects.
-   - **"This project's CLAUDE.md"** — adds it to the repo's CLAUDE.md, scoped to this
-     project only.
-   - **"Skip"** — no changes.
+7. **Configure per-session policy injection, then optionally a static CLAUDE.md block** so
+   the user doesn't need to re-explain the runner delegation order in every session. Instead
+   of hand-editing CLAUDE.md, cli-dispatch can auto-inject its delegation policy into every
+   new/resumed/cleared session via a `SessionStart` hook that reads
+   `~/.config/cli-dispatch/policy.json`. Gather the user's preferences with `AskUserQuestion`
+   — the four logical choices below may be grouped into a single call, but keep them clearly
+   separated:
 
-   If the user picks one of the first two options:
-   - First check whether the target file already contains the marker
-     `<!-- cli-dispatch:orchestration-priority -->`. If it does, tell the user the block
-     is already present and skip re-adding it (this keeps re-runs of setup idempotent —
-     the block will never be written twice).
-   - If the marker is **not** present, append the following block to the target file
-     (creating the file first if it doesn't exist):
+   1. **header "Policy injection"** — *"Enable per-session policy injection? A SessionStart
+      hook auto-injects the cli-dispatch delegation policy into every new/resumed/cleared
+      session, so you don't hand-edit CLAUDE.md."* Options: **"Enable (recommended)"**
+      (`recommended: true`), **"Skip"**.
+   2. **header "Runners"** *(ask only if the user chose Enable; `multiSelect`)* — *"Which
+      runners to prioritize in the injected policy?"* Offer the five runner names —
+      `ds-runner`, `ag-runner`, `cx-runner`, `oc-runner`, `cp-runner` — and **pre-select the
+      ones that correspond to the backend(s) the user picked in step 2** (DeepSeek→`ds-runner`,
+      Antigravity→`ag-runner`, Codex→`cx-runner`, OpenCode→`oc-runner`, Copilot→`cp-runner`).
+   3. **header "Issue reminder"** *(ask only if Enable)* — *"Include a reminder to file
+      cli-dispatch bugs/ideas as GitHub issues?"* Options: **"Include"** (`recommended: true`),
+      **"Omit"**.
+   4. **header "CLAUDE.md block"** — *"Also write the policy as a static CLAUDE.md block?
+      (Useful for teammates without the plugin; NOT recommended when the hook is enabled — it
+      double-injects the same policy every session.)"* Options: **"No, hook only
+      (recommended)"** (`recommended: true`), **"Yes, also add CLAUDE.md block"**, **"Skip
+      both"**. If the user chose **Skip** in question 1 (hook disabled), this question instead
+      independently offers the static CLAUDE.md block on its own — the pre-existing behavior (a
+      static block, no hook) — and questions 2/3's answers are used only to populate that
+      block's contents.
+
+   Then perform these actions:
+
+   **A) Write `policy.json` (idempotent).** If the user enabled injection, write
+   `~/.config/cli-dispatch/policy.json` with the Bash tool. This is **not** a secret — no
+   `chmod` is required. Idempotency is mandatory: if the file already exists, **read it first
+   and show the user the current preferences, then offer to update** rather than blindly
+   overwriting. Populate `runners` only with the known five names
+   (`ds-runner`/`ag-runner`/`cx-runner`/`oc-runner`/`cp-runner`); fill `pluginVersionAtSetup`
+   from the `version` field of `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json` and
+   `updatedAt` from an ISO-8601 UTC timestamp. Schema:
+
+   ```json
+   {
+     "schemaVersion": 1,
+     "enabled": true,
+     "runners": ["ds-runner", "cx-runner"],
+     "issueReminder": true,
+     "claudeMdBlock": false,
+     "pluginVersionAtSetup": "3.42.0",
+     "updatedAt": "2026-07-12T00:00:00Z"
+   }
+   ```
+
+   Example write — **fill every value from the user's actual answers; do not copy the literals
+   below verbatim**:
+
+   ```bash
+   CFG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/cli-dispatch"
+   mkdir -p "$CFG_DIR"
+   VERSION="$(node -e 'process.stdout.write(require(process.argv[1]).version)' \
+     "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json" 2>/dev/null || echo unknown)"
+   NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+   cat > "$CFG_DIR/policy.json" <<JSON
+   {
+     "schemaVersion": 1,
+     "enabled": true,
+     "runners": ["ds-runner", "cx-runner"],
+     "issueReminder": true,
+     "claudeMdBlock": false,
+     "pluginVersionAtSetup": "$VERSION",
+     "updatedAt": "$NOW"
+   }
+   JSON
+   ```
+
+   If the user chose **Skip** (injection disabled), either don't write `policy.json` at all,
+   or — if one already exists — set its `enabled` to `false` while preserving the other fields
+   (e.g. `jq --arg now "$NOW" '.enabled=false | .updatedAt=$now' "$CFG_DIR/policy.json"`)
+   rather than deleting it.
+
+   **B) CLAUDE.md marker migration + block** (only if the user asked for the static block in
+   question 4). Choose the target file the same way as before — `~/.claude/CLAUDE.md` (global,
+   all projects) or the project's `CLAUDE.md` (this repo only); ask which with `AskUserQuestion`
+   if not already implied. This is a **find-and-replace-in-place** operation — never delete
+   unrelated content:
+   - **Old marker present** — if the file still contains the legacy pair
+     `<!-- cli-dispatch:orchestration-priority -->` … `<!-- /cli-dispatch:orchestration-priority -->`,
+     replace *that block region in place* (same position in the file) with the new
+     `policy:v1` block below, and report: "migrated the old orchestration-priority block to
+     policy:v1".
+   - **New marker already present** — if `<!-- cli-dispatch:policy:v1 -->` already exists, the
+     block is in place; do **not** rewrite it (idempotent) — just tell the user it was already
+     present.
+   - **Neither present** — append the `policy:v1` block to the end of the target file
+     (creating the file first if it doesn't exist).
+
+   Block to write (same three core messages as before — runner delegation priority,
+   resume-instead-of-re-delegate, "pick the babysitter model by difficulty", and the
+   issue-filing reminder; only the marker name changes to `policy:v1`). Omit the final
+   issue-filing paragraph if the user chose **Omit** in question 3:
 
    ````markdown
-   <!-- cli-dispatch:orchestration-priority -->
+   <!-- cli-dispatch:policy:v1 -->
    ## cli-dispatch delegation priority
 
    Delegate substantive work to cli-dispatch's own backend runners rather than doing it
@@ -193,9 +279,14 @@ Follow these steps:
    filing it as a GitHub issue at https://github.com/rbinar/cli-dispatch/issues (only if the
    user's repo is actually rbinar/cli-dispatch or they've indicated they want this — don't
    assume for a forked/renamed setup).
-   <!-- /cli-dispatch:orchestration-priority -->
+   <!-- /cli-dispatch:policy:v1 -->
    ````
 
-   - After writing (or skipping because the marker was already found), report which file was
-     updated and the outcome. If the user chose "Skip", note it and move on without making
-     any changes.
+   **Double-injection warning (TL3):** if the user enabled the hook (question 1) **and** also
+   chose to add the CLAUDE.md block (question 4), warn them: "you enabled BOTH the hook and the
+   CLAUDE.md block — the same policy will be injected twice per session; consider hook-only."
+
+   **C) Report.** Summarize which files were written/updated (`policy.json`, and optionally the
+   CLAUDE.md file), the injection status (enabled/skipped and which runners), whether the old
+   orchestration-priority block was migrated, and surface any double-injection warning. If the
+   user skipped everything, say so and make no changes.

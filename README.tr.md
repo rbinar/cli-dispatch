@@ -82,6 +82,14 @@ DeepSeek key'i: https://platform.deepseek.com/api_keys
 
 `/cli-dispatch:setup` artık son bir adımda, evet/hayır tarzı bir soruyla, global veya proje `CLAUDE.md`'ine kalıcı bir "bu runner'lara delege etmeyi tercih et" hatırlatması yazmayı önerir, böylece her oturumda delegasyon tercihini yeniden anlatman gerekmez (idempotent/marker-guarded, tekrar setup çalıştırmak onu çoğaltmaz).
 
+## Oturum-başı politika enjeksiyonu (opsiyonel)
+
+`/cli-dispatch:setup`'ın bu son adımı artık **dört tercih** sorar — oturum-başı politika enjeksiyonunu etkinleştir/etkinleştirme, hangi runner'ların öncelikli olacağı, GitHub-issue hatırlatmasının dahil edilip edilmeyeceği ve ayrıca statik bir CLAUDE.md bloğu yazılıp yazılmayacağı — ve yanıtları `~/.config/cli-dispatch/policy.json`'a kaydeder. Bir `SessionStart` hook'u (`startup`/`resume`/`clear`'da tetiklenir — `compact` bilinçli olarak hariç tutulur, böylece context sıkıştırıldıkça metin birikip token şişirmez) sonra her oturumun context'ine kompakt bir delegasyon politikası otomatik enjekte eder: hangi işin hangi runner'a (`ds-/ag-/cx-/oc-/cp-runner`) delege edileceği, her subagent'ın atanmış modeliyle isimlendirilmesi ve cli-dispatch sorunlarını GitHub issue olarak açma hatırlatması — hepsi elle CLAUDE.md düzenlemeye gerek kalmadan.
+
+- **Opt-in, varsayılan kapalı** — `policy.json` yoksa veya `enabled:false` ise, hook sessiz bir no-op'tur, sıfır token maliyeti.
+- Statik CLAUDE.md bloğunun (eski `orchestration-priority`, şimdi `policy:v1`) yerine geçmez, tamamlayıcısıdır — ikisi birden açılırsa aynı politika oturum başına iki kez enjekte edilir, bu yüzden yalnızca hook önerilir. `/cli-dispatch:doctor`, durumunu bir **Policy injection** bölümünde raporlar.
+- **Kaldırmak için** `~/.config/cli-dispatch/policy.json`'ı sil ya da `enabled:false` yap.
+
 ## Güncelleme
 
 Plugin'i Claude Code içinden güncelle, sonra reload et (teker teker çalıştır):
@@ -168,6 +176,7 @@ Hepsi Claude Code içinden kullanılır (`/cli-dispatch:ds-run <görev>`, `/cli-
 - **agentic + worktree izolasyonu** — gerçek repo görevleri tek-kullanımlık git worktree'de çalışır; diff **commit'siz** bırakılır (incele → build/test → merge **sende/Claude'da**). Yardımcılar: `ds-/ag-/cx-/oc-/cp-worktree-run`.
 - **Backend başına runner subagent (`ds-/ag-/cx-/oc-/cp-runner`)** — tüm delegasyonu izole bir alt-bağlama devret; modu seçer, işi izole eder, doğrular, kısa sonuç döner — yönetim gürültüsü orkestratöre girmez. → [runner subagent'lar](#ds-runner-subagent-bağlamı-temiz-tut)
 - **Çok adaylı model seçimi** — `ag-`/`cx-`/`oc-`/`cp-runner`'a delege ederken (ds-runner hariç) görev prompt'unda 2+ aday model verebilirsin; babysitter subagent hangisinin işe en uygun olduğuna karar verip birini seçer ve seçimi + nedenini raporlar. Aynı dört backend ayrıca config dosyasında kalıcı bir virgülle-ayrılmış aday listesi de destekler (`AG_MODELS`, `CX_MODELS`, `OC_MODELS`, `CP_MODELS` — çoğul, mevcut tekil `AG_MODEL`/`CX_MODEL`/`OC_MODEL`/`CP_MODEL`'in yanında), böylece her seferinde listeyi yeniden yazmana gerek kalmaz. Prompt'ta açık model/liste verilmezse runner önce config listesine bakar, yoksa tekil default'a döner.
+- **Oturum-başı politika enjeksiyonu (opsiyonel)** — bir `SessionStart` hook'u, `/cli-dispatch:setup`'ta bir kez yapılandırılan kompakt bir delegasyon politikasını (runner önceliği, subagent isimlendirmesi, issue-açma hatırlatması) her oturumun context'ine otomatik enjekte eder. Opt-in, varsayılan kapalı, kapalıyken sıfır token maliyeti. → [Oturum-başı politika enjeksiyonu](#oturum-başı-politika-enjeksiyonu-opsiyonel)
 - **Web dashboard** — local, salt-okunur: Claude Code session'ları → akış → subagent'lar → akış, + worker paneli. Üstte sabit görev/talimat, Markdown render, stale-worker tespiti, canlı SSE. → [Dashboard](#dashboard)
 - **Native kullanım / kota** — `/cli-dispatch:balance` (beşi birden) ya da backend başına `*-balance`; mümkün olduğunda her CLI'nın kendi local verisinden, **üçüncü-parti araç yok**. Copilot CLI'dan sorgulanamaz. → [Kullanım & kota](#kullanım--kota--native-üçüncü-parti-araç-yok)
 - **Dashboard maliyet & kullanım görünürlüğü** — dashboard her session/subagent için Anthropic token kullanımını, worker başına toplam delegasyon maliyetini, babysitter'ın kendi token kullanımı worker'ınkine göre orantısız yüksekse bir "high overhead" uyarı rozetini ve her Claude Code session/subagent'ının gerçekte hangi modeli kullandığını gösteren bir model rozetini gösterir; böylece düşük-değerli veya yüksek-overhead delegasyonları kolayca fark edebilirsin.

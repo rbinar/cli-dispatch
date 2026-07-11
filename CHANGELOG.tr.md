@@ -7,6 +7,47 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.43.0] — 2026-07-12
+
+### Eklendi
+
+- **Oturum-başı politika enjeksiyonu (opt-in, varsayılan kapalı).** Yeni bir
+  plugin `SessionStart` hook'u (`hooks/hooks.json` → `scripts/policy-inject.mjs`,
+  saf `node` — hook `command` alanı platforma göre dallanamadığından bilinçli
+  olarak bash/`.ps1` ikizi yok) her yeni/resume/clear edilen oturuma
+  `hookSpecificOutput.additionalContext` ile kompakt (~60 kelime) cli-dispatch
+  delegasyon politikasını enjekte ediyor. `compact` matcher'ı bilinçli olarak
+  dışlandı — uzun oturumlarda enjeksiyon birikmesin. Tercihler
+  `~/.config/cli-dispatch/policy.json`'da (`enabled`, `runners`,
+  `issueReminder`, `claudeMdBlock`, `schemaVersion`); dosya yok/bozuk,
+  `enabled:false` veya gelecekteki bir `schemaVersion` → sessiz no-op (boş
+  stdout, exit 0 — oturum başlatma asla engellenmez). `runners` değerleri
+  bilinen beş runner adına karşı whitelist'leniyor; bilinmeyen string'ler
+  sessizce düşüyor, context'e asla interpolate edilmiyor.
+  `__tests__/policy-inject.test.mjs` ile kapsanıyor (12 test, subprocess
+  entegrasyonu dahil).
+- **`/cli-dispatch:setup` adım 7 artık politikayı yapılandırıyor** — dört
+  tercih sorusu (enjeksiyon aç/kapa / runner önceliği / issue hatırlatması /
+  statik CLAUDE.md bloğu), `policy.json`'ı idempotent yazıyor ve eski
+  `<!-- cli-dispatch:orchestration-priority -->` CLAUDE.md marker'ını yerinde
+  `<!-- cli-dispatch:policy:v1 -->`'e migrate ediyor (bul-ve-değiştir, asla
+  silme). Hook ve CLAUDE.md bloğu birlikte açılırsa çift-enjeksiyon uyarısı
+  veriliyor; `/cli-dispatch:doctor`'a `── Policy injection ──` bölümü eklendi —
+  `policy.json` durumu, plugin paketindeki `hooks/hooks.json` varlığı
+  (cache-staleness sinyali) ve sonradan oluşan çift-enjeksiyonu raporluyor.
+- **Installer: `--policy-injection <on|off>` / `-PolicyInjection` ve
+  `--non-interactive` / `-NonInteractive` bayrakları.** `on`, seçilen
+  backend'lerden türetilen `runners` listesiyle bir `policy.json` iskeleti
+  yazıyor (mevcut dosya asla ezilmiyor). Config iskeleti backend-başına
+  bloklara refactor edildi ve idempotent eksik-satır ekleme geldi
+  (`ensure_config_block` / `Ensure-ConfigBlock`, `^KEY=` satırının kendisi
+  anahtar — mevcut satırlara, dolu ya da boş, asla dokunulmuyor;
+  `__tests__/install-config-block.test.mjs` ile kapsanıyor, 7 test).
+  Editör-açma tetikleyicisi "DeepSeek/OpenCode seçili + key boş"tan "config
+  taze oluşturuldu veya blok eklendi VE kurulum interaktif"e değişti (açık
+  bayrak veya TTY tespiti) — GUI opener yoksa TTY'siz koşuyu askıda bırakacak
+  bir TUI editör açmak yerine talimat yazdırılıyor.
+
 ## [3.42.0] — 2026-07-11
 
 ### Eklendi

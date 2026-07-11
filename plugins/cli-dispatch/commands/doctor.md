@@ -107,6 +107,31 @@ else
   echo "  – gh not installed (optional — only needed for delegated GitHub tasks)"
 fi
 
+echo "── Policy injection ─────── optional ──────────────────"
+POLICY="${XDG_CONFIG_HOME:-$HOME/.config}/cli-dispatch/policy.json"
+if [ -f "$POLICY" ]; then
+  _PENABLED=$(node -e 'try{const p=require(process.argv[1]);process.stdout.write(String(p.enabled===true))}catch{process.stdout.write("err")}' "$POLICY" 2>/dev/null)
+  case "$_PENABLED" in
+    true)  ok "policy.json present, injection ENABLED" ;;
+    false) ok "policy.json present, injection disabled (enabled:false)" ;;
+    *)     bad "policy.json present but unreadable/invalid JSON — re-run /cli-dispatch:setup" ;;
+  esac
+  if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "$CLAUDE_PLUGIN_ROOT/hooks/hooks.json" ]; then
+    ok "hooks/hooks.json present in plugin package"
+  elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+    bad "hooks/hooks.json MISSING from plugin package — plugin cache may be stale; update the plugin"
+  else
+    echo "  – CLAUDE_PLUGIN_ROOT unset — cannot verify hooks.json"
+  fi
+  if [ "$_PENABLED" = "true" ]; then
+    for f in "$HOME/.claude/CLAUDE.md" "./CLAUDE.md"; do
+      [ -f "$f" ] && grep -qE 'cli-dispatch:(policy|orchestration-priority)' "$f" 2>/dev/null && bad "double-injection: hook is enabled AND $f has a cli-dispatch policy/orchestration marker — remove the CLAUDE.md block to avoid injecting the policy twice"
+    done
+  fi
+else
+  echo "  – policy injection not configured (optional — /cli-dispatch:setup to enable)"
+fi
+
 echo "── PATH ────────────────────────────────────────────────"
 case ":$PATH:" in
   *":$HOME/.local/bin:"*) ok "$HOME/.local/bin on PATH" ;;

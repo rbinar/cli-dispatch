@@ -82,6 +82,14 @@ DeepSeek key: https://platform.deepseek.com/api_keys
 
 `/cli-dispatch:setup` now has a final step that offers, via a yes/no-style question, to write a standing "prefer delegating to these runners" reminder into your global or project `CLAUDE.md`, so you don't have to re-explain your delegation preference every session (idempotent/marker-guarded so re-running setup won't duplicate it).
 
+## Session-start policy injection (optional)
+
+That final `/cli-dispatch:setup` step now asks **four preferences** — enable per-session policy injection, which runners to prioritize, whether to include the GitHub-issue reminder, and whether to also write a static CLAUDE.md block — and saves the answers to `~/.config/cli-dispatch/policy.json`. A `SessionStart` hook (fires on `startup`/`resume`/`clear` — deliberately **not** `compact`, so the text doesn't pile up as context gets compacted) then auto-injects a compact delegation policy into every session's context: which runner (`ds-/ag-/cx-/oc-/cp-runner`) to delegate work to, naming each subagent with its assigned model, and a reminder to file cli-dispatch friction points as GitHub issues — all without hand-editing CLAUDE.md.
+
+- **Opt-in, default off** — if `policy.json` is missing or has `enabled:false`, the hook is a silent no-op with zero token cost.
+- Complements, doesn't replace, the static CLAUDE.md block (formerly `orchestration-priority`, now `policy:v1`) — enabling both injects the same policy twice per session, so hook-only is recommended. `/cli-dispatch:doctor` reports its status in a **Policy injection** section.
+- **Remove it** by deleting `~/.config/cli-dispatch/policy.json` or setting `enabled:false`.
+
 ## Updating
 
 Update the plugin from inside Claude Code, then reload (run one at a time):
@@ -172,6 +180,7 @@ All used from inside Claude Code (`/cli-dispatch:ds-run <task>`, `/cli-dispatch:
 - **agentic + worktree isolation** — real repo tasks run in a throwaway git worktree; the diff is left **uncommitted** (review → build/test → merge is **on you/Claude**). Bundled helpers: `ds-/ag-/cx-/oc-/cp-worktree-run`.
 - **Per-backend runner subagents (`ds-/ag-/cx-/oc-/cp-runner`)** — hand the whole delegation to an isolated sub-context that picks the mode, isolates the work, verifies, and returns a short result — the management noise never enters the orchestrator. → [runner subagents](#ds-runner-subagent-keep-context-clean)
 - **Multi-candidate model selection** — for `ag-/cx-/oc-/cp-runner`, give 2+ candidate models in the task prompt (or set a standing list once via `AG_MODELS`/`CX_MODELS`/`OC_MODELS`/`CP_MODELS` in the config) and the runner reasons about which one best fits, picks it, and reports why; if the prompt gives no explicit model/list, the runner checks the config list first and falls back to the single `*_MODEL` default. `ds-runner` is not part of this — its model is fixed.
+- **Session-start policy injection (optional)** — a `SessionStart` hook auto-injects a compact delegation policy (runner priority, subagent naming, issue-filing reminder) into every session's context, configured once at `/cli-dispatch:setup`. Opt-in, default off, zero token cost when disabled. → [Session-start policy injection](#session-start-policy-injection-optional)
 - **Web dashboard** — a local, read-only view: Claude Code sessions → flow → subagents → flow, plus a worker panel. Pinned task/instruction, Markdown-rendered messages, stale-worker detection, live SSE updates. → [Dashboard](#dashboard)
 - **Cost & model visibility** — the dashboard shows what each delegation actually cost (per-session/subagent token usage, per-worker total cost) and which model ran it, including a warning badge when a babysitter's own overhead is disproportionately high vs. the worker — so you can spot low-value delegations.
 - **Native usage / quota** — `/cli-dispatch:balance` (all five at once) or a per-backend `*-balance`; reverse-engineered from each CLI's own local data where available, **no third-party tools**. Copilot is explicitly not CLI-queryable. → [Usage & quota](#usage--quota--native-no-third-party-tool)

@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.43.0] — 2026-07-12
+
+### Added
+
+- **Per-session policy injection (opt-in, off by default).** A new plugin
+  `SessionStart` hook (`hooks/hooks.json` → `scripts/policy-inject.mjs`, plain
+  `node` — deliberately no bash/`.ps1` twin since the hook `command` field
+  cannot branch per-platform) injects a compact (~60-word) cli-dispatch
+  delegation policy into every new/resumed/cleared session via
+  `hookSpecificOutput.additionalContext`. The `compact` matcher is deliberately
+  excluded so long sessions don't accumulate repeated injections. Preferences
+  live in `~/.config/cli-dispatch/policy.json` (`enabled`, `runners`,
+  `issueReminder`, `claudeMdBlock`, `schemaVersion`); missing/corrupt file,
+  `enabled:false`, or a future `schemaVersion` → silent no-op (empty stdout,
+  exit 0 — session start is never blocked). `runners` values are whitelisted
+  against the five known runner names; unknown strings are silently dropped and
+  never interpolated into context. Covered by
+  `__tests__/policy-inject.test.mjs` (12 tests, incl. subprocess integration).
+- **`/cli-dispatch:setup` step 7 now configures the policy** with four
+  preference questions (enable injection / runner priority / issue reminder /
+  static CLAUDE.md block), writes `policy.json` idempotently, and migrates the
+  legacy `<!-- cli-dispatch:orchestration-priority -->` CLAUDE.md marker to
+  `<!-- cli-dispatch:policy:v1 -->` in place (find-and-replace, never delete).
+  Enabling both the hook and the CLAUDE.md block triggers a double-injection
+  warning; `/cli-dispatch:doctor` gained a `── Policy injection ──` section that
+  reports `policy.json` state, plugin-package `hooks/hooks.json` presence
+  (cache-staleness signal), and after-the-fact double-injection.
+- **Installer: `--policy-injection <on|off>` / `-PolicyInjection` and
+  `--non-interactive` / `-NonInteractive` flags.** `on` writes a `policy.json`
+  skeleton (never clobbers an existing one) with `runners` derived from the
+  selected backends. The config skeleton was refactored into per-backend blocks
+  with idempotent missing-line appends (`ensure_config_block` /
+  `Ensure-ConfigBlock`, keyed on the `^KEY=` line itself — existing lines,
+  filled or empty, are never touched; covered by
+  `__tests__/install-config-block.test.mjs`, 7 tests). The editor auto-open
+  trigger changed from "DeepSeek/OpenCode selected + key empty" to "config
+  created or a block was appended, AND the install is interactive" (explicit
+  flag or TTY detection) — no GUI opener found means instructions are printed
+  instead of launching a TUI editor that would hang a non-TTY run.
+
 ## [3.42.0] — 2026-07-11
 
 ### Added

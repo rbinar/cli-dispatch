@@ -36,11 +36,16 @@ fi
 # automates auth/sign-in. Default OFF (unset behavior is unchanged).
 BACKENDS="deepseek"
 INSTALL_MISSING=0
+POLICY_INJECTION="off"
+NONINTERACTIVE=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --backends) BACKENDS="${2:-}"; shift 2;;
     --backends=*) BACKENDS="${1#*=}"; shift;;
     --install-missing) INSTALL_MISSING=1; shift;;
+    --policy-injection) POLICY_INJECTION="${2:-}"; shift 2;;
+    --policy-injection=*) POLICY_INJECTION="${1#*=}"; shift;;
+    --non-interactive) NONINTERACTIVE=1; shift;;
     *) echo "install.sh: unknown arg '$1'" >&2; exit 1;;
   esac
 done
@@ -51,6 +56,122 @@ case ",$BACKENDS," in *,codex,*) WANT_CX=1;; *) WANT_CX=0;; esac
 case ",$BACKENDS," in *,opencode,*) WANT_OC=1;; *) WANT_OC=0;; esac
 case ",$BACKENDS," in *,copilot,*) WANT_CP=1;; *) WANT_CP=0;; esac
 [ "$WANT_DS" -eq 1 ] || [ "$WANT_AG" -eq 1 ] || [ "$WANT_CX" -eq 1 ] || [ "$WANT_OC" -eq 1 ] || [ "$WANT_CP" -eq 1 ] || { echo "install.sh: no known backend in '--backends $BACKENDS' (deepseek,antigravity,codex,opencode,copilot)" >&2; exit 1; }
+
+# >>> ensure_config_block >>>
+# Idempotently append one backend's config block to $cfg. Self-contained (no reliance on
+# outer variables) so it can be extracted and unit-tested via the marker fences below.
+# args: $1=config_path $2=backend_id.
+# returns: 0 = block appended, 1 = unchanged (marker line already present), 2 = unknown backend.
+ensure_config_block() {
+  local cfg="$1" backend="$2" marker block
+  case "$backend" in
+    deepseek)
+      marker='DEEPSEEK_API_KEY='
+      block=$(cat <<'BLOCK'
+
+# --- DeepSeek backend (claude-ds) --- add your DeepSeek API key below.
+DEEPSEEK_API_KEY=""
+DS_MODEL="deepseek-v4-pro"
+DS_FLASH_MODEL="deepseek-v4-flash"
+BLOCK
+)
+      ;;
+    antigravity)
+      marker='GEMINI_API_KEY='
+      block=$(cat <<'BLOCK'
+
+# --- Antigravity backend (agy / Gemini) --- OPTIONAL.
+# Auth is normally via Google sign-in (run `agy` once interactively); no key needed.
+# For headless/CI, set a key here instead.
+GEMINI_API_KEY=""
+# Default model for the agy worker. Blank = agy's own default (Gemini 3.5 Flash (High)).
+# The value is the EXACT display name from `agy models` (incl. the reasoning suffix). agy
+# proxies multiple families — examples:
+#   "Gemini 3.1 Pro (High)"  "Gemini 3.5 Flash (High)"
+#   "Claude Opus 4.6 (Thinking)"  "Claude Sonnet 4.6 (Thinking)"  "GPT-OSS 120B (Medium)"
+# Override per-call with `ag-agent --model "<name>"`. Run `agy models` for the live list.
+AG_MODEL=""
+# Optional comma-separated candidate model list — when set, the ag-runner babysitter
+# picks the best fit from this list (same reasoning as an orchestrator-provided inline
+# list). Leave empty to use only the single AG_MODEL default above.
+AG_MODELS=""
+BLOCK
+)
+      ;;
+    codex)
+      marker='CODEX_API_KEY='
+      block=$(cat <<'BLOCK'
+
+# --- Codex backend (cx-agent / cx-stream, OpenAI Codex CLI) --- OPTIONAL.
+# Auth: run `codex login` once (ChatGPT/OAuth — no key needed for personal use).
+# For headless/CI, CODEX_API_KEY takes precedence over OPENAI_API_KEY.
+CODEX_API_KEY=""
+# Default model for the codex worker. Blank = codex's own default (varies by version).
+# Override per-call with `cx-agent --model <name>`. Env var read by cx-stream: CX_MODEL
+# (with CODEX_MODEL as fallback). Current models: gpt-5.5 (default), gpt-5.4,
+# gpt-5.4-mini (fast/cheap, subagents), gpt-5.3-codex-spark. Example: CX_MODEL="gpt-5.4-mini"
+CX_MODEL=""
+# Optional comma-separated candidate model list — when set, the cx-runner babysitter
+# picks the best fit from this list (same reasoning as an orchestrator-provided inline
+# list). Leave empty to use only the single CX_MODEL default above.
+CX_MODELS=""
+# Sandbox: default workspace-write (files can be written in --cwd).
+# Pass cx-agent --read-only for a REAL OS-level no-writes guarantee (macOS Seatbelt /
+# Linux bwrap+seccomp) — kernel-enforced, unlike other backends.
+# Or pass --sandbox <mode> for other codex sandbox modes.
+BLOCK
+)
+      ;;
+    opencode)
+      marker='OPENROUTER_API_KEY='
+      block=$(cat <<'BLOCK'
+
+# --- OpenCode backend (oc-agent / oc-stream, via OpenRouter) --- OPTIONAL.
+# Auth: OpenRouter API key (no OAuth flow) -- https://openrouter.ai/keys
+OPENROUTER_API_KEY=""
+# Default model slug (WITHOUT the "openrouter/" prefix -- oc-stream adds it).
+# List live models with: OPENROUTER_API_KEY=<key> opencode models openrouter
+# Free-tier example: google/gemma-4-31b-it:free
+OC_MODEL=""
+# Optional comma-separated candidate model list — when set, the oc-runner babysitter
+# picks the best fit from this list (same reasoning as an orchestrator-provided inline
+# list). Leave empty to use only the single OC_MODEL default above.
+OC_MODELS=""
+# No sandbox: --auto approves all permissions (required for headless use, not a
+# safety opt-in). Use --cwd + a git worktree for a no-writes guarantee.
+BLOCK
+)
+      ;;
+    copilot)
+      marker='COPILOT_GITHUB_TOKEN='
+      block=$(cat <<'BLOCK'
+
+# --- GitHub Copilot backend (cp-agent / cp-stream) --- OPTIONAL.
+# Auth: cli-dispatch automatically reuses `gh auth token` via GH_TOKEN when available.
+# COPILOT_GITHUB_TOKEN here overrides GH_TOKEN/GITHUB_TOKEN if set explicitly.
+# An active GitHub Copilot subscription is required.
+COPILOT_GITHUB_TOKEN=""
+# Default model slug for the copilot worker. Blank = copilot's own default.
+# Examples: claude-sonnet-4.6, gpt-5.2, auto. Override per-call with `cp-agent --model <slug>`.
+CP_MODEL=""
+# Optional comma-separated candidate model list — when set, the cp-runner babysitter
+# picks the best fit from this list (same reasoning as an orchestrator-provided inline
+# list). Leave empty to use only the single CP_MODEL default above.
+CP_MODELS=""
+# No sandbox: --allow-all-tools --no-ask-user enables headless use, not a safety opt-in.
+# Use --cwd + a git worktree for a no-writes guarantee.
+BLOCK
+)
+      ;;
+    *) return 2;;
+  esac
+  if grep -q "^${marker}" "$cfg" 2>/dev/null; then
+    return 1   # unchanged (line already present — never touch it)
+  fi
+  printf '%s\n' "$block" >> "$cfg"
+  return 0     # appended
+}
+# <<< ensure_config_block <<<
 
 # ---- best-effort auto-install for a missing backend CLI (only when
 # --install-missing is passed) -----------------------------------------------
@@ -263,103 +384,82 @@ if [ "$WANT_CP" -eq 1 ]; then
   fi
 fi
 
-# ---- config skeleton (shared; created only if missing — never clobbered) ---
+# ---- config skeleton (shared; created if missing, otherwise idempotently topped up) ---
+# Fresh file: write the global header, then append every backend block (created ⊇ appended).
+# Existing file: append only the backend blocks whose marker line is still absent — an
+# existing key line (even if empty "") is NEVER touched (ensure_config_block matches ^KEY=
+# at line-start, so no duplicate lines can be produced).
+mkdir -p "$CONFIG_DIR"
+CFG_CHANGED=0
 if [ ! -f "$CONFIG" ]; then
-  mkdir -p "$CONFIG_DIR"
   umask 077
-  cat > "$CONFIG" <<'CFG'
-# cli-dispatch config — DO NOT COMMIT.
-
-# --- DeepSeek backend (claude-ds) --- add your DeepSeek API key below.
-DEEPSEEK_API_KEY=""
-DS_MODEL="deepseek-v4-pro"
-DS_FLASH_MODEL="deepseek-v4-flash"
-
-# --- Antigravity backend (agy / Gemini) --- OPTIONAL.
-# Auth is normally via Google sign-in (run `agy` once interactively); no key needed.
-# For headless/CI, set a key here instead.
-GEMINI_API_KEY=""
-# Default model for the agy worker. Blank = agy's own default (Gemini 3.5 Flash (High)).
-# The value is the EXACT display name from `agy models` (incl. the reasoning suffix). agy
-# proxies multiple families — examples:
-#   "Gemini 3.1 Pro (High)"  "Gemini 3.5 Flash (High)"
-#   "Claude Opus 4.6 (Thinking)"  "Claude Sonnet 4.6 (Thinking)"  "GPT-OSS 120B (Medium)"
-# Override per-call with `ag-agent --model "<name>"`. Run `agy models` for the live list.
-AG_MODEL=""
-# Optional comma-separated candidate model list — when set, the ag-runner babysitter
-# picks the best fit from this list (same reasoning as an orchestrator-provided inline
-# list). Leave empty to use only the single AG_MODEL default above.
-AG_MODELS=""
-
-# --- Codex backend (cx-agent / cx-stream, OpenAI Codex CLI) --- OPTIONAL.
-# Auth: run `codex login` once (ChatGPT/OAuth — no key needed for personal use).
-# For headless/CI, CODEX_API_KEY takes precedence over OPENAI_API_KEY.
-CODEX_API_KEY=""
-# Default model for the codex worker. Blank = codex's own default (varies by version).
-# Override per-call with `cx-agent --model <name>`. Env var read by cx-stream: CX_MODEL
-# (with CODEX_MODEL as fallback). Current models: gpt-5.5 (default), gpt-5.4,
-# gpt-5.4-mini (fast/cheap, subagents), gpt-5.3-codex-spark. Example: CX_MODEL="gpt-5.4-mini"
-CX_MODEL=""
-# Optional comma-separated candidate model list — when set, the cx-runner babysitter
-# picks the best fit from this list (same reasoning as an orchestrator-provided inline
-# list). Leave empty to use only the single CX_MODEL default above.
-CX_MODELS=""
-# Sandbox: default workspace-write (files can be written in --cwd).
-# Pass cx-agent --read-only for a REAL OS-level no-writes guarantee (macOS Seatbelt /
-# Linux bwrap+seccomp) — kernel-enforced, unlike other backends.
-# Or pass --sandbox <mode> for other codex sandbox modes.
-
-# --- OpenCode backend (oc-agent / oc-stream, via OpenRouter) --- OPTIONAL.
-# Auth: OpenRouter API key (no OAuth flow) -- https://openrouter.ai/keys
-OPENROUTER_API_KEY=""
-# Default model slug (WITHOUT the "openrouter/" prefix -- oc-stream adds it).
-# List live models with: OPENROUTER_API_KEY=<key> opencode models openrouter
-# Free-tier example: google/gemma-4-31b-it:free
-OC_MODEL=""
-# Optional comma-separated candidate model list — when set, the oc-runner babysitter
-# picks the best fit from this list (same reasoning as an orchestrator-provided inline
-# list). Leave empty to use only the single OC_MODEL default above.
-OC_MODELS=""
-# No sandbox: --auto approves all permissions (required for headless use, not a
-# safety opt-in). Use --cwd + a git worktree for a no-writes guarantee.
-
-# --- GitHub Copilot backend (cp-agent / cp-stream) --- OPTIONAL.
-# Auth: cli-dispatch automatically reuses `gh auth token` via GH_TOKEN when available.
-# COPILOT_GITHUB_TOKEN here overrides GH_TOKEN/GITHUB_TOKEN if set explicitly.
-# An active GitHub Copilot subscription is required.
-COPILOT_GITHUB_TOKEN=""
-# Default model slug for the copilot worker. Blank = copilot's own default.
-# Examples: claude-sonnet-4.6, gpt-5.2, auto. Override per-call with `cp-agent --model <slug>`.
-CP_MODEL=""
-# Optional comma-separated candidate model list — when set, the cp-runner babysitter
-# picks the best fit from this list (same reasoning as an orchestrator-provided inline
-# list). Leave empty to use only the single CP_MODEL default above.
-CP_MODELS=""
-# No sandbox: --allow-all-tools --no-ask-user enables headless use, not a safety opt-in.
-# Use --cwd + a git worktree for a no-writes guarantee.
-CFG
+  printf '%s\n' '# cli-dispatch config — DO NOT COMMIT.' > "$CONFIG"
   chmod 600 "$CONFIG"
-  echo "Created config template -> $CONFIG"
+  CFG_CREATED=1
 else
-  echo "Config already exists -> $CONFIG (left untouched)"
+  CFG_CREATED=0
+fi
+# Add all platform-supported backend blocks idempotently (all five on Unix).
+for _b in deepseek antigravity codex opencode copilot; do
+  if ensure_config_block "$CONFIG" "$_b"; then CFG_CHANGED=1; fi
+done
+if [ "$CFG_CREATED" -eq 1 ]; then
+  echo "Created config template -> $CONFIG"
+elif [ "$CFG_CHANGED" -eq 1 ]; then
+  echo "Config updated (added missing backend blocks) -> $CONFIG"
+else
+  echo "Config already complete -> $CONFIG (left untouched)"
 fi
 
-# Auto-open the config so the user can paste a key — only when a raw-key backend (DeepSeek
-# or OpenCode) is selected AND its key is still empty (Antigravity/Codex normally need no
-# key — they use their own sign-in flow — so they don't trigger this prompt).
+# ---- policy.json skeleton (only with --policy-injection on; never clobbered) -----------
+POLICY_FILE="$CONFIG_DIR/policy.json"
+if [ "$POLICY_INJECTION" = "on" ] && [ ! -f "$POLICY_FILE" ]; then
+  mkdir -p "$CONFIG_DIR"
+  # runners = priority-ordered list of the selected backends (ds,ag,cx,oc,cp → *-runner).
+  _RUNNERS=""
+  [ "$WANT_DS" -eq 1 ] && _RUNNERS="$_RUNNERS\"ds-runner\","
+  [ "$WANT_AG" -eq 1 ] && _RUNNERS="$_RUNNERS\"ag-runner\","
+  [ "$WANT_CX" -eq 1 ] && _RUNNERS="$_RUNNERS\"cx-runner\","
+  [ "$WANT_OC" -eq 1 ] && _RUNNERS="$_RUNNERS\"oc-runner\","
+  [ "$WANT_CP" -eq 1 ] && _RUNNERS="$_RUNNERS\"cp-runner\","
+  _RUNNERS="${_RUNNERS%,}"   # trim trailing comma
+  _VER="$(grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' "$SCRIPT_DIR/../.claude-plugin/plugin.json" 2>/dev/null | head -1 | sed 's/.*"\([^"]*\)"[^"]*$/\1/')"
+  cat > "$POLICY_FILE" <<POL
+{
+  "schemaVersion": 1,
+  "enabled": true,
+  "runners": [$_RUNNERS],
+  "issueReminder": true,
+  "claudeMdBlock": false,
+  "pluginVersionAtSetup": "${_VER:-unknown}",
+  "updatedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+POL
+  echo "Created policy.json (injection ENABLED) -> $POLICY_FILE"
+fi
+
+# Auto-open the config so the user can paste a key — triggered whenever the config was just
+# created OR at least one backend block was added this run (CFG_CREATED/CFG_CHANGED), AND we
+# are in an interactive terminal. A Claude-mediated Bash tool has no TTY, so it auto-selects
+# non-interactive and the editor is NEVER opened — only the path is printed.
 # Override the opener via CLI_DISPATCH_EDITOR (legacy CLAUDE_DS_EDITOR still honored), e.g. ="code".
+if [ "$NONINTERACTIVE" -eq 1 ] || [ ! -t 0 ]; then INTERACTIVE=0; else INTERACTIVE=1; fi
 _EDITOR="${CLI_DISPATCH_EDITOR:-${CLAUDE_DS_EDITOR:-}}"
-if { [ "$WANT_DS" -eq 1 ] && grep -q '^DEEPSEEK_API_KEY=""' "$CONFIG" 2>/dev/null; } || \
-   { [ "$WANT_OC" -eq 1 ] && grep -q '^OPENROUTER_API_KEY=""' "$CONFIG" 2>/dev/null; }; then
+if [ "$INTERACTIVE" -eq 1 ] && { [ "$CFG_CREATED" -eq 1 ] || [ "$CFG_CHANGED" -eq 1 ]; }; then
   if [ -n "$_EDITOR" ]; then
     "$_EDITOR" "$CONFIG" >/dev/null 2>&1 && echo "Opened config in \$CLI_DISPATCH_EDITOR -> add your key, then save." || true
   elif command -v open >/dev/null 2>&1; then            # macOS
-    open -e "$CONFIG" >/dev/null 2>&1 && echo "Opened config in editor -> add your key, then save." || true
+    { open -e "$CONFIG" >/dev/null 2>&1 || open -t "$CONFIG" >/dev/null 2>&1; } && echo "Opened config in editor -> add your key, then save." || true
   elif command -v xdg-open >/dev/null 2>&1; then         # Linux
     xdg-open "$CONFIG" >/dev/null 2>&1 && echo "Opened config in editor -> add your key, then save." || true
   elif grep -qi microsoft /proc/version 2>/dev/null && command -v explorer.exe >/dev/null 2>&1; then  # WSL
     explorer.exe "$(wslpath -w "$CONFIG" 2>/dev/null)" >/dev/null 2>&1 && echo "Opened config in editor -> add your key, then save." || true
+  else
+    # No GUI opener available — never launch a TUI editor (nano/vim would hang the Bash tool).
+    echo "No GUI editor found — edit manually: \$EDITOR $CONFIG (or nano/vim)"
   fi
+else
+  echo "Config: $CONFIG (edit to add your keys)"
 fi
 
 case ":$PATH:" in
