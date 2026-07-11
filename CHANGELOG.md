@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.35.0] — 2026-07-11
+
+### Added
+
+- **`/cli-dispatch:wait` slash command.** Thin wrapper over the `cli-dispatch-wait`
+  binary: one blocking call until the session reaches a terminal state, then a compact
+  summary — use it instead of repeated `/cli-dispatch:watch` polling. Recovered from a
+  stale 2026-07-09 worktree where it had been stranded uncommitted (the #93 failure mode,
+  found during worktree cleanup); its exit-code documentation was corrected to the actual
+  contract (`0` done, `1` error/killed, `2` timeout) before landing.
+
 ## [3.34.0] — 2026-07-11
 
 ### Added

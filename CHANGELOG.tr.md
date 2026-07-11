@@ -7,6 +7,17 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.35.0] — 2026-07-11
+
+### Eklendi
+
+- **`/cli-dispatch:wait` slash komutu.** `cli-dispatch-wait` binary'si üzerine ince
+  sarmalayıcı: session terminal duruma ulaşana dek tek blocking çağrı, ardından kompakt
+  özet — tekrarlı `/cli-dispatch:watch` polling'i yerine bunu kullanın. 2026-07-09
+  tarihli bayat bir worktree'de uncommitted strand edilmiş hâlde bulundu (#93 hata
+  kalıbı, worktree temizliği sırasında keşfedildi); exit-code dokümantasyonu gerçek
+  sözleşmeye (`0` done, `1` error/killed, `2` timeout) düzeltilerek alındı.
+
 ## [3.34.0] — 2026-07-11
 
 ### Eklendi
