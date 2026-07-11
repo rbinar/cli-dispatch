@@ -7,6 +7,22 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.40.0] — 2026-07-11
+
+### Kaldırıldı
+
+- **`/cli-dispatch:gain --log` history logging'i.** `--log` flag'i (ve eşdeğeri
+  `GAIN_LOG` env değişkeni), her raporun zaman damgalı bir JSON snapshot'ını
+  `~/.cache/cli-dispatch/gain-history.jsonl`'a ekliyordu; böylece
+  `/cli-dispatch:clean` eski session dizinlerini sildikten sonra bile
+  çalıştırmalar zaman içinde karşılaştırılabiliyordu. Bu history mekanizması —
+  flag, env değişkeni ve `gain-report.mjs`'teki `gain-history.jsonl` writer'ı —
+  kaldırıldı; `commands/gain.md` artık bunu belgelemiyor. Anlık
+  `/cli-dispatch:gain` raporunun kendisi (backend bazlı worker token toplamları
+  + Anthropic babysitting muhasebesi) değişmedi; tanınmayan bir `--log`
+  argümanı artık crash olmak yerine sessizce yok sayılıyor — script'in mevcut
+  esnek arg işleme davranışıyla tutarlı.
+
 ## [3.39.4] — 2026-07-11
 
 ### Düzeltildi

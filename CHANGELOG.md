@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.40.0] — 2026-07-11
+
+### Removed
+
+- **`/cli-dispatch:gain --log` history logging.** The `--log` flag (and its
+  `GAIN_LOG` env var equivalent) used to append a timestamped JSON snapshot of
+  each report to `~/.cache/cli-dispatch/gain-history.jsonl`, so runs could be
+  compared over time even after `/cli-dispatch:clean` deleted old session
+  dirs. That history mechanism — the flag, the env var, and the
+  `gain-history.jsonl` writer in `gain-report.mjs` — is removed;
+  `commands/gain.md` no longer documents it. The live `/cli-dispatch:gain`
+  report itself (worker token totals by backend + Anthropic babysitting
+  accounting) is unchanged; an unrecognized `--log` argument is now silently
+  ignored rather than crashing, consistent with the script's existing
+  permissive arg handling.
+
 ## [3.39.4] — 2026-07-11
 
 ### Fixed

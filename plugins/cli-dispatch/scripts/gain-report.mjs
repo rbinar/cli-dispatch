@@ -12,9 +12,6 @@ if(!ROOT){
     ROOT=path.join(cacheRoot,'claude-ds/sessions')
   }
 }
-const ARGS=new Set(process.argv.slice(2))
-const GAIN_LOG=ARGS.has('--log') || process.env.GAIN_LOG==='1'
-
 const read=p=>{try{return JSON.parse(fs.readFileSync(p,'utf8'))}catch{return{}}}
 const num=v=>{
   if(typeof v==='number'&&Number.isFinite(v)) return v
@@ -256,18 +253,5 @@ async function processAgentFile(fp){
   }
   if(otherAgents>0){
     console.log(`other (non-runner) subagents: ${otherAgents} agents, output ${fmt(otherOutput)} — excluded from ratio`)
-  }
-
-  if(GAIN_LOG){
-    const avgTurns=runnerAgents>0?(runnerTurnsTotal/runnerAgents):0
-    const snap={ts:new Date().toISOString(),workers:{},trivialDelegations:trivialCount,trivialClusters:trivialClusterRecords,anthropic:{},otherSubagents:{agents:otherAgents,output:otherOutput},babysitting:{runnerTurns:{agents:runnerAgents,avgTurns,over20:runnerTurnsOver20}}}
-    for(const [b,r] of byBackend) snap.workers[b]={sessions:r.sessions,input:r.input,output:r.output,noData:r.noData}
-    for(const [m,a] of anthroByModel) snap.anthropic[m]={agents:a.agents.size,input:a.input,output:a.output,cacheW:a.cacheW,cacheR:a.cacheR}
-    const histFile=path.join(path.dirname(ROOT),'gain-history.jsonl')
-    try{
-      fs.appendFileSync(histFile,JSON.stringify(snap)+'\n')
-      console.log('')
-      console.log(`logged → ${histFile}`)
-    }catch(e){ console.log(`(history log failed: ${e.message})`) }
   }
 })()

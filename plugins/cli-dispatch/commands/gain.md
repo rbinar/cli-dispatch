@@ -11,10 +11,6 @@ machine (a subagent counts as a runner when it actually invoked a wrapper CLI â€
 `ds-agent`, `cx-stream`, etc. â€” in a Bash tool call; other subagents are
 summarized in one line and excluded from the ratio).
 
-Pass `--log` to also append a timestamped JSON snapshot of the report to
-`~/.cache/cli-dispatch/gain-history.jsonl` (one line per run), so runs can be
-compared over time even after `/cli-dispatch:clean` deletes old session dirs.
-
 ```bash
 if command -v cli-dispatch-gain >/dev/null 2>&1; then
   cli-dispatch-gain "$@"
