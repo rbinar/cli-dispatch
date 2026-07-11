@@ -84,7 +84,13 @@ Write-Host "Installed gain reporter -> $BinDir\cli-dispatch-gain.ps1 (+ .cmd shi
 Copy-Item -Force (Join-Path $ScriptDir "cli-dispatch-run.ps1") (Join-Path $BinDir "cli-dispatch-run.ps1")
 Set-Content -Path (Join-Path $BinDir "cli-dispatch-run.cmd") -Value (New-Shim "cli-dispatch-run") -Encoding ASCII
 Copy-Item -Force (Join-Path $ScriptDir "verdict-writer.mjs") (Join-Path $LibExecDir "verdict-writer.mjs")
-Write-Host "Installed cli-dispatch-run -> $BinDir\cli-dispatch-run.ps1 (+ .cmd shim; engine -> $LibExecDir\verdict-writer.mjs)"
+# cli-dispatch-run resolves its per-backend worktree runners next to itself and invokes the
+# .sh variant via bash even on Windows — ship them (ds/cx are the Windows-native backends) or
+# those backends fail with "backend runner not found". The .ps1 twins ride along for parity.
+foreach ($wr in @("ds-worktree-run.sh", "cx-worktree-run.sh", "ds-worktree-run.ps1", "cx-worktree-run.ps1")) {
+  Copy-Item -Force (Join-Path $ScriptDir $wr) (Join-Path $BinDir $wr)
+}
+Write-Host "Installed cli-dispatch-run -> $BinDir\cli-dispatch-run.ps1 (+ .cmd shim, ds/cx worktree runners; engine -> $LibExecDir\verdict-writer.mjs)"
 
 # ---- DeepSeek backend (claude-ds family) ----
 if ($wantDS) {

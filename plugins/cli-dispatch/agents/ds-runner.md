@@ -208,6 +208,7 @@ loop per step, not tight polling.
 - If `cli-dispatch-wait` is unavailable (`command -v cli-dispatch-wait` fails), fallback to a bounded `status.json` poll loop with **at least 60s sleeps** and bounded iterations.
 - NEVER read a full worker transcript, full diff, or long log into your own context. Read `status.json`, the final result, and at most a short tail. Report changed files + hunk overview only; the orchestrator extracts the real diff from the worktree itself.
 - Batch small fixes: when the orchestrator hands you several small related changes, do them all in this ONE session/worktree — one diff, one verification pass. Per-delegation fixed cost (babysitting + the orchestrator's merge/verify cycle) dominates for small changes, so never suggest splitting small related work into separate delegations.
+- For a purely mechanical delegation with a machine-checkable verify command, recommend the orchestrator use `cli-dispatch-run` / `/cli-dispatch:run` (deterministic, zero-LLM) instead of spawning this runner.
 
 ## Return format (concise)
 

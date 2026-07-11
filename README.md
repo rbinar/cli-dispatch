@@ -148,7 +148,7 @@ You use cli-dispatch **from inside Claude Code** — two ways:
 | `/cli-dispatch:watch <id>` | Show a session's live status (cost-aware; any backend) |
 | `/cli-dispatch:resume <id> <prompt>` | Continue a worker session with a follow-up prompt (auto-detects backend) |
 | `/cli-dispatch:kill <id>` | Stop a running worker session (SIGTERM + state → killed) |
-| `/cli-dispatch:clean` | Remove stale worker dirs (`running`-but-dead); dry-run by default, `--remove` to delete |
+| `/cli-dispatch:clean` | Remove stale worker dirs (`running`-but-dead); dry-run by default, `--remove` to delete. Deleting a session also removes `verdict.json` and `verdict-diff.patch`; dry-run marks candidates that still have a patch, and `--preserve-verdicts` archives them under `<sessions-root>/verdict-archive/`. |
 | `/cli-dispatch:clean-schedule` | Schedule a daily auto-clean via the OS scheduler (launchd / cron / Scheduled Tasks); `status` / `uninstall` too |
 | `/cli-dispatch:status` | Check install/key/CLI status for all backends |
 | `/cli-dispatch:ds-status` / `ag-status` / `cx-status` / `oc-status` / `cp-status` | Same check, scoped to just DeepSeek / Antigravity / Codex / OpenCode / Copilot |

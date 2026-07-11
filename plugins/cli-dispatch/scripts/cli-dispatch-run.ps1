@@ -383,10 +383,10 @@ if (($Verify.Count -gt 0) -and ($State -ne 'human-controlled')) {
 }
 
 if ($verifyResultsPath) {
-  $verdictOut = & $NodeBin --input-type=module $VerdictWriter build-verdict $SessionDir $StatusPath $MetaPath $ChangedPath $timeoutExpired $verifyResultsPath
+  $verdictOut = & $NodeBin $VerdictWriter build-verdict $SessionDir $StatusPath $MetaPath $ChangedPath $timeoutExpired $verifyResultsPath
   $verdictExit = $LASTEXITCODE
 } else {
-  $verdictOut = & $NodeBin --input-type=module $VerdictWriter build-verdict $SessionDir $StatusPath $MetaPath $ChangedPath $timeoutExpired
+  $verdictOut = & $NodeBin $VerdictWriter build-verdict $SessionDir $StatusPath $MetaPath $ChangedPath $timeoutExpired
   $verdictExit = $LASTEXITCODE
 }
 Set-Content -Path (Join-Path $SessionDir 'verdict.json') -Value $verdictOut

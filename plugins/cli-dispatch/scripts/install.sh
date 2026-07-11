@@ -151,6 +151,12 @@ echo "Installed gain reporter -> cli-dispatch-gain (engine -> $LIBEXEC_DIR/gain-
 echo "▶ cli-dispatch-run…"
 install -m 0755 "$SCRIPT_DIR/cli-dispatch-run" "$BIN_DIR/cli-dispatch-run"
 install -m 0644 "$SCRIPT_DIR/verdict-writer.mjs" "$LIBEXEC_DIR/verdict-writer.mjs"
+# cli-dispatch-run resolves its per-backend worktree runners next to itself ($BIN_DIR) —
+# they must ship with it or every non-installed backend fails with "backend runner not found".
+for wr in ds-worktree-run.sh ag-worktree-run.sh cx-worktree-run.sh oc-worktree-run.sh cp-worktree-run.sh; do
+  install -m 0755 "$SCRIPT_DIR/$wr" "$BIN_DIR/$wr"
+done
+echo "Installed deterministic runner -> cli-dispatch-run (+ per-backend worktree runners, verdict engine -> $LIBEXEC_DIR/verdict-writer.mjs)"
 
 # ---- DeepSeek backend (claude-ds family) -----------------------------------
 if [ "$WANT_DS" -eq 1 ]; then

@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.37.0] — 2026-07-11
+
+### Added
+
+- **`/cli-dispatch:run` slash command (#102).** Wraps the deterministic runner
+  `cli-dispatch-run` for one-line orchestrator use:
+  `/cli-dispatch:run <backend> "<prompt>" [--verify '<cmd>'] [--cleanup-if-clean] [flags]`.
+  Prints a compact verdict summary after the run (exit code, session id, state, verify
+  result, diffstat, `verdict-diff.patch` path) consistent with `/cli-dispatch:wait`, and
+  falls back gracefully to `/cli-dispatch:setup` guidance when the binary is missing.
+  All five runner defs (`*-runner.md`) now tell the babysitter to recommend the
+  deterministic runner for purely mechanical delegations with a machine-checkable verify.
+- **clean: verdict lifecycle (#101, SDD TL8).** `cli-dispatch-clean.mjs` (and the inline
+  bash/PowerShell mirrors in `commands/clean.md`) now understand the deterministic runner's
+  artifacts: dry-run marks deletion candidates that still carry a non-empty
+  `verdict-diff.patch` (`⚠ has verdict patch` + a summary hint), and a new
+  `--preserve-verdicts` flag (PowerShell: `-PreserveVerdicts`) archives
+  `verdict.json`/`verdict-diff.patch` to `<sessions-root>/verdict-archive/<id>.{json,patch}`
+  before removal. The `verdict-archive` dir itself is never scanned or deleted. Covered by
+  a new `cli-dispatch-clean.test.mjs` suite (5 tests).
+
+### Fixed
+
+- **install.sh/install.ps1 did not ship `*-worktree-run.sh` (#103).** `cli-dispatch-run`
+  resolves its per-backend worktree runners next to itself in `~/.local/bin`, but the
+  installers never copied them — every backend failed with `backend runner not found`
+  (ds only worked when a stale manual copy existed). `install.sh` now installs all five;
+  `install.ps1` ships the ds/cx pair (`.sh` for the bash-driven Windows path + `.ps1` twins).
+- **cli-dispatch-run crashed with `ERR_INPUT_TYPE_NOT_ALLOWED` at the verdict phase (#104).**
+  `node --input-type=module <file>` is invalid (the flag is only allowed with `-e`/stdin);
+  both `cli-dispatch-run` and `cli-dispatch-run.ps1` used it on the file-based
+  `verdict-writer.mjs` invocations, so every run with `--verify` crashed after the worker
+  finished — no `verdict.json`, no cleanup, work stranded in the worktree. The flag is
+  dropped (`.mjs` extension already selects module mode).
+
 ## [3.36.0] — 2026-07-11
 
 ### Added

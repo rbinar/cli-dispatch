@@ -1,0 +1,118 @@
+import { execFileSync } from 'node:child_process'
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { test } from 'node:test'
+import { fileURLToPath } from 'node:url'
+
+const enginePath = fileURLToPath(new URL('../cli-dispatch-clean.mjs', import.meta.url))
+const samplePatch = '--- a/file.txt\n+++ b/file.txt\n@@\n-1\n+2\n'
+
+function tmpRoot() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'cli-dispatch-clean-'))
+}
+
+function makeStaleSession(root, { id, backend = 'cx', withPatch = false, withVerdictJson = false }) {
+  const dir = path.join(root, id)
+  fs.mkdirSync(dir, { recursive: true })
+  const statusPath = path.join(dir, 'status.json')
+  const metaPath = path.join(dir, 'meta.json')
+  fs.writeFileSync(statusPath, JSON.stringify({ state: 'running', backend }))
+  fs.writeFileSync(metaPath, JSON.stringify({ backend, startedAt: '2026-01-01T00:00:00.000Z' }))
+
+  const oldTime = new Date(Date.now() - 2000 * 1000)
+  fs.utimesSync(statusPath, oldTime, oldTime)
+
+  if (withPatch) fs.writeFileSync(path.join(dir, 'verdict-diff.patch'), samplePatch)
+  if (withVerdictJson) fs.writeFileSync(path.join(dir, 'verdict.json'), JSON.stringify({ sessionId: id, state: 'done' }))
+
+  return dir
+}
+
+function runClean(root, args) {
+  return execFileSync(process.execPath, [enginePath, ...args], {
+    env: { ...process.env, CLI_DISPATCH_SESSIONS_DIR: root },
+    encoding: 'utf8',
+  })
+}
+
+function cleanup(...paths) {
+  for (const p of paths) {
+    if (p) fs.rmSync(p, { recursive: true, force: true })
+  }
+}
+
+test('dry-run marks stale candidate with verdict patch and prints preserve hint', () => {
+  const root = tmpRoot()
+  const id = 'stale-with-patch'
+  makeStaleSession(root, { id, withPatch: true, withVerdictJson: true })
+
+  const out = runClean(root, ['--stale-secs', '1'])
+
+  assert.ok(out.includes('⚠ has verdict patch'))
+  assert.ok(out.includes('note: 1 candidate(s) carry a verdict-diff.patch'))
+  cleanup(root)
+})
+
+test('dry-run does not mark stale candidate without verdict patch', () => {
+  const root = tmpRoot()
+  const id = 'stale-without-patch'
+  makeStaleSession(root, { id, withPatch: false })
+
+  const out = runClean(root, ['--stale-secs', '1'])
+
+  assert.ok(!out.includes('⚠ has verdict patch'))
+  assert.ok(!out.includes('note:'))
+  cleanup(root)
+})
+
+test('remove + preserve-verdicts archives verdict files and deletes session', () => {
+  const root = tmpRoot()
+  const id = 'stale-with-archive'
+  const patch = samplePatch
+  const verdict = JSON.stringify({ sessionId: id, state: 'done' })
+  const dir = makeStaleSession(root, { id, withPatch: true, withVerdictJson: true })
+  const out = runClean(root, ['--remove', '--preserve-verdicts', '--stale-secs', '1'])
+
+  assert.equal(out.includes('archived verdicts for 1 session(s).'), true)
+  assert.equal(fs.existsSync(dir), false)
+  const archivedPatch = path.join(root, 'verdict-archive', `${id}.patch`)
+  const archivedJson = path.join(root, 'verdict-archive', `${id}.json`)
+  assert.equal(fs.readFileSync(archivedPatch, 'utf8'), patch)
+  assert.equal(fs.readFileSync(archivedJson, 'utf8'), verdict)
+  cleanup(root)
+})
+
+test('remove without preserve-verdicts deletes session without creating archive', () => {
+  const root = tmpRoot()
+  const id = 'stale-no-preserve'
+  const dir = makeStaleSession(root, { id, withPatch: true, withVerdictJson: true })
+
+  runClean(root, ['--remove', '--stale-secs', '1'])
+
+  const archiveDir = path.join(root, 'verdict-archive')
+  assert.equal(fs.existsSync(dir), false)
+  assert.equal(fs.existsSync(archiveDir), false)
+  cleanup(root)
+})
+
+test('verdict-archive dir is skipped by clean scan', () => {
+  const root = tmpRoot()
+  const archiveDir = path.join(root, 'verdict-archive')
+  const sessionId = 'stale-session'
+  const sessionDir = makeStaleSession(root, { id: sessionId, withPatch: true })
+  fs.mkdirSync(archiveDir, { recursive: true })
+  fs.writeFileSync(path.join(archiveDir, 'leftover'), 'keep-me')
+
+  const out = runClean(root, ['--stale-secs', '1'])
+
+  assert.ok(!out.includes('verdict-archive'))
+
+  runClean(root, ['--remove', '--stale-secs', '1'])
+
+  assert.equal(fs.existsSync(sessionDir), false)
+  assert.equal(fs.existsSync(archiveDir), true)
+  assert.equal(fs.readFileSync(path.join(archiveDir, 'leftover'), 'utf8'), 'keep-me')
+  cleanup(root)
+})

@@ -7,6 +7,42 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.37.0] — 2026-07-11
+
+### Eklendi
+
+- **`/cli-dispatch:run` slash komutu (#102).** Deterministik runner `cli-dispatch-run`'ı
+  orkestratör için tek satırlık kullanıma sarar:
+  `/cli-dispatch:run <backend> "<prompt>" [--verify '<cmd>'] [--cleanup-if-clean] [bayraklar]`.
+  Çalışma bitince `/cli-dispatch:wait` ile tutarlı kompakt bir verdict özeti basar (exit
+  code, session id, state, verify sonucu, diffstat, `verdict-diff.patch` yolu); binary
+  yoksa `/cli-dispatch:setup` yönlendirmesiyle zarifçe geri düşer. Beş runner def'i
+  (`*-runner.md`) artık makine-doğrulanabilir verify'lı salt mekanik delegasyonlarda
+  babysitter'a deterministik runner'ı önermesini söylüyor.
+- **clean: verdict yaşam döngüsü (#101, SDD TL8).** `cli-dispatch-clean.mjs` (ve
+  `commands/clean.md` içindeki inline bash/PowerShell kopyaları) artık deterministik
+  runner'ın artefaktlarını tanıyor: dry-run, boş olmayan `verdict-diff.patch` taşıyan silme
+  adaylarını işaretliyor (`⚠ has verdict patch` + özet ipucu) ve yeni `--preserve-verdicts`
+  bayrağı (PowerShell: `-PreserveVerdicts`) silmeden önce `verdict.json`/`verdict-diff.patch`
+  dosyalarını `<sessions-root>/verdict-archive/<id>.{json,patch}` altına arşivliyor.
+  `verdict-archive` dizininin kendisi asla taranmaz/silinmez. Yeni
+  `cli-dispatch-clean.test.mjs` süiti (5 test) ile kapsandı.
+
+### Düzeltildi
+
+- **install.sh/install.ps1 `*-worktree-run.sh` dosyalarını kurmuyordu (#103).**
+  `cli-dispatch-run` backend worktree runner'larını `~/.local/bin`'de kendi yanında arar,
+  ama installer'lar bunları hiç kopyalamıyordu — her backend `backend runner not found` ile
+  başarısız oluyordu (ds yalnızca eski bir elle kopya sayesinde çalışıyordu). `install.sh`
+  artık beşini de kuruyor; `install.ps1` ds/cx çiftini gönderiyor (bash-üzerinden çalışan
+  Windows yolu için `.sh` + parite için `.ps1` ikizleri).
+- **cli-dispatch-run verdict aşamasında `ERR_INPUT_TYPE_NOT_ALLOWED` ile çöküyordu (#104).**
+  `node --input-type=module <dosya>` geçersizdir (bayrak yalnız `-e`/stdin ile kullanılır);
+  hem `cli-dispatch-run` hem `cli-dispatch-run.ps1` bunu dosya-tabanlı `verdict-writer.mjs`
+  çağrılarında kullanıyordu — `--verify`'lı her çalışma worker bittikten sonra çöküyor,
+  `verdict.json` yazılmıyor, cleanup çalışmıyor, iş worktree'de strand kalıyordu. Bayrak
+  kaldırıldı (`.mjs` uzantısı zaten module modunu seçer).
+
 ## [3.36.0] — 2026-07-11
 
 ### Eklendi
