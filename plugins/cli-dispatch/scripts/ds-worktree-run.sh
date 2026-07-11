@@ -79,6 +79,10 @@ trap _cleanup ERR INT TERM
 if [ -d "$REPO/node_modules" ] && [ ! -e "$WT/node_modules" ]; then
   ln -s "$REPO/node_modules" "$WT/node_modules"
 fi
+# Snapshot the main repo's dirt BEFORE the worker runs: the post-check below must fail
+# only on NEW entries, or any pre-existing untracked file (a stray CLAUDE.md, editor
+# droppings) fails every perfectly good run — this false-positived in production.
+PRE_STATUS="$(git -C "$REPO" status --short 2>/dev/null || true)"
 echo ">>> Running claude-ds-stream (agentic, session-tracked) in $WT ..."
 # Stream variant: progress/status/transcript are written to a session dir (path on stderr).
 claude-ds-stream --cwd "$WT" --dangerously-skip-permissions -p "$(cat "$BRIEF")"
@@ -86,12 +90,19 @@ echo ">>> Worktree: $WT  (branch: $BRANCH)"
 echo ">>> Review the diff, then YOU handle git/PR/merge. Cleanup:"
 echo "    rm -f \"$WT/node_modules\"; git -C \"$REPO\" worktree remove \"$WT\" --force; git -C \"$REPO\" worktree prune"
 git -C "$WT" status --short
-# Post-run: verify the MAIN repo wasn't dirtied by the worker (issue #68).
-# The worker should only write inside $WT; a dirty $REPO means it resolved an absolute
-# path back into the main checkout — undetected until now because nothing called the
-# --post-check guard automatically.
-if _check_repo_clean "$REPO"; then
+# Post-run: verify the MAIN repo gained no NEW dirt from the worker (issue #68).
+# The worker should only write inside $WT; new entries in $REPO's status mean it resolved
+# an absolute path back into the main checkout.
+POST_STATUS="$(git -C "$REPO" status --short 2>/dev/null || true)"
+NEW_DIRT="$(comm -13 <(printf '%s\n' "$PRE_STATUS" | sort) <(printf '%s\n' "$POST_STATUS" | sort) | grep -v '^$' || true)"
+if [ -z "$NEW_DIRT" ]; then
+  echo ">>> post-check OK: no new changes in $REPO"
   exit 0
-else
-  exit 1
 fi
+TS="$(date +%s)"
+PATCH_FILE="${REPO}/../leaked-changes-${TS}.patch"
+git -C "$REPO" diff > "$PATCH_FILE" 2>/dev/null || true
+echo ">>> post-check FAIL: worker leaked NEW changes outside the worktree into $REPO" >&2
+echo ">>> patch saved: $PATCH_FILE" >&2
+printf '%s\n' "$NEW_DIRT" >&2
+exit 1

@@ -20,8 +20,13 @@ if ([string]::IsNullOrEmpty($key)) {
   exit 1
 }
 
-$model = if ($cfg["DS_MODEL"]) { $cfg["DS_MODEL"] } else { "deepseek-v4-pro" }
-$flash = if ($cfg["DS_FLASH_MODEL"]) { $cfg["DS_FLASH_MODEL"] } else { "deepseek-v4-flash" }
+# Bash behavior: source config after env resolution, so config-owned values overwrite env.
+# Keep env as a fallback so existing `$env:DS_MODEL`/`$env:DS_FLASH_MODEL` only win
+# when the config file does not define them.
+$modelCfg = if ($cfg.ContainsKey("DS_MODEL")) { $cfg["DS_MODEL"] } else { "" }
+$flashCfg = if ($cfg.ContainsKey("DS_FLASH_MODEL")) { $cfg["DS_FLASH_MODEL"] } else { "" }
+$model = if (-not [string]::IsNullOrEmpty($modelCfg)) { $modelCfg } elseif ($env:DS_MODEL) { $env:DS_MODEL } else { "deepseek-v4-pro" }
+$flash = if (-not [string]::IsNullOrEmpty($flashCfg)) { $flashCfg } elseif ($env:DS_FLASH_MODEL) { $env:DS_FLASH_MODEL } else { "deepseek-v4-flash" }
 
 $env:ANTHROPIC_BASE_URL = "https://api.deepseek.com/anthropic"
 $env:ANTHROPIC_AUTH_TOKEN = $key

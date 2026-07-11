@@ -7,6 +7,41 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.39.0] — 2026-07-11
+
+### Eklendi
+
+- **Windows parite epic'i (#106) — üç dalganın tamamı.** `.ps1` ikizleri bash referans
+  implementasyonlarıyla pariteye getirildi (native Windows backend'leri: ds + cx):
+  - `claude-ds-stream.ps1` / `cx-stream.ps1`: worker exit code'u artık parser pipeline'ından
+    geçiyor (rc-dosyası deseni — bash `PIPESTATUS[0]` karşılığı); `--verify-cmd` bayrağı;
+    session dizinine `worker.pid`; kesinti/hata reconciliation'ı (çökme ya da Ctrl-C artık
+    `state:"done"`/`"running"` bırakmıyor); diff artefaktları (`diff.patch` +
+    `changed-files.json`); bash ile birebir öncelikli model env override'ları
+    (`DS_MODEL`/`CX_MODEL`/`CODEX_MODEL`); cx ağ anahtarı (`--network`/`--no-network` +
+    `CX_NETWORK`); ds read-only koşularına MCP izolasyonu + koşu-sonu bütünlük guard'ı.
+  - `ds-agent.ps1`: `--effort` bayrağı + script-bitişiği stream fallback'i; `cx-agent.ps1`:
+    ağ bayrakları + fallback; `claude-ds.ps1`: env-var model override'ları.
+  - `ds/cx-worktree-run.ps1`: worker hataları yayılıyor (her hatayı exit 0'a çeviren boş
+    `catch {}` gitti); cleanup talimatları try/finally ile her zaman basılıyor.
+  - `install.ps1`: `pty-host.mjs`, `takeover-cmd.mjs` ve vendor xterm asset'lerini kuruyor
+    (dashboard terminal/takeover paritesi; native Windows'ta takeover hâlâ test edilmedi);
+    eski `CLAUDE_DS_EDITOR`'ın yanında `CLI_DISPATCH_EDITOR`'ı tanıyor.
+  - `cli-dispatch-wait.ps1`: timeout mesajı gerçek geçen saniyeyi raporluyor;
+    `cli-dispatch-clean.ps1`/`cli-dispatch-gain.ps1`: minimal PATH'te düşmeden önce Windows
+    node yoklaması (NVM_SYMLINK, Volta, Program Files, scoop).
+  - 13 `.ps1` dosyasının tamamı gerçek PowerShell parser'ıyla doğrulandı
+    (`Language.Parser::ParseFile`) — parser, statik incelemenin kaçırdığı iki gerçek syntax
+    hatası yakaladı (`"$Label:"` scope-parse tuzağı, parantez içinde statement).
+
+### Düzeltildi
+
+- **Worktree post-check yanlış pozitifi.** `ds-worktree-run.sh` (ve yeni `.ps1` portu) ANA
+  repo herhangi bir sebeple kirliyse koşuyu FAIL ediyordu — önceden var olan untracked
+  dosyalar (başıboş bir `CLAUDE.md`) üretimde gayet iyi koşuları düşürdü. Kontrol artık
+  worker başlamadan `git status` anlık görüntüsü alıyor ve yalnız YENİ girdilerde düşüyor;
+  sızıntı patch'i yalnız gerçek sızıntıda yazılıyor (boş `leaked-changes-*.patch` çöpü bitti).
+
 ## [3.38.0] — 2026-07-11
 
 ### Düzeltildi

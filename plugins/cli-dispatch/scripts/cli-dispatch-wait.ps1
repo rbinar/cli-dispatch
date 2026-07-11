@@ -93,7 +93,8 @@ while ($true) {
     $elapsedSeconds = ((Get-Date) - $startTime).TotalSeconds
     if ($elapsedSeconds -gt $Timeout) {
       Write-Summary $state
-      Write-Host "TIMEOUT after ${Timeout}s, state still: $state"
+      $elapsedInt = [math]::Floor($elapsedSeconds)
+      Write-Host "TIMEOUT after ${elapsedInt}s, state still: $state"
       exit 2
     }
   }

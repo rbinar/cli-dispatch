@@ -52,7 +52,7 @@ if (Test-Path $installedVerFile) {
   } catch {}
 }
 
-function Show-Usage { [Console]::Error.WriteLine('usage: cx-agent [--cwd <dir>] [--resume <id>] [--read-only] [--sandbox <mode>] [--model <m>] [--effort low|medium|high] [--max-runtime <s>] [--idle-timeout <s>] [-q] "<task>"') }
+function Show-Usage { [Console]::Error.WriteLine('usage: cx-agent [--cwd <dir>] [--resume <id>] [--read-only] [--sandbox <mode>] [--network] [--no-network] [--model <m>] [--effort low|medium|high] [--max-runtime <s>] [--idle-timeout <s>] [-q] "<task>"') }
 function Need-Val($name, $idx, $argc) { if ($idx + 1 -ge $argc) { [Console]::Error.WriteLine("cx-agent: $name requires a value."); exit 1 } }
 
 $quiet = $false
@@ -64,6 +64,8 @@ while ($i -lt $argc) {
   $a = $args[$i]
   switch -Regex ($a) {
     '^--read-only$'    { $fwd += '--read-only'; $i += 1; continue }
+    '^(--network|--net)$'       { $fwd += '--network'; $i += 1; continue }
+    '^(--no-network|--no-net)$' { $fwd += '--no-network'; $i += 1; continue }
     '^--cwd$'          { Need-Val '--cwd' $i $argc; $fwd += @('--cwd', $args[$i+1]); $i += 2; continue }
     '^--resume$'       { Need-Val '--resume' $i $argc; $fwd += @('--resume', $args[$i+1]); $i += 2; continue }
     '^--model$'        { Need-Val '--model' $i $argc; $fwd += @('--model', $args[$i+1]); $i += 2; continue }
@@ -84,10 +86,16 @@ if ($null -eq $task) {
 }
 if ([string]::IsNullOrWhiteSpace($task)) { [Console]::Error.WriteLine("cx-agent: empty task — nothing to delegate."); exit 1 }
 
+$stream = "cx-stream"
+if (-not (Get-Command $stream -ErrorAction SilentlyContinue)) {
+  $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+  $stream = Join-Path $scriptDir "cx-stream.ps1"
+}
+
 if (-not $quiet) {
   [Console]::Error.WriteLine("> cx-agent -> Codex (OpenAI Codex CLI) worker")
   $env:CX_PROGRESS_STDERR = '1'
 }
 
-& cx-stream @fwd -p $task
+& $stream @fwd -p $task
 exit $LASTEXITCODE

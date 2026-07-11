@@ -37,9 +37,23 @@ if ((Test-Path $repoNM) -and -not (Test-Path $wtNM)) {
 
 Write-Host ">>> Running cx-stream (Codex/OpenAI, session-tracked) in $WT ..."
 $brief = Get-Content -Raw $BriefFile
-try { cx-stream --cwd $WT -p $brief } catch { }
+# Default sandbox workspace-write → edits land in $WT. Pass --read-only for an analysis run.
+# Mirrors bash's `trap _cleanup ERR INT TERM`: the worktree info + manual cleanup
+# instructions are always shown (success or failure) — bash never auto-deletes the
+# worktree, it just prints the commands so YOU can do it. The worker's exit code must
+# propagate as this script's exit code (no more swallowing failures).
+$workerExitCode = 0
+try {
+  cx-stream --cwd $WT -p $brief
+  $workerExitCode = $LASTEXITCODE
+} catch {
+  Write-Error $_.Exception.Message -ErrorAction Continue
+  $workerExitCode = 1
+} finally {
+  Write-Host ">>> Worktree: $WT  (branch: $Branch)"
+  Write-Host ">>> Review the diff, then YOU handle git/PR/merge. Cleanup:"
+  Write-Host "    Remove-Item `"$wtNM`" -Force; git -C `"$Repo`" worktree remove `"$WT`" --force; git -C `"$Repo`" worktree prune"
+}
+if ($workerExitCode -ne 0) { exit $workerExitCode }
 
-Write-Host ">>> Worktree: $WT  (branch: $Branch)"
-Write-Host ">>> Review the diff, then YOU handle git/PR/merge. Cleanup:"
-Write-Host "    Remove-Item `"$wtNM`" -Force; git -C `"$Repo`" worktree remove `"$WT`" --force; git -C `"$Repo`" worktree prune"
 git -C $WT status --short

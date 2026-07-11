@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.39.0] — 2026-07-11
+
+### Added
+
+- **Windows parity epic (#106) — all three waves.** The `.ps1` twins are brought up to
+  parity with their bash reference implementations (native Windows backends: ds + cx):
+  - `claude-ds-stream.ps1` / `cx-stream.ps1`: worker exit code now propagates through the
+    parser pipeline (rc-file pattern — the bash `PIPESTATUS[0]` equivalent); `--verify-cmd`
+    flag; `worker.pid` written to the session dir; interrupt/error reconciliation (a crash
+    or Ctrl-C no longer leaves `state:"done"`/`"running"`); diff artifacts (`diff.patch` +
+    `changed-files.json`); model env-var overrides (`DS_MODEL`/`CX_MODEL`/`CODEX_MODEL`)
+    with bash-identical precedence; cx network toggle (`--network`/`--no-network` +
+    `CX_NETWORK`); ds read-only runs get MCP isolation + post-run integrity guard.
+  - `ds-agent.ps1`: `--effort` flag + script-adjacent stream fallback; `cx-agent.ps1`:
+    network flags + fallback; `claude-ds.ps1`: env-var model overrides.
+  - `ds/cx-worktree-run.ps1`: worker failures propagate (the empty `catch {}` that turned
+    any failure into exit 0 is gone); cleanup instructions always print via try/finally.
+  - `install.ps1`: ships `pty-host.mjs`, `takeover-cmd.mjs`, and the vendor xterm assets
+    (dashboard terminal/takeover parity; takeover on native Windows remains untested);
+    honors `CLI_DISPATCH_EDITOR` alongside legacy `CLAUDE_DS_EDITOR`.
+  - `cli-dispatch-wait.ps1`: timeout message reports actual elapsed seconds;
+    `cli-dispatch-clean.ps1`/`cli-dispatch-gain.ps1`: Windows node probing (NVM_SYMLINK,
+    Volta, Program Files, scoop) before failing on a minimal PATH.
+  - All 13 `.ps1` files validated with the real PowerShell parser
+    (`Language.Parser::ParseFile`) — the parser caught two real syntax errors
+    (`"$Label:"` scope-parse trap, statement-in-parentheses) that static review missed.
+
+### Fixed
+
+- **Worktree post-check false positive.** `ds-worktree-run.sh` (and the new `.ps1` port)
+  failed a run when the MAIN repo was dirty for any reason — pre-existing untracked files
+  (a stray `CLAUDE.md`) failed perfectly good runs in production. The check now snapshots
+  `git status` before the worker launches and fails only on NEW entries; the leak patch is
+  only written when there is a real leak (no more empty `leaked-changes-*.patch` litter).
+
 ## [3.38.0] — 2026-07-11
 
 ### Fixed

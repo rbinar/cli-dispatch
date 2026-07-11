@@ -62,7 +62,15 @@ Set-Content -Path (Join-Path $BinDir "cli-dispatch-dashboard.cmd") -Value (New-S
 Copy-Item -Force (Join-Path $ScriptDir "dashboard-server.mjs") (Join-Path $LibExecDir "dashboard-server.mjs")
 Copy-Item -Force (Join-Path $ScriptDir "public-page.mjs") (Join-Path $LibExecDir "public-page.mjs")
 Copy-Item -Force (Join-Path $ScriptDir "dashboard-utils.mjs") (Join-Path $LibExecDir "dashboard-utils.mjs")
-Write-Host "Installed dashboard -> $BinDir\cli-dispatch-dashboard.ps1 (+ .cmd shim; server + public-page + dashboard-utils -> $LibExecDir\dashboard-server.mjs)"
+# takeover on native Windows is untested (node-pty); assets shipped for parity.
+Copy-Item -Force (Join-Path $ScriptDir "pty-host.mjs") (Join-Path $LibExecDir "pty-host.mjs")
+Copy-Item -Force (Join-Path $ScriptDir "takeover-cmd.mjs") (Join-Path $LibExecDir "takeover-cmd.mjs")
+New-Item -ItemType Directory -Force -Path (Join-Path $LibExecDir "vendor") | Out-Null
+Copy-Item -Force (Join-Path $ScriptDir "vendor/LICENSE-xterm.txt") (Join-Path $LibExecDir "vendor/LICENSE-xterm.txt")
+Copy-Item -Force (Join-Path $ScriptDir "vendor/xterm-addon-fit.js") (Join-Path $LibExecDir "vendor/xterm-addon-fit.js")
+Copy-Item -Force (Join-Path $ScriptDir "vendor/xterm.css") (Join-Path $LibExecDir "vendor/xterm.css")
+Copy-Item -Force (Join-Path $ScriptDir "vendor/xterm.js") (Join-Path $LibExecDir "vendor/xterm.js")
+Write-Host "Installed dashboard -> $BinDir\cli-dispatch-dashboard.ps1 (+ .cmd shim; server + public-page + dashboard-utils + takeover pty-host/takeover-cmd/vendor xterm -> $LibExecDir\dashboard-server.mjs)"
 
 # Cleanup tool (backend-agnostic; always installed).
 Copy-Item -Force (Join-Path $ScriptDir "cli-dispatch-clean.ps1") (Join-Path $BinDir "cli-dispatch-clean.ps1")
@@ -171,10 +179,12 @@ CX_MODELS=""
 
 # Open the config so the user can paste their key — only when the DeepSeek backend is
 # selected AND its key is still empty. Best-effort: never fail the install if opening fails.
-# Override the opener via $env:CLAUDE_DS_EDITOR (e.g. "code").
+# Override the opener via $env:CLI_DISPATCH_EDITOR or $env:CLAUDE_DS_EDITOR (e.g. "code");
+# CLI_DISPATCH_EDITOR is preferred, CLAUDE_DS_EDITOR is the legacy fallback.
 if ($wantDS -and ((Get-Content $Config -Raw) -cmatch 'DEEPSEEK_API_KEY=""')) {
   try {
-    if ($env:CLAUDE_DS_EDITOR) { Start-Process $env:CLAUDE_DS_EDITOR $Config }
+    if ($env:CLI_DISPATCH_EDITOR) { Start-Process $env:CLI_DISPATCH_EDITOR $Config }
+    elseif ($env:CLAUDE_DS_EDITOR) { Start-Process $env:CLAUDE_DS_EDITOR $Config }
     else { Start-Process notepad $Config }
     Write-Host "Opened config in editor -> add your key, then save."
   } catch { }

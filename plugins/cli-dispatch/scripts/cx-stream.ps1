@@ -57,6 +57,91 @@ if ([string]::IsNullOrEmpty($parser) -or -not (Test-Path $parser)) {
 
 function ConvertTo-Int($v) { $n = 0; if ([int]::TryParse("$v", [ref]$n)) { return $n } return 0 }
 
+function Reconcile-SessionError($dir, $err, $exitCode) {
+  $statusJsonPath = Join-Path $dir "status.json"
+  if (Test-Path $statusJsonPath) {
+    try {
+      $s = Get-Content -Raw $statusJsonPath | ConvertFrom-Json
+      $s.state = "error"
+      $s.error = $err
+      $s | ConvertTo-Json -Depth 10 | Set-Content -Path $statusJsonPath -Encoding UTF8
+    } catch {
+      [Console]::Error.WriteLine("reconcile: cannot write status.json: $($_.Exception.Message)")
+    }
+  }
+  
+  $metaJsonPath = Join-Path $dir "meta.json"
+  if (Test-Path $metaJsonPath) {
+    try {
+      $m = Get-Content -Raw $metaJsonPath | ConvertFrom-Json
+      $m.state = "error"
+      $m.exitCode = [int]$exitCode
+      $m.error = $err
+      $m | ConvertTo-Json -Depth 10 | Set-Content -Path $metaJsonPath -Encoding UTF8
+    } catch {
+      [Console]::Error.WriteLine("reconcile: cannot write meta.json: $($_.Exception.Message)")
+    }
+  }
+}
+
+function Write-DiffArtifacts($dir, $cwd) {
+  $null = git -C $cwd rev-parse --is-inside-work-tree 2>$null
+  if ($LASTEXITCODE -ne 0) { return }
+
+  $statusLines = & git -C $cwd status --short --untracked-files=all 2>$null
+  if (-not $statusLines) { return }
+
+  New-Item -ItemType Directory -Force -Path $dir -ErrorAction SilentlyContinue | Out-Null
+
+  $diffPatchPath = Join-Path $dir "diff.patch"
+  & git -C $cwd diff HEAD 2>$null | Set-Content -Path $diffPatchPath -Encoding UTF8
+
+  $diffStatLines = & git -C $cwd diff --stat HEAD 2>$null
+  $diffstat = ""
+  if ($diffStatLines) {
+    $diffstat = ($diffStatLines[-1]).Trim()
+  }
+
+  $changes = @()
+  foreach ($line in $statusLines) {
+    if ([string]::IsNullOrWhiteSpace($line)) { continue }
+    $code = $line.Substring(0, 2)
+    $file = $line.Substring(3)
+    $fstatus = ""
+
+    if ($code -eq "??") {
+      $fstatus = "??"
+    } else {
+      $char1 = $code.Substring(0, 1)
+      $char2 = $code.Substring(1, 1)
+      $fstatus = if (-not [string]::IsNullOrWhiteSpace($char1)) { $char1 } else { $char2 }
+      if ($fstatus -notin @('M', 'A', 'D', 'R', 'C')) {
+        $fstatus = ""
+      } elseif ($fstatus -in @('R', 'C')) {
+        $fstatus = "A"
+      }
+    }
+
+    if ([string]::IsNullOrEmpty($fstatus)) { continue }
+
+    if ($fstatus -eq "??" -and (Test-Path (Join-Path $cwd $file))) {
+      & git -C $cwd diff --no-index -- /dev/null $file 2>$null | Add-Content -Path $diffPatchPath -Encoding UTF8
+    }
+
+    $changes += [PSCustomObject]@{
+      path   = $file
+      status = $fstatus
+    }
+  }
+
+  $changedFilesPath = Join-Path $dir "changed-files.json"
+  $jsonObj = [PSCustomObject]@{
+    files    = $changes
+    diffstat = $diffstat
+  }
+  $jsonObj | ConvertTo-Json -Depth 5 | Set-Content -Path $changedFilesPath -Encoding UTF8
+}
+
 # ---- parse arguments ----
 $cwd = (Get-Location).Path
 $resumeId = ""
@@ -64,11 +149,28 @@ $prompt = $null
 $readOnly = 0
 $sandbox = ""
 $effort = if ($env:CX_EFFORT) { $env:CX_EFFORT } else { "" }
-$model = if ($cfg["CX_MODEL"]) { $cfg["CX_MODEL"] } elseif ($cfg["CODEX_MODEL"]) { $cfg["CODEX_MODEL"] } else { "" }
+
+# Model precedence: config overrides env in bash (since config is sourced afterwards)
+$cxModelEnv = $env:CX_MODEL
+$codexModelEnv = $env:CODEX_MODEL
+if ($cfg.ContainsKey("CX_MODEL")) { $cxModelEnv = $cfg["CX_MODEL"] }
+if ($cfg.ContainsKey("CODEX_MODEL")) { $codexModelEnv = $cfg["CODEX_MODEL"] }
+$model = if (-not [string]::IsNullOrEmpty($cxModelEnv)) { $cxModelEnv } else { $codexModelEnv }
+
 $maxRuntime = ConvertTo-Int $env:CX_MAX_RUNTIME
 $idleTimeout = ConvertTo-Int $env:CX_IDLE_TIMEOUT
+
+# Network toggle resolution
+$cxNetworkEnv = if ($env:CX_NETWORK) { $env:CX_NETWORK } elseif ($cfg.ContainsKey("CX_NETWORK")) { $cfg["CX_NETWORK"] } else { "1" }
+$network = 1
+if ($cxNetworkEnv -in @('0', 'false', 'no', 'off')) { $network = 0 }
+
+$verifyCmd = if ($env:CLI_DISPATCH_VERIFY_CMD) { $env:CLI_DISPATCH_VERIFY_CMD } elseif ($cfg.ContainsKey("CLI_DISPATCH_VERIFY_CMD")) { $cfg["CLI_DISPATCH_VERIFY_CMD"] } else { "" }
+
 $passArgs = @()
 $explicitCwd = $false
+$explicitModel = $false
+
 function Need-Val($name, $idx, $argc) { if ($idx + 1 -ge $argc) { Write-Error "cx-stream: $name requires a value."; exit 1 } }
 $i = 0
 $argc = $args.Count
@@ -79,8 +181,8 @@ while ($i -lt $argc) {
     '^--cwd=(.*)'      { $cwd = $matches[1]; $explicitCwd = $true; $i += 1; continue }
     '^--resume$'       { Need-Val '--resume' $i $argc; $resumeId = $args[$i+1]; $i += 2; continue }
     '^--resume=(.*)'   { $resumeId = $matches[1]; $i += 1; continue }
-    '^--model$'        { Need-Val '--model' $i $argc; $model = $args[$i+1]; $i += 2; continue }
-    '^--model=(.*)'    { $model = $matches[1]; $i += 1; continue }
+    '^--model$'        { Need-Val '--model' $i $argc; $model = $args[$i+1]; $explicitModel = $true; $i += 2; continue }
+    '^--model=(.*)'    { $model = $matches[1]; $explicitModel = $true; $i += 1; continue }
     '^--effort$'       { Need-Val '--effort' $i $argc; $effort = $args[$i+1]; $i += 2; continue }
     '^--effort=(.*)'   { $effort = $matches[1]; $i += 1; continue }
     '^--sandbox$'      { Need-Val '--sandbox' $i $argc; $sandbox = $args[$i+1]; $i += 2; continue }
@@ -88,16 +190,20 @@ while ($i -lt $argc) {
     '^(-p|--prompt)$'  { Need-Val $a $i $argc; $prompt = $args[$i+1]; $i += 2; continue }
     '^--prompt=(.*)'   { $prompt = $matches[1]; $i += 1; continue }
     '^--read-only$'    { $readOnly = 1; $i += 1; continue }
+    '^(--network|--net)$'  { $network = 1; $i += 1; continue }
+    '^(--no-network|--no-net)$' { $network = 0; $i += 1; continue }
     '^--max-runtime$'  { Need-Val '--max-runtime' $i $argc; $maxRuntime = ConvertTo-Int $args[$i+1]; $i += 2; continue }
     '^--max-runtime=(.*)'  { $maxRuntime = ConvertTo-Int $matches[1]; $i += 1; continue }
     '^--idle-timeout$' { Need-Val '--idle-timeout' $i $argc; $idleTimeout = ConvertTo-Int $args[$i+1]; $i += 2; continue }
     '^--idle-timeout=(.*)' { $idleTimeout = ConvertTo-Int $matches[1]; $i += 1; continue }
+    '^--verify-cmd$'   { Need-Val '--verify-cmd' $i $argc; $verifyCmd = $args[$i+1]; $i += 2; continue }
+    '^--verify-cmd=(.*)' { $verifyCmd = $matches[1]; $i += 1; continue }
     default            { $passArgs += $a; $i += 1 }
   }
 }
 
 if ($null -eq $prompt) {
-  if (-not [Console]::IsInputRedirected) { Write-Error "cx-stream: no prompt. Use -p ""<prompt>"" or pipe via stdin."; exit 1 }
+  if (-not [Console]::IsInputRedirected) { Write-Error "cx-stream: no prompt. Use -p `"<prompt>`" or pipe via stdin."; exit 1 }
   $prompt = [Console]::In.ReadToEnd()
 }
 if ([string]::IsNullOrWhiteSpace($prompt)) { Write-Error "cx-stream: empty prompt — nothing to delegate."; exit 1 }
@@ -107,7 +213,7 @@ if (-not [string]::IsNullOrEmpty($resumeId)) {
   if ($resumeId -match '[\\/]' -or $resumeId -match '\.\.') { Write-Error "cx-stream: invalid --resume id"; exit 1 }
 }
 
-# On resume, restore recorded cwd from the session's meta.json.
+# On resume, restore recorded cwd and model from the session's meta.json.
 # Resolve sessions root (same logic as the session-bookkeeping block below).
 if (-not [string]::IsNullOrEmpty($resumeId)) {
   $resumeSessionsRoot = if ($env:CLI_DISPATCH_SESSIONS_DIR) { $env:CLI_DISPATCH_SESSIONS_DIR } else { $env:CLAUDE_DS_SESSIONS_DIR }
@@ -121,6 +227,11 @@ if (-not [string]::IsNullOrEmpty($resumeId)) {
     try {
       $meta = Get-Content -Raw $recordedMeta | ConvertFrom-Json
       if ($meta.cwd -and (Test-Path $meta.cwd)) { $cwd = $meta.cwd }
+      if (-not $explicitModel -and $meta.model) {
+        $recModel = $meta.model
+        if ($recModel -match '^(.*)\s+\(') { $recModel = $matches[1] }
+        if (-not [string]::IsNullOrEmpty($recModel)) { $model = $recModel }
+      }
     } catch {}
   } else {
     # Session may have been killed before relocation (SIGKILL, crash, etc.) —
@@ -146,6 +257,11 @@ if (-not [string]::IsNullOrEmpty($resumeId)) {
         try {
           $meta = Get-Content -Raw $recordedMeta | ConvertFrom-Json
           if ($meta.cwd -and (Test-Path $meta.cwd)) { $cwd = $meta.cwd }
+          if (-not $explicitModel -and $meta.model) {
+            $recModel = $meta.model
+            if ($recModel -match '^(.*)\s+\(') { $recModel = $matches[1] }
+            if (-not [string]::IsNullOrEmpty($recModel)) { $model = $recModel }
+          }
         } catch {}
       }
     }
@@ -169,6 +285,18 @@ try { $cwd = (Resolve-Path -LiteralPath $cwd -ErrorAction Stop).Path } catch { W
 $sandboxMode = "workspace-write"
 if ($readOnly -eq 1) { $sandboxMode = "read-only" }
 if (-not [string]::IsNullOrEmpty($sandbox)) { $sandboxMode = $sandbox }
+
+# Network access applies only to the workspace-write sandbox
+$netArgs = @()
+$netState = "n/a"
+if ($sandboxMode -eq "workspace-write") {
+  if ($network -eq 1) {
+    $netArgs = @('-c', 'sandbox_workspace_write.network_access=true')
+    $netState = "on"
+  } else {
+    $netState = "off"
+  }
+}
 
 # --effort low|medium|high → codex model_reasoning_effort config override.
 if (-not [string]::IsNullOrEmpty($effort)) {
@@ -200,7 +328,11 @@ if (Test-Path $codexConfig) {
 $effectiveEffort = if ($effort) { $effort } else { $metaEffort }
 
 # ---- build the codex command (resume accepts a different flag set than plain exec) ----
+# Temporary files
 $outFile = New-TemporaryFile
+$rcFile = New-TemporaryFile
+$parserOutFile = New-TemporaryFile
+
 $resume = 0
 if (-not [string]::IsNullOrEmpty($resumeId)) {
   $resume = 1
@@ -209,12 +341,14 @@ if (-not [string]::IsNullOrEmpty($resumeId)) {
   if (-not [string]::IsNullOrEmpty($model)) { $codexArgs += @('-m', $model) }
   if ($effort) { $codexArgs += @('-c', "model_reasoning_effort=$effort") }
   $codexArgs += @('-c', "sandbox_mode=$sandboxMode")
+  if ($netArgs.Count -gt 0) { $codexArgs += $netArgs }
   if ($passArgs.Count -gt 0) { $codexArgs += $passArgs }
   $codexArgs += @($resumeId, $prompt)
 } else {
   $codexArgs = @('exec', '--json', '-o', $outFile.FullName, '--skip-git-repo-check', '--color', 'never', '-C', $cwd, '-s', $sandboxMode)
   if (-not [string]::IsNullOrEmpty($model)) { $codexArgs += @('-m', $model) }
   if ($effort) { $codexArgs += @('-c', "model_reasoning_effort=$effort") }
+  if ($netArgs.Count -gt 0) { $codexArgs += $netArgs }
   if ($passArgs.Count -gt 0) { $codexArgs += $passArgs }
   $codexArgs += @($prompt)
 }
@@ -230,12 +364,14 @@ New-Item -ItemType Directory -Force -Path $sessionsRoot | Out-Null
 if ($resume -eq 1) { $sid = $resumeId } else { $sid = "cx-" + [int][double]::Parse((Get-Date -UFormat %s)) + "-" + $PID }
 $sessionDir = Join-Path $sessionsRoot $sid
 New-Item -ItemType Directory -Force -Path $sessionDir | Out-Null
+Set-Content -Path (Join-Path $sessionDir 'worker.pid') -Value $PID -NoNewline -Encoding UTF8 # best-effort
 Set-Content -Path (Join-Path $sessionDir 'prompt.txt') -Value $prompt -NoNewline -Encoding UTF8
 $branch = (git -C $cwd rev-parse --abbrev-ref HEAD 2>$null)
 
 [Console]::Error.WriteLine("cx-stream -> Codex (OpenAI Codex CLI) worker")
 [Console]::Error.WriteLine("  cwd:     $cwd")
-[Console]::Error.WriteLine("  sandbox: $sandboxMode")
+$netLabel = if ($netState -ne "n/a") { " (network: $netState)" } else { "" }
+[Console]::Error.WriteLine("  sandbox: $sandboxMode$netLabel")
 if (-not [string]::IsNullOrEmpty($model)) { [Console]::Error.WriteLine("  model:   $model") }
 if ($resume -eq 1) { [Console]::Error.WriteLine("  resume:  $resumeId") }
 [Console]::Error.WriteLine("  dir:     $sessionDir")
@@ -289,61 +425,185 @@ if ($maxRuntime -gt 0 -or $idleTimeout -gt 0) {
   } -ArgumentList $sessionDir, $maxRuntime, $idleTimeout
 }
 
-# ---- run codex; its JSONL stdout → parser. Feed codex empty stdin so it doesn't block on
-# "Reading additional input from stdin..." (the prompt is passed as the last positional). ----
 $rc = 0
+$completedNormal = $false
+$doneFile = Join-Path $sessionDir '.cx.done'
+Remove-Item -Force $doneFile -ErrorAction SilentlyContinue
+
 try {
-  $null | & codex @codexArgs | & node $parser | Out-Null
-  $rc = $LASTEXITCODE
-} catch {
-  [Console]::Error.WriteLine("cx-stream: $($_.Exception.Message)")
-  $rc = 1
-}
-if ($null -eq $rc) { $rc = 0 }
-
-if ($watchJob) { Stop-Job $watchJob -ErrorAction SilentlyContinue; Remove-Job $watchJob -Force -ErrorAction SilentlyContinue }
-
-# ---- reconcile a watchdog timeout (always a failure) ----
-if (Test-Path $timeoutFile) {
-  $reason = (Get-Content -Raw $timeoutFile).Trim()
-  [Console]::Error.WriteLine("cx-stream: stopped by watchdog ($reason).")
-  if ($rc -eq 0) { $rc = 124 }
-}
-
-# ---- surface a turn-level error (codex can emit turn.failed yet exit 0) ----
-$statusFile = Join-Path $sessionDir 'status.json'
-if (Test-Path $statusFile) {
+  # ---- run codex; its JSONL stdout → parser. Feed codex empty stdin so it doesn't block on
+  # "Reading additional input from stdin..." (the prompt is passed as the last positional). ----
   try {
-    $s = Get-Content -Raw $statusFile | ConvertFrom-Json
-    if ($s.state -eq 'error') {
-      if ($s.error) { [Console]::Error.WriteLine("cx-stream: codex turn failed: $($s.error)") }
-      else { [Console]::Error.WriteLine("cx-stream: codex turn failed.") }
-      if ($rc -eq 0) { $rc = 1 }
-    }
-  } catch {}
-}
-
-# ---- relocate the provisional session dir to the real thread id (best-effort) ----
-if ($resume -eq 0) {
-  $metaFile = Join-Path $sessionDir 'meta.json'
-  $threadId = ""
-  if (Test-Path $metaFile) { try { $threadId = (Get-Content -Raw $metaFile | ConvertFrom-Json).threadId } catch {} }
-  if (-not [string]::IsNullOrEmpty($threadId) -and $threadId -ne $sid) {
-    $finalDir = Join-Path $sessionsRoot $threadId
-    if (-not (Test-Path $finalDir)) {
-      try { Move-Item -Force $sessionDir $finalDir; $sessionDir = $finalDir } catch {}
-    } else {
-      [Console]::Error.WriteLine("cx-stream: thread dir $finalDir exists; session left at $sessionDir")
-    }
-    [Console]::Error.WriteLine("  thread:  $threadId")
+    $null | & { & codex @codexArgs; Set-Content -Path $rcFile.FullName -Value $LASTEXITCODE } | & node $parser > $parserOutFile.FullName
+    $rc = ConvertTo-Int (Get-Content -Raw $rcFile.FullName -ErrorAction SilentlyContinue)
+  } catch {
+    [Console]::Error.WriteLine("cx-stream: $($_.Exception.Message)")
+    $rc = 1
   }
+  if ($null -eq $rc) { $rc = 0 }
+
+  if ($watchJob) { Stop-Job $watchJob -ErrorAction SilentlyContinue; Remove-Job $watchJob -Force -ErrorAction SilentlyContinue }
+
+  # ---- reconcile a watchdog timeout (always a failure) ----
+  if (Test-Path $timeoutFile) {
+    $reason = (Get-Content -Raw $timeoutFile).Trim()
+    Set-Content -Path $doneFile -Value "timeout: $reason" -NoNewline -Encoding UTF8
+    [Console]::Error.WriteLine("cx-stream: stopped by watchdog ($reason).")
+    if ($rc -eq 0) { $rc = 124 }
+    Reconcile-SessionError -dir $sessionDir -err "timeout: $reason" -exitCode $rc
+  } else {
+    if ($rc -ne 0) {
+      $codexState = ""
+      $statusFile = Join-Path $sessionDir 'status.json'
+      if (Test-Path $statusFile) {
+        try { $codexState = (Get-Content -Raw $statusFile | ConvertFrom-Json).state } catch {}
+      }
+      if ($codexState -eq "done" -or [string]::IsNullOrEmpty($codexState)) {
+        Reconcile-SessionError -dir $sessionDir -err "codex exited with code $rc" -exitCode $rc
+      }
+    }
+    Set-Content -Path $doneFile -Value "$rc" -NoNewline -Encoding UTF8
+  }
+  $workerRc = $rc
+
+  # ---- surface a turn-level error (codex can emit turn.failed yet exit 0) ----
+  $statusFile = Join-Path $sessionDir 'status.json'
+  if (Test-Path $statusFile) {
+    try {
+      $s = Get-Content -Raw $statusFile | ConvertFrom-Json
+      if ($s.state -eq 'error') {
+        if ($s.error) { [Console]::Error.WriteLine("cx-stream: codex turn failed: $($s.error)") }
+        else { [Console]::Error.WriteLine("cx-stream: codex turn failed.") }
+        if ($rc -eq 0) { $rc = 1 }
+      }
+    } catch {}
+  }
+
+  # ---- Optional verify hook (clean worker exit only; never affects exit code) ----
+  if ($workerRc -eq 0 -and -not [string]::IsNullOrEmpty($verifyCmd)) {
+    $verifyOutput = [System.IO.Path]::GetTempFileName()
+    $verifyTail = [System.IO.Path]::GetTempFileName()
+    $prevCwd = Get-Location
+    try {
+      Set-Location -LiteralPath $cwd
+      $isWin = [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Windows)
+      if ($isWin) {
+        & cmd.exe /c $verifyCmd > $verifyOutput 2>&1
+      } else {
+        & sh -c $verifyCmd > $verifyOutput 2>&1
+      }
+      $verifyRc = $LASTEXITCODE
+
+      $lines = Get-Content -Path $verifyOutput -Tail 20 -ErrorAction SilentlyContinue
+      if ($lines) {
+        $lines | Set-Content -Path $verifyTail -Encoding UTF8 -ErrorAction SilentlyContinue
+      } else {
+        Set-Content -Path $verifyTail -Value "" -Encoding UTF8 -ErrorAction SilentlyContinue
+      }
+
+      $env:CLI_DISPATCH_RV_DIR = $sessionDir
+      $env:CLI_DISPATCH_RV_CMD = $verifyCmd
+      $env:CLI_DISPATCH_RV_EXIT = "$verifyRc"
+      $env:CLI_DISPATCH_RV_TAIL_FILE = $verifyTail
+
+      & node -e '
+        const fs = require("fs");
+        const p = require("path");
+        const dir = process.env.CLI_DISPATCH_RV_DIR;
+        const cmd = process.env.CLI_DISPATCH_RV_CMD || "";
+        const rc = Number(process.env.CLI_DISPATCH_RV_EXIT);
+        const tailFile = process.env.CLI_DISPATCH_RV_TAIL_FILE;
+        let tail = "";
+        try { tail = fs.readFileSync(tailFile, "utf8"); } catch {}
+        let status = {};
+        try { status = JSON.parse(fs.readFileSync(p.join(dir, "status.json"), "utf8")); } catch {}
+        status.verify = {
+          cmd,
+          exit: Number.isFinite(rc) ? rc : 0,
+          tail,
+        };
+        try { fs.writeFileSync(p.join(dir, "status.json"), JSON.stringify(status, null, 2) + "\n"); } catch {}
+      '
+
+      $env:CLI_DISPATCH_RV_DIR = $null
+      $env:CLI_DISPATCH_RV_CMD = $null
+      $env:CLI_DISPATCH_RV_EXIT = $null
+      $env:CLI_DISPATCH_RV_TAIL_FILE = $null
+    } catch {
+      [Console]::Error.WriteLine("cx-stream: verify command execution failed: $($_.Exception.Message)")
+    } finally {
+      Set-Location -LiteralPath $prevCwd
+      Remove-Item -Force $verifyOutput -ErrorAction SilentlyContinue
+      Remove-Item -Force $verifyTail -ErrorAction SilentlyContinue
+    }
+  }
+
+  # ---- relocate the provisional session dir to the real thread id (best-effort) ----
+  if ($resume -eq 0) {
+    $metaFile = Join-Path $sessionDir 'meta.json'
+    $threadId = ""
+    if (Test-Path $metaFile) { try { $threadId = (Get-Content -Raw $metaFile | ConvertFrom-Json).threadId } catch {} }
+    if (-not [string]::IsNullOrEmpty($threadId) -and $threadId -ne $sid) {
+      $finalDir = Join-Path $sessionsRoot $threadId
+      if (-not (Test-Path $finalDir)) {
+        try { Move-Item -Force $sessionDir $finalDir; $sessionDir = $finalDir } catch {}
+      } else {
+        [Console]::Error.WriteLine("cx-stream: thread dir $finalDir exists; session left at $sessionDir")
+      }
+      [Console]::Error.WriteLine("  thread:  $threadId")
+    }
+  }
+
+  # ---- extract diff artifacts ----
+  Write-DiffArtifacts -dir $sessionDir -cwd $cwd
+
+  # ---- print ONLY the final agent message on stdout (codex -o file; clean) ----
+  if ((Test-Path $outFile.FullName) -and (Get-Item $outFile.FullName).Length -gt 0) {
+    Get-Content -Raw $outFile.FullName
+  } elseif ((Test-Path $parserOutFile.FullName) -and (Get-Item $parserOutFile.FullName).Length -gt 0) {
+    Get-Content -Raw $parserOutFile.FullName
+  }
+
+  $completedNormal = $true
+} finally {
+  if ($watchJob) {
+    Stop-Job $watchJob -ErrorAction SilentlyContinue
+    Remove-Job $watchJob -Force -ErrorAction SilentlyContinue
+  }
+
+  # Reconcile status.json/meta.json to state:error on abnormal/interrupted run
+  $takeoverState = ""
+  $statusFile = Join-Path $sessionDir 'status.json'
+  if (Test-Path $statusFile) {
+    try {
+      $takeoverState = (Get-Content -Raw $statusFile | ConvertFrom-Json).state
+    } catch {}
+  }
+
+  if ($takeoverState -ne "human-controlled") {
+    if (-not $completedNormal) {
+      [Console]::Error.WriteLine("cx-stream: interrupted.")
+      if ($resume -eq 0) {
+        $metaFile = Join-Path $sessionDir 'meta.json'
+        $threadId = ""
+        if (Test-Path $metaFile) {
+          try { $threadId = (Get-Content -Raw $metaFile | ConvertFrom-Json).threadId } catch {}
+        }
+        if (-not [string]::IsNullOrEmpty($threadId) -and $threadId -ne $sid) {
+          $finalDir = Join-Path $sessionsRoot $threadId
+          if (-not (Test-Path $finalDir)) {
+            try { Move-Item -Force $sessionDir $finalDir; $sessionDir = $finalDir } catch {}
+          }
+        }
+      }
+      Reconcile-SessionError -dir $sessionDir -err "interrupted" -exitCode 130
+    }
+  }
+
+  Remove-Item -Force $timeoutFile -ErrorAction SilentlyContinue
+  Remove-Item -Force $outFile.FullName -ErrorAction SilentlyContinue
+  Remove-Item -Force $rcFile.FullName -ErrorAction SilentlyContinue
+  Remove-Item -Force $parserOutFile.FullName -ErrorAction SilentlyContinue
 }
 
-# ---- print ONLY the final agent message on stdout (codex -o file; clean) ----
-if ((Test-Path $outFile.FullName) -and (Get-Item $outFile.FullName).Length -gt 0) {
-  Get-Content -Raw $outFile.FullName
-}
-
-Remove-Item -Force $timeoutFile -ErrorAction SilentlyContinue
-Remove-Item -Force $outFile.FullName -ErrorAction SilentlyContinue
 exit $rc
