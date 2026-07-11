@@ -152,11 +152,14 @@ function Write-DiffArtifacts {
 
 function Find-WorkerPid {
   param([string]$SessionId)
-  $process = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-    Where-Object { $_.CommandLine -and $_.CommandLine.Contains($SessionId) -and $_.CommandLine.Contains("stream-json") } |
-    Select-Object -First 1
-  if ($null -eq $process) { return 0 }
-  return [int]$process.ProcessId
+  $matchingProcs = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -and $_.CommandLine.Contains($SessionId) -and $_.CommandLine.Contains("stream-json") })
+  if ($matchingProcs.Count -gt 1) {
+    [Console]::Error.WriteLine("  guard:  multiple matching processes ($($matchingProcs.Count)) for session $SessionId, skipping kill to avoid wrong-process termination")
+    return 0
+  }
+  if ($matchingProcs.Count -eq 0) { return 0 }
+  return [int]$matchingProcs[0].ProcessId
 }
 
 function Kill-WorkerTree {

@@ -7,6 +7,48 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.39.4] — 2026-07-11
+
+### Düzeltildi
+
+- **Heartbeat artık reap edilmiş bir takeover oturumunu diriltemiyor (AU7).**
+  `parse-utils.mjs`'in `touchTakeoverHeartbeat`'i (`dashboard-server.mjs`'in PTY
+  köprüsü tarafından 30 sn'de bir çağrılır), in-memory kopyasında bir `takeover`
+  alt-objesi olduğu sürece status.json'u geri yazıyordu — bu yüzden
+  `cli-dispatch-clean`, heartbeat'in okuma ile yazması arasında stale bir
+  takeover'ı reap ederse (PTY'yi öldürüp oturumu `error`'a geçirirse), heartbeat
+  ölü oturumu tekrar `human-controlled`'a yazabiliyordu. Guard artık yazmadan
+  hemen önce yeniden kontrol ediliyor: taze okunan state hâlâ `human-controlled`
+  ve `takeover.active === true` değilse heartbeat yazmayı tamamen atlıyor (tek
+  satır stderr notu, kilit yok — human-takeover SDD'sinin kilitsiz duruşu gereği
+  milisaniye-altı TOCTOU penceresi kalıyor, ama yaygın stale-oku-sonra-yaz
+  diriltme yolu kapandı). `takeover-integration.test.mjs`'e eklenen yeni
+  reap-sonrası-heartbeat no-op senaryosuyla test edildi.
+- **`Find-WorkerPid` çoklu-eşleşme guard'ı (`claude-ds-stream.ps1`).**
+  Interrupt/exit yolundaki worker lookup'ı, `Kill-WorkerTree`'yi guard'sız bir
+  WMI `Win32_Process` command-line substring eşleşmesinin ilk sonucuyla
+  besliyordu — birden fazla eşleşen süreç varken yanlış ağacı öldürebilirdi.
+  Artık 3.39.2'de watchdog'lara uygulanan AU5 kalıbının aynısını uyguluyor:
+  eşleşmeler array'e toplanıyor, birden fazla eşleşmede kill stderr uyarısıyla
+  atlanıyor (tek eşleşme ve sıfır eşleşme davranışı değişmedi). `cx-stream.ps1`
+  eşdeğeri için denetlendi: tek `Win32_Process` lookup'ı (watchdog job) zaten
+  AU5 guard'lı ve ayrı bir `Find-WorkerPid` yok — değişiklik gerekmedi.
+
+### Değiştirildi
+
+- **`parse-utils.mjs`'te atomic tam-dosya JSON yazımı (temp + rename).**
+  `createStatusWriter.flush`, `writeMetaFile` ve internal `writeJsonFile`
+  (takeover state helper'larının kullandığı) daha önce doğrudan `writeFileSync`
+  ile yazıyordu; status.json/meta.json'u poll eden okuyucular yarım yazılmış
+  dosya görebiliyordu (guard'lı okuyucular crash olmuyordu ama stale/boş veri
+  görüyordu). Üçü de artık internal bir `atomicWriteFileSync`'ten geçiyor: aynı
+  dizine `<hedef>.tmp-<pid>` temp dosyası yazılıyor, sonra `renameSync` ile
+  hedefin üstüne taşınıyor. Rename başarısız olursa (özellikle Windows'ta hedef
+  açıkken EPERM/EACCES — DeepSeek/Codex parser'ları Windows'ta native çalışıyor)
+  önceki doğrudan yazıma düşülüyor ve mevcut stderr uyarı yolu korunuyor; temp
+  dosyalar her yolda best-effort siliniyor. `createStatusWriter`'ın ~200ms
+  throttle semantiği ve dönüş şekli değişmedi.
+
 ## [3.39.3] — 2026-07-11
 
 ### Değiştirildi

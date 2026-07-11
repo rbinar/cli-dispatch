@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.39.4] — 2026-07-11
+
+### Fixed
+
+- **Heartbeat can no longer resurrect a reaped takeover session (AU7).**
+  `parse-utils.mjs`'s `touchTakeoverHeartbeat` (called every 30s by
+  `dashboard-server.mjs`'s PTY bridge) used to write status.json back whenever a
+  `takeover` sub-object was present in its in-memory copy — so if
+  `cli-dispatch-clean` reaped a stale takeover (killing the PTY and transitioning
+  the session to `error`) between the heartbeat's read and write, the heartbeat
+  would rewrite the dead session back to `human-controlled`. The guard is now
+  re-checked immediately before the write: unless the freshly-read state is still
+  `human-controlled` with `takeover.active === true`, the heartbeat skips the
+  write entirely (one-line stderr note, no lock — per the human-takeover SDD's
+  no-lock stance the sub-millisecond TOCTOU window remains, but the common
+  stale-read-then-write revival path is closed). Covered by a new
+  reap-then-heartbeat no-op scenario in `takeover-integration.test.mjs`.
+- **`Find-WorkerPid` multi-match guard (`claude-ds-stream.ps1`).** The
+  interrupt/exit-path worker lookup fed `Kill-WorkerTree` from an unguarded WMI
+  `Win32_Process` command-line substring match, taking the first hit — with more
+  than one matching process it could kill the wrong tree. It now applies the same
+  AU5 pattern the watchdogs got in 3.39.2: matches are collected into an array,
+  and on multiple hits the kill is skipped with a stderr warning (single match
+  unchanged, zero matches unchanged). `cx-stream.ps1` was audited for an
+  equivalent: its only `Win32_Process` lookup (watchdog job) already carries the
+  AU5 guard and there is no separate `Find-WorkerPid` — no change needed.
+
+### Changed
+
+- **Atomic full-file JSON writes in `parse-utils.mjs` (temp + rename).**
+  `createStatusWriter.flush`, `writeMetaFile`, and the internal `writeJsonFile`
+  (used by the takeover state helpers) previously wrote with a direct
+  `writeFileSync`, so readers polling status.json/meta.json could observe a
+  half-written file (guarded readers didn't crash, but saw stale/empty data).
+  All three now route through an internal `atomicWriteFileSync`: write to a
+  same-directory `<target>.tmp-<pid>` sibling, then `renameSync` over the target.
+  If the rename fails (notably Windows EPERM/EACCES while the target is open —
+  DeepSeek/Codex parsers run natively on Windows) it falls back to the previous
+  direct write, preserving the existing stderr warning path; temp files are
+  best-effort removed in every path. `createStatusWriter`'s ~200ms throttle
+  semantics and return shape are unchanged.
+
 ## [3.39.3] — 2026-07-11
 
 ### Changed

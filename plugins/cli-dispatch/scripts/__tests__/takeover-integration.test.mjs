@@ -30,6 +30,7 @@ import http from 'node:http'
 import crypto from 'node:crypto'
 import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
+import { clearTakeoverState, touchTakeoverHeartbeat } from '../parse-utils.mjs'
 
 const SELF_DIR = path.dirname(fileURLToPath(import.meta.url))
 const SERVER_PATH = path.join(SELF_DIR, '..', 'dashboard-server.mjs')
@@ -159,7 +160,7 @@ function wsConnect(port, wsPath, token) {
         'Sec-WebSocket-Key': key,
       },
     })
-    req.on('upgrade', (res, socket) => resolve(socket))
+    req.on('upgrade', (_res, socket) => resolve(socket))
     req.on('response', (res) => {
       let body = ''
       res.on('data', (c) => { body += c })
@@ -458,12 +459,52 @@ async function scenarioD() {
   }
 }
 
+// ---- Scenario E: reap-after-heartbeat no-op (Fix 1 unit-level guard) ----
+// Pure on-disk unit test (no server): proves touchTakeoverHeartbeat does NOT resurrect a
+// session that an out-of-process reaper already cleared. Simulates the TOCTOU race outcome
+// by clearing the takeover to a terminal 'error' state, then calling the heartbeat and
+// asserting it left state/takeover untouched (no revival to 'human-controlled').
+async function scenarioE() {
+  console.log('\n=== Scenario E: reap-after-heartbeat no-op (Fix 1 guard) ===')
+  const sessionsRoot = mkdtemp('cli-dispatch-heartbeat-')
+  try {
+    const dir = path.join(sessionsRoot, 'test-heartbeat-noop')
+    fs.mkdirSync(dir, { recursive: true })
+    const statusFile = path.join(dir, 'status.json')
+
+    // Seed an in-progress takeover.
+    fs.writeFileSync(statusFile, JSON.stringify({
+      state: 'human-controlled',
+      takeover: { active: true, startedAt: new Date().toISOString(), host: 'test', lastHeartbeat: new Date().toISOString(), ptyPid: 4242, ptyPgid: 4242 },
+    }, null, 2) + '\n')
+
+    // Reaper clears the stale takeover -> terminal 'error', takeover sub-object removed.
+    clearTakeoverState(statusFile, { finalState: 'error', error: 'stale takeover reaped' })
+    const afterReap = JSON.parse(fs.readFileSync(statusFile, 'utf8'))
+    assert.equal(afterReap.state, 'error', 'after reap, state should be error')
+    assert.equal(afterReap.takeover, undefined, 'after reap, takeover should be removed')
+    console.log('  [E] reap applied: state="error", takeover removed')
+
+    // A racing heartbeat lands AFTER the reap — it must be a no-op (no revival).
+    touchTakeoverHeartbeat(statusFile)
+    const afterBeat = JSON.parse(fs.readFileSync(statusFile, 'utf8'))
+    assert.equal(afterBeat.state, 'error', 'heartbeat must NOT revive state to human-controlled')
+    assert.equal(afterBeat.takeover, undefined, 'heartbeat must NOT re-create the takeover sub-object')
+    console.log('  [E] post-heartbeat: state still "error", takeover still absent (no revival)')
+
+    console.log('Scenario E: PASS')
+  } finally {
+    rmrf(sessionsRoot)
+  }
+}
+
 async function main() {
   const scenarios = [
     ['A (DeepSeek round-trip, mandatory)', scenarioA],
     ['B (OpenCode round-trip)', scenarioB],
     ['C (OpenCode store-missing negative)', scenarioC],
     ['D (bonus: re-entrancy 409)', scenarioD],
+    ['E (Fix 1: reap-after-heartbeat no-op)', scenarioE],
   ]
   const summary = []
   for (const [name, fn] of scenarios) {

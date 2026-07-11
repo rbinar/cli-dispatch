@@ -4,8 +4,33 @@
 // Provides throttled status.json writing, session file fd management, and small
 // formatting utilities that were duplicated across the three backends.
 
-import { writeFileSync, readFileSync, openSync, writeSync, closeSync, mkdirSync } from 'node:fs'
+import { writeFileSync, readFileSync, openSync, writeSync, closeSync, mkdirSync, renameSync, unlinkSync } from 'node:fs'
 import { basename, join } from 'node:path'
+
+// ---- atomic full-file write ----
+//
+// Write `data` to `file` atomically: write a sibling temp file in the SAME directory
+// then rename it over the target, so a concurrent reader never observes a half-written
+// JSON body (it sees either the old file or the new one, never a torn write). This is a
+// stale-read guard, not a crash guard — there is no fsync and no lock.
+//
+// Windows caveat: renameSync can throw EPERM/EACCES when the target is open in another
+// process. On ANY rename failure we fall back to a direct writeFileSync(file, ...) —
+// exactly the pre-atomic behavior — so correctness never regresses; we only lose the
+// atomicity guarantee for that one write. The temp file is best-effort unlinked in every
+// path (rename success already consumes it, but a failed rename leaves it behind).
+function atomicWriteFileSync(file, data) {
+  const temp = `${file}.tmp-${process.pid}`
+  try {
+    writeFileSync(temp, data)
+    renameSync(temp, file)
+  } catch {
+    // rename (or the temp write) failed — fall back to the original direct write.
+    writeFileSync(file, data)
+  } finally {
+    try { unlinkSync(temp) } catch { /* already gone after a successful rename, or never created */ }
+  }
+}
 
 // ---- state enum ----
 //
@@ -34,7 +59,7 @@ export function createStatusWriter(statusFile, status, { throttleMs = 200 } = {}
     if (timer) { clearTimeout(timer); timer = null }
     lastWrite = Date.now()
     try {
-      writeFileSync(statusFile, JSON.stringify(status, null, 2) + '\n')
+      atomicWriteFileSync(statusFile, JSON.stringify(status, null, 2) + '\n')
     } catch (err) {
       // A swallowed write here leaves status.json stuck at "running" forever with no
       // trace (see stream-utils.sh's reconcile_session_error) — warn once per writer
@@ -93,7 +118,7 @@ export function openSessionFiles(transcriptFile, progressFile, isResume, { progr
 // Write the meta object to metaFile (best-effort, ignores I/O errors).
 export function writeMetaFile(metaFile, meta) {
   try {
-    writeFileSync(metaFile, JSON.stringify(meta, null, 2) + '\n')
+    atomicWriteFileSync(metaFile, JSON.stringify(meta, null, 2) + '\n')
   } catch (err) {
     process.stderr.write(`writeMetaFile: cannot write ${metaFile}: ${err.message}\n`)
   }
@@ -117,7 +142,7 @@ export function readJsonFile(file) {
 // writeMetaFile's existing style exactly).
 function writeJsonFile(file, obj) {
   try {
-    writeFileSync(file, JSON.stringify(obj, null, 2) + '\n')
+    atomicWriteFileSync(file, JSON.stringify(obj, null, 2) + '\n')
   } catch (err) {
     process.stderr.write(`writeJsonFile: cannot write ${file}: ${err.message}\n`)
   }
@@ -148,7 +173,18 @@ export function markTakeoverActive(statusFile, { host, ptyPid, ptyPgid, now = ne
 // themselves before calling this.
 export function touchTakeoverHeartbeat(statusFile, { now = new Date().toISOString() } = {}) {
   const status = readJsonFile(statusFile)
-  if (!status.takeover) return status
+  // Reap-revival guard: only refresh the heartbeat if the takeover is STILL active as of
+  // the read we just did. Between a caller's decision to heartbeat and this read, an
+  // out-of-process reaper (cli-dispatch-clean.mjs) may have cleared a stale takeover —
+  // transitioning state to a terminal value and deleting the takeover sub-object. Writing
+  // our stale in-memory copy back would resurrect a dead 'human-controlled' session. Since
+  // this check reads immediately before the write (no lock, minimal TOCTOU window), skip the
+  // write entirely unless state is still 'human-controlled' with an active takeover. Returns
+  // the status unchanged in the skip case (same no-op semantics as before).
+  if (!(status.state === 'human-controlled' && status.takeover && status.takeover.active === true)) {
+    process.stderr.write(`touchTakeoverHeartbeat: skipping heartbeat for ${statusFile} — takeover no longer active (state=${status.state})\n`)
+    return status
+  }
   status.takeover.lastHeartbeat = now
   writeJsonFile(statusFile, status)
   return status
