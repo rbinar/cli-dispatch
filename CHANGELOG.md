@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.36.0] — 2026-07-11
+
+### Added
+
+- **ds-agent: pre-flight snapshot of dirty checkouts (#94).** When an agentic run targets
+  a git checkout with uncommitted changes, `ds-agent` (and its `.ps1` twin) first captures
+  the ENTIRE state — tracked and untracked — as a dangling commit via a temporary index
+  (`git read-tree` + `add -A` + `commit-tree`; zero working-tree impact) and prints the
+  recovery SHA. A worker that later runs `git restore`/`git clean` can no longer destroy
+  work irrecoverably: `git restore --source=<sha> -- <path>` brings anything back.
+
+### Changed
+
+- **Runner defs ×5: the task's mode choice is absolute (#98).** If the task prompt says
+  "no worktree" / "in-place", the runner must run `*-agent --cwd <repo>` directly and may
+  never fall back to `*-worktree-run.sh`; worktree setup failures now fail fast (one
+  retry max) instead of looping over generated branch names.
+- **Runner defs ×5: rogue-worker detection in verification (#94).** When the task names
+  an allowed-file list, the babysitter must diff `git status --short` against it —
+  out-of-list modifications, and especially deletions/reverts of unmentioned files, are
+  reported as FAILED, never `verified ✓`, regardless of the worker's own checks.
+
+### Fixed
+
+- **Gain: named ratio caveat for usage-blind backends (#97).** Backends whose sessions
+  report no usage at all (antigravity — agy exposes none) inflate the babysitter/worker
+  ratio: their babysitting counts in the numerator while contributing zero to the
+  denominator. The report now names them with session counts and states the true ratio
+  is lower than shown.
+
 ## [3.35.0] — 2026-07-11
 
 ### Added

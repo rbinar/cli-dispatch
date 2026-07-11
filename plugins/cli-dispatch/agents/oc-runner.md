@@ -80,6 +80,14 @@ The session-id is printed on stderr. Sandbox: none — file writes land in the w
 oc-agent --cwd <tmpdir> "<task>"
 ```
 
+**Mode override is ABSOLUTE (issue #98):** if the task prompt says anything like
+"no worktree", "in-place", "worktree YASAK", or "work directly in <cwd>", you MUST NOT
+use oc-worktree-run.sh — run oc-agent --cwd <repo> directly, even for a repo-changing
+task. The orchestrator chose in-place deliberately (e.g. the target repo has uncommitted
+state a fresh worktree would not contain). Also fail fast on worktree setup: if
+oc-worktree-run.sh errors, retry AT MOST once with a new branch name, then report the
+failure — never loop generating branch names.
+
 ## Keep worker tasks narrow — broad tasks stall (issue #72)
 
 The OpenCode (kimi) worker reliably handles narrow, deterministic, single-step tasks but
@@ -177,7 +185,12 @@ Never trust the OpenCode worker's self-report on a code task. The status `status
 
 In the worktree:
 1. `git -C <worktree> status --short && git -C <worktree> diff` — confirm only the intended
-   files changed, no side effects.
+   files changed, no side effects. **If the task named an allowed-file list, diff the
+   status output against it: ANY out-of-list modification — and especially DELETIONS or
+   reverts of files the task never mentioned — means the worker went rogue (issue #94:
+   a worker once ran `git restore`/`git clean` and wiped a checkout's uncommitted
+   work). That is `status: FAILED — worker modified/deleted files outside the allowed
+   list: <list>`, never `verified ✓`, regardless of the worker's own checks passing.**
 2. Run the project's checks yourself: typecheck / build / tests (e.g. `tsc --noEmit`,
    `npm run build`, `npm test`, `pytest` — whatever the repo uses). Capture pass/fail.
 3. Do NOT commit, push, or merge — that boundary stays with the orchestrator/human.

@@ -64,7 +64,7 @@ while ($i -lt $argc) {
   $a = $args[$i]
   switch -Regex ($a) {
     '^--read-only$'    { $agentic = $false; $fwd += '--read-only'; $i += 1; continue }
-    '^--cwd$'          { Need-Val '--cwd' $i $argc; $fwd += @('--cwd', $args[$i+1]); $i += 2; continue }
+    '^--cwd$'          { Need-Val '--cwd' $i $argc; $workdir = $args[$i+1]; $fwd += @('--cwd', $args[$i+1]); $i += 2; continue }
     '^--resume$'       { Need-Val '--resume' $i $argc; $fwd += @('--resume', $args[$i+1]); $i += 2; continue }
     '^--max-runtime$'  { Need-Val '--max-runtime' $i $argc; $fwd += @('--max-runtime', $args[$i+1]); $i += 2; continue }
     '^--idle-timeout$' { Need-Val '--idle-timeout' $i $argc; $fwd += @('--idle-timeout', $args[$i+1]); $i += 2; continue }
@@ -80,6 +80,36 @@ if ($null -eq $task) {
   if ([Console]::IsInputRedirected) { $task = [Console]::In.ReadToEnd() } else { Show-Usage; exit 1 }
 }
 if ($agentic) { $fwd += '--dangerously-skip-permissions' }
+
+# Pre-flight git snapshot (issue #94): an agentic worker pointed at a DIRTY git checkout
+# has destroyed uncommitted work before (git restore/clean). Capture EVERYTHING (tracked
+# + untracked) as a dangling commit — zero working-tree impact — and print the recovery
+# SHA. Skipped when clean, not a repo, or git is unavailable; never blocks the run.
+if ($agentic) {
+  $wd = if ($workdir) { $workdir } else { (Get-Location).Path }
+  $gitOk = (Get-Command git -ErrorAction SilentlyContinue) -and ((git -C $wd rev-parse --git-dir 2>$null); $LASTEXITCODE -eq 0)
+  if ($gitOk -and (git -C $wd status --porcelain 2>$null | Select-Object -First 1)) {
+    $snapIdx = [System.IO.Path]::GetTempFileName(); Remove-Item $snapIdx -ErrorAction SilentlyContinue
+    $snapSha = $null
+    try {
+      Push-Location $wd
+      $env:GIT_INDEX_FILE = $snapIdx
+      git read-tree HEAD 2>$null
+      git add -A 2>$null
+      $tree = (git write-tree 2>$null)
+      Remove-Item Env:GIT_INDEX_FILE -ErrorAction SilentlyContinue
+      if ($tree) { $snapSha = (git commit-tree $tree -p HEAD -m "ds-agent preflight snapshot $(Get-Date -Format o)" 2>$null) }
+    } finally {
+      Remove-Item Env:GIT_INDEX_FILE -ErrorAction SilentlyContinue
+      Pop-Location
+      Remove-Item $snapIdx -ErrorAction SilentlyContinue
+    }
+    if ($snapSha) {
+      [Console]::Error.WriteLine("! preflight snapshot of dirty checkout: $snapSha")
+      [Console]::Error.WriteLine("  recover any lost file: git -C '$wd' restore --source=$snapSha -- <path>")
+    }
+  }
+}
 
 if (-not $quiet) {
   $mode = if ($agentic) { 'agentic: may modify cwd' } else { 'read-only' }

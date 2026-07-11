@@ -83,6 +83,14 @@ there, not in agy's own scratch dir. The session/conversation-id is printed on s
 ag-agent --cwd <tmpdir> "<task>"
 ```
 
+**Mode override is ABSOLUTE (issue #98):** if the task prompt says anything like
+"no worktree", "in-place", "worktree YASAK", or "work directly in <cwd>", you MUST NOT
+use ag-worktree-run.sh — run ag-agent --cwd <repo> directly, even for a repo-changing
+task. The orchestrator chose in-place deliberately (e.g. the target repo has uncommitted
+state a fresh worktree would not contain). Also fail fast on worktree setup: if
+ag-worktree-run.sh errors, retry AT MOST once with a new branch name, then report the
+failure — never loop generating branch names.
+
 ## No read-only mode — isolation is the safety boundary
 
 **agy has no tool-level write-deny.** Unlike DeepSeek (`claude --tools` hard-restricts to
@@ -179,7 +187,12 @@ Never trust the agy worker's self-report on a code task. You may only report `st
 
 In the worktree:
 1. `git -C <worktree> status --short && git -C <worktree> diff` — confirm only the intended
-   files changed, no side effects.
+   files changed, no side effects. **If the task named an allowed-file list, diff the
+   status output against it: ANY out-of-list modification — and especially DELETIONS or
+   reverts of files the task never mentioned — means the worker went rogue (issue #94:
+   a worker once ran `git restore`/`git clean` and wiped a checkout's uncommitted
+   work). That is `status: FAILED — worker modified/deleted files outside the allowed
+   list: <list>`, never `verified ✓`, regardless of the worker's own checks passing.**
 2. Run the project's checks yourself: typecheck / build / tests (e.g. `tsc --noEmit`,
    `npm run build`, `npm test`, `pytest` — whatever the repo uses). Capture pass/fail.
 3. Do NOT commit, push, or merge — that boundary stays with the orchestrator/human.

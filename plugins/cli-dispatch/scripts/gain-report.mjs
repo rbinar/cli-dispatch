@@ -244,8 +244,13 @@ async function processAgentFile(fp){
 
     const ratio=totalWorkerOutput>0?((totalAnthroOutput/totalWorkerOutput)*100).toFixed(1):'-'
     const avgTurns=runnerAgents>0?(runnerTurnsTotal/runnerAgents):0
+    // #97: backends whose sessions report no usage at all (e.g. antigravity — agy exposes
+    // none) add babysitting to the numerator but zero worker output to the denominator,
+    // so the printed ratio OVERSTATES the true babysitter/worker cost. Name them.
+    const blindBackends=[...byBackend.entries()].filter(([,r])=>r.sessions>0&&r.output===0&&r.noData===r.sessions).map(([b,r])=>`${b} (${r.sessions})`)
     console.log('')
     console.log(`ratio: babysitter output ≈ ${ratio}% of worker output  |  worker input offloaded: ${fmt(totalWorkerInput)} tokens`)
+    if(blindBackends.length) console.log(`ratio caveat: ${blindBackends.join(', ')} sessions report no usage — their babysitting counts in the numerator but adds nothing to the denominator, so the TRUE ratio is lower than shown`)
     console.log(`avg babysitter turns/runner: ${avgTurns.toFixed(2)}`)
     console.log(`${runnerTurnsOver20} runners exceeded 20 babysitter turns — polling instead of cli-dispatch-wait?`)
   }

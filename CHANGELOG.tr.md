@@ -7,6 +7,37 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.36.0] — 2026-07-11
+
+### Eklendi
+
+- **ds-agent: kirli checkout'lar için ön-uçuş anlık görüntüsü (#94).** Agentic bir
+  çalıştırma uncommitted değişiklikleri olan bir git checkout'unu hedeflediğinde,
+  `ds-agent` (ve `.ps1` ikizi) önce TÜM durumu — tracked + untracked — geçici index
+  üzerinden dangling commit olarak yakalıyor (`git read-tree` + `add -A` +
+  `commit-tree`; working tree'ye sıfır etki) ve kurtarma SHA'sını basıyor. Sonradan
+  `git restore`/`git clean` çalıştıran bir worker artık işi geri dönülmez biçimde yok
+  edemiyor: `git restore --source=<sha> -- <path>` her şeyi geri getiriyor.
+
+### Değiştirildi
+
+- **Runner tanımları ×5: task'ın mod seçimi mutlak (#98).** Task prompt'u "no worktree" /
+  "in-place" diyorsa runner doğrudan `*-agent --cwd <repo>` çalıştırmak zorunda;
+  `*-worktree-run.sh`'a asla düşemez. Worktree kurulum hataları artık hızlı başarısız
+  oluyor (en fazla bir yeniden deneme) — üretilmiş branch adları üzerinde döngü yok.
+- **Runner tanımları ×5: doğrulamada haydut-worker tespiti (#94).** Task izinli dosya
+  listesi veriyorsa babysitter `git status --short` çıktısını o listeyle karşılaştırmak
+  zorunda — liste dışı değişiklikler, özellikle hiç anılmamış dosyaların silinmesi/geri
+  alınması, worker'ın kendi kontrolleri geçse bile `verified ✓` değil FAILED raporlanır.
+
+### Düzeltildi
+
+- **Gain: kullanım-körü backend'ler için isimli oran uyarısı (#97).** Session'ları hiç
+  usage raporlamayan backend'ler (antigravity — agy hiçbir veri sunmuyor)
+  babysitter/worker oranını şişiriyor: babysitting'leri paya girerken paydaya sıfır
+  katkı yapıyorlar. Rapor artık bunları session sayısıyla adlandırıyor ve gerçek oranın
+  gösterilenden düşük olduğunu belirtiyor.
+
 ## [3.35.0] — 2026-07-11
 
 ### Eklendi

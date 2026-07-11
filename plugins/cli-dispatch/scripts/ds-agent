@@ -23,12 +23,13 @@ QUIET=0
 AGENTIC=1
 TASK=""
 HAVE_TASK=0
+WORKDIR=""
 FWD=()
 need_val() { [ "$2" -ge 2 ] || { echo "ds-agent: $1 requires a value." >&2; exit 1; }; }
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --read-only)      AGENTIC=0; FWD+=(--read-only); shift;;
-    --cwd)            need_val --cwd "$#"; FWD+=(--cwd "$2"); shift 2;;
+    --cwd)            need_val --cwd "$#"; WORKDIR="$2"; FWD+=(--cwd "$2"); shift 2;;
     --resume)         need_val --resume "$#"; FWD+=(--resume "$2"); shift 2;;
     --effort)         need_val --effort "$#"; FWD+=(--effort "$2"); shift 2;;
     --max-runtime)    need_val --max-runtime "$#"; FWD+=(--max-runtime "$2"); shift 2;;
@@ -45,6 +46,29 @@ if [ "$HAVE_TASK" -eq 0 ]; then
   if [ ! -t 0 ]; then TASK="$(cat)"; else usage; exit 1; fi
 fi
 [ "$AGENTIC" -eq 1 ] && FWD+=(--dangerously-skip-permissions)
+
+# Pre-flight git snapshot (issue #94): an agentic worker pointed at a DIRTY git checkout
+# has destroyed uncommitted work before (git restore/clean). Capture EVERYTHING (tracked
+# + untracked) as a dangling commit — zero working-tree impact — and print the recovery
+# SHA. Skipped when clean, not a repo, or git is unavailable; never blocks the run.
+if [ "$AGENTIC" -eq 1 ]; then
+  WD="${WORKDIR:-$PWD}"
+  if command -v git >/dev/null 2>&1 && git -C "$WD" rev-parse --git-dir >/dev/null 2>&1 \
+     && [ -n "$(git -C "$WD" status --porcelain 2>/dev/null | head -1)" ]; then
+    SNAP_IDX="$(mktemp)" && rm -f "$SNAP_IDX"
+    SNAP_SHA="$(
+      cd "$WD" && GIT_INDEX_FILE="$SNAP_IDX" git read-tree HEAD 2>/dev/null \
+      && GIT_INDEX_FILE="$SNAP_IDX" git add -A 2>/dev/null \
+      && TREE="$(GIT_INDEX_FILE="$SNAP_IDX" git write-tree 2>/dev/null)" \
+      && git commit-tree "$TREE" -p HEAD -m "ds-agent preflight snapshot $(date -u +%Y-%m-%dT%H:%M:%SZ)" 2>/dev/null
+    )" || SNAP_SHA=""
+    rm -f "$SNAP_IDX" 2>/dev/null || true
+    if [ -n "$SNAP_SHA" ]; then
+      echo "⚑ preflight snapshot of dirty checkout: $SNAP_SHA" >&2
+      echo "  recover any lost file: git -C '$WD' restore --source=$SNAP_SHA -- <path>" >&2
+    fi
+  fi
+fi
 
 # Locate claude-ds-stream (PATH, else next to this script).
 STREAM="$(command -v claude-ds-stream 2>/dev/null || true)"

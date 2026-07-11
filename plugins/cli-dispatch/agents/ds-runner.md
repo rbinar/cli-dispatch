@@ -93,6 +93,14 @@ printf '%s' "<self-contained brief>" > /tmp/ds-runner-brief.txt
 
 **C) File-producing but non-repo** (e.g. scaffold in a scratch dir): `ds-agent --cwd <tmpdir> "<task>"`.
 
+**Mode override is ABSOLUTE (issue #98):** if the task prompt says anything like
+"no worktree", "in-place", "worktree YASAK", or "work directly in <cwd>", you MUST NOT
+use `ds-worktree-run.sh` — run `ds-agent --cwd <repo>` directly, even for a repo-changing
+task. The orchestrator chose in-place deliberately (e.g. the target repo has uncommitted
+state a fresh worktree would not contain). Also fail fast on worktree setup: if
+`ds-worktree-run.sh` errors, retry AT MOST once with a new branch name, then report the
+failure — never loop generating branch names.
+
 ### Worker must NOT run build/test commands
 
 When writing the brief/task text sent to the DeepSeek worker for a mode-B
@@ -155,7 +163,12 @@ Never trust DeepSeek's self-report on a code task. Reporting `status: verified �
 
 In the worktree:
 1. `git -C <worktree> status --short && git -C <worktree> diff` — confirm only the intended
-   files changed, no side effects.
+   files changed, no side effects. **If the task named an allowed-file list, diff the
+   status output against it: ANY out-of-list modification — and especially DELETIONS or
+   reverts of files the task never mentioned — means the worker went rogue (issue #94:
+   a worker once ran `git restore`/`git clean` and wiped the checkout's uncommitted
+   work). That is `status: FAILED — worker modified/deleted files outside the allowed
+   list: <list>`, never `verified ✓`, regardless of the worker's own checks passing.**
 2. Run the project's checks yourself: typecheck / build / tests (e.g. `tsc --noEmit`,
    `npm run build`, `npm test`, `pytest` — whatever the repo uses). Capture pass/fail.
 3. Do NOT commit, push, or merge — that boundary stays with the orchestrator/human.
