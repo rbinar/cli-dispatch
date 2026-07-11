@@ -131,7 +131,7 @@ if [ -z "$BACKEND" ] || [ -z "$CWD" ]; then
   exit 5
 fi
 
-if [ -z "$PROMPT$PROMPT_FILE" ]; then
+if [ -z "$RESUME" ] && [ -z "$PROMPT$PROMPT_FILE" ]; then
   echo "cli-dispatch-run: --prompt or --prompt-file is required" >&2
   usage
   exit 5
@@ -225,14 +225,13 @@ if [ -n "$EFFORT" ]; then
   esac
 fi
 
-if [ -z "$PROMPT_FILE" ]; then
-  PROMPT_FILE_TMP="$(mktemp)"
-  TEMP_FILES+=("$PROMPT_FILE_TMP")
-  printf '%s' "$PROMPT" > "$PROMPT_FILE_TMP"
-  PROMPT_FILE="$PROMPT_FILE_TMP"
-fi
-
 if [ -n "$RESUME" ]; then
+  # --resume RE-ATTACHES to an existing session (wait → verify → verdict); it does NOT
+  # send a new prompt to the worker. Reject a prompt loudly instead of ignoring it.
+  if [ -n "$PROMPT" ] || [ -n "$PROMPT_FILE" ]; then
+    echo "cli-dispatch-run: --resume re-attaches to a session and cannot take a prompt — use /cli-dispatch:resume <id> \"<follow-up>\" to continue the conversation" >&2
+    exit 5
+  fi
   SESSION_ID="$RESUME"
   SESSION_DIR="$SESSIONS_ROOT/$SESSION_ID"
   if [ ! -d "$SESSION_DIR" ]; then
@@ -240,28 +239,40 @@ if [ -n "$RESUME" ]; then
     exit 5
   fi
 else
+  if [ -z "$PROMPT_FILE" ]; then
+    PROMPT_FILE_TMP="$(mktemp)"
+    TEMP_FILES+=("$PROMPT_FILE_TMP")
+    printf '%s' "$PROMPT" > "$PROMPT_FILE_TMP"
+    PROMPT_FILE="$PROMPT_FILE_TMP"
+  fi
   BRANCH="${BRANCH:-${BACKEND}-run-$(date +%s)-$$}"
   WORKTREE_STDERR="$(mktemp)"
   LAUNCH_MARKER="$(mktemp)"
   TEMP_FILES+=("$WORKTREE_STDERR" "$LAUNCH_MARKER")
   touch "$LAUNCH_MARKER"
 
+  # Each stream wrapper prints the FINAL session id on stderr (post-relocation for
+  # cx/oc/cp provisional dirs): ds "claude-ds session: <id>", cx "  thread:  <id>",
+  # ag "  conv:   <id>", oc/cp "  session: <id>". Verified against the *-stream sources.
   MARKER=""
   case "$BACKEND" in
     ds) MARKER='claude-ds session:';;
-    cx) MARKER='cx session:';;
-    ag) MARKER='ag-stream:';;
-    oc) MARKER='oc session:';;
-    cp) MARKER='cp session:';;
+    cx) MARKER='thread:';;
+    ag) MARKER='conv:';;
+    oc) MARKER='session:';;
+    cp) MARKER='session:';;
   esac
 
+  # Pipe (not process substitution): the pipeline only returns once tee has flushed
+  # $WORKTREE_STDERR completely, so the marker grep below never reads a partial file.
+  # PIPESTATUS[0] recovers the runner's own exit code (tee's is irrelevant).
   set +e
   if [ "${#WORKTREE_BASE_VARS[@]}" -gt 0 ]; then
-    env "${WORKTREE_BASE_VARS[@]}" "$WORKTREE_RUN" "$CWD" "$BRANCH" "$PROMPT_FILE" </dev/null > /dev/null 2> >(tee "$WORKTREE_STDERR" >&2)
+    env "${WORKTREE_BASE_VARS[@]}" "$WORKTREE_RUN" "$CWD" "$BRANCH" "$PROMPT_FILE" </dev/null 2>&1 >/dev/null | tee "$WORKTREE_STDERR" >&2
   else
-    "$WORKTREE_RUN" "$CWD" "$BRANCH" "$PROMPT_FILE" </dev/null > /dev/null 2> >(tee "$WORKTREE_STDERR" >&2)
+    "$WORKTREE_RUN" "$CWD" "$BRANCH" "$PROMPT_FILE" </dev/null 2>&1 >/dev/null | tee "$WORKTREE_STDERR" >&2
   fi
-  WORKTREE_RC=$?
+  WORKTREE_RC=${PIPESTATUS[0]}
   set -e
 
   if [ "$WORKTREE_RC" -ne 0 ]; then
@@ -269,7 +280,9 @@ else
     exit "$WORKTREE_RC"
   fi
 
-  SESSION_ID="$(grep -aoE "${MARKER}[[:space:]]*[A-Za-z0-9._-]+" "$WORKTREE_STDERR" | sed -E "s/.*${MARKER}[[:space:]]*([A-Za-z0-9._-]+)\$/\\1/" | tail -n 1)"
+  # `|| true`: under set -e a no-match grep would kill the script SILENTLY before the
+  # newest-dir fallback below ever runs (this stranded verified work in production).
+  SESSION_ID="$(grep -aoE "${MARKER}[[:space:]]*[A-Za-z0-9._-]+" "$WORKTREE_STDERR" | sed -E "s/.*${MARKER}[[:space:]]*([A-Za-z0-9._-]+)\$/\\1/" | tail -n 1 || true)"
   if [ -z "$SESSION_ID" ]; then
     SESSION_ID="$(find "$SESSIONS_ROOT" -mindepth 1 -maxdepth 1 -type d -newer "$LAUNCH_MARKER" -print0 2>/dev/null | xargs -0 ls -1dt 2>/dev/null | head -n 1)"
   fi
@@ -301,7 +314,7 @@ WORKTREE_PATH="$(read_json_field "$META_PATH" cwd)"
 SECS_ELAPSED=0
 while :; do
   set +e
-  "$SCRIPT_DIR/cli-dispatch-wait" "$SESSION_ID" --timeout 30
+  CLI_DISPATCH_NODE="$NODE_BIN" "$SCRIPT_DIR/cli-dispatch-wait" "$SESSION_ID" --timeout 30
   WAIT_RC=$?
   set -e
 
@@ -357,6 +370,11 @@ else
 fi
 set -e
 
+# build-verdict failed (threw before printing) → don't write an empty/invalid file that
+# would crash downstream JSON.parse consumers; record the failure as valid JSON instead.
+if [ -z "$VERDICT_JSON" ]; then
+  VERDICT_JSON="{\"schemaVersion\":1,\"error\":\"build-verdict failed (exit $BUILD_EXIT) — see stderr\",\"sessionId\":\"$SESSION_ID\",\"exitCode\":$BUILD_EXIT}"
+fi
 printf '%s\n' "$VERDICT_JSON" > "$SESSION_DIR/verdict.json"
 cleanup_worktree_if_requested "$WORKTREE_PATH" "$BUILD_EXIT"
 exit "$BUILD_EXIT"

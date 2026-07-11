@@ -116,3 +116,20 @@ test('verdict-archive dir is skipped by clean scan', () => {
   assert.equal(fs.readFileSync(path.join(archiveDir, 'leftover'), 'utf8'), 'keep-me')
   cleanup(root)
 })
+
+test('session dir with NO status.json ever written becomes a stale candidate via dir mtime', () => {
+  const root = tmpRoot()
+  const dir = path.join(root, 'never-finalized')
+  fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({ backend: 'cx', startedAt: '2026-01-01T00:00:00.000Z' }))
+  const oldTime = new Date(Date.now() - 2000 * 1000)
+  fs.utimesSync(dir, oldTime, oldTime)
+
+  const out = runClean(root, [])
+  assert.ok(out.includes('never-finalized'))
+  assert.ok(out.includes('(no status.json)'))
+
+  runClean(root, ['--remove'])
+  assert.equal(fs.existsSync(dir), false)
+  cleanup(root)
+})

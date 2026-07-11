@@ -11,6 +11,9 @@ and print a compact verdict summary — no babysitter, zero LLM tokens spent on 
 Best for mechanical delegations with a machine-checkable `--verify` command.
 
 ```bash
+# $ARGUMENTS is substituted TEXTUALLY into this script before bash parses it, so the
+# user's quoting survives as real shell quoting — do NOT wrap this in eval (nested
+# double quotes would split the prompt). Verified with a stub-binary harness.
 set -- $ARGUMENTS
 BACKEND="${1:-}"; PROMPT="${2:-}"; shift 2 2>/dev/null || true
 case "$BACKEND" in ds|ag|cx|oc|cp) ;; *)
@@ -40,8 +43,11 @@ done
 if [ -n "$SESSION_DIR" ]; then
   node -e '
     const {readFileSync} = require("fs");
-    const v = JSON.parse(readFileSync(process.argv[1], "utf8"));
     const exit = process.argv[2];
+    let v;
+    try { v = JSON.parse(readFileSync(process.argv[1], "utf8")) }
+    catch (e) { console.log("exit: " + exit + "  (verdict.json unreadable: " + e.message + ")"); process.exit(0) }
+    if (v.error) { console.log("exit: " + exit + "  verdict error: " + v.error); process.exit(0) }
     const verify = v.verify ? (v.verify.exitCode === 0 ? "pass" : "FAIL (exit " + v.verify.exitCode + ")") : "n/a";
     const diff = v.diffstat || (v.changedFiles ? v.changedFiles.length + " file(s)" : "n/a");
     console.log("exit: " + exit + "  session: " + (v.sessionId || "?") + "  state: " + (v.state || "?") + "  verify: " + verify);

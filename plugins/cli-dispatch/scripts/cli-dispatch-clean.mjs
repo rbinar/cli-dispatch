@@ -24,7 +24,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import { readJsonFile, clearTakeoverState } from './parse-utils.mjs'
+import { readJsonFile, clearTakeoverState, TERMINAL_STATES } from './parse-utils.mjs'
 
 const argv = process.argv.slice(2)
 let remove = false, staleSecs = 600, olderDays = 0, quiet = false, preserveVerdicts = false, takeoverStaleMins = 10
@@ -94,12 +94,22 @@ for (const d of fs.readdirSync(root)) {
   }
 
   let mtime = 0; try { mtime = fs.statSync(statusFile).mtimeMs } catch {}
+  // No status.json at all: the worker died before the parser ever finalized (state '?').
+  // Without this bucket such dirs are kept forever — fall back to the dir's own mtime.
+  if (!mtime && state === '?') {
+    let dirMtime = 0; try { dirMtime = fs.statSync(dir).mtimeMs } catch {}
+    if (dirMtime && (now - dirMtime > staleSecs * 1000)) {
+      stale.push({ d, backend: st.backend || m.backend || '?', idle: Math.round((now - dirMtime) / 1000), verdictPatch, verdictJson, verdictMarker: verdictMarker + '  (no status.json)' })
+      if (verdictPatch) patchCandidates++
+      continue
+    }
+  }
   if (state === 'running' && mtime && (now - mtime > staleSecs * 1000)) {
     stale.push({ d, backend: st.backend || m.backend || '?', idle: Math.round((now - mtime) / 1000), verdictPatch, verdictJson, verdictMarker })
     if (verdictPatch) patchCandidates++
     continue
   }
-  if (olderDays > 0 && (state === 'done' || state === 'error')) {
+  if (olderDays > 0 && TERMINAL_STATES.has(state)) {
     const started = Date.parse(m.startedAt || '') || 0
     if (started && (now - started > olderDays * 86400 * 1000)) {
       old.push({ d, backend: st.backend || m.backend || '?', state, started: m.startedAt, verdictPatch, verdictJson, verdictMarker })

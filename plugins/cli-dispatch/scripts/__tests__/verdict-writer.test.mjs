@@ -195,3 +195,36 @@ test('runVerify: stops at first failure and captures tail', () => {
 
   cleanup(cwd)
 })
+
+test('buildVerdict: accepts long backend names and falls back to status.backend', () => {
+  // Parsers write LONG names ("codex", "deepseek", …) into status/meta —
+  // regression guard for the smoke-test failure where "codex" was rejected.
+  const longName = makeFixture({ backend: 'codex' })
+  const viaMeta = buildVerdict({
+    statusJson: longName.statusJson,
+    metaJson: longName.metaJson,
+    changedFilesJson: longName.changedFilesJson,
+    worktreeInfo: { sessionDir: longName.sessionRoot, worktree: longName.worktree },
+  })
+  assert.equal(viaMeta.verdict.backend, 'cx')
+
+  // ds meta.json historically had NO backend field at all — status.backend fallback.
+  const noMeta = makeFixture({ backend: 'deepseek' })
+  delete noMeta.metaJson.backend
+  const viaStatus = buildVerdict({
+    statusJson: noMeta.statusJson,
+    metaJson: noMeta.metaJson,
+    changedFilesJson: noMeta.changedFilesJson,
+    worktreeInfo: { sessionDir: noMeta.sessionRoot, worktree: noMeta.worktree },
+  })
+  assert.equal(viaStatus.verdict.backend, 'ds')
+
+  assert.throws(() => buildVerdict({
+    statusJson: { ...noMeta.statusJson, backend: 'nonsense' },
+    metaJson: { ...noMeta.metaJson, backend: 'nonsense' },
+    changedFilesJson: noMeta.changedFilesJson,
+    worktreeInfo: { sessionDir: noMeta.sessionRoot, worktree: noMeta.worktree },
+  }), /unknown backend/)
+
+  cleanup(longName.sessionRoot, longName.worktree, noMeta.sessionRoot, noMeta.worktree)
+})

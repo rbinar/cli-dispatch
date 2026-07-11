@@ -41,6 +41,7 @@ if (isResume && existsSync(metaFile)) {
 meta = {
   ...meta,
   sessionId: path.basename(dir),
+  backend: 'deepseek',
   promptPreview: process.env.CLAUDE_DS_PROMPT_PREVIEW ?? meta.promptPreview ?? '',
   cwd: process.env.CLAUDE_DS_CWD ?? meta.cwd ?? '',
   branch: process.env.CLAUDE_DS_BRANCH ?? meta.branch ?? '',
@@ -66,6 +67,7 @@ const { writeTranscript, appendProgress, closeAll } = openSessionFiles(
 // ---- rolling state ----
 const status = {
   sessionId: path.basename(dir),
+  backend: 'deepseek',
   state: 'running', // running | done | error
   lastTool: null,
   toolCounts: {},

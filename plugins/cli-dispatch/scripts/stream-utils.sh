@@ -133,11 +133,13 @@ reconcile_session_error() {
     const d = process.env.CLI_DISPATCH_RS_DIR, err = process.env.CLI_DISPATCH_RS_ERR, rc = Number(process.env.CLI_DISPATCH_RS_RC)
     let s = {}; try { s = JSON.parse(fs.readFileSync(p.join(d, "status.json"), "utf8")) } catch {}
     s.state = "error"; s.error = err
-    try { fs.writeFileSync(p.join(d, "status.json"), JSON.stringify(s, null, 2) + "\n") } catch {}
+    // A swallowed write leaves status.json stuck at "running" forever with no trace —
+    // warn on stderr so the failure is at least visible (the run itself must not die).
+    try { fs.writeFileSync(p.join(d, "status.json"), JSON.stringify(s, null, 2) + "\n") } catch (e) { process.stderr.write("reconcile: cannot write status.json: " + e.message + "\n") }
     let m = {}; try { m = JSON.parse(fs.readFileSync(p.join(d, "meta.json"), "utf8")) } catch {}
     m.state = "error"; m.exitCode = rc; m.error = err
-    try { fs.writeFileSync(p.join(d, "meta.json"), JSON.stringify(m, null, 2) + "\n") } catch {}
-  ' || true
+    try { fs.writeFileSync(p.join(d, "meta.json"), JSON.stringify(m, null, 2) + "\n") } catch (e) { process.stderr.write("reconcile: cannot write meta.json: " + e.message + "\n") }
+  ' || echo "reconcile_session_error: node unavailable — $dir may stay stuck at state=running" >&2
 }
 
 # ---- diff artifact extraction ----

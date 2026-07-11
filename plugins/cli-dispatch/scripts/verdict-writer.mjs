@@ -5,6 +5,14 @@ import { pathToFileURL } from 'node:url'
 import { NON_TERMINAL_STATES, TERMINAL_STATES } from './parse-utils.mjs'
 
 const VALID_BACKENDS = new Set(['ds', 'ag', 'cx', 'oc', 'cp'])
+// The stream parsers write the LONG backend name into status.json/meta.json
+// (e.g. "codex"), while cli-dispatch-run speaks the short form — accept both.
+const BACKEND_ALIASES = { deepseek: 'ds', antigravity: 'ag', codex: 'cx', opencode: 'oc', copilot: 'cp' }
+export function normalizeBackend(value) {
+  const b = String(value ?? '').toLowerCase()
+  if (VALID_BACKENDS.has(b)) return b
+  return BACKEND_ALIASES[b] ?? null
+}
 
 function toLines(value) {
   return String(value ?? '').replace(/\r\n/g, '\n').split('\n')
@@ -111,20 +119,18 @@ function mapExitCode({ state, verify, timeoutExpired }) {
     }
     return 2
   }
-  if (!NON_TERMINAL_STATES.has(state)) {
-    throw new Error(`invalid state "${state}"`)
-  }
-  throw new Error(`invalid state "${state}"`)
+  // Non-terminal (running) or unknown — either way there is no verdict to map yet.
+  throw new Error(`invalid state "${state}" — session has not reached a terminal state`)
 }
 
 export function buildVerdict({ statusJson, metaJson, changedFilesJson, verifyResults, worktreeInfo = {} }) {
   const status = statusJson || {}
   const meta = metaJson || {}
   const changedFiles = changedFilesJson || {}
-  const backend = meta.backend
+  const backend = normalizeBackend(meta.backend ?? status.backend)
 
-  if (!VALID_BACKENDS.has(backend)) {
-    throw new Error(`unknown backend "${backend}"`)
+  if (!backend) {
+    throw new Error(`unknown backend "${meta.backend ?? status.backend}"`)
   }
 
   const state = status.state

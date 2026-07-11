@@ -292,7 +292,9 @@ if ($Resume) {
     exit 5
   }
 
-  $marker = if ($Backend -eq 'ds') { 'claude-ds session:' } else { 'cx session:' }
+  # ds prints "claude-ds session: <id>"; cx prints "  thread:  <id>" (the FINAL,
+  # post-relocation session id). Matches the bash twin's marker table.
+  $marker = if ($Backend -eq 'ds') { 'claude-ds session:' } else { 'thread:' }
   $launchMarker = Join-Path $env:TEMP ([IO.Path]::GetRandomFileName())
   New-Item -ItemType File -Path $launchMarker -Force | Out-Null
   $stderrFile = Join-Path $env:TEMP ([IO.Path]::GetRandomFileName())

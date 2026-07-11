@@ -7,6 +7,51 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.38.0] — 2026-07-11
+
+### Düzeltildi
+
+- **cli-dispatch-run: session-id keşfi 5 backend'in 4'ünde ölüydü (#105).** Backend başına
+  marker'lar (`cx session:` vb.) stream wrapper'ların gerçekte bastığı hiçbir satırla
+  eşleşmiyordu ve `set -e` altında eşleşmeyen grep, en-yeni-dizin fallback'i hiç çalışamadan
+  script'i **sessizce** öldürüyordu — her cx/ag/oc/cp çalışması sıfır teşhisle exit 1
+  verirken worker'ın biten işi worktree'de strand kalıyordu. Marker'lar artık gerçek
+  başlangıç satırlarıyla eşleşiyor (cx `thread:`, ag `conv:`, oc/cp `session:` — hepsi
+  relocation-sonrası final id taşır) ve açık `|| true` guard'ı var; aynı fix `.ps1` ikizinde.
+- **verdict-writer: backend adı sözleşme uyuşmazlığı (#105).** `meta.backend`'i kısa adlara
+  (`ds|ag|cx|oc|cp`) karşı doğruluyordu ama her parser uzun ad yazar (`codex`,
+  `antigravity`, …) — yani `build-verdict` her gerçek session'ı reddediyordu. Uzun adlar
+  artık alias haritasıyla normalize ediliyor, `status.backend` fallback'i var; ds parser
+  artık eksik `backend` alanını hem `status.json` hem `meta.json`'a yazıyor.
+- **cli-dispatch-run sıkılaştırma (#105).** stderr yakalama process substitution'dan pipe'a
+  geçti (`PIPESTATUS[0]`) — marker grep'i asla yarım flush edilmiş dosya okuyamaz;
+  `--resume` artık `--prompt`'u sessizce yoksaymak yerine yüksek sesle reddediyor
+  (re-attach eder, konuşmaz — `/cli-dispatch:resume` kullanın); başarısız `build-verdict`
+  boş dosya yerine geçerli `{"error": …}` JSON verdict yazıyor; wait alt süreci çözülen
+  node binary'sini `CLI_DISPATCH_NODE` ile devralıyor.
+- **cli-dispatch-wait: çıplak `node` + sessiz boş-state (#105).** Artık `CLI_DISPATCH_NODE`'u
+  tanıyor, yaygın sürüm-yöneticisi konumlarını yokluyor (cli-dispatch-clean ile aynı desen —
+  launchd/cron minimal PATH ile çalışır) ve status.json okunamadığında bunu normal terminal
+  state gibi ele almak yerine teşhis basıyor.
+- **clean: hiç finalize olmamış session'lar sonsuza dek tutuluyordu (#105).** Worker'ı
+  status.json hiç yazılmadan ölen dizin (state `?`) artık kendi mtime'ı üzerinden stale
+  adayı, `(no status.json)` işaretiyle. Eski-bitmiş budama artık paylaşılan
+  `TERMINAL_STATES` enum'unu kullanıyor (`killed` da kapsandı). Yeni regresyon testi.
+- **stream-utils: `reconcile_session_error` hataları artık görünmez değil.** Yutulan
+  status/meta yazma hataları (ve eksik `node`) stderr'e uyarı basıyor — oradaki sessiz
+  hata status.json'ı sonsuza dek `running`'de bırakır.
+- **`/cli-dispatch:run` özet sıkılaştırma.** `verdict.json` parse hataları ve error-verdict
+  yakalanmamış Node stack trace yerine tek satırlık fallback basıyor; `$ARGUMENTS` satırının
+  NEDEN eval'e sarılmaması gerektiği yorumla belgelendi (metinsel yerleştirme quoting'i
+  zaten korur — stub-binary düzeneğiyle doğrulandı).
+
+### Doğrulandı
+
+- **5-backend E2E smoke matrisi artık yeşil:** backend başına bir `cli-dispatch-run`
+  (ds/ag/cx/oc/cp), gerçek görev + `--verify` → 5/5 exit 0, doğru verdict.json (normalize
+  backend, `verify.exitCode: 0`, tutulan iş için `stranded: true`). Test süiti: 97/97.
+  Windows `.ps1` parite açıkları ayrıca #106 epic'i olarak izleniyor.
+
 ## [3.37.0] — 2026-07-11
 
 ### Eklendi

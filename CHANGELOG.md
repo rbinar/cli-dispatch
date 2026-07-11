@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.38.0] — 2026-07-11
+
+### Fixed
+
+- **cli-dispatch-run: session-id discovery was dead for 4 of 5 backends (#105).** The
+  per-backend markers (`cx session:` etc.) matched nothing the stream wrappers actually
+  print, and under `set -e` the no-match grep killed the script **silently** before the
+  newest-dir fallback could run — every cx/ag/oc/cp run exited 1 with zero diagnostics
+  while the worker's finished work sat stranded in the worktree. Markers now match the
+  real startup lines (cx `thread:`, ag `conv:`, oc/cp `session:` — all carry the final
+  post-relocation id) with an explicit `|| true` guard; same fix in the `.ps1` twin.
+- **verdict-writer: backend-name contract mismatch (#105).** It validated `meta.backend`
+  against short names (`ds|ag|cx|oc|cp`) while every parser writes long names (`codex`,
+  `antigravity`, …) — so `build-verdict` rejected every real session. Long names are now
+  normalized via an alias map, with `status.backend` as fallback; the ds parser now also
+  writes the previously missing `backend` field into both `status.json` and `meta.json`.
+- **cli-dispatch-run hardening (#105).** stderr capture switched from process substitution
+  to a pipe (`PIPESTATUS[0]`) so the marker grep can never read a partially flushed file;
+  `--resume` now loudly rejects `--prompt` (it re-attaches, it does not converse — use
+  `/cli-dispatch:resume`) instead of silently ignoring it; a failed `build-verdict` writes
+  a valid `{"error": …}` JSON verdict instead of an empty file that crashed downstream
+  `JSON.parse`; the wait subprocess inherits the resolved node binary via
+  `CLI_DISPATCH_NODE`.
+- **cli-dispatch-wait: bare `node` + silent empty-state (#105).** Now honors
+  `CLI_DISPATCH_NODE`, probes common version-manager locations (same pattern as
+  `cli-dispatch-clean` — launchd/cron run with a minimal PATH), and prints a diagnostic
+  when status.json is missing/unreadable instead of treating it as a normal terminal state.
+- **clean: never-finalized sessions were kept forever (#105).** A session dir whose worker
+  died before status.json was ever written (state `?`) is now a stale candidate via the
+  dir's own mtime, marked `(no status.json)`. Old-finished pruning now uses the shared
+  `TERMINAL_STATES` enum (also covers `killed`, previously missed). New regression test.
+- **stream-utils: `reconcile_session_error` failures are no longer invisible.** Swallowed
+  status/meta write errors (and a missing `node`) now warn on stderr — a silent failure
+  there leaves status.json stuck at `running` forever.
+- **`/cli-dispatch:run` summary hardening.** `verdict.json` parse errors and error-verdicts
+  print a one-line fallback instead of an uncaught Node stack trace; a comment documents
+  why the `$ARGUMENTS` line must NOT be wrapped in eval (textual substitution already
+  preserves quoting — verified with a stub-binary harness).
+
+### Verified
+
+- **Full 5-backend E2E smoke matrix now green:** one `cli-dispatch-run` per backend
+  (ds/ag/cx/oc/cp) with a real task + `--verify` → 5/5 exit 0, correct verdict.json
+  (normalized backend, `verify.exitCode: 0`, `stranded: true` for kept work). Test suite:
+  97/97. Windows `.ps1` parity gaps are tracked separately as the #106 epic.
+
 ## [3.37.0] — 2026-07-11
 
 ### Added

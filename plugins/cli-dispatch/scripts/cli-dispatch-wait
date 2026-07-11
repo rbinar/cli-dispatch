@@ -42,13 +42,23 @@ ROOT="${CLI_DISPATCH_SESSIONS_DIR:-${CLAUDE_DS_SESSIONS_DIR:-}}"
 [ -n "$ROOT" ] || { _c="${XDG_CACHE_HOME:-$HOME/.cache}"; ROOT="$_c/cli-dispatch/sessions"; [ -d "$ROOT" ] || [ ! -d "$_c/claude-ds/sessions" ] || ROOT="$_c/claude-ds/sessions"; }
 DIR="$ROOT/$SID"
 
+# node resolution: honor CLI_DISPATCH_NODE, then probe the common version-manager install
+# locations (launchd/cron run with a minimal PATH — same pattern as cli-dispatch-clean).
+NODE_BIN="${CLI_DISPATCH_NODE:-node}"
+if ! command -v "$NODE_BIN" >/dev/null 2>&1; then
+  for cand in "$HOME/.local/share/fnm/aliases/default/bin" "$HOME/.volta/bin" "$HOME/.asdf/shims" /opt/homebrew/bin /usr/local/bin; do
+    [ -x "$cand/node" ] && { NODE_BIN="$cand/node"; break; }
+  done
+fi
+command -v "$NODE_BIN" >/dev/null 2>&1 || { echo "cli-dispatch-wait: 'node' not found in PATH (required)." >&2; exit 1; }
+
 if [ ! -d "$DIR" ]; then
   echo "no such session: $SID (use /cli-dispatch:sessions to list them)"
   exit 1
 fi
 
 print_summary() {
-  CLI_DISPATCH_SESSION_DIR="$DIR" node -e '
+  CLI_DISPATCH_SESSION_DIR="$DIR" "$NODE_BIN" -e '
     const fs = require("fs");
     const dir = process.env.CLI_DISPATCH_SESSION_DIR;
     let state = "", usage = null, finalResultPreview = "";
@@ -75,7 +85,13 @@ print_summary() {
 START=$(date +%s)
 
 while :; do
-  STATE=$(CLI_DISPATCH_SESSION_DIR="$DIR" node -e "try{process.stdout.write(JSON.parse(require('fs').readFileSync(process.env.CLI_DISPATCH_SESSION_DIR+'/status.json','utf8')).state||'')}catch{}" 2>/dev/null)
+  STATE=$(CLI_DISPATCH_SESSION_DIR="$DIR" "$NODE_BIN" -e "try{process.stdout.write(JSON.parse(require('fs').readFileSync(process.env.CLI_DISPATCH_SESSION_DIR+'/status.json','utf8')).state||'')}catch{}" 2>/dev/null)
+
+  # Empty = status.json missing/unreadable (dir removed, relocated, or never finalized) —
+  # say so instead of silently reporting it like a normal terminal state.
+  if [ -z "$STATE" ]; then
+    echo "cli-dispatch-wait: cannot read state for $SID (status.json missing or unreadable — session dir removed/relocated?)" >&2
+  fi
 
   # Terminal = anything other than running/human-controlled (done|error|killed, in practice).
   if [ "$STATE" != "running" ] && [ "$STATE" != "human-controlled" ]; then
