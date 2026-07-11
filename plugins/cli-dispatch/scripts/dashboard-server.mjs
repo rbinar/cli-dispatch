@@ -30,9 +30,9 @@ import { spawnSync, execSync } from 'node:child_process'
 import { PAGE } from './public-page.mjs'
 import {
   FLOW_CAP, readHead, readTail, lines, clip, contentText,
-  sumUsageFromEvents, mapFlow, toolSummary, collectProcTree
+  sumUsageFromEvents, mapFlow, collectProcTree
 } from './dashboard-utils.mjs'
-import { readJsonFile, markTakeoverActive, touchTakeoverHeartbeat, clearTakeoverState } from './parse-utils.mjs'
+import { readJsonFile, markTakeoverActive, touchTakeoverHeartbeat, clearTakeoverState, NON_TERMINAL_STATES } from './parse-utils.mjs'
 
 // Directory this file lives in, regardless of whether it's run in-repo or from its
 // installed location (install.sh copies it + its sibling .mjs modules together) — used to
@@ -44,6 +44,7 @@ const HOME = os.homedir()
 const PROJECTS_DIR = path.join(HOME, '.claude', 'projects')
 const parentIndexCache = new Map() // keyed by CC session id -> { mtime, workerIds: string[] }
 const subagentCache = new Map() // keyed by subagent file path -> { mtime, matchedWorkerIds: string[], usage: { inTok: number, outTok: number } | null }
+const sessionTailCache = new Map() // keyed by CC session .jsonl path -> { mtime, head, tail, model, foundTail } — the readHead/readTail/parse result, invalidated by mtime
 const CC_SESSIONS_DIR = path.join(HOME, '.claude', 'sessions')
 const CACHE = process.env.XDG_CACHE_HOME || path.join(HOME, '.cache')
 const WORKERS_ROOT = process.env.CLI_DISPATCH_SESSIONS_DIR || process.env.CLAUDE_DS_SESSIONS_DIR ||
@@ -72,7 +73,6 @@ const isDir = (p) => { const s = safeStat(p); return s && s.isDirectory() }
 
 // readHead, readTail, lines, clip — imported from dashboard-utils.mjs
 const firstJSON = (txt) => { for (const l of lines(txt)) { try { return JSON.parse(l) } catch {} } return null }
-const lastJSON = (txt) => { const ls = lines(txt); for (let i = ls.length - 1; i >= 0; i--) { try { return JSON.parse(ls[i]) } catch {} } return null }
 
 function normalizeUsage(u) {
   if (!u || typeof u !== 'object') return null
@@ -142,25 +142,35 @@ function listSessions() {
         const id = f.slice(0, -6)
         const file = path.join(pdir, f)
         const st = safeStat(file); if (!st) continue
-        const head = firstJSON(readHead(file)) || {}
-        const tailTxt = readTail(file)
-        const tailLines = lines(tailTxt)
-        let tail = {}
-        let model = null
-        let foundTail = false
-        for (let i = tailLines.length - 1; i >= 0; i--) {
-          try {
-            const parsed = JSON.parse(tailLines[i])
-            if (!foundTail) {
-              tail = parsed
-              foundTail = true
-            }
-            if (parsed && parsed.type === 'assistant' && parsed.message && parsed.message.model) {
-              model = parsed.message.model
-              break
-            }
-          } catch {}
+        // mtime-cache the expensive per-file work (readHead + readTail + tail parse, incl. model
+        // extraction) — same pattern as buildWorkerParentIndex's parentIndexCache. Reuse the prior
+        // result while the file's mtime is unchanged; st.size/st.mtimeMs and live status (lv) below
+        // stay fresh on every call (they're already cheap).
+        let derived = sessionTailCache.get(file)
+        if (!derived || derived.mtime !== st.mtimeMs) {
+          const head = firstJSON(readHead(file)) || {}
+          const tailTxt = readTail(file)
+          const tailLines = lines(tailTxt)
+          let tail = {}
+          let model = null
+          let foundTail = false
+          for (let i = tailLines.length - 1; i >= 0; i--) {
+            try {
+              const parsed = JSON.parse(tailLines[i])
+              if (!foundTail) {
+                tail = parsed
+                foundTail = true
+              }
+              if (parsed && parsed.type === 'assistant' && parsed.message && parsed.message.model) {
+                model = parsed.message.model
+                break
+              }
+            } catch {}
+          }
+          derived = { mtime: st.mtimeMs, head, tail, model }
+          sessionTailCache.set(file, derived)
         }
+        const { head, tail, model } = derived
         const lv = live[id]
         const sess = { id, project: proj, dir: path.join(pdir, id), file }
         out.push({
@@ -184,7 +194,7 @@ function listSessions() {
   return out
 }
 
-// sumUsageFromEvents, mapFlow, toolSummary — imported from dashboard-utils.mjs
+// sumUsageFromEvents, mapFlow — imported from dashboard-utils.mjs
 
 // ---- subagents ----
 function listSubagents(sess) {
@@ -306,7 +316,7 @@ function findStaleSessions(staleSecs) {
     const state = st.state || m.state || '?'
     let mtime = 0
     try { mtime = fs.statSync(path.join(dir, 'status.json')).mtimeMs } catch {}
-    if ((state === 'running' || state === 'human-controlled') && mtime && (now - mtime > staleSecs * 1000)) {
+    if (NON_TERMINAL_STATES.has(state) && mtime && (now - mtime > staleSecs * 1000)) {
       items.push({ id: d, backend: st.backend || m.backend || '?', state, idleMs: now - mtime })
     }
   }
@@ -917,7 +927,20 @@ function bridgePty(socket, entry) {
   // socket force-closed while a new one is already bridging) would let the OLD socket's async
   // teardown clear the NEW socket's heartbeat, because entry.heartbeatTimer has since been
   // reassigned to the new timer.
-  const heartbeatTimer = setInterval(() => { touchTakeoverHeartbeat(statusFile) }, 30000)
+  // Self-stopping heartbeat: touchTakeoverHeartbeat guards against reap-revival (parse-utils.mjs)
+  // — if an out-of-process reaper (cli-dispatch-clean.mjs) has already cleared this takeover to a
+  // terminal state on disk, it returns the (now non-'human-controlled') status WITHOUT writing and
+  // logs a stderr warning. If our teardown/finalizeTakeover never fired (socket still open), this
+  // timer would otherwise keep firing every 30s forever, spamming that warning. So when the returned
+  // status is no longer an active takeover, stop the timer here too (a secondary safety stop; normal
+  // teardown at socket close/exit still clears it via the swap-safe path below).
+  const heartbeatTimer = setInterval(() => {
+    const st = touchTakeoverHeartbeat(statusFile)
+    if (!(st.state === 'human-controlled' && st.takeover && st.takeover.active === true)) {
+      clearInterval(heartbeatTimer)
+      if (entry.heartbeatTimer === heartbeatTimer) entry.heartbeatTimer = null
+    }
+  }, 30000)
   heartbeatTimer.unref?.()
   entry.heartbeatTimer = heartbeatTimer
 

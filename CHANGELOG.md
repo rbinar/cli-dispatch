@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.40.1] — 2026-07-11
+
+### Fixed
+
+- **Takeover heartbeat timer now stops itself once the guard fires.** 3.39.4
+  guarded `touchTakeoverHeartbeat` against resurrecting a reaped takeover
+  (skip the write + one stderr note when the freshly-read state is no longer
+  `human-controlled` with `takeover.active`), but `dashboard-server.mjs`'s
+  30-second PTY-bridge heartbeat timer kept firing forever in that no-op
+  state — spamming stderr every 30s for as long as the browser tab stayed
+  connected after an out-of-process reap. The bridge now inspects the status
+  returned by each heartbeat call and, when the guard has fired, clears its
+  own interval (swap-safe: it only nulls `entry.heartbeatTimer` if it still
+  owns it, matching the existing teardown pattern). Socket teardown still
+  arrives via its natural close/exit path.
+
+### Changed
+
+- **`listSessions` no longer re-reads every Claude Code transcript tail on
+  each `/api/sessions` request.** The per-`.jsonl` head/tail read and
+  tail-parse (including model extraction) in `dashboard-server.mjs` is now
+  behind the same mtime-gated module-level cache pattern
+  `buildWorkerParentIndex` already uses — unchanged files reuse the previous
+  parse result; live-status, size, and subagent counts stay fresh every call.
+  Response shape and ordering are unchanged; only repeat file I/O drops.
+- **State-set membership check in `findStaleSessions` migrated to the shared
+  enum.** The hardcoded `state === 'running' || state === 'human-controlled'`
+  check now uses `NON_TERMINAL_STATES.has(state)` from `parse-utils.mjs`, per
+  the repo contract. Deliberately single-state checks (the `running`-only
+  stale heuristic, the takeover `running` precondition) were left as-is —
+  their semantics are not "non-terminal".
+
 ## [3.40.0] — 2026-07-11
 
 ### Removed

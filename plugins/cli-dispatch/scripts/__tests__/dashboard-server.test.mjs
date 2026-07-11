@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { mkdtempSync, writeFileSync, rmSync, utimesSync, mkdirSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, readFileSync, statSync, rmSync, utimesSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -9,6 +9,7 @@ import http from 'node:http'
 import {
   readHead, readTail, collectProcTree, mapFlow
 } from '../dashboard-utils.mjs'
+import { markTakeoverActive, touchTakeoverHeartbeat, clearTakeoverState } from '../parse-utils.mjs'
 
 // ---- dashboard-server.mjs spawn helpers (mirror takeover-integration.test.mjs pattern) ----
 const SELF_DIR = path.dirname(fileURLToPath(import.meta.url))
@@ -369,5 +370,59 @@ test('GET /api/workers/aggregate sums worker usage by backend', async () => {
   } finally {
     await stopServer(child)
     rmSync(sessionsDir, { recursive: true, force: true })
+  }
+})
+
+// ---- touchTakeoverHeartbeat reap-revival guard (drives bridgePty's self-stopping heartbeat) ----
+//
+// bridgePty()'s 30s heartbeat timer can't be unit-isolated here (it needs a live PTY + WS
+// socket), but the condition that makes it self-stop IS unit-testable: touchTakeoverHeartbeat
+// returns the on-disk status and, when a reaper has already flipped state to a terminal value
+// and dropped the takeover sub-object, must NOT write and must return that status unchanged.
+// The timer's self-stop test — "returned status is no longer human-controlled+active" — reduces
+// exactly to this guard firing.
+
+test('touchTakeoverHeartbeat: no-op guard when takeover already reaped to a terminal state', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'dash-heartbeat-'))
+  const statusFile = path.join(dir, 'status.json')
+  try {
+    // Simulate an out-of-process reaper having cleared the takeover: terminal state, no takeover.
+    writeFileSync(statusFile, JSON.stringify({ state: 'killed' }))
+    const before = readFileSync(statusFile, 'utf8')
+    const mtimeBefore = statSync(statusFile).mtimeMs
+
+    const st = touchTakeoverHeartbeat(statusFile)
+
+    // Returned status is unchanged and, crucially for bridgePty, NOT an active human-controlled
+    // takeover — this is the exact predicate that makes the heartbeat timer clearInterval itself.
+    assert.equal(st.state, 'killed')
+    assert.equal(st.takeover, undefined)
+    assert.equal(!(st.state === 'human-controlled' && st.takeover && st.takeover.active === true), true)
+    // And the file was not rewritten (no reap-revival).
+    assert.equal(readFileSync(statusFile, 'utf8'), before)
+    assert.equal(statSync(statusFile).mtimeMs, mtimeBefore)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('touchTakeoverHeartbeat: refreshes lastHeartbeat while takeover is still active', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'dash-heartbeat-'))
+  const statusFile = path.join(dir, 'status.json')
+  try {
+    markTakeoverActive(statusFile, { host: '127.0.0.1:0', ptyPid: 123, ptyPgid: 123, now: '2026-01-01T00:00:00.000Z' })
+    const st = touchTakeoverHeartbeat(statusFile, { now: '2026-01-01T00:00:30.000Z' })
+    // Guard passes: the timer would keep running, and the heartbeat advanced.
+    assert.equal(st.state, 'human-controlled')
+    assert.equal(st.takeover.active, true)
+    assert.equal(st.takeover.lastHeartbeat, '2026-01-01T00:00:30.000Z')
+
+    // After a handback/reap to a terminal state, the guard closes again.
+    clearTakeoverState(statusFile, { finalState: 'done', completedVia: 'human-takeover' })
+    const st2 = touchTakeoverHeartbeat(statusFile)
+    assert.equal(st2.state, 'done')
+    assert.equal(st2.takeover, undefined)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
   }
 })

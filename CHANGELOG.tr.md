@@ -7,6 +7,41 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.40.1] — 2026-07-11
+
+### Düzeltildi
+
+- **Takeover heartbeat timer'ı, guard tetiklendiğinde artık kendini
+  durduruyor.** 3.39.4, `touchTakeoverHeartbeat`'i reap edilmiş bir
+  takeover'ı diriltmeye karşı guard'lamıştı (taze okunan state artık
+  `human-controlled` + `takeover.active` değilse yazmayı atla + tek satır
+  stderr notu), ama `dashboard-server.mjs`'in 30 saniyelik PTY-köprüsü
+  heartbeat timer'ı bu no-op durumda sonsuza dek çalışmaya devam ediyordu —
+  out-of-process bir reap sonrası tarayıcı sekmesi bağlı kaldığı sürece her
+  30 sn'de bir stderr'e spam basıyordu. Köprü artık her heartbeat çağrısının
+  döndürdüğü status'u inceliyor ve guard tetiklendiğinde kendi interval'ını
+  temizliyor (swap-güvenli: `entry.heartbeatTimer`'ı yalnızca hâlâ kendisine
+  aitse null'luyor — mevcut teardown desenine birebir uygun). Socket
+  teardown'ı yine kendi doğal close/exit yolundan geliyor.
+
+### Değiştirildi
+
+- **`listSessions` artık her `/api/sessions` isteğinde tüm Claude Code
+  transcript tail'lerini yeniden okumuyor.** `dashboard-server.mjs`'teki
+  `.jsonl` başına head/tail okuma ve tail-parse (model çıkarımı dahil),
+  `buildWorkerParentIndex`'in zaten kullandığı mtime-kapılı modül-seviyesi
+  cache deseninin arkasına alındı — değişmeyen dosyalar önceki parse
+  sonucunu yeniden kullanıyor; live-status, boyut ve subagent sayıları her
+  çağrıda taze kalıyor. Yanıt şekli ve sıralama değişmedi; yalnızca tekrar
+  dosya I/O'su azaldı.
+- **`findStaleSessions`'taki state-küme üyeliği kontrolü paylaşılan enum'a
+  taşındı.** Hardcoded `state === 'running' || state === 'human-controlled'`
+  kontrolü, repo sözleşmesi gereği `parse-utils.mjs`'in
+  `NON_TERMINAL_STATES.has(state)`'ine geçirildi. Kasıtlı tek-state
+  kontrolleri (yalnızca `running`'e scope'lu stale sezgiseli, takeover'ın
+  `running` ön koşulu) olduğu gibi bırakıldı — semantikleri "non-terminal"
+  değil.
+
 ## [3.40.0] — 2026-07-11
 
 ### Kaldırıldı
