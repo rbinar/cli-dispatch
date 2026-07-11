@@ -1,0 +1,292 @@
+#!/usr/bin/env bash
+# cli-dispatch-run — bootstrap worker sessions and write deterministic verdict artifacts.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+usage() {
+  cat <<'USAGE' >&2
+usage: cli-dispatch-run --backend <ds|ag|cx|oc|cp> --cwd <repo> [--prompt <text> | --prompt-file <path>] [--branch <name>] [--base-ref <ref>] [--model <slug>] [--effort low|medium|high] [--verify <cmd>] [--verify-timeout SECS] [--timeout SECS] [--resume <session-id>]
+USAGE
+}
+
+need_val() {
+  if [ "$2" -lt 2 ]; then
+    echo "cli-dispatch-run: $1 requires a value." >&2
+    usage
+    exit 5
+  fi
+}
+
+cleanup_tmp() {
+  [ "${#TEMP_FILES[@]}" -gt 0 ] || return 0
+  rm -f "${TEMP_FILES[@]}" 2>/dev/null || true
+}
+trap cleanup_tmp EXIT INT TERM
+
+BACKEND=""
+CWD=""
+PROMPT=""
+PROMPT_FILE=""
+BRANCH=""
+BASE_REF=""
+MODEL=""
+EFFORT=""
+VERIFY_TIMEOUT=600
+TIMEOUT=0
+RESUME=""
+VERIFY=()
+TEMP_FILES=()
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --backend) need_val --backend "$#"; BACKEND="$2"; shift 2;;
+    --cwd) need_val --cwd "$#"; CWD="$2"; shift 2;;
+    --prompt) need_val --prompt "$#"; PROMPT="$2"; shift 2;;
+    --prompt-file) need_val --prompt-file "$#"; PROMPT_FILE="$2"; shift 2;;
+    --branch) need_val --branch "$#"; BRANCH="$2"; shift 2;;
+    --base-ref) need_val --base-ref "$#"; BASE_REF="$2"; shift 2;;
+    --model) need_val --model "$#"; MODEL="$2"; shift 2;;
+    --effort) need_val --effort "$#"; EFFORT="$2"; shift 2;;
+    --verify) need_val --verify "$#"; VERIFY+=("$2"); shift 2;;
+    --verify-timeout) need_val --verify-timeout "$#"; VERIFY_TIMEOUT="$2"; shift 2;;
+    --timeout) need_val --timeout "$#"; TIMEOUT="$2"; shift 2;;
+    --resume) need_val --resume "$#"; RESUME="$2"; shift 2;;
+    -h|--help) usage; exit 0;;
+    *) echo "cli-dispatch-run: unknown arg: $1" >&2; usage; exit 5;;
+  esac
+done
+
+if [ -z "$BACKEND" ] || [ -z "$CWD" ]; then
+  usage
+  exit 5
+fi
+
+if [ -z "$PROMPT$PROMPT_FILE" ]; then
+  echo "cli-dispatch-run: --prompt or --prompt-file is required" >&2
+  usage
+  exit 5
+fi
+if [ -n "$PROMPT" ] && [ -n "$PROMPT_FILE" ]; then
+  echo "cli-dispatch-run: use only one of --prompt and --prompt-file" >&2
+  usage
+  exit 5
+fi
+
+case "$BACKEND" in
+  ds|ag|cx|oc|cp) ;;
+  *) echo "cli-dispatch-run: unknown backend '$BACKEND'" >&2; exit 5;;
+esac
+
+case "$EFFORT" in
+  ''|low|medium|high) ;;
+  *) echo "cli-dispatch-run: --effort must be low|medium|high" >&2; usage; exit 5;;
+esac
+
+ROOT="${CLI_DISPATCH_SESSIONS_DIR:-${CLAUDE_DS_SESSIONS_DIR:-}}"
+[ -n "$ROOT" ] || { _c="${XDG_CACHE_HOME:-$HOME/.cache}"; ROOT="$_c/cli-dispatch/sessions"; [ -d "$ROOT" ] || [ ! -d "$_c/claude-ds/sessions" ] || ROOT="$_c/claude-ds/sessions"; }
+SESSIONS_ROOT="$ROOT"
+
+NODE_BIN="${CLI_DISPATCH_NODE:-}"
+if [ -z "$NODE_BIN" ]; then
+  NODE_BIN="$HOME/.local/share/cli-dispatch/node"
+  if [ ! -x "$NODE_BIN" ]; then
+    NODE_BIN="node"
+  fi
+fi
+if ! command -v "$NODE_BIN" >/dev/null 2>&1; then
+  echo "cli-dispatch-run: node not found in PATH" >&2
+  exit 1
+fi
+
+VERDICT_WRITER="${CLI_DISPATCH_VERDICT_WRITER:-}"
+if [ -z "$VERDICT_WRITER" ]; then
+  for cand in "$HOME/.local/share/cli-dispatch/verdict-writer.mjs" "$HOME/.local/share/claude-ds/verdict-writer.mjs" "$SCRIPT_DIR/verdict-writer.mjs"; do
+    [ -f "$cand" ] && { VERDICT_WRITER="$cand"; break; }
+  done
+fi
+[ -n "$VERDICT_WRITER" ] && [ -f "$VERDICT_WRITER" ] || { echo "cli-dispatch-run: verdict-writer.mjs not found" >&2; exit 1; }
+
+read_json_field() {
+  local file="$1"
+  local key="$2"
+  "$NODE_BIN" --input-type=module -e '
+    import fs from "node:fs"
+    const file = process.argv[1]
+    const key = process.argv[2]
+    try {
+      const parsed = JSON.parse(fs.readFileSync(file, "utf8"))
+      const value = parsed?.[key]
+      if (value !== undefined && value !== null) process.stdout.write(String(value))
+    } catch {}
+  ' "$file" "$key"
+}
+
+select_runner() {
+  local backend="$1"
+  case "$backend" in
+    ds) echo "$SCRIPT_DIR/ds-worktree-run.sh" ;;
+    ag) echo "$SCRIPT_DIR/ag-worktree-run.sh" ;;
+    cx) echo "$SCRIPT_DIR/cx-worktree-run.sh" ;;
+    oc) echo "$SCRIPT_DIR/oc-worktree-run.sh" ;;
+    cp) echo "$SCRIPT_DIR/cp-worktree-run.sh" ;;
+  esac
+}
+
+WORKTREE_RUN="$(select_runner "$BACKEND")"
+[ -n "$WORKTREE_RUN" ] && [ -x "$WORKTREE_RUN" ] || { echo "cli-dispatch-run: backend runner not found: $WORKTREE_RUN" >&2; exit 5; }
+
+WORKTREE_BASE_VARS=()
+if [ -n "$MODEL" ]; then
+  case "$BACKEND" in
+    ds) WORKTREE_BASE_VARS+=("DS_MODEL=$MODEL");;
+    ag) WORKTREE_BASE_VARS+=("AG_MODEL=$MODEL");;
+    cx) WORKTREE_BASE_VARS+=("CX_MODEL=$MODEL");;
+    oc) WORKTREE_BASE_VARS+=("OC_MODEL=$MODEL");;
+    cp) WORKTREE_BASE_VARS+=("CP_MODEL=$MODEL");;
+  esac
+fi
+if [ -n "$EFFORT" ]; then
+  case "$BACKEND" in
+    ds) WORKTREE_BASE_VARS+=("DS_EFFORT=$EFFORT");;
+    ag) WORKTREE_BASE_VARS+=("AG_EFFORT=$EFFORT");;
+    cx) WORKTREE_BASE_VARS+=("CX_EFFORT=$EFFORT");;
+    oc) WORKTREE_BASE_VARS+=("OC_EFFORT=$EFFORT");;
+    cp) WORKTREE_BASE_VARS+=("CP_EFFORT=$EFFORT");;
+  esac
+fi
+
+if [ -z "$PROMPT_FILE" ]; then
+  PROMPT_FILE_TMP="$(mktemp)"
+  TEMP_FILES+=("$PROMPT_FILE_TMP")
+  printf '%s' "$PROMPT" > "$PROMPT_FILE_TMP"
+  PROMPT_FILE="$PROMPT_FILE_TMP"
+fi
+
+if [ -n "$RESUME" ]; then
+  SESSION_ID="$RESUME"
+  SESSION_DIR="$SESSIONS_ROOT/$SESSION_ID"
+  if [ ! -d "$SESSION_DIR" ]; then
+    echo "cli-dispatch-run: no such session: $SESSION_ID" >&2
+    exit 5
+  fi
+else
+  BRANCH="${BRANCH:-${BACKEND}-run-$(date +%s)-$$}"
+  WORKTREE_STDERR="$(mktemp)"
+  LAUNCH_MARKER="$(mktemp)"
+  TEMP_FILES+=("$WORKTREE_STDERR" "$LAUNCH_MARKER")
+  touch "$LAUNCH_MARKER"
+
+  MARKER=""
+  case "$BACKEND" in
+    ds) MARKER='claude-ds session:';;
+    cx) MARKER='cx session:';;
+    ag) MARKER='ag-stream:';;
+    oc) MARKER='oc session:';;
+    cp) MARKER='cp session:';;
+  esac
+
+  set +e
+  if [ "${#WORKTREE_BASE_VARS[@]}" -gt 0 ]; then
+    env "${WORKTREE_BASE_VARS[@]}" "$WORKTREE_RUN" "$CWD" "$BRANCH" "$PROMPT_FILE" </dev/null > /dev/null 2> >(tee "$WORKTREE_STDERR" >&2)
+  else
+    "$WORKTREE_RUN" "$CWD" "$BRANCH" "$PROMPT_FILE" </dev/null > /dev/null 2> >(tee "$WORKTREE_STDERR" >&2)
+  fi
+  WORKTREE_RC=$?
+  set -e
+
+  if [ "$WORKTREE_RC" -ne 0 ]; then
+    echo "cli-dispatch-run: worktree runner failed (code $WORKTREE_RC)" >&2
+    exit "$WORKTREE_RC"
+  fi
+
+  SESSION_ID="$(grep -aoE "${MARKER}[[:space:]]*[A-Za-z0-9._-]+" "$WORKTREE_STDERR" | sed -E "s/.*${MARKER}[[:space:]]*([A-Za-z0-9._-]+)\$/\\1/" | tail -n 1)"
+  if [ -z "$SESSION_ID" ]; then
+    SESSION_ID="$(find "$SESSIONS_ROOT" -mindepth 1 -maxdepth 1 -type d -newer "$LAUNCH_MARKER" -print0 2>/dev/null | xargs -0 ls -1dt 2>/dev/null | head -n 1)"
+  fi
+
+  if [ -z "$SESSION_ID" ]; then
+    echo "cli-dispatch-run: failed to discover session id" >&2
+    exit 5
+  fi
+
+  SESSION_DIR="$SESSION_ID"
+  if [ "${SESSION_DIR#/}" = "$SESSION_DIR" ]; then
+    SESSION_DIR="$SESSIONS_ROOT/$SESSION_DIR"
+  fi
+
+  if [ ! -d "$SESSION_DIR" ]; then
+    echo "cli-dispatch-run: session dir not found: $SESSION_DIR" >&2
+    exit 5
+  fi
+fi
+
+STATUS_PATH="$SESSION_DIR/status.json"
+META_PATH="$SESSION_DIR/meta.json"
+CHANGED_PATH="$SESSION_DIR/changed-files.json"
+
+STATE="$(read_json_field "$STATUS_PATH" state)"
+WORKTREE_PATH="$(read_json_field "$META_PATH" cwd)"
+[ -n "$WORKTREE_PATH" ] || WORKTREE_PATH="$CWD"
+
+SECS_ELAPSED=0
+while :; do
+  set +e
+  "$SCRIPT_DIR/cli-dispatch-wait" "$SESSION_ID" --timeout 30
+  WAIT_RC=$?
+  set -e
+
+  STATE="$(read_json_field "$STATUS_PATH" state)"
+  if [ "$STATE" = "human-controlled" ]; then
+    echo "cli-dispatch-run: human control requested" >&2
+    exit 4
+  fi
+
+  if [ "$WAIT_RC" -eq 0 ]; then
+    break
+  fi
+
+  if [ "$WAIT_RC" -eq 2 ]; then
+    if [ "$TIMEOUT" -ne 0 ]; then
+      SECS_ELAPSED=$((SECS_ELAPSED + 30))
+      if [ "$SECS_ELAPSED" -lt "$TIMEOUT" ]; then
+        continue
+      fi
+    else
+      continue
+    fi
+  fi
+
+  break
+done
+
+TIMEOUT_EXPIRED=0
+if [ "$TIMEOUT" -ne 0 ] && [ "$SECS_ELAPSED" -ge "$TIMEOUT" ] && [ "$STATE" != "done" ]; then
+  TIMEOUT_EXPIRED=1
+fi
+
+DIFF_PATCH_PATH="$SESSION_DIR/verdict-diff.patch"
+: > "$DIFF_PATCH_PATH"
+git -C "$WORKTREE_PATH" status --short --untracked-files=all > "$DIFF_PATCH_PATH"
+git -C "$WORKTREE_PATH" diff HEAD >> "$DIFF_PATCH_PATH"
+
+VERIFY_RESULTS_PATH=""
+if [ "${#VERIFY[@]}" -gt 0 ] && [ "$STATE" != "human-controlled" ]; then
+  VERIFY_RESULTS_PATH="$(mktemp)"
+  TEMP_FILES+=("$VERIFY_RESULTS_PATH")
+  VERIFY_TIMEOUT_MS=$((VERIFY_TIMEOUT * 1000))
+  "$NODE_BIN" --input-type=module "$VERDICT_WRITER" run-verify "$WORKTREE_PATH" "$VERIFY_TIMEOUT_MS" 40 "${VERIFY[@]}" > "$VERIFY_RESULTS_PATH"
+fi
+
+set +e
+if [ -n "$VERIFY_RESULTS_PATH" ]; then
+  VERDICT_JSON="$($NODE_BIN --input-type=module "$VERDICT_WRITER" build-verdict "$SESSION_DIR" "$STATUS_PATH" "$META_PATH" "$CHANGED_PATH" "$TIMEOUT_EXPIRED" "$VERIFY_RESULTS_PATH")"
+  BUILD_EXIT=$?
+else
+  VERDICT_JSON="$($NODE_BIN --input-type=module "$VERDICT_WRITER" build-verdict "$SESSION_DIR" "$STATUS_PATH" "$META_PATH" "$CHANGED_PATH" "$TIMEOUT_EXPIRED")"
+  BUILD_EXIT=$?
+fi
+set -e
+
+printf '%s\n' "$VERDICT_JSON" > "$SESSION_DIR/verdict.json"
+exit "$BUILD_EXIT"

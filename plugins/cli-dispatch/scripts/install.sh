@@ -148,6 +148,10 @@ install -m 0755 "$SCRIPT_DIR/cli-dispatch-gain" "$BIN_DIR/cli-dispatch-gain"
 install -m 0644 "$SCRIPT_DIR/gain-report.mjs" "$LIBEXEC_DIR/gain-report.mjs"
 echo "Installed gain reporter -> cli-dispatch-gain (engine -> $LIBEXEC_DIR/gain-report.mjs); run /cli-dispatch:gain for worker + babysitting accounting"
 
+echo "▶ cli-dispatch-run…"
+install -m 0755 "$SCRIPT_DIR/cli-dispatch-run" "$BIN_DIR/cli-dispatch-run"
+install -m 0644 "$SCRIPT_DIR/verdict-writer.mjs" "$LIBEXEC_DIR/verdict-writer.mjs"
+
 # ---- DeepSeek backend (claude-ds family) -----------------------------------
 if [ "$WANT_DS" -eq 1 ]; then
   install -m 0755 "$SCRIPT_DIR/claude-ds"        "$BIN_DIR/claude-ds"

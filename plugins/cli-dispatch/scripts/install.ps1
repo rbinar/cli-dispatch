@@ -81,6 +81,11 @@ Set-Content -Path (Join-Path $BinDir "cli-dispatch-gain.cmd") -Value (New-Shim "
 Copy-Item -Force (Join-Path $ScriptDir "gain-report.mjs") (Join-Path $LibExecDir "gain-report.mjs")
 Write-Host "Installed gain reporter -> $BinDir\cli-dispatch-gain.ps1 (+ .cmd shim; engine -> $LibExecDir\gain-report.mjs)"
 
+Copy-Item -Force (Join-Path $ScriptDir "cli-dispatch-run.ps1") (Join-Path $BinDir "cli-dispatch-run.ps1")
+Set-Content -Path (Join-Path $BinDir "cli-dispatch-run.cmd") -Value (New-Shim "cli-dispatch-run") -Encoding ASCII
+Copy-Item -Force (Join-Path $ScriptDir "verdict-writer.mjs") (Join-Path $LibExecDir "verdict-writer.mjs")
+Write-Host "Installed cli-dispatch-run -> $BinDir\cli-dispatch-run.ps1 (+ .cmd shim; engine -> $LibExecDir\verdict-writer.mjs)"
+
 # ---- DeepSeek backend (claude-ds family) ----
 if ($wantDS) {
   Copy-Item -Force (Join-Path $ScriptDir "claude-ds.ps1") (Join-Path $BinDir "claude-ds.ps1")
