@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.40.2] — 2026-07-11
+
+### Changed
+
+- **Dashboard header simplified.** The "· read-only by default · opt-in
+  takeover" tagline is gone, and the "Clean stale sessions" trigger moved
+  out of the header into the config view (⚙) alongside the rest of the
+  session-maintenance controls. The header now surfaces only what changes
+  moment to moment — the title, the active-worker count, and the
+  theme/config buttons — leaving static explainer text and one-off actions
+  to the config panel instead of competing for space on every page load.
+
 ## [3.40.1] — 2026-07-11
 
 ### Fixed

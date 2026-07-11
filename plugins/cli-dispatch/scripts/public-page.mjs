@@ -87,7 +87,7 @@ body.dragging-rail,body.dragging-rail *{user-select:none}
 @media (max-width:1100px){.layout{grid-template-columns:min(var(--rail-w),260px) 1fr}.drag-handle{display:none}.main{grid-column:2}.rail{grid-column:1}.side-panel{display:none}}
 </style></head><body>
 <header><b>cli-dispatch</b> <span class="muted">dashboard</span><span class="grow"></span>
-<span class="small muted" id="meta"></span><button class="tkbtn" id="cleanBtn" onclick="openCleanPanel()" style="font-size:11px;padding:2px 8px">Clean stale sessions</button><span class="small muted">· read-only by default · opt-in takeover</span><button class="tkbtn" id="themeBtn" onclick="var h=document.documentElement;var n=h.getAttribute('data-theme')==='light'?'dark':'light';h.setAttribute('data-theme',n);localStorage.setItem('cli-dispatch-theme',n);this.textContent=n==='dark'?'☀':'☾'" title="Toggle theme" style="font-size:13px;padding:2px 8px">☀</button><button class="tkbtn" id="configBtn" onclick="openConfigView()" title="Configuration" style="font-size:13px;padding:2px 8px;margin-left:6px">⚙</button><script>document.getElementById("themeBtn").textContent=document.documentElement.getAttribute("data-theme")==="dark"?"☀":"☾"</script></header>
+<span class="small muted" id="meta"></span><button class="tkbtn" id="themeBtn" onclick="var h=document.documentElement;var n=h.getAttribute('data-theme')==='light'?'dark':'light';h.setAttribute('data-theme',n);localStorage.setItem('cli-dispatch-theme',n);this.textContent=n==='dark'?'☀':'☾'" title="Toggle theme" style="font-size:13px;padding:2px 8px">☀</button><button class="tkbtn" id="configBtn" onclick="openConfigView()" title="Configuration" style="font-size:13px;padding:2px 8px;margin-left:6px">⚙</button><script>document.getElementById("themeBtn").textContent=document.documentElement.getAttribute("data-theme")==="dark"?"☀":"☾"</script></header>
 <div id="cleanPanel" style="display:none"></div>
 <div class="layout">
  <div class="rail">
@@ -649,6 +649,11 @@ async function renderConfigEditor() {
       }
       html += '</div></div>'
     }
+    html += '<div class="panel">'
+    html += '<div style="padding:8px 12px;border-bottom:1px solid var(--bd);font-weight:bold;color:var(--accent)">Maintenance</div>'
+    html += '<div class="sabody" style="padding:12px">'
+    html += '<button class="tkbtn" id="cleanBtn" onclick="openCleanPanel()" style="font-size:11px;padding:2px 8px">Clean stale sessions</button>'
+    html += '</div></div>'
     // Static <datalist> model-ID suggestions for AG/CX/CP backends.
     // AG_MODEL/AG_MODELS options sourced from verified live output of "agy models" on this machine.
     html += '<datalist id="dl_AG_MODEL"><option value="Gemini 3.5 Flash (Medium)"><option value="Gemini 3.5 Flash (High)"><option value="Gemini 3.5 Flash (Low)"><option value="Gemini 3.1 Pro (Low)"><option value="Gemini 3.1 Pro (High)"><option value="Claude Sonnet 4.6 (Thinking)"><option value="Claude Opus 4.6 (Thinking)"><option value="GPT-OSS 120B (Medium)"></datalist>'

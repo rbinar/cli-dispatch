@@ -7,6 +7,18 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.40.2] — 2026-07-11
+
+### Değiştirildi
+
+- **Dashboard header'ı sadeleştirildi.** "· read-only by default · opt-in
+  takeover" sloganı kaldırıldı, "Clean stale sessions" tetikleyicisi
+  header'dan çıkarılıp config görünümüne (⚙) — session bakım
+  kontrollerinin yanına — taşındı. Header artık yalnızca anlık değişen
+  bilgiyi gösteriyor: başlık, aktif worker sayacı ve tema/config butonları
+  — statik açıklama metni ve tek seferlik aksiyonlar her sayfa yüklemesinde
+  yer kapmak yerine config paneline bırakıldı.
+
 ## [3.40.1] — 2026-07-11
 
 ### Düzeltildi
