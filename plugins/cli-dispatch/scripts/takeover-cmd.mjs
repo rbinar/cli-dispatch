@@ -101,7 +101,7 @@ function stripQuotes(value) {
 // loadConfigDefaults() — best-effort, side-effecting (sets process.env). Never overrides
 // an already-set process.env key (real env vars always win — this matters both for
 // correctness in real deployments and for unit tests that stub via process.env directly).
-export function loadConfigDefaults() {
+function loadConfigDefaults() {
   if (_configLoaded) return
   _configLoaded = true
   const configPath = resolveConfigPath()

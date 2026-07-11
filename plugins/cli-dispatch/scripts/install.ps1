@@ -56,6 +56,13 @@ where pwsh >nul 2>nul && (pwsh -NoProfile -ExecutionPolicy Bypass -File "%~dp0$n
 Copy-Item -Force (Join-Path $ScriptDir "parse-utils.mjs") (Join-Path $LibExecDir "parse-utils.mjs")
 Write-Host "Installed shared parser helpers -> $LibExecDir\parse-utils.mjs"
 
+# Shared pwsh version-staleness check (backend-agnostic; always installed) — dot-sourced by
+# cli-dispatch-dashboard.ps1, ds-agent.ps1, and cx-agent.ps1 via
+# "(Split-Path -Parent $MyInvocation.MyCommand.Path)\version-check.ps1", so it must sit next
+# to them in BinDir (mirrors version-check.sh's install on the bash side).
+Copy-Item -Force (Join-Path $ScriptDir "version-check.ps1") (Join-Path $BinDir "version-check.ps1")
+Write-Host "Installed shared version-check helper -> $BinDir\version-check.ps1"
+
 # Dashboard (backend-agnostic; always installed).
 Copy-Item -Force (Join-Path $ScriptDir "cli-dispatch-dashboard.ps1") (Join-Path $BinDir "cli-dispatch-dashboard.ps1")
 Set-Content -Path (Join-Path $BinDir "cli-dispatch-dashboard.cmd") -Value (New-Shim "cli-dispatch-dashboard") -Encoding ASCII

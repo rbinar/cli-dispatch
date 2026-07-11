@@ -28,11 +28,23 @@ export function isNonTerminalState(state) {
 export function createStatusWriter(statusFile, status, { throttleMs = 200 } = {}) {
   let lastWrite = 0
   let timer = null
+  let warned = false
 
   const flush = () => {
     if (timer) { clearTimeout(timer); timer = null }
     lastWrite = Date.now()
-    try { writeFileSync(statusFile, JSON.stringify(status, null, 2) + '\n') } catch { /* ignore */ }
+    try {
+      writeFileSync(statusFile, JSON.stringify(status, null, 2) + '\n')
+    } catch (err) {
+      // A swallowed write here leaves status.json stuck at "running" forever with no
+      // trace (see stream-utils.sh's reconcile_session_error) — warn once per writer
+      // so a full disk / permission error is at least visible on stderr, without
+      // spamming on every ~200ms flush.
+      if (!warned) {
+        warned = true
+        process.stderr.write(`createStatusWriter: cannot write ${statusFile}: ${err.message}\n`)
+      }
+    }
   }
 
   const write = () => {
@@ -80,7 +92,11 @@ export function openSessionFiles(transcriptFile, progressFile, isResume, { progr
 
 // Write the meta object to metaFile (best-effort, ignores I/O errors).
 export function writeMetaFile(metaFile, meta) {
-  try { writeFileSync(metaFile, JSON.stringify(meta, null, 2) + '\n') } catch { /* ignore */ }
+  try {
+    writeFileSync(metaFile, JSON.stringify(meta, null, 2) + '\n')
+  } catch (err) {
+    process.stderr.write(`writeMetaFile: cannot write ${metaFile}: ${err.message}\n`)
+  }
 }
 
 // ---- generic status.json / meta.json read-modify-write helpers ----
@@ -99,8 +115,12 @@ export function readJsonFile(file) {
 
 // Write obj to file as pretty JSON (best-effort, ignores I/O errors — matches
 // writeMetaFile's existing style exactly).
-export function writeJsonFile(file, obj) {
-  try { writeFileSync(file, JSON.stringify(obj, null, 2) + '\n') } catch { /* ignore */ }
+function writeJsonFile(file, obj) {
+  try {
+    writeFileSync(file, JSON.stringify(obj, null, 2) + '\n')
+  } catch (err) {
+    process.stderr.write(`writeJsonFile: cannot write ${file}: ${err.message}\n`)
+  }
 }
 
 // ---- human-takeover state helpers ----

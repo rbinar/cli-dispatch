@@ -7,6 +7,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.39.3] — 2026-07-11
+
+### Changed
+
+- **Dead export cleanup (AU8, behavior-preserving refactor).** `parse-utils.mjs`'s
+  `writeJsonFile`, `verdict-writer.mjs`'s `readJson`, `check-version-sync.mjs`'s
+  `defaultVersionSyncPaths`/`runVersionSyncCli`, and `takeover-cmd.mjs`'s
+  `loadConfigDefaults` were exported but had no importers anywhere in the repo (static or
+  dynamic) — re-verified before removal. Each stays a private, file-local function; no
+  behavior change. `parse-utils.mjs`'s `isNonTerminalState()` is exported but also
+  unreferenced — it was deliberately kept, since it's documented in `CLAUDE.md` as part of
+  the session-state public API contract.
+- **`.ps1` version-staleness check deduplicated (AU9).** `cli-dispatch-dashboard.ps1`,
+  `ds-agent.ps1`, and `cx-agent.ps1` each carried their own ~40-line copy of the
+  installed-vs-cached-plugin-version check (the 3.39.2 entry above notes this duplication
+  was accepted at the time). Extracted into a new shared `version-check.ps1` module — the
+  `.ps1` mirror of the existing `version-check.sh` — that all three now dot-source from
+  next to themselves; `install.ps1` copies it into `~/.local/bin` alongside its
+  consumers. Semantics are unchanged, including the strict `^\d+\.\d+\.\d+$` version-folder
+  match (intentionally not aligned to bash's looser glob — that would be a behavior
+  change, out of scope here).
+
+## [3.39.2] — 2026-07-11
+
+### Fixed
+
+- **`version-check.sh` was never installed (AU3).** All five agent wrappers (`ds-agent`,
+  `cx-agent`, `cp-agent`, `ag-agent`, `oc-agent`) source `version-check.sh` at runtime,
+  but no installer copied it — so the stale-version warning was a dead feature on every
+  installed system. `install.sh` now installs it alongside the wrappers (target verified
+  against the wrappers' actual source path). `install.ps1` needs no change: the `.ps1`
+  agents duplicate the check inline.
+- **`cli-dispatch-run.ps1` leaked temp files on error paths (AU4).** `stderrFile`,
+  `launchMarker`, and `verifyResultsPath` were only cleaned up on the happy path. The
+  main flow is now wrapped in `try/finally` with a `$script:TempFiles` registry — the
+  PS1 equivalent of the bash twin's `trap cleanup_tmp EXIT INT TERM` — so temp files are
+  removed on every exit path, including early `exit` and Ctrl-C.
+- **Windows watchdog could kill the wrong process (AU5, minimal guard).**
+  `claude-ds-stream.ps1` and `cx-stream.ps1` locate the worker PID via a WMI
+  `Win32_Process` command-line substring match; with concurrent similar sessions this
+  can match more than one process. When the match count is not exactly 1, the kill is
+  now skipped with a stderr warning; single-match behavior is unchanged.
+- **`parse-utils.mjs` swallowed write errors silently (AU6).** The catch blocks in
+  `createStatusWriter.flush`, `writeMetaFile`, and `writeJsonFile` were `/* ignore */` —
+  a disk-full or permission error left `status.json` stuck at `running` forever with no
+  trace. Each now writes a one-line warning to stderr (with a once-per-writer guard on
+  the ~200ms `flush` path to avoid spam). Write behavior itself is unchanged.
+- **`cli-dispatch-run` (bash) `--prompt-file` missing-file check (AU13).** The PS1 twin
+  validated `--prompt-file` existence at parse time; bash failed late with an obscure
+  error. Bash now mirrors the PS1 check: clear `prompt file not found` message on stderr
+  and `exit 1` right after argument parsing.
+
+## [3.39.1] — 2026-07-11
+
+### Fixed
+
+- **`cli-dispatch-wait.ps1` infinite loop when the session dir vanishes (AU1).** The
+  terminal-state check used a fixed `@('done','error','killed')` allowlist, so a
+  missing/unreadable `status.json` (state resolves to `$null`) was treated as
+  non-terminal; with the default `-Timeout 0` the timeout branch never fires, so the
+  poll loop spun forever — hanging the Windows run pipeline that calls it
+  (`cli-dispatch-run.ps1`). The loop now mirrors the bash twin's polarity: break on any
+  state other than `running`/`human-controlled`, and emit a stderr warning on an
+  empty/unreadable state instead of silently treating it as normal.
+- **`cli-dispatch-run` (bash) crash when the worktree is already gone (AU2).** The
+  `git -C "$WORKTREE_PATH" status/diff` calls that build `verdict-diff.patch` were
+  unguarded under `set -euo pipefail`; if the worktree had been removed (e.g.
+  `--cleanup-if-clean` followed by `--resume`), git exits 128 and the script died before
+  writing `verdict.json`. The git calls are now guarded by a `[ -d "$WORKTREE_PATH" ]`
+  check that falls through to an empty diff — matching the PS1 twin — so `verdict.json`
+  is still written.
+
 ## [3.39.0] — 2026-07-11
 
 ### Added

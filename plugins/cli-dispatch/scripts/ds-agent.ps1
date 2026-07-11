@@ -7,43 +7,10 @@ $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-# Version staleness check
-function Show-VersionWarning {
-  $installedVerFile = Join-Path $HOME '.config/cli-dispatch/.installed-version'
-  if (-not (Test-Path $installedVerFile)) { return }
-  try {
-    $installedVer = (Get-Content -Raw $installedVerFile 2>$null).Trim()
-    if ([string]::IsNullOrEmpty($installedVer)) { return }
-    $cacheDir = Join-Path $HOME '.claude/plugins/cache/cli-dispatch/cli-dispatch'
-    if (-not (Test-Path $cacheDir)) { return }
-    $subdirs = Get-ChildItem -Path $cacheDir -Directory 2>$null
-    $newestVer = $null
-    foreach ($dir in $subdirs) {
-      $name = $dir.Name
-      if ($name -notmatch '^\d+\.\d+\.\d+$') { continue }
-      if ($null -eq $newestVer) { $newestVer = $name; continue }
-      $parts = [int[]]($name -split '\.')
-      $curr = [int[]]($newestVer -split '\.')
-      for ($i = 0; $i -lt 3; $i++) {
-        $vName = if ($i -lt $parts.Length) { $parts[$i] } else { 0 }
-        $vCur = if ($i -lt $curr.Length) { $curr[$i] } else { 0 }
-        if ($vName -gt $vCur) { $newestVer = $name; break }
-        if ($vName -lt $vCur) { break }
-      }
-    }
-    if ([string]::IsNullOrEmpty($newestVer) -or $newestVer -eq $installedVer) { return }
-    $nextParts = [int[]]($newestVer -split '\.')
-    $instParts = [int[]]($installedVer -split '\.')
-    for ($i = 0; $i -lt 3; $i++) {
-      $vNext = if ($i -lt $nextParts.Length) { $nextParts[$i] } else { 0 }
-      $vInst = if ($i -lt $instParts.Length) { $instParts[$i] } else { 0 }
-      if ($vNext -lt $vInst) { return }
-      if ($vNext -gt $vInst) {
-        [Console]::Error.WriteLine("cli-dispatch: installed copy ($installedVer) is older than the available plugin ($newestVer) — run /cli-dispatch:setup to re-sync ~/.local. Continuing with the installed copy.")
-        return
-      }
-    }
-  } catch {}
+# Version staleness check (shared module — see version-check.ps1)
+$__versionCheckPs1 = Join-Path $ScriptDir 'version-check.ps1'
+if (Test-Path $__versionCheckPs1) {
+  try { . $__versionCheckPs1 } catch {}
 }
 
 function Show-Usage { [Console]::Error.WriteLine('usage: ds-agent [--read-only] [--cwd <dir>] [--resume <id>] [--effort low|medium|high] [--max-runtime <s>] [--idle-timeout <s>] [-q] "<task>"') }

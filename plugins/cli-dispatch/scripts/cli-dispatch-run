@@ -141,6 +141,10 @@ if [ -n "$PROMPT" ] && [ -n "$PROMPT_FILE" ]; then
   usage
   exit 5
 fi
+if [ -n "$PROMPT_FILE" ] && [ ! -f "$PROMPT_FILE" ]; then
+  echo "cli-dispatch-run: prompt file not found: $PROMPT_FILE" >&2
+  exit 1
+fi
 
 case "$BACKEND" in
   ds|ag|cx|oc|cp) ;;
@@ -349,8 +353,13 @@ fi
 
 DIFF_PATCH_PATH="$SESSION_DIR/verdict-diff.patch"
 : > "$DIFF_PATCH_PATH"
-git -C "$WORKTREE_PATH" status --short --untracked-files=all > "$DIFF_PATCH_PATH"
-git -C "$WORKTREE_PATH" diff HEAD >> "$DIFF_PATCH_PATH"
+# Worktree may already be gone (e.g. --cleanup-if-clean then --resume) — under
+# `set -e` an unguarded `git -C` would exit 128 and kill the run before verdict.json
+# is written. Guard it and fall through to an empty diff like the PS1 twin does.
+if [ -n "$WORKTREE_PATH" ] && [ -d "$WORKTREE_PATH" ]; then
+  git -C "$WORKTREE_PATH" status --short --untracked-files=all > "$DIFF_PATCH_PATH"
+  git -C "$WORKTREE_PATH" diff HEAD >> "$DIFF_PATCH_PATH"
+fi
 
 VERIFY_RESULTS_PATH=""
 if [ "${#VERIFY[@]}" -gt 0 ] && [ "$STATE" != "human-controlled" ]; then

@@ -38,7 +38,6 @@ if (-not (Test-Path $sessionDir)) {
 }
 
 $statusFile = Join-Path $sessionDir "status.json"
-$terminalStates = @('done', 'error', 'killed')
 
 # Read the 'state' field from status.json. Tolerates a missing/malformed file — returns
 # $null (treated as an unknown, non-terminal state) rather than throwing.
@@ -88,7 +87,16 @@ function Write-Summary([string]$State) {
 $startTime = Get-Date
 while ($true) {
   $state = Get-SessionState
-  if ($terminalStates -contains $state) { break }
+
+  # Empty/null = status.json missing/unreadable (dir removed, relocated, or never
+  # finalized) — say so instead of silently reporting it like a normal terminal state.
+  if ([string]::IsNullOrEmpty($state)) {
+    [Console]::Error.WriteLine("cli-dispatch-wait: cannot read state for $SessionId (status.json missing or unreadable — session dir removed/relocated?)")
+  }
+
+  # Terminal = anything other than running/human-controlled (done|error|killed, in practice).
+  if ($state -ne 'running' -and $state -ne 'human-controlled') { break }
+
   if ($Timeout -gt 0) {
     $elapsedSeconds = ((Get-Date) - $startTime).TotalSeconds
     if ($elapsedSeconds -gt $Timeout) {

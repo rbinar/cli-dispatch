@@ -444,10 +444,12 @@ if ($maxRuntime -gt 0 -or $idleTimeout -gt 0) {
     $transcript = Join-Path $sessionDir "transcript.jsonl"
     $watchPid = 0
     for ($n = 0; $n -lt 160; $n++) {
-      $proc = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-        Where-Object { $_.CommandLine -and $_.CommandLine.Contains($sid) -and $_.CommandLine.Contains("stream-json") } |
-        Select-Object -First 1
-      if ($proc) { $watchPid = [int]$proc.ProcessId; break }
+      $matchingProcs = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -and $_.CommandLine.Contains($sid) -and $_.CommandLine.Contains("stream-json") })
+      if ($matchingProcs.Count -eq 1) { $watchPid = [int]$matchingProcs[0].ProcessId; break }
+      if ($matchingProcs.Count -gt 1) {
+        [Console]::Error.WriteLine("  guard:  multiple matching processes ($($matchingProcs.Count)) for session $sid, skipping kill to avoid wrong-process termination")
+      }
       Start-Sleep -Milliseconds 250
     }
     if ($watchPid -eq 0) { return }

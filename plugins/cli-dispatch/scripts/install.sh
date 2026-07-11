@@ -114,11 +114,13 @@ echo "Backends: $BACKENDS"
 
 # ---- Shared helpers (backend-agnostic; always installed) --------------------
 # stream-utils.sh is sourced by every bash stream wrapper via "$SCRIPT_DIR/stream-utils.sh",
-# and parse-utils.mjs is imported by every parser via './parse-utils.mjs' — both must live
-# next to their consumers in the installed locations.
-install -m 0644 "$SCRIPT_DIR/stream-utils.sh"  "$BIN_DIR/stream-utils.sh"
-install -m 0644 "$SCRIPT_DIR/parse-utils.mjs"  "$LIBEXEC_DIR/parse-utils.mjs"
-echo "Installed shared helpers -> $BIN_DIR/stream-utils.sh, $LIBEXEC_DIR/parse-utils.mjs"
+# parse-utils.mjs is imported by every parser via './parse-utils.mjs', and version-check.sh
+# is sourced by every *-agent wrapper via "$(dirname "${BASH_SOURCE[0]}")/version-check.sh" —
+# all three must live next to their consumers in the installed locations.
+install -m 0644 "$SCRIPT_DIR/stream-utils.sh"    "$BIN_DIR/stream-utils.sh"
+install -m 0644 "$SCRIPT_DIR/parse-utils.mjs"    "$LIBEXEC_DIR/parse-utils.mjs"
+install -m 0644 "$SCRIPT_DIR/version-check.sh"   "$BIN_DIR/version-check.sh"
+echo "Installed shared helpers -> $BIN_DIR/stream-utils.sh, $BIN_DIR/version-check.sh, $LIBEXEC_DIR/parse-utils.mjs"
 
 # ---- Dashboard (backend-agnostic; always installed) ------------------------
 install -m 0755 "$SCRIPT_DIR/cli-dispatch-dashboard" "$BIN_DIR/cli-dispatch-dashboard"

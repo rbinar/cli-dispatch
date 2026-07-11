@@ -401,10 +401,12 @@ if ($maxRuntime -gt 0 -or $idleTimeout -gt 0) {
     $tf = Join-Path $sessionDir '.timeout'
     $procId = $null
     for ($n = 0; $n -lt 160; $n++) {
-      $p = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-           Where-Object { $_.CommandLine -and $_.CommandLine -match '\bexec\b' -and $_.CommandLine.Contains('--json') -and $_.Name -match 'codex' } |
-           Select-Object -First 1
-      if ($p) { $procId = $p.ProcessId; break }
+      $matchingProcs = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+           Where-Object { $_.CommandLine -and $_.CommandLine -match '\bexec\b' -and $_.CommandLine.Contains('--json') -and $_.Name -match 'codex' })
+      if ($matchingProcs.Count -eq 1) { $procId = $matchingProcs[0].ProcessId; break }
+      if ($matchingProcs.Count -gt 1) {
+        [Console]::Error.WriteLine("  guard:   multiple matching processes ($($matchingProcs.Count)) for codex exec, skipping kill to avoid wrong-process termination")
+      }
       Start-Sleep -Milliseconds 250
     }
     if (-not $procId) { return }

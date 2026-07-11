@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 const SELF_DIR = path.dirname(fileURLToPath(import.meta.url))
 const DEFAULT_REPO_ROOT = path.resolve(SELF_DIR, '../../..')
 
-export function defaultVersionSyncPaths(repoRoot = DEFAULT_REPO_ROOT) {
+function defaultVersionSyncPaths(repoRoot = DEFAULT_REPO_ROOT) {
   return {
     rootDir: repoRoot,
     pluginJsonPath: path.join(repoRoot, 'plugins', 'cli-dispatch', '.claude-plugin', 'plugin.json'),
@@ -130,7 +130,7 @@ export function checkVersionSync(paths = {}) {
   return { ok: errors.length === 0, version: pluginVersion, errors }
 }
 
-export function runVersionSyncCli(paths = {}) {
+function runVersionSyncCli(paths = {}) {
   const result = checkVersionSync(paths)
   if (result.ok) {
     console.log(`✓ version sync OK (${result.version})`)

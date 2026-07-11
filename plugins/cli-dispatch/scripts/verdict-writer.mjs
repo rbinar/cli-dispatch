@@ -185,8 +185,6 @@ export function buildVerdict({ statusJson, metaJson, changedFilesJson, verifyRes
   return { verdict, exitCode }
 }
 
-export { readJson }
-
 function printUsage() {
   process.stderr.write('usage: verdict-writer.mjs <run-verify|build-verdict>\n')
 }

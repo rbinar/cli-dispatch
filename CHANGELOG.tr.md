@@ -7,6 +7,79 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.39.3] — 2026-07-11
+
+### Değiştirildi
+
+- **Ölü export temizliği (AU8, davranışı koruyan refactor).** `parse-utils.mjs`'in
+  `writeJsonFile`'ı, `verdict-writer.mjs`'in `readJson`'ı, `check-version-sync.mjs`'in
+  `defaultVersionSyncPaths`/`runVersionSyncCli`'ı ve `takeover-cmd.mjs`'in
+  `loadConfigDefaults`'ı export ediliyordu ama repo genelinde (statik veya dinamik) hiçbir
+  importer'ları yoktu — kaldırmadan önce yeniden doğrulandı. Her biri artık private,
+  dosya-içi bir fonksiyon; davranış değişmedi. `parse-utils.mjs`'in `isNonTerminalState()`
+  fonksiyonu da export ediliyor ve referanssız ama bilinçli olarak korundu — `CLAUDE.md`'de
+  session-state public API sözleşmesinin parçası olarak belgeli.
+- **`.ps1` version-staleness kontrolü tekilleştirildi (AU9).** `cli-dispatch-dashboard.ps1`,
+  `ds-agent.ps1` ve `cx-agent.ps1` her biri kurulu-vs-cache'lenmiş plugin versiyonu
+  kontrolünün kendi ~40 satırlık kopyasını taşıyordu (yukarıdaki 3.39.2 kaydı bu
+  duplikasyonun o zaman kabul edildiğini not düşer). Yeni paylaşılan bir `version-check.ps1`
+  modülüne çıkarıldı — mevcut `version-check.sh`'in `.ps1` karşılığı — üç dosya da artık
+  onu kendi yanından dot-source ediyor; `install.ps1` onu tüketicileriyle birlikte
+  `~/.local/bin`'e kopyalıyor. Semantik değişmedi, katı `^\d+\.\d+\.\d+$` versiyon-klasörü
+  eşleşmesi dahil (bash'in daha gevşek glob'una bilinçli olarak hizalanmadı — bu bir
+  davranış değişikliği olurdu, kapsam dışı).
+
+## [3.39.2] — 2026-07-11
+
+### Düzeltildi
+
+- **`version-check.sh` hiç kurulmuyordu (AU3).** Beş agent wrapper'ının tamamı
+  (`ds-agent`, `cx-agent`, `cp-agent`, `ag-agent`, `oc-agent`) çalışma zamanında
+  `version-check.sh`'i source ediyor ama hiçbir installer onu kopyalamıyordu — bu yüzden
+  stale-version uyarısı kurulu her sistemde ölü özellikti. `install.sh` artık onu
+  wrapper'larla birlikte kuruyor (hedef, wrapper'ların gerçek source path'iyle
+  doğrulandı). `install.ps1` değişiklik gerektirmiyor: `.ps1` agent'ları kontrolü inline
+  duplike ediyor.
+- **`cli-dispatch-run.ps1` hata yollarında temp dosya sızdırıyordu (AU4).** `stderrFile`,
+  `launchMarker` ve `verifyResultsPath` sadece mutlu yolda temizleniyordu. Ana akış artık
+  `$script:TempFiles` kaydı olan bir `try/finally` ile sarılı — bash ikizinin
+  `trap cleanup_tmp EXIT INT TERM` kalıbının PS1 karşılığı — böylece erken `exit` ve
+  Ctrl-C dahil her çıkış yolunda temp dosyalar siliniyor.
+- **Windows watchdog yanlış process'i öldürebiliyordu (AU5, minimal guard).**
+  `claude-ds-stream.ps1` ve `cx-stream.ps1` worker PID'ini WMI `Win32_Process`
+  komut-satırı substring eşleşmesiyle buluyor; eşzamanlı benzer session'larda birden
+  fazla process eşleşebiliyor. Eşleşme sayısı tam 1 değilse kill artık stderr uyarısıyla
+  atlanıyor; tek-eşleşme davranışı değişmedi.
+- **`parse-utils.mjs` yazma hatalarını sessizce yutuyordu (AU6).**
+  `createStatusWriter.flush`, `writeMetaFile` ve `writeJsonFile` catch blokları
+  `/* ignore */` idi — disk dolu ya da izin hatasında `status.json` iz bırakmadan
+  sonsuza dek `running`'de kalıyordu. Her biri artık stderr'e tek satır uyarı yazıyor
+  (~200ms'lik `flush` yolunda spam'i önlemek için writer başına bir kez). Yazma
+  davranışının kendisi değişmedi.
+- **`cli-dispatch-run` (bash) `--prompt-file` eksik-dosya kontrolü (AU13).** PS1 ikizi
+  `--prompt-file` varlığını parse anında doğruluyordu; bash geç ve belirsiz hata
+  veriyordu. Bash artık PS1 kontrolünü aynalıyor: argüman parse'ından hemen sonra
+  stderr'e net `prompt file not found` mesajı ve `exit 1`.
+
+## [3.39.1] — 2026-07-11
+
+### Düzeltildi
+
+- **Session dizini kaybolduğunda `cli-dispatch-wait.ps1` sonsuz döngüsü (AU1).**
+  Terminal-durum kontrolü sabit `@('done','error','killed')` allowlist'i kullanıyordu; bu
+  yüzden eksik/okunamayan `status.json` (state `$null` olur) non-terminal sayılıyordu.
+  Varsayılan `-Timeout 0` ile timeout dalı hiç çalışmadığından poll döngüsü sonsuza dek
+  dönüyor ve onu çağıran Windows run pipeline'ını (`cli-dispatch-run.ps1`) asıyordu. Döngü
+  artık bash ikizinin polaritesini aynalıyor: `running`/`human-controlled` dışındaki her
+  durumda break, ve boş/okunamayan durumda sessizce normal saymak yerine stderr'e uyarı
+  yazıyor.
+- **Worktree önceden silinmişse `cli-dispatch-run` (bash) çökmesi (AU2).**
+  `verdict-diff.patch`'i üreten `git -C "$WORKTREE_PATH" status/diff` çağrıları
+  `set -euo pipefail` altında korumasızdı; worktree kaldırılmışsa (ör. `--cleanup-if-clean`
+  ardından `--resume`) git 128 ile çıkıyor ve script `verdict.json` yazılmadan ölüyordu. Git
+  çağrıları artık `[ -d "$WORKTREE_PATH" ]` guard'ıyla korunuyor ve worktree yoksa boş diff'e
+  düşüyor — PS1 ikiziyle eşleşiyor — böylece `verdict.json` yine yazılıyor.
+
 ## [3.39.0] — 2026-07-11
 
 ### Eklendi

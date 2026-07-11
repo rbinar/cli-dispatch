@@ -242,159 +242,169 @@ function Invoke-CleanupWorktree {
   }
 }
 
-if (-not $PromptFile) {
-  $tmpPrompt = New-TemporaryFile
-  Set-Content -Path $tmpPrompt.FullName -Value $Prompt -NoNewline
-  $PromptFile = $tmpPrompt.FullName
-  $tmpFiles = @($tmpPrompt.FullName)
-} elseif (-not (Test-Path $PromptFile)) {
-  Write-Host "cli-dispatch-run: prompt file not found: $PromptFile"
-  exit 1
-} else {
-  $tmpFiles = @()
-}
+# All temp files created below (prompt tmp file, worktree-launch stderr/marker,
+# verify-results json) are tracked here and removed in the `finally` block so every
+# exit path — normal, early `exit N`, thrown error, or Ctrl-C — cleans up. This is the
+# PowerShell equivalent of the bash twin's `trap cleanup_tmp EXIT INT TERM` (see
+# cli-dispatch-run's TEMP_FILES/cleanup_tmp).
+$script:TempFiles = [System.Collections.Generic.List[string]]::new()
 
-$baseVars = @{}
-if ($Model) {
-  if ($Backend -eq 'ds') { $baseVars['DS_MODEL'] = $Model }
-  if ($Backend -eq 'cx') { $baseVars['CX_MODEL'] = $Model }
-}
-if ($Effort) {
-  if ($Backend -eq 'ds') { $baseVars['DS_EFFORT'] = $Effort }
-  if ($Backend -eq 'cx') { $baseVars['CX_EFFORT'] = $Effort }
-}
-
-function Set-TempEnv { param([hashtable]$Vars)
-  foreach ($k in $Vars.Keys) { Set-Item -Path ("Env:" + $k) -Value $Vars[$k] }
-}
-function Clear-TempEnv { param([hashtable]$Vars)
-  foreach ($k in $Vars.Keys) { Remove-Item -Path ("Env:" + $k) -ErrorAction SilentlyContinue }
-}
-
-if ($Resume) {
-  $SessionId = $Resume
-  $SessionDir = Join-Path $SessionsRoot $SessionId
-  if (-not (Test-Path $SessionDir)) {
-    Write-Host "cli-dispatch-run: no such session: $SessionId"
-    exit 5
-  }
-} else {
-  if (-not $Branch) { $Branch = "$Backend-run-$((Get-Date -UFormat '%s'))-$PID" }
-
-  $runner = Join-Path $ScriptDir "${Backend}-worktree-run.sh"
-  if (-not (Test-Path $runner)) {
-    Write-Host "cli-dispatch-run: runner not found: $runner"
-    exit 5
+try {
+  if (-not $PromptFile) {
+    $tmpPrompt = New-TemporaryFile
+    Set-Content -Path $tmpPrompt.FullName -Value $Prompt -NoNewline
+    $PromptFile = $tmpPrompt.FullName
+    $script:TempFiles.Add($tmpPrompt.FullName)
+  } elseif (-not (Test-Path $PromptFile)) {
+    Write-Host "cli-dispatch-run: prompt file not found: $PromptFile"
+    exit 1
   }
 
-  if (-not (Get-Command bash -ErrorAction SilentlyContinue)) {
-    Write-Host 'cli-dispatch-run: bash is required to run worktree runner on Windows.'
-    exit 5
+  $baseVars = @{}
+  if ($Model) {
+    if ($Backend -eq 'ds') { $baseVars['DS_MODEL'] = $Model }
+    if ($Backend -eq 'cx') { $baseVars['CX_MODEL'] = $Model }
+  }
+  if ($Effort) {
+    if ($Backend -eq 'ds') { $baseVars['DS_EFFORT'] = $Effort }
+    if ($Backend -eq 'cx') { $baseVars['CX_EFFORT'] = $Effort }
   }
 
-  # ds prints "claude-ds session: <id>"; cx prints "  thread:  <id>" (the FINAL,
-  # post-relocation session id). Matches the bash twin's marker table.
-  $marker = if ($Backend -eq 'ds') { 'claude-ds session:' } else { 'thread:' }
-  $launchMarker = Join-Path $env:TEMP ([IO.Path]::GetRandomFileName())
-  New-Item -ItemType File -Path $launchMarker -Force | Out-Null
-  $stderrFile = Join-Path $env:TEMP ([IO.Path]::GetRandomFileName())
-
-  Set-TempEnv -Vars $baseVars
-  & bash -lc "'$runner' '$Cwd' '$Branch' '$PromptFile'" 2> $stderrFile | Out-Null
-  $runRc = $LASTEXITCODE
-  Clear-TempEnv -Vars $baseVars
-
-  if ($runRc -ne 0) {
-    Write-Host (Get-Content -Raw $stderrFile)
-    exit $runRc
+  function Set-TempEnv { param([hashtable]$Vars)
+    foreach ($k in $Vars.Keys) { Set-Item -Path ("Env:" + $k) -Value $Vars[$k] }
+  }
+  function Clear-TempEnv { param([hashtable]$Vars)
+    foreach ($k in $Vars.Keys) { Remove-Item -Path ("Env:" + $k) -ErrorAction SilentlyContinue }
   }
 
-  $sessionId = $null
-  $sessionLine = Select-String -Path $stderrFile -Pattern ([regex]::Escape($marker) + '\s*([A-Za-z0-9._-]+)') -AllMatches | Select-Object -Last 1
-  if ($sessionLine -and $sessionLine.Matches.Count -gt 0) {
-    $sessionId = $sessionLine.Matches[-1].Groups[1].Value
+  if ($Resume) {
+    $SessionId = $Resume
+    $SessionDir = Join-Path $SessionsRoot $SessionId
+    if (-not (Test-Path $SessionDir)) {
+      Write-Host "cli-dispatch-run: no such session: $SessionId"
+      exit 5
+    }
+  } else {
+    if (-not $Branch) { $Branch = "$Backend-run-$((Get-Date -UFormat '%s'))-$PID" }
+
+    $runner = Join-Path $ScriptDir "${Backend}-worktree-run.sh"
+    if (-not (Test-Path $runner)) {
+      Write-Host "cli-dispatch-run: runner not found: $runner"
+      exit 5
+    }
+
+    if (-not (Get-Command bash -ErrorAction SilentlyContinue)) {
+      Write-Host 'cli-dispatch-run: bash is required to run worktree runner on Windows.'
+      exit 5
+    }
+
+    # ds prints "claude-ds session: <id>"; cx prints "  thread:  <id>" (the FINAL,
+    # post-relocation session id). Matches the bash twin's marker table.
+    $marker = if ($Backend -eq 'ds') { 'claude-ds session:' } else { 'thread:' }
+    $launchMarker = Join-Path $env:TEMP ([IO.Path]::GetRandomFileName())
+    New-Item -ItemType File -Path $launchMarker -Force | Out-Null
+    $script:TempFiles.Add($launchMarker)
+    $stderrFile = Join-Path $env:TEMP ([IO.Path]::GetRandomFileName())
+    $script:TempFiles.Add($stderrFile)
+
+    Set-TempEnv -Vars $baseVars
+    & bash -lc "'$runner' '$Cwd' '$Branch' '$PromptFile'" 2> $stderrFile | Out-Null
+    $runRc = $LASTEXITCODE
+    Clear-TempEnv -Vars $baseVars
+
+    if ($runRc -ne 0) {
+      Write-Host (Get-Content -Raw $stderrFile)
+      exit $runRc
+    }
+
+    $sessionId = $null
+    $sessionLine = Select-String -Path $stderrFile -Pattern ([regex]::Escape($marker) + '\s*([A-Za-z0-9._-]+)') -AllMatches | Select-Object -Last 1
+    if ($sessionLine -and $sessionLine.Matches.Count -gt 0) {
+      $sessionId = $sessionLine.Matches[-1].Groups[1].Value
+    }
+
+    if (-not $sessionId) {
+      $launchTime = (Get-Item -Path $launchMarker).LastWriteTimeUtc
+      $session = Get-ChildItem -Path $SessionsRoot -Directory |
+        Where-Object { $_.LastWriteTimeUtc -gt $launchTime } |
+        Sort-Object LastWriteTimeUtc -Descending |
+        Select-Object -First 1
+      if ($session) { $sessionId = $session.Name }
+    }
+
+    if (-not $sessionId) {
+      Write-Host 'cli-dispatch-run: failed to discover session id'
+      exit 5
+    }
+
+    $SessionDir = Join-Path $SessionsRoot $sessionId
+    $SessionId = $sessionId
   }
 
-  if (-not $sessionId) {
-    $launchTime = (Get-Item -Path $launchMarker).LastWriteTimeUtc
-    $session = Get-ChildItem -Path $SessionsRoot -Directory |
-      Where-Object { $_.LastWriteTimeUtc -gt $launchTime } |
-      Sort-Object LastWriteTimeUtc -Descending |
-      Select-Object -First 1
-    if ($session) { $sessionId = $session.Name }
-  }
-
-  Remove-Item -Force $launchMarker, $stderrFile -ErrorAction SilentlyContinue
-
-  if (-not $sessionId) {
-    Write-Host 'cli-dispatch-run: failed to discover session id'
-    exit 5
-  }
-
-  $SessionDir = Join-Path $SessionsRoot $sessionId
-  $SessionId = $sessionId
-}
-
-$StatusPath = Join-Path $SessionDir 'status.json'
-$MetaPath = Join-Path $SessionDir 'meta.json'
-$ChangedPath = Join-Path $SessionDir 'changed-files.json'
-$State = Read-JsonField -Path $StatusPath -Key 'state'
-$WorktreePath = Read-JsonField -Path $MetaPath -Key 'cwd'
-if (-not $WorktreePath) { $WorktreePath = $Cwd }
-
-$secsElapsed = 0
-while ($true) {
-  & (Join-Path $ScriptDir 'cli-dispatch-wait.ps1') $SessionId -Timeout 30 | Out-Null
-  $waitRc = $LASTEXITCODE
-
+  $StatusPath = Join-Path $SessionDir 'status.json'
+  $MetaPath = Join-Path $SessionDir 'meta.json'
+  $ChangedPath = Join-Path $SessionDir 'changed-files.json'
   $State = Read-JsonField -Path $StatusPath -Key 'state'
-  if ($State -eq 'human-controlled') {
-    Write-Host 'cli-dispatch-run: human control requested'
-    exit 4
+  $WorktreePath = Read-JsonField -Path $MetaPath -Key 'cwd'
+  if (-not $WorktreePath) { $WorktreePath = $Cwd }
+
+  $secsElapsed = 0
+  while ($true) {
+    & (Join-Path $ScriptDir 'cli-dispatch-wait.ps1') $SessionId -Timeout 30 | Out-Null
+    $waitRc = $LASTEXITCODE
+
+    $State = Read-JsonField -Path $StatusPath -Key 'state'
+    if ($State -eq 'human-controlled') {
+      Write-Host 'cli-dispatch-run: human control requested'
+      exit 4
+    }
+
+    if ($waitRc -eq 0) { break }
+
+    if ($waitRc -eq 2) {
+      if ($Timeout -ne 0) {
+        $secsElapsed += 30
+        if ($secsElapsed -lt $Timeout) { continue }
+      } else { continue }
+    }
+
+    break
   }
 
-  if ($waitRc -eq 0) { break }
-
-  if ($waitRc -eq 2) {
-    if ($Timeout -ne 0) {
-      $secsElapsed += 30
-      if ($secsElapsed -lt $Timeout) { continue }
-    } else { continue }
+  $timeoutExpired = 0
+  if ($Timeout -ne 0 -and $secsElapsed -ge $Timeout -and $State -ne 'done') {
+    $timeoutExpired = 1
   }
 
-  break
+  $diffPatchPath = Join-Path $SessionDir 'verdict-diff.patch'
+  Set-Content -Path $diffPatchPath -Value ''
+  if ($WorktreePath -and (Test-Path $WorktreePath)) {
+    git -C $WorktreePath status --short --untracked-files=all > $diffPatchPath
+    git -C $WorktreePath diff HEAD >> $diffPatchPath
+  }
+
+  $verifyResultsPath = ''
+  if (($Verify.Count -gt 0) -and ($State -ne 'human-controlled')) {
+    $verifyResult = Invoke-Verify -Commands $Verify -Worktree $WorktreePath -TimeoutMs ($VerifyTimeout * 1000) -TailLines 40
+    $verifyResultsPath = Join-Path $env:TEMP ([IO.Path]::GetRandomFileName())
+    $script:TempFiles.Add($verifyResultsPath)
+    $verifyResult | ConvertTo-Json -Depth 8 -Compress | Set-Content -Path $verifyResultsPath -NoNewline
+  }
+
+  if ($verifyResultsPath) {
+    $verdictOut = & $NodeBin $VerdictWriter build-verdict $SessionDir $StatusPath $MetaPath $ChangedPath $timeoutExpired $verifyResultsPath
+    $verdictExit = $LASTEXITCODE
+  } else {
+    $verdictOut = & $NodeBin $VerdictWriter build-verdict $SessionDir $StatusPath $MetaPath $ChangedPath $timeoutExpired
+    $verdictExit = $LASTEXITCODE
+  }
+  Set-Content -Path (Join-Path $SessionDir 'verdict.json') -Value $verdictOut
+
+  Invoke-CleanupWorktree -Worktree $WorktreePath -VerdictExitCode $verdictExit
+
+  exit $verdictExit
+} finally {
+  foreach ($tmp in $script:TempFiles) {
+    if ($tmp -and (Test-Path $tmp)) { Remove-Item -Force $tmp -ErrorAction SilentlyContinue }
+  }
 }
-
-$timeoutExpired = 0
-if ($Timeout -ne 0 -and $secsElapsed -ge $Timeout -and $State -ne 'done') {
-  $timeoutExpired = 1
-}
-
-$diffPatchPath = Join-Path $SessionDir 'verdict-diff.patch'
-Set-Content -Path $diffPatchPath -Value ''
-if ($WorktreePath -and (Test-Path $WorktreePath)) {
-  git -C $WorktreePath status --short --untracked-files=all > $diffPatchPath
-  git -C $WorktreePath diff HEAD >> $diffPatchPath
-}
-
-$verifyResultsPath = ''
-if (($Verify.Count -gt 0) -and ($State -ne 'human-controlled')) {
-  $verifyResult = Invoke-Verify -Commands $Verify -Worktree $WorktreePath -TimeoutMs ($VerifyTimeout * 1000) -TailLines 40
-  $verifyResultsPath = Join-Path $env:TEMP ([IO.Path]::GetRandomFileName())
-  $verifyResult | ConvertTo-Json -Depth 8 -Compress | Set-Content -Path $verifyResultsPath -NoNewline
-}
-
-if ($verifyResultsPath) {
-  $verdictOut = & $NodeBin $VerdictWriter build-verdict $SessionDir $StatusPath $MetaPath $ChangedPath $timeoutExpired $verifyResultsPath
-  $verdictExit = $LASTEXITCODE
-} else {
-  $verdictOut = & $NodeBin $VerdictWriter build-verdict $SessionDir $StatusPath $MetaPath $ChangedPath $timeoutExpired
-  $verdictExit = $LASTEXITCODE
-}
-Set-Content -Path (Join-Path $SessionDir 'verdict.json') -Value $verdictOut
-
-Invoke-CleanupWorktree -Worktree $WorktreePath -VerdictExitCode $verdictExit
-
-foreach ($tmp in $tmpFiles) { if (Test-Path $tmp) { Remove-Item -Force $tmp | Out-Null } }
-
-exit $verdictExit
