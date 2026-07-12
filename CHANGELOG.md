@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.43.2] — 2026-07-12
+
+### Fixed
+
+- **Dashboard live list now reflects worker state transitions inside an
+  existing session dir without a manual page reload.** The live list SSE
+  (`/api/stream?watch=sessions`) watches `WORKERS_ROOT` shallowly, so a new
+  worker dir fired it but a `status.json` write *inside* an existing dir
+  (running → `human-controlled` on takeover, or running → `done`) did not —
+  the badge/filter stayed stale until reload. Fix: on a state transition only,
+  `parse-utils.mjs` bumps a `<WORKERS_ROOT>/.cli-dispatch-transitions` sentinel
+  (a direct child of the watched root), which the existing shallow watch sees.
+  Wired into `createStatusWriter` (fires only when `status.state` changes, not
+  on every ~200 ms running flush) and into `markTakeoverActive` /
+  `clearTakeoverState` (the takeover transitions the dashboard triggers
+  directly). Deliberately not a recursive watch — that would fire on every
+  `transcript.jsonl` append across hundreds of session dirs, regressing the
+  repo's transcript-hot-loop cost model. `listWorkers()` already skips
+  non-directory entries, so the sentinel never surfaces as a bogus worker.
+
 ## [3.43.1] — 2026-07-12
 
 ### Changed

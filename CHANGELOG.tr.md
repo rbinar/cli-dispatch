@@ -7,6 +7,27 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.43.2] — 2026-07-12
+
+### Düzeltildi
+
+- **Dashboard canlı listesi, var olan bir oturum dizini içindeki worker
+  state geçişlerini artık manuel sayfa yenilemesi olmadan yansıtıyor.** Canlı
+  liste SSE'si (`/api/stream?watch=sessions`) `WORKERS_ROOT`'u shallow izliyor;
+  yeni bir worker dizini bunu tetikliyordu ama var olan dizin *içindeki* bir
+  `status.json` yazımı (devralmada running → `human-controlled`, ya da
+  running → `done`) tetiklemiyordu — rozet/filtre yenilemeye kadar bayat
+  kalıyordu. Düzeltme: yalnızca state geçişinde `parse-utils.mjs`,
+  izlenen kökün doğrudan çocuğu olan `<WORKERS_ROOT>/.cli-dispatch-transitions`
+  sentinel dosyasını bump'lıyor ve mevcut shallow watch bunu görüyor.
+  `createStatusWriter` (yalnız `status.state` değişince tetiklenir, her ~200 ms
+  running flush'ında değil) ile `markTakeoverActive` / `clearTakeoverState`
+  (dashboard'un doğrudan tetiklediği devralma geçişleri) içine bağlandı.
+  Bilinçli olarak recursive watch değil — o, yüzlerce oturum dizininde her
+  `transcript.jsonl` eklemesinde tetiklenip repo'nun transcript-hot-loop
+  maliyet modelini bozardı. `listWorkers()` zaten dizin olmayan girdileri
+  atladığı için sentinel asla sahte bir worker olarak görünmez.
+
 ## [3.43.1] — 2026-07-12
 
 ### Değiştirildi

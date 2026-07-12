@@ -5,7 +5,7 @@
 // formatting utilities that were duplicated across the three backends.
 
 import { writeFileSync, readFileSync, openSync, writeSync, closeSync, mkdirSync, renameSync, unlinkSync } from 'node:fs'
-import { basename, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 
 // ---- atomic full-file write ----
 //
@@ -45,6 +45,21 @@ export function isNonTerminalState(state) {
   return NON_TERMINAL_STATES.has(state)
 }
 
+// ---- dashboard transition sentinel ----
+
+// The dashboard watches WORKERS_ROOT shallowly, so transitions inside an existing
+// session directory also bump this direct child of WORKERS_ROOT. Best-effort only:
+// status writing must never fail because this notification side channel failed.
+export function bumpTransitionSentinel(statusFile, now = new Date().toISOString()) {
+  try {
+    const workersRoot = dirname(dirname(statusFile))
+    const sentinelFile = join(workersRoot, '.cli-dispatch-transitions')
+    atomicWriteFileSync(sentinelFile, String(now) + '\n')
+  } catch {
+    // best-effort notification only
+  }
+}
+
 // ---- throttled status writer ----
 
 // Factory: returns { flush, write } bound to `status` (mutated in-place by the
@@ -52,6 +67,7 @@ export function isNonTerminalState(state) {
 // disk on every event in a burst.
 export function createStatusWriter(statusFile, status, { throttleMs = 200 } = {}) {
   let lastWrite = 0
+  let lastState = status.state
   let timer = null
   let warned = false
 
@@ -60,6 +76,10 @@ export function createStatusWriter(statusFile, status, { throttleMs = 200 } = {}
     lastWrite = Date.now()
     try {
       atomicWriteFileSync(statusFile, JSON.stringify(status, null, 2) + '\n')
+      if (status.state !== lastState) {
+        bumpTransitionSentinel(statusFile)
+        lastState = status.state
+      }
     } catch (err) {
       // A swallowed write here leaves status.json stuck at "running" forever with no
       // trace (see stream-utils.sh's reconcile_session_error) — warn once per writer
@@ -164,6 +184,7 @@ export function markTakeoverActive(statusFile, { host, ptyPid, ptyPgid, now = ne
   status.state = 'human-controlled'
   status.takeover = { active: true, startedAt: now, host, lastHeartbeat: now, ptyPid, ptyPgid }
   writeJsonFile(statusFile, status)
+  bumpTransitionSentinel(statusFile)
   return status
 }
 
@@ -200,6 +221,7 @@ export function clearTakeoverState(statusFile, { finalState, completedVia, error
   if (error !== undefined) status.error = error
   delete status.takeover
   writeJsonFile(statusFile, status)
+  bumpTransitionSentinel(statusFile)
   return status
 }
 
