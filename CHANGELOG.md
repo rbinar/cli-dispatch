@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.43.4] — 2026-07-13
+
+### Changed
+
+- **Delegation policy now routes by task shape instead of defaulting every
+  delegation to an LLM babysitter.** The SessionStart policy injection
+  (`policy-inject.mjs`) leads with the deterministic path: mechanical work with
+  a machine-checkable check should go to `/cli-dispatch:run <backend> "<task>"
+  --verify '<cmd>'` (zero LLM babysitter tokens), trivial single-file fixes stay
+  inline, and the LLM `*-runner` subagents are reserved for judgment-heavy work
+  (ambiguous scope, output no command can verify). Rationale: `/cli-dispatch:gain`
+  showed babysitting overhead dominating on small-grained delegations — the
+  deterministic runner already existed (3.38.0) but the policy defaulted past it.
+  No behavior change to the runners themselves; this is a routing/guidance
+  update to the injected context.
+
 ## [3.43.3] — 2026-07-12
 
 ### Fixed

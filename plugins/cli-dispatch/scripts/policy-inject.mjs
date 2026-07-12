@@ -37,11 +37,14 @@ export function buildPolicyContext(policyJson) {
   const descriptor = (r) => RUNNER_DESCRIPTORS[r]
 
   const parts = []
+  parts.push(
+    `Route delegations by shape, not reflex. Mechanical work with a machine-checkable check -> the deterministic runner: /cli-dispatch:run <backend> "<task>" --verify '<cmd>' spends ZERO LLM babysitter tokens. Trivial single-file surgical fixes stay inline.`
+  )
   if (runners.length > 0) {
     parts.push(
-      `Delegate substantive work to cli-dispatch runners instead of doing it inline: ${runners
+      `Reserve the LLM *-runner subagents for judgment-heavy work (ambiguous scope, or output no command can verify): ${runners
         .map(descriptor)
-        .join(', ')}. Trivial single-file surgical fixes stay inline.`
+        .join(', ')}.`
     )
   }
   parts.push(

@@ -7,6 +7,22 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.43.4] — 2026-07-13
+
+### Değiştirildi
+
+- **Delegasyon politikası artık her delegasyonu LLM babysitter'a default'lamak
+  yerine işin şekline göre route ediyor.** SessionStart politika enjeksiyonu
+  (`policy-inject.mjs`) deterministik yolu öne çıkarıyor: makine-doğrulanabilir
+  mekanik iş `/cli-dispatch:run <backend> "<task>" --verify '<cmd>'`'a gitmeli
+  (sıfır LLM babysitter token'ı), trivial tek-dosya fix'leri inline kalmalı, ve
+  LLM `*-runner` subagent'ları yargı-gereken işe (belirsiz kapsam, hiçbir
+  komutun doğrulayamayacağı çıktı) ayrılmalı. Gerekçe: `/cli-dispatch:gain`,
+  küçük-taneli delegasyonlarda babysitting overhead'inin baskın geldiğini
+  gösterdi — deterministik runner zaten vardı (3.38.0) ama politika onu
+  atlıyordu. Runner'ların kendisinde davranış değişikliği yok; bu, enjekte edilen
+  bağlama yönelik bir routing/rehberlik güncellemesi.
+
 ## [3.43.3] — 2026-07-12
 
 ### Düzeltildi

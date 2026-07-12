@@ -41,6 +41,16 @@ test('3. enabled:true, no runners -> string without a runner sentence but with n
   )
 })
 
+test('3b. deterministic-runner routing sentence is always present when enabled', () => {
+  const withRunners = buildPolicyContext({ enabled: true, runners: ['ds-runner'] })
+  const noRunners = buildPolicyContext({ enabled: true })
+  for (const ctx of [withRunners, noRunners]) {
+    assert.ok(ctx.includes('/cli-dispatch:run'), 'must name the deterministic runner')
+    assert.ok(ctx.includes('ZERO LLM babysitter tokens'), 'must state the zero-babysitter-token routing')
+  }
+  assert.ok(withRunners.includes('Reserve the LLM'), 'runner sentence framed as the judgment-heavy tier')
+})
+
 test('4. enabled:true with two runners -> both descriptors, starts with the label', () => {
   const ctx = buildPolicyContext({ enabled: true, runners: ['ds-runner', 'cx-runner'] })
   assert.ok(ctx.startsWith('[cli-dispatch policy] '), 'must start with the fixed label')
