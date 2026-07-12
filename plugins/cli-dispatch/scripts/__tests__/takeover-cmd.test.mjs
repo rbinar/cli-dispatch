@@ -80,6 +80,18 @@ test('copilot: builds expected cmd/args/cwd', () => {
   assert.equal(result.cwd, '/tmp/work')
 })
 
+test('copilot: falls back to --continue when threadId is missing', () => {
+  const result = buildTakeoverCommand('copilot', { cwd: '/tmp/work' })
+  assert.equal(result.cmd, 'copilot')
+  assert.deepEqual(result.args, ['--continue'])
+  assert.equal(result.cwd, '/tmp/work')
+})
+
+test('copilot: falls back to --continue when threadId is empty string', () => {
+  const result = buildTakeoverCommand('copilot', { threadId: '', cwd: '/tmp/work' })
+  assert.deepEqual(result.args, ['--continue'])
+})
+
 // =====================================================================================
 // 2. DeepSeek env completeness (highest-value test)
 // =====================================================================================
@@ -170,7 +182,6 @@ const REQUIRED_FIELD = {
   deepseek: 'sessionId',
   antigravity: 'convId',
   opencode: 'threadId',
-  copilot: 'threadId',
 }
 
 for (const [backend, idField] of Object.entries(REQUIRED_FIELD)) {
@@ -206,6 +217,13 @@ for (const [backend, idField] of Object.entries(REQUIRED_FIELD)) {
     )
   })
 }
+
+test('copilot: throws when meta.cwd is missing', () => {
+  assert.throws(
+    () => buildTakeoverCommand('copilot', { threadId: 'th-x' }),
+    /buildTakeoverCommand: copilot requires meta\.cwd/
+  )
+})
 
 // =====================================================================================
 // 4b. deepseek: DEEPSEEK_API_KEY billing-safety guard (dev-security finding SE1)

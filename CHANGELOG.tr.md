@@ -7,6 +7,24 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.43.3] — 2026-07-12
+
+### Düzeltildi
+
+- **Çalışan bir Copilot worker'ının mid-run devralınması artık 500 ile
+  başarısız olmuyor.** `buildTakeoverCommand` copilot için `meta.threadId`
+  zorunlu tutuyordu, ama GitHub Copilot CLI resume `sessionId`'sini yalnızca
+  en son `result` event'inde yayıyor — dolayısıyla *çalışan* bir worker'ın tüm
+  süresi boyunca `meta.threadId` boş kalıyor, ki devralma tam da o anda oluyor.
+  `buildCopilot` artık `threadId` yoksa/boşsa `copilot --continue`'ya
+  (en son oturumu resume et) düşüyor, biliniyorsa (ör. bitmiş oturum)
+  `copilot --resume <id>`'yi koruyor. `meta.cwd` zorunluluğu değişmedi. Yarış
+  uyarısı: `--continue` global olarak en-son copilot oturumunu hedefler;
+  metadata yakalama ile devralma arasında başka bir copilot oturumu başlarsa
+  yanlış olabilir — tek kullanıcılı yerel dashboard için kabul edilebilir.
+  Diğer dört backend etkilenmedi (session id'lerini başta yayıyorlar).
+  Çok-backend takeover testinde ortaya çıktı.
+
 ## [3.43.2] — 2026-07-12
 
 ### Düzeltildi

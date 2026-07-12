@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.43.3] — 2026-07-12
+
+### Fixed
+
+- **Mid-run human-takeover of a Copilot worker no longer fails with a 500.**
+  `buildTakeoverCommand` required `meta.threadId` for copilot, but the GitHub
+  Copilot CLI emits its resume `sessionId` only in the final `result` event —
+  so for the entire duration of a *running* worker `meta.threadId` is empty,
+  which is exactly when takeover happens. `buildCopilot` now falls back to
+  `copilot --continue` (resume the most recent session) when `threadId` is
+  missing/empty, and keeps `copilot --resume <id>` when it is known (e.g. a
+  finished session). The `meta.cwd` requirement is unchanged. Race caveat:
+  `--continue` targets the globally-most-recent copilot session, which could be
+  wrong if another copilot session starts between metadata capture and takeover
+  — acceptable for a single-user local dashboard. The other four backends were
+  unaffected (they surface their session id at start). Surfaced by a
+  multi-backend takeover test pass.
+
 ## [3.43.2] — 2026-07-12
 
 ### Fixed

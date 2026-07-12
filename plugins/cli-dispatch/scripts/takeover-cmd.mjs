@@ -219,20 +219,25 @@ function buildOpencode(meta) {
 
 // ---- copilot (Phase 2) ----
 //
-// `copilot --resume <threadId>` — interactive default. Env token precedence:
-// COPILOT_GITHUB_TOKEN > GH_TOKEN > GITHUB_TOKEN.
+// `copilot --resume <threadId>` when a threadId is available; otherwise fall back to
+// `copilot --continue` to resume the most recent session. Copilot currently only emits
+// sessionId in the final result event, so takeover before that event can lack threadId.
+// Race caveat: `--continue` targets the globally-most-recent copilot session, which can
+// be wrong if another copilot session starts between metadata capture and takeover.
+// Env token precedence: COPILOT_GITHUB_TOKEN > GH_TOKEN > GITHUB_TOKEN.
 function buildCopilot(meta) {
-  if (!meta || typeof meta.threadId !== 'string' || meta.threadId.length === 0) {
-    throw new Error('buildTakeoverCommand: copilot requires meta.threadId')
-  }
   if (!meta || typeof meta.cwd !== 'string' || meta.cwd.length === 0) {
     throw new Error('buildTakeoverCommand: copilot requires meta.cwd')
   }
   const token =
     process.env.COPILOT_GITHUB_TOKEN || process.env.GH_TOKEN || process.env.GITHUB_TOKEN
+  const args =
+    typeof meta.threadId === 'string' && meta.threadId.length > 0
+      ? ['--resume', meta.threadId]
+      : ['--continue']
   return {
     cmd: 'copilot',
-    args: ['--resume', meta.threadId],
+    args,
     env: token ? { COPILOT_GITHUB_TOKEN: token } : {},
     cwd: meta.cwd,
   }
