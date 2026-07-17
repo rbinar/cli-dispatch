@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.43.5] — 2026-07-17
+
+### Fixed
+
+- **`gain`'s babysitter/worker ratio no longer overstates cost.** The numerator
+  previously summed the output of *every* Anthropic model that appeared in a
+  CLI-invoking subagent transcript, so it folded in main-loop `/cli-dispatch:run`
+  invocations and forbidden model overrides (sonnet-5/opus/…) alongside the only
+  sanctioned runner model (haiku), and it still counted babysitting for backends
+  whose worker sessions report no usage at all (antigravity). On a real machine
+  this printed a ~2500% ratio; the corrected numerator — pinned-haiku runners on
+  non-blind backends only — reports ~370%. Excluded output is now surfaced on its
+  own line so the number is auditable.
+- **The `polling instead of cli-dispatch-wait?` line was a false alarm.** It fired
+  when a runner exceeded 20 *assistant turns*, but a runner is a babysitter **and**
+  reviewer — dispatch, a single blocking `cli-dispatch-wait` (one turn), diff
+  verification, test runs, worker iteration, and reporting easily exceed 20 turns
+  with no hot-loop at all. It now counts only runners that read a session
+  `status.json` **directly** more than 5 times (a real poll that `cli-dispatch-wait`
+  would have avoided); `cli-dispatch-wait` invocations are never counted.
+
+### Internal
+
+- `gain-report.mjs` split into import-safe pure helpers (`isStatusPollCommand`,
+  `backendFromCommand`, `analyzeAgentEvents`, `computeBabysitRatio`) behind a
+  main-module guard, covered by a new `__tests__/gain-report.test.mjs` (12 cases).
+
 ## [3.43.4] — 2026-07-13
 
 ### Changed

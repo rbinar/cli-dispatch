@@ -7,6 +7,35 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.43.5] — 2026-07-17
+
+### Düzeltildi
+
+- **`gain`'in babysitter/worker oranı artık maliyeti abartmıyor.** Numeratör
+  eskiden, CLI çağıran her subagent transcript'inde görünen *her* Anthropic
+  modelinin output'unu topluyordu; böylece ana-loop `/cli-dispatch:run`
+  invocation'larını ve yasak model override'larını (sonnet-5/opus/…), tek meşru
+  runner modeli (haiku) ile birlikte sayıyordu — üstelik worker session'ları hiç
+  usage raporlamayan backend'lerin (antigravity) babysitting'ini de içeriyordu.
+  Gerçek bir makinede bu ~%2500 oran basıyordu; düzeltilen numeratör — yalnızca
+  blind olmayan backend'lerdeki pinli-haiku runner'lar — ~%370 raporluyor.
+  Numeratör dışı bırakılan output artık kendi satırında gösteriliyor, sayı
+  denetlenebilir.
+- **`polling instead of cli-dispatch-wait?` satırı sahte alarmdı.** Bir runner 20
+  *assistant turn*'ü aştığında tetikleniyordu; oysa runner hem babysitter **hem**
+  reviewer'dır — dispatch, tek bloklayan `cli-dispatch-wait` (bir turn), diff
+  doğrulama, test çalıştırma, worker iterasyonu ve raporlama, hiç hot-loop olmadan
+  kolayca 20 turn'ü aşar. Artık yalnızca bir session `status.json`'unu **doğrudan**
+  5'ten fazla okuyan runner'ları sayıyor (`cli-dispatch-wait`'in önleyeceği gerçek
+  poll); `cli-dispatch-wait` çağrıları asla sayılmıyor.
+
+### Dahili
+
+- `gain-report.mjs`, import-güvenli saf yardımcılara (`isStatusPollCommand`,
+  `backendFromCommand`, `analyzeAgentEvents`, `computeBabysitRatio`) bir
+  main-modül guard'ı arkasında bölündü; yeni `__tests__/gain-report.test.mjs` (12
+  vaka) ile kapsandı.
+
 ## [3.43.4] — 2026-07-13
 
 ### Değiştirildi

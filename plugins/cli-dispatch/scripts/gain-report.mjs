@@ -3,29 +3,27 @@ import fs from 'node:fs'
 import path from 'node:path'
 import readline from 'node:readline'
 import os from 'node:os'
+import {pathToFileURL} from 'node:url'
 
-const cacheRoot=process.env.XDG_CACHE_HOME||path.join(os.homedir(),'.cache')
-let ROOT=process.env.CLI_DISPATCH_SESSIONS_DIR||''
-if(!ROOT){
-  ROOT=path.join(cacheRoot,'cli-dispatch/sessions')
-  if(!fs.existsSync(ROOT) && fs.existsSync(path.join(cacheRoot,'claude-ds/sessions'))){
-    ROOT=path.join(cacheRoot,'claude-ds/sessions')
-  }
-}
-const read=p=>{try{return JSON.parse(fs.readFileSync(p,'utf8'))}catch{return{}}}
-const num=v=>{
+// ---------------------------------------------------------------------------
+// Pure, testable core. Everything above the `runMain()` guard is import-safe:
+// requiring this module runs no filesystem work. The CLI entrypoint is the
+// guarded IIFE at the bottom.
+// ---------------------------------------------------------------------------
+
+export const num=v=>{
   if(typeof v==='number'&&Number.isFinite(v)) return v
   if(v!=null&&v!==''&&Number.isFinite(Number(v))) return Number(v)
   return null
 }
-const fmt=n=>String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g,',')
-const messageFor=(obj)=>{
+export const fmt=n=>String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g,',')
+export const messageFor=(obj)=>{
   if(!obj||typeof obj!=='object') return null
   if(obj.message && typeof obj.message==='object') return obj.message
   if(obj.data && typeof obj.data==='object') return obj.data
   return null
 }
-function usage(u){
+export function usage(u){
   if(!u||typeof u!=='object') return null
   let i,o
   if(u.tokens&&typeof u.tokens==='object'){
@@ -45,50 +43,125 @@ function usage(u){
 // A runner babysitter actually EXECUTES a wrapper CLI in a Bash tool call; other
 // subagents at most mention the names (or read the scripts via a path prefix, which
 // the leading [^/] boundary excludes). Bare-name invocation is how the runner defs work.
-const RUNNER_RE=/(?:^|[;&|(]\s*|\s)(?:claude-ds(?:-stream)?|ds-agent|ds-worktree-run(?:\.sh)?|ag-agent|ag-stream|cx-agent|cx-stream|oc-agent|oc-stream|cp-agent|cp-stream)(?=\s|$)/
+export const RUNNER_RE=/(?:^|[;&|(]\s*|\s)(?:claude-ds(?:-stream)?|ds-agent|ds-worktree-run(?:\.sh)?|ag-agent|ag-stream|cx-agent|cx-stream|oc-agent|oc-stream|cp-agent|cp-stream)(?=\s|$)/
 
-async function processAgentFile(fp){
+// Runner subagents are pinned to haiku in their frontmatter; a CLI-invoking
+// subagent on any other model is NOT a sanctioned runner (it's a main-loop
+// /cli-dispatch:run invocation surfaced as a subagent, or a forbidden model
+// override) and must not inflate the babysitter/worker ratio numerator.
+export const PINNED_RUNNER_MODEL_RE=/haiku/i
+
+// Real polling signal: a Bash command that reads a session status.json directly.
+// cli-dispatch-wait blocks inside a single Bash call (1 assistant turn), so a
+// command that uses it is NOT a hot-loop poll even though it names status.json.
+export function isStatusPollCommand(cmd){
+  if(typeof cmd!=='string') return false
+  if(/cli-dispatch-wait/.test(cmd)) return false
+  return /status\.json/.test(cmd)
+}
+
+// Map a wrapper-CLI invocation to its backend, so blind backends (whose worker
+// sessions report no usage) can be excluded from the ratio numerator too.
+export function backendFromCommand(cmd){
+  if(typeof cmd!=='string') return null
+  if(/(?:^|[;&|(]\s*|\s)(?:claude-ds(?:-stream)?|ds-agent|ds-worktree-run(?:\.sh)?)(?=\s|$)/.test(cmd)) return 'deepseek'
+  if(/(?:^|[;&|(]\s*|\s)(?:ag-agent|ag-stream)(?=\s|$)/.test(cmd)) return 'antigravity'
+  if(/(?:^|[;&|(]\s*|\s)(?:cx-agent|cx-stream)(?=\s|$)/.test(cmd)) return 'codex'
+  if(/(?:^|[;&|(]\s*|\s)(?:oc-agent|oc-stream)(?=\s|$)/.test(cmd)) return 'opencode'
+  if(/(?:^|[;&|(]\s*|\s)(?:cp-agent|cp-stream)(?=\s|$)/.test(cmd)) return 'copilot'
+  return null
+}
+
+// Analyze one agent transcript (array of parsed JSONL objects) into the fields
+// the report needs. Pure: no I/O.
+export function analyzeAgentEvents(objs){
+  const models=new Map()
+  let isRunner=false, assistantTurns=0, statusPolls=0, backend=null
+  for(const obj of (Array.isArray(objs)?objs:[])){
+    const msg=messageFor(obj)
+    if(!msg) continue
+    if(Array.isArray(msg.content)){
+      for(const c of msg.content){
+        if(c&&c.type==='tool_use'&&c.name==='Bash'&&c.input&&typeof c.input.command==='string'){
+          const cmd=c.input.command
+          if(!isRunner&&RUNNER_RE.test(cmd)) isRunner=true
+          if(!backend){ const b=backendFromCommand(cmd); if(b) backend=b }
+          if(isStatusPollCommand(cmd)) statusPolls++
+        }
+      }
+    }
+    if(obj.type==='assistant.message' || msg.role==='assistant') assistantTurns+=1
+    if(!msg.usage||!msg.model) continue
+    // Only Anthropic models: claude-ds (DeepSeek) workers write the same
+    // transcript layout under ~/.claude/projects — exclude them and synthetics.
+    if(!String(msg.model).startsWith('claude-')) continue
+    const m=msg.model, u=msg.usage
+    if(!models.has(m)) models.set(m,{input:0,output:0,cacheW:0,cacheR:0})
+    const d=models.get(m)
+    d.input+=num(u.input_tokens)||0
+    d.output+=num(u.output_tokens)||0
+    d.cacheW+=num(u.cache_creation_input_tokens)||0
+    d.cacheR+=num(u.cache_read_input_tokens)||0
+  }
+  return {models,isRunner,backend,assistantTurns,statusPolls}
+}
+
+// Compute the babysitter/worker ratio from per-runner records.
+//   runnerRecords: [{backend, models:Map<model,{output,...}>, statusPolls}]
+//   workerOutputTotal: summed worker output across backends (denominator)
+//   blindBackends: Set of backend names whose worker sessions report no usage
+//   pollThreshold: status.json direct-reads above which a runner is a heavy poller
+// The numerator is sanctioned-runner babysitting only:
+//   Fix 3 — a runner whose backend is "blind" (worker reports no usage) adds
+//     babysitting but zero worker output, so drop its whole output.
+//   Fix 2 — among non-blind runners, count only the pinned runner model (haiku);
+//     any other model is a main-loop /cli-dispatch:run invocation or a forbidden
+//     override, not a sanctioned runner.
+//   Fix 1 — count runners that read status.json directly above the threshold
+//     (real hot-loop polling that cli-dispatch-wait would have avoided).
+export function computeBabysitRatio({runnerRecords, workerOutputTotal, blindBackends=new Set(), pollThreshold=5}){
+  let numeratorOutput=0, excludedNonPinnedOutput=0, excludedBlindOutput=0, heavyPollers=0
+  for(const r of (Array.isArray(runnerRecords)?runnerRecords:[])){
+    if((r.statusPolls||0)>pollThreshold) heavyPollers++
+    const blind=blindBackends.has(r.backend)
+    for(const [model,d] of r.models){
+      if(blind){ excludedBlindOutput+=d.output }
+      else if(PINNED_RUNNER_MODEL_RE.test(model)){ numeratorOutput+=d.output }
+      else{ excludedNonPinnedOutput+=d.output }
+    }
+  }
+  const ratioPct=workerOutputTotal>0?(numeratorOutput/workerOutputTotal*100):null
+  return {ratioPct, numeratorOutput, excludedNonPinnedOutput, excludedBlindOutput, heavyPollers}
+}
+
+async function readAgentObjs(fp){
   return new Promise((resolve)=>{
     const rl=readline.createInterface({input:fs.createReadStream(fp),crlfDelay:Infinity})
-    const models=new Map()
-    let isRunner=false
-    let assistantTurns=0
-    rl.on('line',line=>{
-      try{
-        const obj=JSON.parse(line)
-        const msg=messageFor(obj)
-        if(!msg) return
-        if(!isRunner&&Array.isArray(msg.content)){
-          for(const c of msg.content){
-            if(c&&c.type==='tool_use'&&c.name==='Bash'&&c.input&&typeof c.input.command==='string'&&RUNNER_RE.test(c.input.command)){ isRunner=true; break }
-          }
-        }
-        if(obj.type==='assistant.message' || msg.role==='assistant'){
-          assistantTurns += 1
-        }
-        if(!msg.usage||!msg.model) return
-        // Only Anthropic models: claude-ds (DeepSeek) workers write the same
-        // transcript layout under ~/.claude/projects — exclude them and synthetics.
-        if(!String(msg.model).startsWith('claude-')) return
-        const m=msg.model, u=msg.usage
-        if(!models.has(m)) models.set(m,{input:0,output:0,cacheW:0,cacheR:0})
-        const d=models.get(m)
-        d.input+=num(u.input_tokens)||0
-        d.output+=num(u.output_tokens)||0
-        d.cacheW+=num(u.cache_creation_input_tokens)||0
-        d.cacheR+=num(u.cache_read_input_tokens)||0
-      }catch{}
-    })
-    rl.on('close',()=>resolve({models,isRunner,assistantTurns}))
-    rl.on('error',()=>resolve({models:new Map(),isRunner:false,assistantTurns:0}))
+    const objs=[]
+    rl.on('line',line=>{ try{ objs.push(JSON.parse(line)) }catch{} })
+    rl.on('close',()=>resolve(objs))
+    rl.on('error',()=>resolve([]))
   })
 }
 
-;(async()=>{
-  if(!ROOT){
-    console.log('(no sessions dir: )')
-    return
+function resolveRoot(){
+  const cacheRoot=process.env.XDG_CACHE_HOME||path.join(os.homedir(),'.cache')
+  let root=process.env.CLI_DISPATCH_SESSIONS_DIR||''
+  if(!root){
+    root=path.join(cacheRoot,'cli-dispatch/sessions')
+    if(!fs.existsSync(root) && fs.existsSync(path.join(cacheRoot,'claude-ds/sessions'))){
+      root=path.join(cacheRoot,'claude-ds/sessions')
+    }
   }
+  return root
+}
+
+const POLL_THRESHOLD=5
+
+async function runMain(){
+  const ROOT=resolveRoot()
+  const read=p=>{try{return JSON.parse(fs.readFileSync(p,'utf8'))}catch{return{}}}
+  if(!ROOT){ console.log('(no sessions dir: )'); return }
   if(!fs.existsSync(ROOT)){ console.log(`(no sessions dir: ${ROOT})`); return }
 
   // --- Worker section ---
@@ -200,9 +273,10 @@ async function processAgentFile(fp){
 
   const anthroByModel=new Map()
   let otherAgents=0, otherOutput=0
-  let runnerTurnsTotal=0, runnerAgents=0, runnerTurnsOver20=0
+  let runnerTurnsTotal=0, runnerAgents=0
+  const runnerRecords=[]
   for(const fp of agentFiles){
-    const {models:fileModels,isRunner,assistantTurns}=await processAgentFile(fp)
+    const {models:fileModels,isRunner,backend,assistantTurns,statusPolls}=analyzeAgentEvents(await readAgentObjs(fp))
     if(!isRunner){
       let sawModel=false
       for(const [,data] of fileModels){ otherOutput+=data.output; sawModel=true }
@@ -211,7 +285,7 @@ async function processAgentFile(fp){
     }
     runnerAgents++
     runnerTurnsTotal += assistantTurns
-    if(assistantTurns > 20) runnerTurnsOver20++
+    runnerRecords.push({backend, models:fileModels, statusPolls, assistantTurns})
     for(const [model,data] of fileModels){
       if(!anthroByModel.has(model)){
         anthroByModel.set(model,{agents:new Set(),input:0,output:0,cacheW:0,cacheR:0})
@@ -228,30 +302,46 @@ async function processAgentFile(fp){
   if(anthroByModel.size>0){
     let totalWorkerOutput=0, totalWorkerInput=0
     for(const [,row] of byBackend){ totalWorkerOutput+=row.output; totalWorkerInput+=row.input }
-    let totalAnthroOutput=0
 
     console.log('')
     console.log('Anthropic babysitting (runner subagents only, all projects on this machine)')
     console.log('model                 agents      input     output     cacheW      cacheR')
     console.log('-------------------- ---------- ---------- ---------- ---------- ----------')
     for(const [model,am] of [...anthroByModel.entries()].sort((a,b)=>a[0].localeCompare(b[0]))){
-      totalAnthroOutput+=am.output
       console.log(`${model.padEnd(20)} ${String(am.agents.size).padStart(10)} ${fmt(am.input).padStart(10)} ${fmt(am.output).padStart(10)} ${fmt(am.cacheW).padStart(10)} ${fmt(am.cacheR).padStart(10)}`)
     }
 
-    const ratio=totalWorkerOutput>0?((totalAnthroOutput/totalWorkerOutput)*100).toFixed(1):'-'
-    const avgTurns=runnerAgents>0?(runnerTurnsTotal/runnerAgents):0
     // #97: backends whose sessions report no usage at all (e.g. antigravity — agy exposes
     // none) add babysitting to the numerator but zero worker output to the denominator,
-    // so the printed ratio OVERSTATES the true babysitter/worker cost. Name them.
-    const blindBackends=[...byBackend.entries()].filter(([,r])=>r.sessions>0&&r.output===0&&r.noData===r.sessions).map(([b,r])=>`${b} (${r.sessions})`)
+    // so the printed ratio OVERSTATES the true babysitter/worker cost. Name them AND drop
+    // their runner babysitting from the numerator (Fix 3).
+    const blindBackendRows=[...byBackend.entries()].filter(([,r])=>r.sessions>0&&r.output===0&&r.noData===r.sessions)
+    const blindBackendNames=new Set(blindBackendRows.map(([b])=>b))
+    const blindBackends=blindBackendRows.map(([b,r])=>`${b} (${r.sessions})`)
+
+    const {ratioPct, excludedNonPinnedOutput, excludedBlindOutput, heavyPollers}=computeBabysitRatio({
+      runnerRecords, workerOutputTotal:totalWorkerOutput, blindBackends:blindBackendNames, pollThreshold:POLL_THRESHOLD
+    })
+    const ratio=ratioPct==null?'-':ratioPct.toFixed(1)
+    const avgTurns=runnerAgents>0?(runnerTurnsTotal/runnerAgents):0
+
     console.log('')
-    console.log(`ratio: babysitter output ≈ ${ratio}% of worker output  |  worker input offloaded: ${fmt(totalWorkerInput)} tokens`)
-    if(blindBackends.length) console.log(`ratio caveat: ${blindBackends.join(', ')} sessions report no usage — their babysitting counts in the numerator but adds nothing to the denominator, so the TRUE ratio is lower than shown`)
+    console.log(`ratio: pinned-runner (haiku) babysitter output ≈ ${ratio}% of worker output  |  worker input offloaded: ${fmt(totalWorkerInput)} tokens`)
+    if(excludedNonPinnedOutput>0 || excludedBlindOutput>0){
+      const parts=[]
+      if(excludedNonPinnedOutput>0) parts.push(`${fmt(excludedNonPinnedOutput)} output from non-pinned-model CLI-invoking subagents (main-loop /cli-dispatch:run or model-overridden)`)
+      if(excludedBlindOutput>0) parts.push(`${fmt(excludedBlindOutput)} output from blind-backend runners`)
+      console.log(`excluded from numerator: ${parts.join('; ')}`)
+    }
+    if(blindBackends.length) console.log(`ratio caveat: ${blindBackends.join(', ')} sessions report no usage — worker output is zero for these; their runner babysitting is excluded from the numerator`)
     console.log(`avg babysitter turns/runner: ${avgTurns.toFixed(2)}`)
-    console.log(`${runnerTurnsOver20} runners exceeded 20 babysitter turns — polling instead of cli-dispatch-wait?`)
+    console.log(`${heavyPollers} runners read status.json directly >${POLL_THRESHOLD}× (bypassing cli-dispatch-wait)`)
   }
   if(otherAgents>0){
     console.log(`other (non-runner) subagents: ${otherAgents} agents, output ${fmt(otherOutput)} — excluded from ratio`)
   }
-})()
+}
+
+if(process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href){
+  runMain()
+}
