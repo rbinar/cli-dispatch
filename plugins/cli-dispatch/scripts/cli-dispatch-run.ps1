@@ -214,6 +214,39 @@ function Invoke-CleanupWorktree {
     return
   }
 
+  # NEVER touch the directory the caller handed us via --cwd (issue #108). In in-place
+  # mode the session's cwd IS that directory, so an unguarded `worktree remove --force`
+  # here would delete work the caller owns. The runner only ever cleans up worktrees it
+  # created itself. Two independent belts: the runner's own `in-place=1` marker (the mode
+  # it actually took), and a resolved-path comparison (catches --resume, where the marker
+  # from the original launch is no longer on this run's output).
+  if ($script:InPlaceRun) {
+    Write-Host "cli-dispatch-run: worker ran in-place in the caller's worktree; leaving it untouched: $Worktree"
+    return
+  }
+  if ($Cwd) {
+    # This is the belt that has to hold whenever the marker belt cannot (e.g. --resume),
+    # so resolve properly: GetFullPath only normalizes the string (`C:\Users\RUNNE~1\…`
+    # would compare unequal), and `(Get-Item …).FullName` returns the LINK's own path
+    # rather than its target. Chase the link first, then fall back in steps.
+    $resolve = {
+      param($p)
+      try {
+        $item = Get-Item -LiteralPath $p -Force -ErrorAction Stop
+        try {
+          $t = [System.IO.Directory]::ResolveLinkTarget($item.FullName, $true)
+          if ($t) { return $t.FullName }
+        } catch { }
+        if ($item.Target) { return (Get-Item -LiteralPath $item.Target -Force).FullName }
+        return $item.FullName
+      } catch { try { [System.IO.Path]::GetFullPath($p) } catch { $p } }
+    }
+    if ((& $resolve $Worktree) -eq (& $resolve $Cwd)) {
+      Write-Host "cli-dispatch-run: worktree is the caller-provided --cwd; leaving it untouched: $Worktree"
+      return
+    }
+  }
+
   if ($VerdictExitCode -ne 0) {
     Write-Host "cli-dispatch-run: kept worktree because verdict exit code is $VerdictExitCode (expected 0): $Worktree"
     return
@@ -248,16 +281,46 @@ function Invoke-CleanupWorktree {
 # PowerShell equivalent of the bash twin's `trap cleanup_tmp EXIT INT TERM` (see
 # cli-dispatch-run's TEMP_FILES/cleanup_tmp).
 $script:TempFiles = [System.Collections.Generic.List[string]]::new()
+$script:InPlaceRun = $false
 
 try {
-  if (-not $PromptFile) {
+  # --resume RE-ATTACHES to an existing session; it does NOT send a new prompt. Reject a
+  # prompt loudly instead of ignoring it (mirrors the bash twin).
+  if ($Resume -and ($Prompt -or $PromptFile)) {
+    Write-Host 'cli-dispatch-run: --resume re-attaches to a session and cannot take a prompt — use /cli-dispatch:resume <id> "<follow-up>" to continue the conversation'
+    exit 5
+  }
+  if (-not $Resume) {
+    if ($PromptFile -and -not (Test-Path $PromptFile)) {
+      Write-Host "cli-dispatch-run: prompt file not found: $PromptFile"
+      exit 1
+    }
+    # Build the brief the worker actually sees: caller text + the standing cwd contract.
+    # The caller's own --prompt-file is never modified in place; we always write a copy.
+    # CLI_DISPATCH_NO_CWD_CONTRACT=1 opts out. Mirrors the bash twin.
     $tmpPrompt = New-TemporaryFile
-    Set-Content -Path $tmpPrompt.FullName -Value $Prompt -NoNewline
-    $PromptFile = $tmpPrompt.FullName
     $script:TempFiles.Add($tmpPrompt.FullName)
-  } elseif (-not (Test-Path $PromptFile)) {
-    Write-Host "cli-dispatch-run: prompt file not found: $PromptFile"
-    exit 1
+    $briefText = if ($PromptFile) { Get-Content -Raw $PromptFile } else { $Prompt }
+    if ($env:CLI_DISPATCH_NO_CWD_CONTRACT -ne "1") {
+      # Workers have reported "ruff: all checks passed" after running the check in the tree
+      # they were started in rather than the tree they edited — linting untouched originals
+      # (issue #109). Pin every self-check to the working directory explicitly.
+      $briefText = $briefText + @'
+
+---
+[cli-dispatch] Working-directory contract — applies to every command you run:
+- Print your working directory first. That directory is the ONLY tree you may read or edit;
+  state it in your report.
+- Make that directory the process working directory for EVERY verification command (lint,
+  tests, build, type-check) before running it. A check run anywhere else inspects untouched
+  copies and produces false "all checks passed" claims.
+- Report the exact command AND the directory it ran in for each result you claim.
+- Your self-reported results are not the gate: the caller re-runs the verification chain
+  independently, and only that run counts.
+'@
+    }
+    Set-Content -Path $tmpPrompt.FullName -Value $briefText -NoNewline
+    $PromptFile = $tmpPrompt.FullName
   }
 
   $baseVars = @{}
@@ -311,6 +374,14 @@ try {
     & bash -lc "'$runner' '$Cwd' '$Branch' '$PromptFile'" 2> $stderrFile | Out-Null
     $runRc = $LASTEXITCODE
     Clear-TempEnv -Vars $baseVars
+
+    # The runner prints `>>> cli-dispatch: in-place=1` when it decided to run the worker in
+    # the caller's own worktree. Cleanup keys off this MODE, not just a path comparison.
+    # No `^` anchor: Windows PowerShell 5.1 wraps redirected native stderr in
+    # NativeCommandError records with leading indentation, so a line-start anchor can miss.
+    if (Select-String -Path $stderrFile -Pattern 'cli-dispatch: in-place=1' -SimpleMatch -Quiet) {
+      $script:InPlaceRun = $true
+    }
 
     if ($runRc -ne 0) {
       Write-Host (Get-Content -Raw $stderrFile)

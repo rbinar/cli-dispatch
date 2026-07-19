@@ -67,3 +67,25 @@ timeout / verify / worker failure — `verdict.json` carries details.
 - Deterministic runner — zero LLM babysitter tokens; use for mechanical delegations with a
   machine-checkable verify command.
 - Continue afterwards: `/cli-dispatch:resume <session-id> "<follow-up>"` (auto-detects backend).
+
+## Working directory
+
+`--cwd` is normally a main checkout, and the runner isolates the work in a fresh
+`/tmp/<backend>-wt-*` worktree. **If `--cwd` is itself a linked git worktree, the runner
+runs the worker in it directly** (in-place mode, 3.44.0) — no nested worktree, no cleanup,
+and nothing in that directory is ever removed by the runner. The leak post-check then
+guards the *main* checkout instead. Force the legacy nested behaviour with
+`CLI_DISPATCH_NO_IN_PLACE=1`.
+
+## Writing a good `--verify`
+
+The worker's own "tests passed / lint clean" claims are **not** a gate — only the
+`--verify` chain's exit code is (every brief now carries a working-directory contract
+saying so). Pick commands that fail loudly on the failure mode you actually fear:
+
+- Python move/refactor: add `ruff check --select F821 <target>` — moving function bodies
+  and pruning module imports fail *independently*, and F821 catches the pruned-import
+  class in a second even when the full test run is slow.
+- JS/TS: a type-check (`tsc --noEmit`) alongside the test command, for the same reason.
+- Anything: make the last verify step an import/collection smoke test — a package that
+  does not import cannot be "green".
