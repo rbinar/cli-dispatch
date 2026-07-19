@@ -1,4 +1,7 @@
-# Terminal Commands
+# Terminal Commands — DeepSeek backend
+
+> Scope: the **DeepSeek** wrappers only. The other four backends (`ag-`/`cx-`/`oc-`/`cp-`)
+> are driven from inside Claude Code — see [README.md](README.md).
 
 ## Introduction
 
@@ -20,7 +23,7 @@ ANTHROPIC_DEFAULT_HAIKU_MODEL="${DS_FLASH_MODEL:-deepseek-v4-flash}"
 CLAUDE_CODE_SUBAGENT_MODEL="${DS_FLASH_MODEL:-deepseek-v4-flash}"
 ```
 
-The API key lives in `~/.config/cli-dispatch/config` (mode 0600, never committed; the legacy `~/.config/claude-ds/config` is read only if the cli-dispatch config does not exist). All primary model slots map to `deepseek-v4-pro`; the haiku/subagent slot maps to `deepseek-v4-flash`.
+The API key lives in `~/.config/cli-dispatch/config` (mode 0600, never committed). All primary model slots map to `deepseek-v4-pro`; the haiku/subagent slot maps to `deepseek-v4-flash`.
 
 The `claude-ds-stream` variant adds session tracking: it runs `claude` with stream-json output and pipes through a Node.js parser (`ds-stream-parse.mjs`) that writes structured session files (status.json, progress.log, transcript.jsonl, meta.json) to `~/.cache/cli-dispatch/sessions/<id>/`.
 
@@ -45,7 +48,7 @@ It installs:
 | `ds-agent` | `~/.local/bin/ds-agent` |
 | `ds-stream-parse.mjs` | `~/.local/share/cli-dispatch/ds-stream-parse.mjs` |
 
-If the config file does not exist, the installer creates a skeleton at `~/.config/cli-dispatch/config` (mode 0600) and auto-opens it in the platform editor (macOS: `open`, Linux: `xdg-open`, WSL: `explorer.exe`; override with `CLI_DISPATCH_EDITOR`, legacy `CLAUDE_DS_EDITOR` still honored). It warns if `~/.local/bin` is not in `PATH`. Windows: run `install.ps1` instead.
+If the config file does not exist, the installer creates a skeleton at `~/.config/cli-dispatch/config` (mode 0600) and auto-opens it in the platform editor (macOS: `open`, Linux: `xdg-open`, WSL: `explorer.exe`; override with `CLI_DISPATCH_EDITOR`). It warns if `~/.local/bin` is not in `PATH`. Windows: run `install.ps1` instead.
 
 ### 2. Add API key
 
@@ -115,9 +118,9 @@ Environment overrides:
 
 | Variable | Purpose |
 |---|---|
-| `CLI_DISPATCH_CONFIG` | Override config file path (legacy `CLAUDE_DS_CONFIG` still honored) |
-| `CLI_DISPATCH_SESSIONS_DIR` | Override session directory (legacy `CLAUDE_DS_SESSIONS_DIR` still honored) |
-| `CLI_DISPATCH_PARSER` | Override path to `ds-stream-parse.mjs` (legacy `CLAUDE_DS_PARSER` still honored) |
+| `CLI_DISPATCH_CONFIG` | Override config file path |
+| `CLI_DISPATCH_SESSIONS_DIR` | Override session directory |
+| `CLI_DISPATCH_PARSER` | Override path to `ds-stream-parse.mjs` |
 | `CLAUDE_DS_MAX_RUNTIME` | Default `--max-runtime` value |
 | `CLAUDE_DS_IDLE_TIMEOUT` | Default `--idle-timeout` value |
 | `CLAUDE_DS_PROGRESS_STDERR` | Progress output goes to stderr |
@@ -156,18 +159,32 @@ plugins/cli-dispatch/scripts/ds-worktree-run.sh <repo-path> <branch> <brief-file
 
 Behavior:
 
-1. Creates an isolated git worktree off `origin/main` under `/tmp/ds-wt-XXXXXX`
+1. Creates an isolated git worktree under `/tmp/ds-wt-XXXXXX`, based on `<repo-path>`'s current
+   branch (falling back to `origin/HEAD`, then `origin/main`)
 2. Symlinks `node_modules` from the main repo if present
 3. Runs `claude-ds-stream --cwd <worktree> --dangerously-skip-permissions -p "$(cat <brief-file>)"`
 4. Prints worktree path and cleanup instructions; runs `git status --short`
-5. Does **not** commit or merge — the orchestrator handles that
+5. Checks the main checkout gained no new changes — a worker that wrote outside the tree it was
+   given exits 1 with a patch saved under `$TMPDIR`
+6. Does **not** commit or merge — the orchestrator handles that
 
-Cleanup (printed by the script):
+**In-place mode.** If `<repo-path>` is already a linked worktree, steps 1–2 are skipped and the
+worker runs in that directory directly — no nested worktree, and the script creates and removes
+nothing there. The leak check in step 5 then watches the **main** checkout instead. Force the
+nested behavior with `CLI_DISPATCH_NO_IN_PLACE=1`.
+
+Cleanup (printed by the script, nested mode only):
 
 ```
 rm -f "<worktree>/node_modules"
 git -C "<repo>" worktree remove "<worktree>" --force
 git -C "<repo>" worktree prune
+```
+
+Post-check only, without running a worker:
+
+```
+plugins/cli-dispatch/scripts/ds-worktree-run.sh --post-check <repo-path>
 ```
 
 Windows equivalent: `ds-worktree-run.ps1` (uses junction instead of symlink for `node_modules`).
@@ -187,7 +204,7 @@ For cost-conscious monitoring, read **only `status.json`**. Do not tail `transcr
 
 ## Configuration reference
 
-Config file: `~/.config/cli-dispatch/config` (mode 0600, never committed; legacy `~/.config/claude-ds/config` is read only when the cli-dispatch config does not exist).
+Config file: `~/.config/cli-dispatch/config` (mode 0600, never committed).
 
 ```
 DEEPSEEK_API_KEY="sk-..."
@@ -205,12 +222,12 @@ Environment overrides:
 
 | Variable | Overrides |
 |---|---|
-| `CLI_DISPATCH_CONFIG` | Config file path (legacy `CLAUDE_DS_CONFIG` still honored) |
-| `CLI_DISPATCH_SESSIONS_DIR` | Session directory (legacy `CLAUDE_DS_SESSIONS_DIR` still honored) |
-| `CLI_DISPATCH_PARSER` | Path to `ds-stream-parse.mjs` (legacy `CLAUDE_DS_PARSER` still honored) |
+| `CLI_DISPATCH_CONFIG` | Config file path |
+| `CLI_DISPATCH_SESSIONS_DIR` | Session directory |
+| `CLI_DISPATCH_PARSER` | Path to `ds-stream-parse.mjs` |
 | `CLAUDE_DS_MAX_RUNTIME` | Default max runtime (seconds) |
 | `CLAUDE_DS_IDLE_TIMEOUT` | Default idle timeout (seconds) |
-| `CLI_DISPATCH_EDITOR` | Editor for opening config during setup (legacy `CLAUDE_DS_EDITOR` still honored) |
+| `CLI_DISPATCH_EDITOR` | Editor for opening config during setup |
 
 ## Security notes
 

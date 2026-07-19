@@ -68,7 +68,7 @@ DS_MODEL="deepseek-v4-pro"
 DS_FLASH_MODEL="deepseek-v4-flash"
 ```
 
-> Want a different editor? Set the `CLI_DISPATCH_EDITOR` environment variable (e.g. `CLI_DISPATCH_EDITOR="code"`; the legacy `CLAUDE_DS_EDITOR` is still honored). If auto-open fails, open the file manually: `${EDITOR:-nano} ~/.config/cli-dispatch/config`.
+> Want a different editor? Set the `CLI_DISPATCH_EDITOR` environment variable (e.g. `CLI_DISPATCH_EDITOR="code"`). If auto-open fails, open the file manually: `${EDITOR:-nano} ~/.config/cli-dispatch/config`.
 
 For the **Antigravity (Gemini)** backend, setup installs `ag-agent`/`ag-stream` instead. It needs the `agy` CLI (`curl -fsSL https://antigravity.google/cli/install.sh | bash`) plus `script` (pseudo-TTY) and `node`; auth is via Google sign-in (run `agy` once) or a `GEMINI_API_KEY`. Native Windows: DeepSeek only — use WSL for the Antigravity backend. agy proxies **multiple model families** — pick one with `ag-agent --model "<name>"` (or the `AG_MODEL` config default): `Gemini 3.1 Pro (High)`, `Claude Opus 4.6 (Thinking)`, `GPT-OSS 120B (Medium)`, … (run `agy models` for the exact list; default `Gemini 3.5 Flash (High)`).
 
@@ -80,14 +80,14 @@ For the **GitHub Copilot** backend, setup installs `cp-agent`/`cp-stream`. It ne
 
 DeepSeek key: https://platform.deepseek.com/api_keys
 
-`/cli-dispatch:setup` now has a final step that offers, via a yes/no-style question, to write a standing "prefer delegating to these runners" reminder into your global or project `CLAUDE.md`, so you don't have to re-explain your delegation preference every session (idempotent/marker-guarded so re-running setup won't duplicate it).
+`/cli-dispatch:setup` ends by offering to save a standing delegation policy, so you don't have to re-explain your delegation preference every session. See below.
 
 ## Session-start policy injection (optional)
 
 That final `/cli-dispatch:setup` step now asks **four preferences** — enable per-session policy injection, which runners to prioritize, whether to include the GitHub-issue reminder, and whether to also write a static CLAUDE.md block — and saves the answers to `~/.config/cli-dispatch/policy.json`. A `SessionStart` hook (fires on `startup`/`resume`/`clear` — deliberately **not** `compact`, so the text doesn't pile up as context gets compacted) then auto-injects a compact delegation policy into every session's context: which runner (`ds-/ag-/cx-/oc-/cp-runner`) to delegate work to, naming each subagent with its assigned model, and a reminder to file cli-dispatch friction points as GitHub issues — all without hand-editing CLAUDE.md.
 
 - **Opt-in, default off** — if `policy.json` is missing or has `enabled:false`, the hook is a silent no-op with zero token cost.
-- Complements, doesn't replace, the static CLAUDE.md block (formerly `orchestration-priority`, now `policy:v1`) — enabling both injects the same policy twice per session, so hook-only is recommended. `/cli-dispatch:doctor` reports its status in a **Policy injection** section.
+- Setup can also write a static `CLAUDE.md` block instead. **Don't enable both** — that injects the same policy twice per session; the hook alone is recommended. `/cli-dispatch:doctor` reports which are active in a **Policy injection** section.
 - **Remove it** by deleting `~/.config/cli-dispatch/policy.json` or setting `enabled:false`.
 
 ## Updating
@@ -151,6 +151,9 @@ You use cli-dispatch **from inside Claude Code** — two ways:
 | `/cli-dispatch:cx-run <task>` | Delegate a task to **Codex (OpenAI)** (real read-only sandbox; same session layout) |
 | `/cli-dispatch:oc-run <task>` | Delegate a task to **OpenCode (OpenRouter)** (no sandbox — worktree isolation only; same session layout) |
 | `/cli-dispatch:cp-run <task>` | Delegate a task to **GitHub Copilot** (no sandbox — worktree isolation only; same session layout) |
+| `/cli-dispatch:run <backend> "<task>" --verify '<cmd>'` | **Deterministic runner** — delegate, wait, run your verify command, print a verdict. No LLM babysitter, so it spends **zero** orchestration tokens. Best for mechanical work with a pass/fail command |
+| `/cli-dispatch:wait <id>` | Block until a session finishes, then print a compact summary |
+| `/cli-dispatch:gain` | Report worker token totals by backend — check a delegation actually paid off |
 | `/cli-dispatch:sessions` | List past/active sessions (all backends; shows a `backend` column) |
 | `/cli-dispatch:ds-sessions` / `ag-sessions` / `cx-sessions` / `oc-sessions` / `cp-sessions` | Same list, filtered to just DeepSeek / Antigravity / Codex / OpenCode / Copilot |
 | `/cli-dispatch:watch <id>` | Show a session's live status (cost-aware; any backend) |
@@ -177,8 +180,9 @@ All used from inside Claude Code (`/cli-dispatch:ds-run <task>`, `/cli-dispatch:
 - **Delegate & verify** — the worker generates/implements; Claude Code watches live and verifies the output. Conversation context is not shared → the task must be **self-contained**. The worker = doer, you = reviewer/merge owner.
 - **Session tracking (live watch + resume)** — work is not an opaque background process; each run writes a session dir (status / progress / transcript / meta + the full prompt) and is observable and resumable. → [Session tracking](#session-tracking-live-watch--resume)
 - **`--read-only` mode (Codex = real OS sandbox)** — `cx-agent --read-only` activates a **kernel-enforced** no-writes sandbox (macOS Seatbelt / Linux bwrap+seccomp). DeepSeek's `--read-only` is a tool-layer restriction; Antigravity, OpenCode, and Copilot have no write-deny at all (isolate them in a worktree).
-- **agentic + worktree isolation** — real repo tasks run in a throwaway git worktree; the diff is left **uncommitted** (review → build/test → merge is **on you/Claude**). Bundled helpers: `ds-/ag-/cx-/oc-/cp-worktree-run`.
-- **Per-backend runner subagents (`ds-/ag-/cx-/oc-/cp-runner`)** — hand the whole delegation to an isolated sub-context that picks the mode, isolates the work, verifies, and returns a short result — the management noise never enters the orchestrator. → [runner subagents](#ds-runner-subagent-keep-context-clean)
+- **agentic + worktree isolation** — real repo tasks run in a throwaway git worktree; the diff is left **uncommitted** (review → build/test → merge is **on you/Claude**). Bundled helpers: `ds-/ag-/cx-/oc-/cp-worktree-run`. If the directory you point at is **already** a linked worktree, the worker runs *in it* — no nested worktree, and the runner never deletes a directory you created. → [Worktree isolation](#worktree-isolation)
+- **Deterministic runner (`/cli-dispatch:run`)** — for mechanical work that a command can prove (build / test / lint / output-grep), skip the LLM babysitter entirely: the runner launches the worker, waits, runs your `--verify` command, and writes a machine-readable `verdict.json`. Zero orchestration tokens. Reach for a runner subagent only when the job needs judgment no command can check.
+- **Per-backend runner subagents (`ds-/ag-/cx-/oc-/cp-runner`)** — hand the whole delegation to an isolated sub-context that picks the mode, isolates the work, verifies, and returns a short result — the management noise never enters the orchestrator. → [Runner subagents](#runner-subagents-keep-context-clean)
 - **Multi-candidate model selection** — for `ag-/cx-/oc-/cp-runner`, give 2+ candidate models in the task prompt (or set a standing list once via `AG_MODELS`/`CX_MODELS`/`OC_MODELS`/`CP_MODELS` in the config) and the runner reasons about which one best fits, picks it, and reports why; if the prompt gives no explicit model/list, the runner checks the config list first and falls back to the single `*_MODEL` default. `ds-runner` is not part of this — its model is fixed.
 - **Session-start policy injection (optional)** — a `SessionStart` hook auto-injects a compact delegation policy (runner priority, subagent naming, issue-filing reminder) into every session's context, configured once at `/cli-dispatch:setup`. Opt-in, default off, zero token cost when disabled. → [Session-start policy injection](#session-start-policy-injection-optional)
 - **Web dashboard** — a local, read-only view: Claude Code sessions → flow → subagents → flow, plus a worker panel. Pinned task/instruction, Markdown-rendered messages, stale-worker detection, live SSE updates. → [Dashboard](#dashboard)
@@ -190,11 +194,37 @@ All used from inside Claude Code (`/cli-dispatch:ds-run <task>`, `/cli-dispatch:
 
 > ⚠️ **The default mode is not a sandbox.** Workers run agentic → they **can write files / run bash**. Isolate real repo work in a worktree; for a guaranteed "won't write files" use `--read-only` (and on **Codex** that guarantee is kernel-enforced).
 
+## Worktree isolation
+
+Real repo work never runs in your main checkout. The runner opens a throwaway git worktree
+off your current branch, the worker edits there, and the diff is left uncommitted for you to
+review and merge.
+
+**If you point `--cwd` at a directory that is already a linked worktree**, the runner detects
+that and runs the worker *in that directory* instead of nesting a second worktree. This
+matters because a nested worktree puts the worker's shell in one tree while the absolute
+paths in its brief point at another — its edits land in your tree while its own `lint`/`test`
+self-checks inspect untouched copies, which is exactly how a worker reports "all checks
+passed" on code that doesn't even import.
+
+Guarantees in that mode:
+
+- The runner **creates nothing and removes nothing** in your worktree — cleanup only ever
+  touches worktrees the runner opened itself.
+- The leak check still watches your **main checkout**, so a worker that wanders out of the
+  tree it was given is still caught.
+- Force the old nested behaviour with `CLI_DISPATCH_NO_IN_PLACE=1`.
+
+Every brief also carries a **working-directory contract**: the worker is told to pin every
+verification command to its working directory, report the directory next to each result, and
+treat its own self-report as non-authoritative — only your `--verify` command is the gate.
+Opt out with `CLI_DISPATCH_NO_CWD_CONTRACT=1`.
+
 ## Session tracking (live watch + resume)
 
 Delegated work is **not an opaque background process**: every backend's output is parsed and each task is written to a **session directory** (same layout for DeepSeek, Antigravity, Codex, OpenCode, and Copilot). You track what the worker is doing in a **live, structured, resumable** way via `/cli-dispatch:sessions` and `/cli-dispatch:watch <id>`.
 
-Session directory: `${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<id>/` (legacy `claude-ds` path still read as a fallback)
+Session directory: `${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<id>/`
 
 | File | Contents |
 |------|----------|
@@ -208,32 +238,33 @@ Session directory: `${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<id>/`
 
 > Requirement: `node` is needed for session tracking/parsing (claude-code already runs in a node environment).
 
-## ds-runner subagent (keep context clean)
+## Runner subagents (keep context clean)
 
-Instead of managing a delegation step by step yourself, you can hand the whole thing to the packaged **`ds-runner`** subagent (inside Claude Code, say "do this task with ds-runner"). It picks the mode, isolates the work, **verifies** (build/test for repo/code tasks), and returns a short result — the management noise never enters the orchestrator's context. The worker is always DeepSeek; Claude Code picks the subagent's *own* (babysitter) model by difficulty (Claude Code makes the call below internally; you don't write `Agent(...)` by hand):
+Instead of managing a delegation step by step, hand the whole thing to the packaged runner
+subagent for that backend — inside Claude Code, say *"do this task with cx-runner"* (or use
+`Agent(subagent_type="cx-runner", ...)`).
+
+A runner picks the mode, isolates the work in a git worktree when needed, **verifies** it with
+real build/test commands, and returns a short result. The management noise never enters the
+orchestrator's context. Worth it for long agentic work, verification, or several jobs in
+parallel; for a simple one-shot, `/cli-dispatch:<backend>-run` is enough — and for mechanical
+work a command can prove, `/cli-dispatch:run --verify` is cheaper than any of them.
+
+| Subagent | Worker | Isolation | Model selection |
+|---|---|---|---|
+| `ds-runner` | DeepSeek | git worktree (`--read-only` is a tool-layer restriction) | fixed |
+| `cx-runner` | Codex / OpenAI | **real OS sandbox** with `--read-only` (macOS Seatbelt / Linux bwrap+seccomp) — kernel-enforced, no worktree needed for a true no-writes guarantee | `CX_MODEL` / `CX_MODELS` |
+| `ag-runner` | Antigravity (`agy`) | git worktree only — no write-deny | `AG_MODEL` / `AG_MODELS`; agy proxies Gemini, Claude and GPT families (`agy models`) |
+| `oc-runner` | OpenCode (OpenRouter) | git worktree only — no write-deny | `OC_MODEL` / `OC_MODELS`; bare slugs, no `openrouter/` prefix |
+| `cp-runner` | GitHub Copilot | git worktree only — no write-deny | `CP_MODEL` / `CP_MODELS`; needs an active Copilot subscription + `gh` auth |
+
+The babysitter model (the subagent's *own* model, not the worker's) is picked by difficulty —
+Claude Code makes that call internally, you don't write `Agent(...)` by hand:
 
 ```text
 Agent(subagent_type="ds-runner", model="haiku",  prompt="<self-contained task>")   # pure generation/analysis
-Agent(subagent_type="ds-runner", model="sonnet", prompt="<repo/code task>")         # needs build/test verification
+Agent(subagent_type="ds-runner", model="sonnet", prompt="<repo/code task>")        # needs build/test verification
 ```
-
-Valuable for long/agentic work, verification, or several jobs in parallel; for a simple one-shot job `/cli-dispatch:ds-run` is enough.
-
-## cx-runner subagent (Codex twin — keep context clean)
-
-The Codex backend has its own parallel subagent: **`cx-runner`**. It works identically to `ds-runner` — picks the mode, isolates the work in a git worktree when needed, **verifies** (build/test for repo tasks), and returns a short result — but the worker is always Codex. The headline advantage over the other backends is Mode A: `--read-only` activates a **real OS-level sandbox** (macOS Seatbelt / Linux bwrap+seccomp), a kernel-enforced hard-block on all file writes — no worktree needed for a genuine no-writes guarantee. Inside Claude Code, say "do this task with cx-runner" or use `Agent(subagent_type="cx-runner", ...)`.
-
-## ag-runner subagent (Antigravity twin — keep context clean)
-
-The Antigravity backend has its own parallel subagent: **`ag-runner`**. It works identically to `ds-runner` — picks the mode, isolates the work in a git worktree when needed, **verifies** (build/test for repo tasks), and returns a short result — but the worker is always Antigravity (via `agy` / `ag-agent`). agy proxies multiple model families (Gemini, Claude, GPT — run `agy models` for the current list), so you can switch models without changing your delegation flow. Inside Claude Code, say "do this task with ag-runner" or use `Agent(subagent_type="ag-runner", ...)`.
-
-## oc-runner subagent (OpenCode twin — keep context clean)
-
-The OpenCode backend has its own parallel subagent: **`oc-runner`**. It works identically to `ds-runner` — picks the mode, isolates the work in a git worktree when needed, **verifies** (build/test for repo tasks), and returns a short result — but the worker is always OpenCode (via OpenRouter, `oc-agent` / `oc-stream`). Unlike Codex, OpenCode has **no sandbox at all** — no OS-level or tool-level write-deny — so worktree isolation is the only boundary (same posture as Antigravity). Model selection uses bare OpenRouter slugs with no `openrouter/` prefix (`oc-stream` adds it automatically), e.g. `oc-agent --model google/gemma-4-31b-it:free`. Inside Claude Code, say "do this task with oc-runner" or use `Agent(subagent_type="oc-runner", ...)`.
-
-## cp-runner subagent (GitHub Copilot twin — keep context clean)
-
-The GitHub Copilot backend has its own parallel subagent: **`cp-runner`**. It works identically to `ds-runner` — picks the mode, isolates the work in a git worktree when needed, **verifies** (build/test for repo tasks), and returns a short result — but the worker is always GitHub Copilot (via `cp-agent` / `cp-stream`). GitHub Copilot has **no sandbox at all** — no OS-level or tool-level write-deny — so worktree isolation is the only boundary. It requires an active GitHub Copilot subscription plus `gh` / `GH_TOKEN` auth (precedence `COPILOT_GITHUB_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN`; cli-dispatch automatically reuses `gh auth token` as `GH_TOKEN` when available). Inside Claude Code, say "do this task with cp-runner" or use `Agent(subagent_type="cp-runner", ...)`.
 
 ## Usage & quota — native, no third-party tool
 
@@ -311,7 +342,7 @@ Flags (cx-agent / cx-stream): `--read-only`, `--sandbox <mode>`, `--cwd <dir>`, 
 Flags (cp-agent / cp-stream): `--cwd <dir>`, `--resume <id>`, `--model <m>`, `--effort low|medium|high`, `--max-runtime`/`--idle-timeout`, `-q`.
 (`cx-runner` is **not** one of these — it's a Claude Code subagent, not in `~/.local/bin`.)
 
-> 📄 Full reference for terminal install, all commands, flags, and env overrides: [TERMINAL.md](TERMINAL.md).
+> 📄 Terminal-only reference for the **DeepSeek** wrappers (`claude-ds`, `claude-ds-stream`, `ds-agent`, `ds-worktree-run.sh`) — install, flags, env overrides: [TERMINAL.md](TERMINAL.md).
 
 ## Windows
 
@@ -344,17 +375,17 @@ For a full cleanup, in order: (1) remove the plugin, (2) delete the wrapper + co
 ```bash
 # macOS / Linux / WSL / Git Bash
 rm -f  ~/.local/bin/claude-ds ~/.local/bin/claude-ds-stream
-rm -rf ~/.local/share/cli-dispatch ~/.local/share/claude-ds   # stream parsers (also legacy path)
-rm -rf ~/.cache/cli-dispatch ~/.cache/claude-ds               # session records (also legacy path)
-rm -rf ~/.config/cli-dispatch ~/.config/claude-ds             # config (incl. API key) — deleting removes the key too (also legacy path)
+rm -rf ~/.local/share/cli-dispatch   # stream parsers
+rm -rf ~/.cache/cli-dispatch         # session records
+rm -rf ~/.config/cli-dispatch        # config — deleting removes your API key too
 ```
 
 ```powershell
 # Native Windows (PowerShell)
 Remove-Item -Force "$HOME\.local\bin\claude-ds.ps1","$HOME\.local\bin\claude-ds.cmd","$HOME\.local\bin\claude-ds-stream.ps1","$HOME\.local\bin\claude-ds-stream.cmd" -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force "$HOME\.local\share\claude-ds" -ErrorAction SilentlyContinue   # stream parser
-Remove-Item -Recurse -Force "$HOME\.cache\claude-ds" -ErrorAction SilentlyContinue          # session records
-Remove-Item -Recurse -Force "$HOME\.config\claude-ds" -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force "$HOME\.local\share\cli-dispatch" -ErrorAction SilentlyContinue   # stream parsers
+Remove-Item -Recurse -Force "$HOME\.cache\cli-dispatch" -ErrorAction SilentlyContinue          # session records
+Remove-Item -Recurse -Force "$HOME\.config\cli-dispatch" -ErrorAction SilentlyContinue         # config — removes your API key too
 ```
 
 **Step 3 — (Optional) clean up temporary worktrees:**
@@ -362,7 +393,7 @@ Remove-Item -Recurse -Force "$HOME\.config\claude-ds" -ErrorAction SilentlyConti
 If you used `/cli-dispatch:ds-run` or `ds-worktree-run.sh`, separate git worktrees may remain. Check in the relevant repo:
 
 ```bash
-git worktree list          # see worktrees claude-ds opened
+git worktree list          # see worktrees cli-dispatch opened
 git worktree remove <path> # remove the ones you don't need
 git worktree prune         # clean up dead records
 ```

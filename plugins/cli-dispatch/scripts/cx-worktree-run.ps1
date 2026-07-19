@@ -16,10 +16,11 @@ foreach ($v in 'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', '
   Remove-Item -Path ("Env:" + $v) -ErrorAction SilentlyContinue
 }
 
-# Resolve a path the way bash's `cd … && pwd -P` does. Note that `(Get-Item …).FullName`
-# alone returns the LINK's own path, not its target — it only expands 8.3 short names and
-# normalizes; a repo reached through a junction/symlink would still compare unequal. Chase
-# the link target first (ResolveLinkTarget on PS7, .Target on 5.1) and fall back in steps.
+# Normalize a path for comparison. Chases the LAST component's link target
+# (ResolveLinkTarget on PS7, .Target on 5.1) and expands 8.3 short names; it does NOT
+# resolve symlinked *parent* directories, so it is not a full `pwd -P` equivalent. That is
+# sufficient here: both values it compares (git-dir vs git-common-dir) come from git itself
+# and are therefore spelled consistently.
 function Resolve-RealPath([string]$p) {
   if (-not $p) { return $p }
   try {
