@@ -33,6 +33,13 @@ is_worktree_clean() {
   [ -z "$status_out" ]
 }
 
+canonical_path() {
+  # realpath(1) is not on every macOS/BSD box; cd + pwd -P is.
+  local p="$1"
+  [ -n "$p" ] || return 0
+  ( cd "$p" 2>/dev/null && pwd -P ) || printf '%s' "$p"
+}
+
 cleanup_worktree_if_requested() {
   local worktree_path="$1"
   local verdict_exit_code="$2"
@@ -44,6 +51,21 @@ cleanup_worktree_if_requested() {
 
   if [ "$CLEANUP_IF_CLEAN" -ne 1 ]; then
     echo "cli-dispatch-run: --cleanup-if-clean not set; kept worktree at $worktree_path"
+    return 0
+  fi
+
+  # NEVER touch the directory the caller handed us via --cwd (issue #108). In in-place
+  # mode the session's cwd IS that directory, so an unguarded `worktree remove --force`
+  # here would delete work the caller owns. The runner only ever cleans up worktrees it
+  # created itself. Two independent belts: the runner's own `in-place=1` marker (the mode
+  # it actually took), and a resolved-path comparison (catches --resume, where the marker
+  # from the original launch is no longer on this run's stderr).
+  if [ "${IN_PLACE_RUN:-0}" = "1" ]; then
+    echo "cli-dispatch-run: worker ran in-place in the caller's worktree; leaving it untouched: $worktree_path"
+    return 0
+  fi
+  if [ -n "$CWD" ] && [ "$(canonical_path "$worktree_path")" = "$(canonical_path "$CWD")" ]; then
+    echo "cli-dispatch-run: worktree is the caller-provided --cwd; leaving it untouched: $worktree_path"
     return 0
   fi
 
@@ -93,6 +115,7 @@ TEST_MODE=0
 TEST_WORKTREE=""
 TEST_EXIT_CODE=0
 CLEANUP_IF_CLEAN=0
+IN_PLACE_RUN=0
 TEMP_FILES=()
 
 while [ "$#" -gt 0 ]; do
@@ -111,7 +134,12 @@ while [ "$#" -gt 0 ]; do
     --resume) need_val --resume "$#"; RESUME="$2"; shift 2;;
     --cleanup-if-clean) CLEANUP_IF_CLEAN=1; shift;;
     --_test-cleanup)
-      need_val --_test-cleanup "$#"
+      # Takes TWO values (worktree + exit code) — need_val only proves one is present,
+      # and under `set -u` a short call would abort on $3 with "unbound variable".
+      if [ "$#" -lt 3 ]; then
+        echo "cli-dispatch-run: --_test-cleanup requires <worktree> <exit-code>." >&2
+        exit 5
+      fi
       TEST_MODE=1
       TEST_WORKTREE="$2"
       TEST_EXIT_CODE="$3"
@@ -243,12 +271,35 @@ if [ -n "$RESUME" ]; then
     exit 5
   fi
 else
-  if [ -z "$PROMPT_FILE" ]; then
-    PROMPT_FILE_TMP="$(mktemp)"
-    TEMP_FILES+=("$PROMPT_FILE_TMP")
+  # Build the brief the worker actually sees: caller text + the standing cwd contract.
+  # The caller's own --prompt-file is never modified in place; we always write a copy.
+  # CLI_DISPATCH_NO_CWD_CONTRACT=1 opts out.
+  PROMPT_FILE_TMP="$(mktemp)"
+  TEMP_FILES+=("$PROMPT_FILE_TMP")
+  if [ -n "$PROMPT_FILE" ]; then
+    cat "$PROMPT_FILE" > "$PROMPT_FILE_TMP"
+  else
     printf '%s' "$PROMPT" > "$PROMPT_FILE_TMP"
-    PROMPT_FILE="$PROMPT_FILE_TMP"
   fi
+  if [ "${CLI_DISPATCH_NO_CWD_CONTRACT:-0}" != "1" ]; then
+    # Workers have reported "ruff: all checks passed" after running the check in the tree
+    # they were started in rather than the tree they edited — linting untouched originals
+    # (issue #109). Pin every self-check to the working directory explicitly.
+    cat >> "$PROMPT_FILE_TMP" <<'CWD_CONTRACT'
+
+---
+[cli-dispatch] Working-directory contract — applies to every command you run:
+- Print your working directory first. That directory is the ONLY tree you may read or edit;
+  state it in your report.
+- Make that directory the process working directory for EVERY verification command (lint,
+  tests, build, type-check) before running it. A check run anywhere else inspects untouched
+  copies and produces false "all checks passed" claims.
+- Report the exact command AND the directory it ran in for each result you claim.
+- Your self-reported results are not the gate: the caller re-runs the verification chain
+  independently, and only that run counts.
+CWD_CONTRACT
+  fi
+  PROMPT_FILE="$PROMPT_FILE_TMP"
   BRANCH="${BRANCH:-${BACKEND}-run-$(date +%s)-$$}"
   WORKTREE_STDERR="$(mktemp)"
   LAUNCH_MARKER="$(mktemp)"
@@ -278,6 +329,12 @@ else
   fi
   WORKTREE_RC=${PIPESTATUS[0]}
   set -e
+
+  # The runner prints `>>> cli-dispatch: in-place=1` when it decided to run the worker in
+  # the caller's own worktree. Cleanup keys off this MODE, not just a path comparison.
+  if grep -aq '^>>> cli-dispatch: in-place=1' "$WORKTREE_STDERR" 2>/dev/null; then
+    IN_PLACE_RUN=1
+  fi
 
   if [ "$WORKTREE_RC" -ne 0 ]; then
     echo "cli-dispatch-run: worktree runner failed (code $WORKTREE_RC)" >&2

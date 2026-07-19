@@ -7,6 +7,127 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [3.44.0] — 2026-07-19
+
+### Eklendi
+
+- **Yerinde (in-place) worktree modu** (#108, #109). `--cwd` *zaten* bir linked git
+  worktree ise runner artık iç içe `/tmp/<backend>-wt-*` worktree açmıyor — worker'ı
+  doğrudan çağıranın verdiği dizinde çalıştırıyor. Tespit `git-dir != git-common-dir`
+  ile yapılıyor; ana checkout verildiğinde her zamanki izole worktree açılmaya devam
+  ediyor. `CLI_DISPATCH_NO_IN_PLACE=1` eski davranışa zorlar.
+- **Her brief'e bir çalışma-dizini sözleşmesi ekleniyor** (#109). Worker'lar,
+  kontrolü *düzenledikleri* ağaçta değil *başlatıldıkları* ağaçta koşup dokunulmamış
+  orijinalleri lint'ledikten sonra "ruff check: all checks passed" raporladı. Artık
+  her brief worker'a şunu söylüyor: önce `pwd` çalıştır, her doğrulama komutunun
+  başına açıkça `cd <o dizin> &&` koy, her iddia ettiğin sonucun yanında dizini de
+  raporla ve kendi öz-raporunu bağlayıcı sayma — tek kapı çağıranın `--verify`
+  zinciri. Çağıranın `--prompt-file` dosyası asla yerinde değiştirilmiyor (kopya
+  yazılıyor); `CLI_DISPATCH_NO_CWD_CONTRACT=1` devre dışı bırakır.
+
+### Düzeltildi
+
+- **`--backend cx` (ve `ag`/`oc`/`cp`) linked worktree'yi "Not a git repo" sayıyordu**
+  (#107). Linked worktree'de `.git` bir *dosya*, dizin değil; dolayısıyla
+  `test -d "$REPO/.git"` kontrolü iş hiç başlamadan düşüyordu. Beş bash runner'ın
+  tamamı ve iki PowerShell ikizi artık git'e soruyor — `git rev-parse
+  --is-inside-work-tree` — bu aynı zamanda submodule'leri de doğru ele alıyor. (`ds`
+  daha önce `test -e`'ye çekilmişti; artık diğerleriyle aynı kontrolü kullanıyor.)
+- **`--cwd <worktree>` her koşuda "worker leaked NEW changes outside the worktree"
+  ile hatalı fail veriyordu** (#108). Worker, brief'indeki mutlak yolları izleyip
+  doğru şekilde hedef worktree'ye yazıyordu — ve post-check bunu leak sayıp exit 1
+  veriyordu; exit code kullanılamaz hâle geliyordu (raporlanan bir oturumda 4/4
+  koşuda). Yerinde modda leak koruması artık **ana checkout**'u izliyor, çağıranın
+  worker'a yazmasını açıkça istediği dizini değil.
+- **Cleanup artık çağıranın verdiği `--cwd`'ye dokunamıyor** (#108).
+  `--cleanup-if-clean` artık birbirinden bağımsız iki kemer kullanıyor — runner'ın
+  kendi `>>> cli-dispatch: in-place=1` işareti (gerçekte seçtiği mod) ve `--cwd` ile
+  çözümlenmiş yol karşılaştırması — ve dizini olduğu gibi bırakıyor; runner yalnızca
+  kendi oluşturduğu worktree'leri siliyor.
+
+### Güvenlik / sağlamlık
+
+- **Miras alınan `GIT_DIR`/`GIT_WORK_TREE` artık repo tespitini ele geçiremiyor.** Git
+  hook'ları, `git rebase --exec` ve herhangi bir üst git süreci bunları export eder ve
+  bunlar `git -C <yol>`'u geçersiz kılar — yani her kontrol *miras alınan* repoyu
+  tarif ederdi. En kötü senaryoda bir **ana checkout** linked worktree sanılıp
+  worker'a hiç izolasyon olmadan kullanıcının kendi checkout'u veriliyordu. Yedi
+  runner da ilk git çağrısından önce `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`,
+  `GIT_COMMON_DIR`, `GIT_OBJECT_DIRECTORY` ve `GIT_NAMESPACE`'i temizliyor.
+- **Bare repo'lar ve `.git` yönetim dizinleri artık içinde çalışılmak yerine
+  reddediliyor.** `git rev-parse --is-inside-work-tree` ikisi için de exit 0 verip
+  *çıktı olarak* `false` yazıyor; kontrol artık exit status'e değil çıktıya bakıyor.
+- **Ana checkout `git worktree list --porcelain` ile bulunuyor**,
+  `dirname(git-common-dir)` ile değil — ikincisi `--separate-git-dir` yerleşimlerinde
+  ve bare repo worktree'lerinde yanlış; ya leak korumasını sessizce devre dışı
+  bırakıyor ya da onu alakasız bir üst repoya yöneltiyordu (bu da `$HOME`'u
+  snapshot'layıp her koşuyu fail ettiriyordu).
+- **Leak patch'i artık temp dizine yazılıyor**, korunan reponun yanına değil — orası
+  runner'ın sahibi olmadığı bir dizin (yerinde modda çoğu zaman kullanıcının tüm
+  repo klasörü).
+- **Yerinde mod işareti artık stderr'e basılıyor** — `cli-dispatch-run`'ın gerçekten
+  yakaladığı akış (`2>&1 >/dev/null | tee`); stdout'ta atılıyor ve primary cleanup
+  kemeri ölü kod kalıyordu. PowerShell runner'ları aynı nedenle
+  `[Console]::Error.WriteLine` kullanıyor (`Write-Host` host akışına yazar, hiç
+  yakalanamaz).
+- **`--post-check` normal koşuyla hizalandı**: aynı bare-repo/`.git` kontrolü, aynı
+  temp-dizin patch konumu.
+- Yerinde mod, hedef worktree'de zaten kaç commit'lenmemiş değişiklik olduğunu
+  raporluyor; böylece okuyan kişi `verdict-diff.patch`'in worker'a ait olmayan iş
+  içerebileceğini görebiliyor.
+- Yerinde mod artık `--branch` verilip yok sayıldığında bunu söylüyor; PowerShell
+  ikizleri `git < 2.31` için `--path-format` fallback'i, symlink/junction/8.3 farkında
+  yol çözümlemesi (`[System.IO.Path]::GetFullPath` yerine `Get-Item`) ve bash ikizinin
+  `--resume` + prompt reddini kazandı (önceden Windows'ta `--resume`, içinde yalnızca
+  sözleşme metni olan bir geçici brief oluşturuyordu).
+
+### Dokümantasyon
+
+- `/cli-dispatch:run` yerinde modu belgeliyor ve bir "Writing a good `--verify`"
+  bölümü kazanıyor: worker öz-raporları kapı değildir ve Python taşıma/refactor
+  delegasyonlarına `ruff check --select F821 <hedef>` eklenmelidir — gövde taşıma
+  sadakati ile import sadakati birbirinden bağımsız olarak bozulur (#109).
+
+### İç değişiklikler
+
+- Yeni `__tests__/worktree-in-place.test.mjs` (17 senaryo): beş backend'de linked
+  worktree kabulü, yerinde modda worker cwd'si, hedefe yazmanın leak sayılmaması,
+  ana checkout leak'inin hâlâ yakalanması, worktree listesinin değişmemesi, eski
+  yolun korunması, iki env kaçış kapısı, iki cleanup koruması, `GIT_DIR` hijack'i,
+  bare-repo ve `.git`-dizini reddi, patch dosyasının konumu ve `--prompt-file`
+  değişmezliği. Düzeltme öncesi script'lere karşı 10/17 fail verdiği doğrulandı. Bir
+  senaryo, yerinde mod işaretinin `cli-dispatch-run`'ın yakalamasından sağ çıktığını
+  doğruluyor — aksi hâlde sevk edilecek olan hata tam da buydu.
+
+## [3.43.5] — 2026-07-17
+
+### Düzeltildi
+
+- **`gain`'in babysitter/worker oranı artık maliyeti abartmıyor.** Numeratör
+  eskiden, CLI çağıran her subagent transcript'inde görünen *her* Anthropic
+  modelinin output'unu topluyordu; böylece ana-loop `/cli-dispatch:run`
+  invocation'larını ve yasak model override'larını (sonnet-5/opus/…), tek meşru
+  runner modeli (haiku) ile birlikte sayıyordu — üstelik worker session'ları hiç
+  usage raporlamayan backend'lerin (antigravity) babysitting'ini de içeriyordu.
+  Gerçek bir makinede bu ~%2500 oran basıyordu; düzeltilen numeratör — yalnızca
+  blind olmayan backend'lerdeki pinli-haiku runner'lar — ~%370 raporluyor.
+  Numeratör dışı bırakılan output artık kendi satırında gösteriliyor, sayı
+  denetlenebilir.
+- **`polling instead of cli-dispatch-wait?` satırı sahte alarmdı.** Bir runner 20
+  *assistant turn*'ü aştığında tetikleniyordu; oysa runner hem babysitter **hem**
+  reviewer'dır — dispatch, tek bloklayan `cli-dispatch-wait` (bir turn), diff
+  doğrulama, test çalıştırma, worker iterasyonu ve raporlama, hiç hot-loop olmadan
+  kolayca 20 turn'ü aşar. Artık yalnızca bir session `status.json`'unu **doğrudan**
+  5'ten fazla okuyan runner'ları sayıyor (`cli-dispatch-wait`'in önleyeceği gerçek
+  poll); `cli-dispatch-wait` çağrıları asla sayılmıyor.
+
+### Dahili
+
+- `gain-report.mjs`, import-güvenli saf yardımcılara (`isStatusPollCommand`,
+  `backendFromCommand`, `analyzeAgentEvents`, `computeBabysitRatio`) bir
+  main-modül guard'ı arkasında bölündü; yeni `__tests__/gain-report.test.mjs` (12
+  vaka) ile kapsandı.
+
 ## [3.43.4] — 2026-07-13
 
 ### Değiştirildi

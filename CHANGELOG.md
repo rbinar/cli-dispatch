@@ -7,6 +7,120 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [3.44.0] — 2026-07-19
+
+### Added
+
+- **In-place worktree mode** (#108, #109). When `--cwd` is *already* a linked git
+  worktree, the runner no longer opens a nested `/tmp/<backend>-wt-*` worktree — it
+  runs the worker directly in the directory the caller handed it. Detection is
+  `git-dir != git-common-dir`; a main checkout still gets the usual isolated
+  worktree. `CLI_DISPATCH_NO_IN_PLACE=1` forces the legacy behaviour.
+- **A working-directory contract is appended to every brief** (#109). Workers have
+  reported "ruff check: all checks passed" after running the check in the tree they
+  were *started* in rather than the tree they *edited*, linting untouched originals.
+  Every brief now instructs the worker to `pwd` first, prefix every verification
+  command with an explicit `cd <that directory> &&`, report the directory alongside
+  each claimed result, and treat its own self-report as non-authoritative — only the
+  caller's `--verify` chain is the gate. The caller's `--prompt-file` is never
+  modified in place (a copy is written); `CLI_DISPATCH_NO_CWD_CONTRACT=1` opts out.
+
+### Fixed
+
+- **`--backend cx` (and `ag`/`oc`/`cp`) rejected a linked worktree as "Not a git
+  repo"** (#107). A linked worktree's `.git` is a *file*, not a directory, so the
+  `test -d "$REPO/.git"` probe failed before the job ever started. All five bash
+  runners and both PowerShell twins now ask git — `git rev-parse
+  --is-inside-work-tree` — which also handles submodules. (`ds` had been patched to
+  `test -e` earlier; it now uses the same check as the rest.)
+- **`--cwd <worktree>` false-failed with "worker leaked NEW changes outside the
+  worktree" on every run** (#108). The worker, following the absolute paths in its
+  brief, correctly wrote into the target worktree — and the post-check counted that
+  as a leak and exited 1, making the exit code useless (4/4 runs in one reported
+  session). In in-place mode the leak guard now watches the **main checkout**, never
+  the directory the caller explicitly asked the worker to write to.
+- **Cleanup can no longer touch the caller-provided `--cwd`** (#108). `--cleanup-if-clean`
+  now checks two independent belts — the runner's own `>>> cli-dispatch: in-place=1`
+  marker (the mode it actually took) and a resolved-path comparison against `--cwd` — and
+  leaves the directory alone; the runner only removes worktrees it created itself.
+
+### Security / robustness
+
+- **An inherited `GIT_DIR`/`GIT_WORK_TREE` can no longer hijack repo detection.** Git
+  hooks, `git rebase --exec`, and any parent git process export these, and they override
+  `git -C <path>` — so every probe would describe the *inherited* repo. In the worst case
+  a **main checkout** was detected as a linked worktree and the worker was handed the
+  user's own checkout with zero isolation. All seven runners now clear `GIT_DIR`,
+  `GIT_WORK_TREE`, `GIT_INDEX_FILE`, `GIT_COMMON_DIR`, `GIT_OBJECT_DIRECTORY` and
+  `GIT_NAMESPACE` before their first git call.
+- **Bare repos and `.git` admin directories are rejected instead of run in.**
+  `git rev-parse --is-inside-work-tree` exits 0 while *printing* `false` for both; the
+  gate now compares the output, not the exit status.
+- **The main checkout is located with `git worktree list --porcelain`**, not
+  `dirname(git-common-dir)` — the latter is wrong for `--separate-git-dir` layouts and
+  worktrees of a bare repo, where it either silently disabled the leak guard or pointed it
+  at an unrelated enclosing repo (which then snapshotted `$HOME` and failed every run).
+- **The leak patch is written to the temp dir**, no longer next to the guarded repo — that
+  parent is a directory the runner does not own (in in-place mode often the user's whole
+  repos folder).
+- **The in-place marker is printed on stderr**, the stream `cli-dispatch-run` actually
+  captures (`2>&1 >/dev/null | tee`) — on stdout it was discarded, leaving the primary
+  cleanup belt inert. The PowerShell runners use `[Console]::Error.WriteLine` for the same
+  reason (`Write-Host` writes to the host stream and is not capturable at all).
+- **`--post-check` was brought in line with the normal run**: same bare-repo/`.git` gate,
+  same temp-dir patch location.
+- In-place mode reports how many uncommitted changes the target worktree already had, so a
+  reader can tell that `verdict-diff.patch` may include work the worker did not do.
+- In-place mode now says so when `--branch` is supplied but ignored, and the PowerShell
+  twins gained the `git < 2.31 --path-format` fallback, symlink/junction/8.3-aware path
+  resolution (`Get-Item` instead of `[System.IO.Path]::GetFullPath`), and the bash twin's
+  `--resume` + prompt rejection (previously `--resume` on Windows built a temp brief
+  containing nothing but the contract).
+
+### Documentation
+
+- `/cli-dispatch:run` documents in-place mode and gains a "Writing a good `--verify`"
+  section: worker self-reports are not a gate, and Python move/refactor delegations
+  should include `ruff check --select F821 <target>` — body-move fidelity and import
+  fidelity fail independently (#109).
+
+### Internal
+
+- New `__tests__/worktree-in-place.test.mjs` (17 cases): linked-worktree acceptance
+  across all five backends, in-place worker cwd, target-write-is-not-a-leak,
+  main-checkout leak still caught, worktree list untouched, legacy path preserved,
+  both env escape hatches, the two cleanup guards, `GIT_DIR` hijack, bare-repo and
+  `.git`-dir rejection, patch-file location, and `--prompt-file` immutability. Verified
+  to fail (10/17) against the pre-fix scripts. One case asserts the in-place marker
+  survives `cli-dispatch-run`'s capture — the defect that would otherwise have shipped.
+
+## [3.43.5] — 2026-07-17
+
+### Fixed
+
+- **`gain`'s babysitter/worker ratio no longer overstates cost.** The numerator
+  previously summed the output of *every* Anthropic model that appeared in a
+  CLI-invoking subagent transcript, so it folded in main-loop `/cli-dispatch:run`
+  invocations and forbidden model overrides (sonnet-5/opus/…) alongside the only
+  sanctioned runner model (haiku), and it still counted babysitting for backends
+  whose worker sessions report no usage at all (antigravity). On a real machine
+  this printed a ~2500% ratio; the corrected numerator — pinned-haiku runners on
+  non-blind backends only — reports ~370%. Excluded output is now surfaced on its
+  own line so the number is auditable.
+- **The `polling instead of cli-dispatch-wait?` line was a false alarm.** It fired
+  when a runner exceeded 20 *assistant turns*, but a runner is a babysitter **and**
+  reviewer — dispatch, a single blocking `cli-dispatch-wait` (one turn), diff
+  verification, test runs, worker iteration, and reporting easily exceed 20 turns
+  with no hot-loop at all. It now counts only runners that read a session
+  `status.json` **directly** more than 5 times (a real poll that `cli-dispatch-wait`
+  would have avoided); `cli-dispatch-wait` invocations are never counted.
+
+### Internal
+
+- `gain-report.mjs` split into import-safe pure helpers (`isStatusPollCommand`,
+  `backendFromCommand`, `analyzeAgentEvents`, `computeBabysitRatio`) behind a
+  main-module guard, covered by a new `__tests__/gain-report.test.mjs` (12 cases).
+
 ## [3.43.4] — 2026-07-13
 
 ### Changed
