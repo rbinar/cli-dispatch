@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.1.2] — 2026-07-25
+
+### Fixed
+
+- **`cli-dispatch-run.ps1` cleanup guard now canonicalizes paths via git** (carried over
+  from PR #111). The `--cleanup-if-clean` belt compared paths resolved with .NET only —
+  `GetFullPath` merely normalizes the string and `ResolveLinkTarget`/`.Target` chase only
+  the LAST path component, so a symlinked *parent* directory (`/var` → `/private/var`, a
+  junctioned drive root) still compared unequal and the guard could misjudge the caller's
+  `--cwd`. The resolver now asks git first (`git -C <p> rev-parse --show-toplevel`, same
+  spelling for both sides), falling back to the .NET steps. `cx-`/`ds-worktree-run.ps1`
+  comments corrected to state what `Resolve-RealPath` actually guarantees (last-component
+  links only — sufficient there because both compared values come from git itself).
+
+### Changed
+
+- `TERMINAL.md` refreshed (also from PR #111): scoped explicitly to the DeepSeek wrappers,
+  legacy-path mentions trimmed, and the worktree description corrected (based on the
+  repo's current state, not `origin/main`).
+
 ## [4.1.1] — 2026-07-24
 
 ### Changed

@@ -225,12 +225,19 @@ function Invoke-CleanupWorktree {
     return
   }
   if ($Cwd) {
-    # This is the belt that has to hold whenever the marker belt cannot (e.g. --resume),
-    # so resolve properly: GetFullPath only normalizes the string (`C:\Users\RUNNE~1\…`
-    # would compare unequal), and `(Get-Item …).FullName` returns the LINK's own path
-    # rather than its target. Chase the link first, then fall back in steps.
+    # This is the belt that has to hold whenever the marker belt cannot (e.g. --resume).
+    # Ask GIT to canonicalize: `rev-parse --show-toplevel` returns the same form for both
+    # sides regardless of how the caller spelled the path. .NET is not enough here —
+    # GetFullPath only normalizes the string (`C:\Users\RUNNE~1\…` compares unequal) and
+    # ResolveLinkTarget/`.Target` only chase the LAST component, so a symlinked *parent*
+    # (`/var` → `/private/var`, a junctioned drive root) still compares unequal. Verified
+    # against a real repo: the .NET-only form mismatched, the git form matched.
     $resolve = {
       param($p)
+      try {
+        $top = git -C $p rev-parse --show-toplevel 2>$null
+        if ($LASTEXITCODE -eq 0 -and $top) { return "$top".Trim() }
+      } catch { }
       try {
         $item = Get-Item -LiteralPath $p -Force -ErrorAction Stop
         try {
