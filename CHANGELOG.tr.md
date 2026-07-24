@@ -7,6 +7,20 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.1.3] — 2026-07-25
+
+### Düzeltildi
+
+- **Enjekte edilen delegasyon politikası artık auto-compaction'dan ve oturum
+  fork'larından sağ çıkıyor** (#118). `hooks/hooks.json`, `policy-inject.mjs`'i yalnız
+  `startup`/`resume`/`clear`'a bağlıyordu; uzun bir oturumun sıkıştırması
+  `[cli-dispatch policy]` bloğunu context'ten sessizce düşürüyordu — tam da delegasyon
+  kararlarının en yoğun olduğu pencerede — ve `/fork`/`/branch` oturumları politikasız
+  başlıyordu. `compact` ve `fork` `SessionStart` matcher'ları da bağlandı. Birikme yok:
+  sıkıştırma eski kopyayı düşürür, hook tazesini enjekte eder — context başına net bir
+  canlı kopya. README'ler güncellendi (eski "bilinçli olarak compact hariç" gerekçesi
+  emekli edildi).
+
 ## [4.1.2] — 2026-07-25
 
 ### Düzeltildi

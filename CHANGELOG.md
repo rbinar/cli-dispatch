@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.1.3] — 2026-07-25
+
+### Fixed
+
+- **The injected delegation policy now survives auto-compaction and session forks** (#118).
+  `hooks/hooks.json` wired `policy-inject.mjs` to only `startup`/`resume`/`clear`, so a long
+  session's compaction silently dropped the `[cli-dispatch policy]` block from context —
+  exactly in the highest-density window for delegation decisions — and `/fork`/`/branch`
+  sessions started without it. The `compact` and `fork` `SessionStart` matchers are now
+  wired too. No pile-up: compaction drops the previous copy and the hook injects a fresh
+  one, netting one live copy per context. READMEs updated (the old "deliberately not
+  compact" rationale is retired).
+
 ## [4.1.2] — 2026-07-25
 
 ### Fixed
