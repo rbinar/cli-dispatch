@@ -7,6 +7,26 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.1.2] — 2026-07-25
+
+### Düzeltildi
+
+- **`cli-dispatch-run.ps1` cleanup guard'ı artık yolları git ile kanonikleştiriyor**
+  (PR #111'den taşındı). `--cleanup-if-clean` kemeri yolları yalnız .NET ile
+  çözümleyip karşılaştırıyordu — `GetFullPath` sadece string'i normalize eder,
+  `ResolveLinkTarget`/`.Target` yalnız SON bileşenin link'ini takip eder; dolayısıyla
+  symlink'li bir *üst* dizin (`/var` → `/private/var`, junction'lı sürücü kökü) hâlâ
+  eşitsiz karşılaştırılıyor ve guard çağıranın `--cwd`'sini yanlış değerlendirebiliyordu.
+  Çözümleyici artık önce git'e soruyor (`git -C <p> rev-parse --show-toplevel`, iki taraf
+  için aynı yazım), .NET adımlarına geri düşüyor. `cx-`/`ds-worktree-run.ps1` yorumları,
+  `Resolve-RealPath`'in gerçekte ne garanti ettiğini söyleyecek şekilde düzeltildi.
+
+### Değiştirildi
+
+- `TERMINAL.md` yenilendi (yine PR #111'den): açıkça DeepSeek wrapper'larına
+  kapsamlandı, legacy yol bahisleri kırpıldı, worktree açıklaması düzeltildi
+  (`origin/main` değil, repo'nun mevcut durumu baz alınıyor).
+
 ## [4.1.1] — 2026-07-24
 
 ### Değiştirildi
