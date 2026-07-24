@@ -42,13 +42,13 @@ scene_demo(){
   type_cc "/cli-dispatch:ds-run \"fix the login redirect bug\""
   out "${D}  ▶ DeepSeek worker (session-tracked)…  running → done${R}"
   out "${G}  ✔${R} patch ready ${D}— uncommitted in a worktree; review → merge is yours${R}"; pause 0.9
-  out "${D}# delegate — subagent runners (babysit + verify in a sub-context)${R}"; pause 0.6
-  type_cc "use cx-runner to add tests for the parser"
-  out "${M}⏺${R} ${B}cx-runner${R}(Add parser tests)"
-  out "  ${D}⎿${R} real read-only sandbox → wrote tests in worktree"
-  out "  ${D}⎿${R} verified: ${G}build ✓${R}  ${G}tests 12/12 ✓${R}"
+  out "${D}# delegate — deterministic runner (worker + verify, zero babysitter tokens)${R}"; pause 0.6
+  type_cc "/cli-dispatch:run codex \"add tests for the parser\" --verify 'node --test'"
+  out "${M}⏺${R} ${B}cli-dispatch-run${R}(Add parser tests)"
+  out "  ${D}⎿${R} worktree isolated → worker wrote tests"
+  out "  ${D}⎿${R} verified: ${G}exit 0${R}  ${G}tests 12/12 ✓${R}  → verdict.json"
   out "${M}⏺${R} Done — diff ready for review."; pause 0.9
-  out "${D}  ⎿ ds-runner (DeepSeek) and ag-runner (Antigravity) work the same way${R}"; pause 1.1
+  out "${D}  ⎿ deepseek, antigravity, opencode and copilot backends work the same way${R}"; pause 1.1
   out "${D}# how much quota is left? (native, no third-party)${R}"; pause 0.6
   type_cc "/cli-dispatch:cx-balance"
   out "  Codex ${D}(plan: plus)${R}   5h ${G}76% left${R}   7d ${G}89% left${R}"; pause

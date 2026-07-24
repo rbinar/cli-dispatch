@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # cli-dispatch-clean — remove stale worker session dirs (running-but-dead), AND sweep stale
 # leftover git worktree artifacts (*-wt-* dirs under /tmp and $TMPDIR that a crashed/killed
-# runner never cleaned up — see CLAUDE.md "runner/babysitter pattern": real repo changes are
+# runner never cleaned up — see CLAUDE.md "deterministic runner + escalation path": real repo changes are
 # isolated in a worktree, and a runner that dies before its own cleanup leaves that worktree
 # behind forever). Session cleanup is delegated to the shared engine cli-dispatch-clean.mjs
 # (installed share dir → legacy claude-ds → next to this script); the worktree sweep runs

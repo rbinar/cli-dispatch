@@ -179,7 +179,7 @@ CODEX_API_KEY=""
 # Default model for the codex worker. Blank = codex's own default. Override per-call with
 # `cx-agent --model <name>`. gpt-5.6-sol/terra/luna rank above gpt-5.5, gpt-5.4, gpt-5.4-mini.
 CX_MODEL=""
-# Optional comma-separated candidate model list — when set, the cx-runner babysitter
+# Optional comma-separated candidate model list — when set, the delegating agent
 # picks the best fit from this list (same reasoning as an orchestrator-provided inline
 # list). Leave empty to use only the single CX_MODEL default above.
 CX_MODELS=""
@@ -205,23 +205,17 @@ elseif ($cfgChanged) { Write-Host "Config updated (added missing backend blocks)
 else { Write-Host "Config already complete -> $Config (left untouched)" }
 
 # Write the policy.json skeleton — only when -PolicyInjection on AND the file doesn't already
-# exist (never clobber an existing policy.json). Native Windows only has ds/cx runners
-# available (Antigravity/OpenCode/Copilot need a pseudo-TTY, WSL-only).
+# exist (never clobber an existing policy.json).
 $policyFile = Join-Path $ConfigDir "policy.json"
 if (($PolicyInjection -eq "on") -and (-not (Test-Path $policyFile))) {
   New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
-  $runners = @()
-  if ($wantDS) { $runners += '"ds-runner"' }
-  if ($wantCX) { $runners += '"cx-runner"' }
   $ver = "unknown"
   try { $ver = (Get-Content -Raw (Join-Path $ScriptDir "..\.claude-plugin\plugin.json") | ConvertFrom-Json).version } catch {}
   $now = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-  $runnersJoined = ($runners -join ", ")
   @"
 {
   "schemaVersion": 1,
   "enabled": true,
-  "runners": [$runnersJoined],
   "issueReminder": true,
   "claudeMdBlock": false,
   "pluginVersionAtSetup": "$ver",

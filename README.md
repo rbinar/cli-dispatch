@@ -8,13 +8,13 @@
 
 > 📝 **Write-up (Turkish):** [cli-dispatch: a plugin that makes Claude the boss and DeepSeek the worker](https://medium.com/@rbinar/cli-dispatch-claudea-patron-deepseek-e-i%CC%87%C5%9F%C3%A7i-rol%C3%BC-veren-bir-plugin-b232803581fc) — Medium
 
-![cli-dispatch demo — start Claude Code in your project, then: install, /cli-dispatch:setup, delegate via /cli-dispatch:ds-run and the ds/ag/cx/oc/cp-runner agents, check usage](assets/demo.gif)
+![cli-dispatch demo — start Claude Code in your project, then: install, /cli-dispatch:setup, delegate via /cli-dispatch:ds-run and the deterministic /cli-dispatch:run runner, check usage](assets/demo.gif)
 
-> **Demo** — install the plugin, run `/cli-dispatch:setup` to pick and configure your backend(s), then delegate tasks with `/cli-dispatch:ds-run` / `ag-run` / `cx-run` / `oc-run` / `cp-run` or the `ds-/ag-/cx-/oc-/cp-runner` subagents. The worker generates; Claude Code watches live and verifies.
+> **Demo** — install the plugin, run `/cli-dispatch:setup` to pick and configure your backend(s), then delegate tasks with `/cli-dispatch:ds-run` / `ag-run` / `cx-run` / `oc-run` / `cp-run`, or `/cli-dispatch:run <backend> "<task>" --verify '<cmd>'` for the deterministic, zero-babysitter path. The worker generates; Claude Code watches live and verifies.
 
-![cli-dispatch dashboard — live session list, subagent drill-down (ds/ag/cx/oc/cp-runner), worker session trace per backend](assets/dashboard.gif)
+![cli-dispatch dashboard — live session list, subagent drill-down, worker session trace per backend](assets/dashboard.gif)
 
-> **Dashboard** (`/cli-dispatch:dashboard`) — live view of all Claude Code sessions, subagents (ds/ag/cx/oc/cp-runner), and the worker CLI sessions they spawned. Shows status, task, and per-backend trace in real time.
+> **Dashboard** (`/cli-dispatch:dashboard`) — live view of all Claude Code sessions, any subagents they spawn, and the worker CLI sessions delegated via cli-dispatch. Shows status, task, and per-backend trace in real time.
 
 ## Install
 
@@ -80,11 +80,11 @@ For the **GitHub Copilot** backend, setup installs `cp-agent`/`cp-stream`. It ne
 
 DeepSeek key: https://platform.deepseek.com/api_keys
 
-`/cli-dispatch:setup` now has a final step that offers, via a yes/no-style question, to write a standing "prefer delegating to these runners" reminder into your global or project `CLAUDE.md`, so you don't have to re-explain your delegation preference every session (idempotent/marker-guarded so re-running setup won't duplicate it).
+`/cli-dispatch:setup` now has a final step that offers, via a yes/no-style question, to write a standing delegation-preference reminder — pointing at the deterministic runner (`/cli-dispatch:run`, no LLM babysitter) as the delegation path — into your global or project `CLAUDE.md`, so you don't have to re-explain your delegation preference every session (idempotent/marker-guarded so re-running setup won't duplicate it).
 
 ## Session-start policy injection (optional)
 
-That final `/cli-dispatch:setup` step now asks **four preferences** — enable per-session policy injection, which runners to prioritize, whether to include the GitHub-issue reminder, and whether to also write a static CLAUDE.md block — and saves the answers to `~/.config/cli-dispatch/policy.json`. A `SessionStart` hook (fires on `startup`/`resume`/`clear` — deliberately **not** `compact`, so the text doesn't pile up as context gets compacted) then auto-injects a compact delegation policy into every session's context: which runner (`ds-/ag-/cx-/oc-/cp-runner`) to delegate work to, naming each subagent with its assigned model, and a reminder to file cli-dispatch friction points as GitHub issues — all without hand-editing CLAUDE.md.
+That final `/cli-dispatch:setup` step now asks **three preferences** — enable per-session policy injection, whether to include the GitHub-issue reminder, and whether to also write a static CLAUDE.md block — and saves the answers to `~/.config/cli-dispatch/policy.json`. A `SessionStart` hook (fires on `startup`/`resume`/`clear` — deliberately **not** `compact`, so the text doesn't pile up as context gets compacted) then auto-injects a compact delegation policy into every session's context: route mechanical work through the deterministic runner (`/cli-dispatch:run`, no LLM babysitter), escalate yourself when there's no verify command, and a reminder to file cli-dispatch friction points as GitHub issues — all without hand-editing CLAUDE.md.
 
 - **Opt-in, default off** — if `policy.json` is missing or has `enabled:false`, the hook is a silent no-op with zero token cost.
 - Complements, doesn't replace, the static CLAUDE.md block (formerly `orchestration-priority`, now `policy:v1`) — enabling both injects the same policy twice per session, so hook-only is recommended. `/cli-dispatch:doctor` reports its status in a **Policy injection** section.
@@ -178,11 +178,10 @@ All used from inside Claude Code (`/cli-dispatch:ds-run <task>`, `/cli-dispatch:
 - **Session tracking (live watch + resume)** — work is not an opaque background process; each run writes a session dir (status / progress / transcript / meta + the full prompt) and is observable and resumable. → [Session tracking](#session-tracking-live-watch--resume)
 - **`--read-only` mode (Codex = real OS sandbox)** — `cx-agent --read-only` activates a **kernel-enforced** no-writes sandbox (macOS Seatbelt / Linux bwrap+seccomp). DeepSeek's `--read-only` is a tool-layer restriction; Antigravity, OpenCode, and Copilot have no write-deny at all (isolate them in a worktree).
 - **agentic + worktree isolation** — real repo tasks run in a throwaway git worktree; the diff is left **uncommitted** (review → build/test → merge is **on you/Claude**). Bundled helpers: `ds-/ag-/cx-/oc-/cp-worktree-run`.
-- **Per-backend runner subagents (`ds-/ag-/cx-/oc-/cp-runner`)** — hand the whole delegation to an isolated sub-context that picks the mode, isolates the work, verifies, and returns a short result — the management noise never enters the orchestrator. → [runner subagents](#ds-runner-subagent-keep-context-clean)
-- **Multi-candidate model selection** — for `ag-/cx-/oc-/cp-runner`, give 2+ candidate models in the task prompt (or set a standing list once via `AG_MODELS`/`CX_MODELS`/`OC_MODELS`/`CP_MODELS` in the config) and the runner reasons about which one best fits, picks it, and reports why; if the prompt gives no explicit model/list, the runner checks the config list first and falls back to the single `*_MODEL` default. `ds-runner` is not part of this — its model is fixed.
-- **Session-start policy injection (optional)** — a `SessionStart` hook auto-injects a compact delegation policy (runner priority, subagent naming, issue-filing reminder) into every session's context, configured once at `/cli-dispatch:setup`. Opt-in, default off, zero token cost when disabled. → [Session-start policy injection](#session-start-policy-injection-optional)
+- **Deterministic runner, no LLM babysitter (`/cli-dispatch:run`)** — the only delegation path: launches a worker, isolates real repo changes in a worktree, blocks until done, and gates on a machine-checkable `--verify` command — zero Anthropic tokens spent on orchestration. For judgment-heavy work with no verify command, the escalation path is the same runner (or a plain `*-agent` CLI) — you read the compact verdict + diff yourself and follow up with `/cli-dispatch:resume` if needed. → [Deterministic runner](#deterministic-runner-clidispatchrun--no-llm-babysitter)
+- **Session-start policy injection (optional)** — a `SessionStart` hook auto-injects a compact delegation policy (deterministic-runner routing, escalation path, issue-filing reminder) into every session's context, configured once at `/cli-dispatch:setup`. Opt-in, default off, zero token cost when disabled. → [Session-start policy injection](#session-start-policy-injection-optional)
 - **Web dashboard** — a local, read-only view: Claude Code sessions → flow → subagents → flow, plus a worker panel. Pinned task/instruction, Markdown-rendered messages, stale-worker detection, live SSE updates. → [Dashboard](#dashboard)
-- **Cost & model visibility** — the dashboard shows what each delegation actually cost (per-session/subagent token usage, per-worker total cost) and which model ran it, including a warning badge when a babysitter's own overhead is disproportionately high vs. the worker — so you can spot low-value delegations.
+- **Cost & model visibility** — the dashboard shows what each delegation actually cost (per-session/subagent token usage, per-worker total cost) and which model ran it. Legacy runner-subagent sessions (the five per-backend babysitters, retired — see [CHANGELOG.md](CHANGELOG.md)) carry a warning badge when their own babysitting overhead was disproportionately high vs. the worker they managed; the deterministic runner that replaced them spends zero Anthropic tokens on orchestration, so the badge no longer applies to new delegations.
 - **Native usage / quota** — `/cli-dispatch:balance` (all five at once) or a per-backend `*-balance`; reverse-engineered from each CLI's own local data where available, **no third-party tools**. Copilot is explicitly not CLI-queryable. → [Usage & quota](#usage--quota--native-no-third-party-tool)
 - **Housekeeping** — `/cli-dispatch:clean` prunes stale (`running`-but-dead) worker dirs; `/cli-dispatch:clean-schedule` automates it daily via launchd / cron / Scheduled Tasks.
 - **timeout safety net** — a hung/runaway worker is auto-killed (with its child processes) at a runtime or idle limit; the session goes `state: error`.
@@ -208,32 +207,19 @@ Session directory: `${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<id>/`
 
 > Requirement: `node` is needed for session tracking/parsing (claude-code already runs in a node environment).
 
-## ds-runner subagent (keep context clean)
+## Deterministic runner (`/cli-dispatch:run`) — no LLM babysitter
 
-Instead of managing a delegation step by step yourself, you can hand the whole thing to the packaged **`ds-runner`** subagent (inside Claude Code, say "do this task with ds-runner"). It picks the mode, isolates the work, **verifies** (build/test for repo/code tasks), and returns a short result — the management noise never enters the orchestrator's context. The worker is always DeepSeek; Claude Code picks the subagent's *own* (babysitter) model by difficulty (Claude Code makes the call below internally; you don't write `Agent(...)` by hand):
+cli-dispatch used to ship five per-backend "babysitter" subagents (`ds-/ag-/cx-/oc-/cp-runner`) that ran each delegation in its own LLM sub-context. Measured across production usage, those babysitters cost roughly **9x** their own worker's output in Anthropic tokens — they defeated the plugin's whole point, so they've been retired (see [CHANGELOG.md](CHANGELOG.md)). The deterministic runner is now the **only** delegation path:
 
 ```text
-Agent(subagent_type="ds-runner", model="haiku",  prompt="<self-contained task>")   # pure generation/analysis
-Agent(subagent_type="ds-runner", model="sonnet", prompt="<repo/code task>")         # needs build/test verification
+/cli-dispatch:run <backend> "<task>" --verify '<cmd>'
 ```
 
-Valuable for long/agentic work, verification, or several jobs in parallel; for a simple one-shot job `/cli-dispatch:ds-run` is enough.
+`cli-dispatch-run` launches the worker (`ds` DeepSeek / `ag` Antigravity / `cx` Codex / `oc` OpenCode / `cp` GitHub Copilot), isolates real repo changes in a git worktree, blocks until it finishes (or times out), runs your `--verify` command, and prints a compact verdict — **zero LLM babysitter tokens spent on orchestration.** On Codex, `--read-only` still activates the **real OS-level sandbox** (macOS Seatbelt / Linux bwrap+seccomp) — a kernel-enforced hard-block on all file writes, no worktree needed for a genuine no-writes guarantee.
 
-## cx-runner subagent (Codex twin — keep context clean)
+**Escalation path** (judgment-heavy work, no machine-checkable verify command): there is still no LLM babysitter subagent. You (Claude Code) run the deterministic runner — or a plain `*-agent` CLI directly — but instead of gating on `--verify`, you read the compact verdict and the diff yourself, then follow up with `/cli-dispatch:resume <session-id> "<prompt>"` if the result needs another pass.
 
-The Codex backend has its own parallel subagent: **`cx-runner`**. It works identically to `ds-runner` — picks the mode, isolates the work in a git worktree when needed, **verifies** (build/test for repo tasks), and returns a short result — but the worker is always Codex. The headline advantage over the other backends is Mode A: `--read-only` activates a **real OS-level sandbox** (macOS Seatbelt / Linux bwrap+seccomp), a kernel-enforced hard-block on all file writes — no worktree needed for a genuine no-writes guarantee. Inside Claude Code, say "do this task with cx-runner" or use `Agent(subagent_type="cx-runner", ...)`.
-
-## ag-runner subagent (Antigravity twin — keep context clean)
-
-The Antigravity backend has its own parallel subagent: **`ag-runner`**. It works identically to `ds-runner` — picks the mode, isolates the work in a git worktree when needed, **verifies** (build/test for repo tasks), and returns a short result — but the worker is always Antigravity (via `agy` / `ag-agent`). agy proxies multiple model families (Gemini, Claude, GPT — run `agy models` for the current list), so you can switch models without changing your delegation flow. Inside Claude Code, say "do this task with ag-runner" or use `Agent(subagent_type="ag-runner", ...)`.
-
-## oc-runner subagent (OpenCode twin — keep context clean)
-
-The OpenCode backend has its own parallel subagent: **`oc-runner`**. It works identically to `ds-runner` — picks the mode, isolates the work in a git worktree when needed, **verifies** (build/test for repo tasks), and returns a short result — but the worker is always OpenCode (via OpenRouter, `oc-agent` / `oc-stream`). Unlike Codex, OpenCode has **no sandbox at all** — no OS-level or tool-level write-deny — so worktree isolation is the only boundary (same posture as Antigravity). Model selection uses bare OpenRouter slugs with no `openrouter/` prefix (`oc-stream` adds it automatically), e.g. `oc-agent --model google/gemma-4-31b-it:free`. Inside Claude Code, say "do this task with oc-runner" or use `Agent(subagent_type="oc-runner", ...)`.
-
-## cp-runner subagent (GitHub Copilot twin — keep context clean)
-
-The GitHub Copilot backend has its own parallel subagent: **`cp-runner`**. It works identically to `ds-runner` — picks the mode, isolates the work in a git worktree when needed, **verifies** (build/test for repo tasks), and returns a short result — but the worker is always GitHub Copilot (via `cp-agent` / `cp-stream`). GitHub Copilot has **no sandbox at all** — no OS-level or tool-level write-deny — so worktree isolation is the only boundary. It requires an active GitHub Copilot subscription plus `gh` / `GH_TOKEN` auth (precedence `COPILOT_GITHUB_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN`; cli-dispatch automatically reuses `gh auth token` as `GH_TOKEN` when available). Inside Claude Code, say "do this task with cp-runner" or use `Agent(subagent_type="cp-runner", ...)`.
+For a trivial single-file fix (well under ~50 lines, zero discovery/ambiguity), skip delegation entirely and do it inline — the fixed cost of any delegation isn't worth it. For a simple one-shot job with no repo changes, the plain `/cli-dispatch:ds-run` / `ag-run` / `cx-run` / `oc-run` / `cp-run` commands are enough.
 
 ## Usage & quota — native, no third-party tool
 
@@ -309,7 +295,6 @@ cp-agent --resume <session-id> "follow-up"
 
 Flags (cx-agent / cx-stream): `--read-only`, `--sandbox <mode>`, `--cwd <dir>`, `--resume <id>`, `--model <m>`, `--max-runtime`/`--idle-timeout`, `-q`.
 Flags (cp-agent / cp-stream): `--cwd <dir>`, `--resume <id>`, `--model <m>`, `--effort low|medium|high`, `--max-runtime`/`--idle-timeout`, `-q`.
-(`cx-runner` is **not** one of these — it's a Claude Code subagent, not in `~/.local/bin`.)
 
 > 📄 Full reference for terminal install, all commands, flags, and env overrides: [TERMINAL.md](TERMINAL.md).
 

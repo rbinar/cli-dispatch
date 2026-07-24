@@ -62,17 +62,23 @@ Session directory: `${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<id>/`
 - `transcript.jsonl` — raw stream-json (resume/audit; **NOT read while polling**)
 - `meta.json` — prompt preview, cwd, branch, model, start/end
 
-## Offloading to the `ds-runner` subagent (keep your context clean)
-Instead of running the `ds-*` CLIs yourself and babysitting them, you can hand the whole
-delegation to the bundled **`ds-runner`** subagent. It runs/monitors/isolates/**verifies**
-the DeepSeek work in its own context and returns a short result — the management churn never
-enters yours. Pick its model by difficulty (the worker stays DeepSeek either way):
+## The deterministic runner (`/cli-dispatch:run`) — no LLM babysitter
+There is no `ds-runner` subagent anymore — running/monitoring/isolating/verifying a DeepSeek
+delegation inside its own LLM sub-context measured at ~9x the worker's own output in Anthropic
+tokens for zero quality gain, which defeated the point of delegating at all (issue #114). For
+mechanical work with a machine-checkable verify command, route it through the deterministic
+runner instead:
 ```
-Agent(subagent_type="ds-runner", model="haiku",  prompt="<self-contained task>")  # pure gen/analysis (default)
-Agent(subagent_type="ds-runner", model="sonnet", prompt="<self-contained repo/code task>")  # needs build/test verification
+/cli-dispatch:run ds "<self-contained task>" --verify '<cmd>'
 ```
-Worth it for long/agentic tasks, verification, or running several in parallel. For a quick
-one-shot, just call `ds-agent` directly (the subagent's extra model layer isn't worth it).
+`cli-dispatch-run` launches DeepSeek, isolates repo work in a git worktree, blocks until it
+finishes (or times out), runs `--verify`, and prints a compact verdict — zero LLM tokens spent
+on orchestration.
+
+**Escalation path** (judgment-heavy work, no verify command): call `ds-agent` directly (or
+still go through `/cli-dispatch:run` without `--verify`), then read the compact result and the
+diff yourself, following up with `/cli-dispatch:resume <session-id> "<prompt>"` if it needs
+another pass. For a quick one-shot with no repo changes, `ds-agent` alone is enough.
 
 ## Run rules
 - **Always run as a background task**: Bash tool `run_in_background: true` (don't block).
@@ -184,8 +190,9 @@ ag-stream --cwd <dir> -p "<task>"     # background/session-tracked variant (poll
   under `timeout(1)`/worktree and don't rely on the worker self-terminating.
 - **Isolation:** same worktree rule for real-repo tasks — run `ag-agent --cwd <worktree>` and
   review the diff yourself. (Worktree isolation also avoids agy's per-workspace conv-id race.)
-- **Babysitter subagent:** the `ag-runner` subagent manages an Antigravity delegation in a
-  sub-context (or call `ag-agent` directly in a worktree and verify the result yourself).
+- **Delegation path:** there is no `ag-runner` subagent anymore — use
+  `/cli-dispatch:run ag "<task>" --verify '<cmd>'` for mechanical work, or the escalation path
+  (call `ag-agent` directly in a worktree and verify the result yourself) for judgment-heavy work.
 
 ## Codex (OpenAI) backend — `cx-agent` / `cx-stream`
 cli-dispatch's third worker is **Codex** (`codex`, OpenAI's Codex CLI ≥ 0.142.3) — again a
@@ -218,7 +225,9 @@ cx-stream --cwd <dir> -p "<task>"       # background/session-tracked variant (po
   through `cx-stream-parse.mjs` (no pseudo-TTY/file-tail needed). Requires `node`.
 - **Auth:** `codex login` (ChatGPT/OAuth — no key for personal use) or `CODEX_API_KEY`
   (takes precedence over `OPENAI_API_KEY`).
-- **Babysitter subagent:** the `cx-runner` subagent manages a Codex delegation in a sub-context.
+- **Delegation path:** there is no `cx-runner` subagent anymore — use
+  `/cli-dispatch:run cx "<task>" --verify '<cmd>'` for mechanical work, or the escalation path
+  (call `cx-agent` directly and verify the result yourself) for judgment-heavy work.
 
 ## OpenCode (via OpenRouter) backend — `oc-agent` / `oc-stream`
 cli-dispatch's fourth worker is **OpenCode** (`opencode`, npm `opencode-ai`), driven through
@@ -241,7 +250,9 @@ oc-stream --cwd <dir> -p "<task>"          # background/session-tracked variant 
   loudly with an OpenRouter API error. Live list: `OPENROUTER_API_KEY=<key> opencode models openrouter`.
 - **Auth:** `OPENROUTER_API_KEY` in the config (pasted by the user — never written by Claude).
 - **Same session dir** as the others, so `sessions` / `watch` / `resume` / `kill` all work.
-- **Babysitter subagent:** the `oc-runner` subagent manages an OpenCode delegation in a sub-context.
+- **Delegation path:** there is no `oc-runner` subagent anymore — use
+  `/cli-dispatch:run oc "<task>" --verify '<cmd>'` for mechanical work, or the escalation path
+  (call `oc-agent` directly and verify the result yourself) for judgment-heavy work.
 
 ## GitHub Copilot backend — `cp-agent` / `cp-stream`
 cli-dispatch's fifth worker is **GitHub Copilot** (`copilot`, npm `@github/copilot`). Enable
@@ -271,14 +282,16 @@ cp-stream --cwd <dir> -p "<task>"          # background/session-tracked variant 
 - **Balance:** not queryable from the CLI. `/usage` is interactive-only inside a Copilot REPL;
   use https://github.com/settings/billing for real usage/limits.
 - **Same session dir** as the others, so `sessions` / `watch` / `resume` / `kill` all work.
-- **Babysitter subagent:** the `cp-runner` subagent manages a Copilot delegation in a sub-context.
+- **Delegation path:** there is no `cp-runner` subagent anymore — use
+  `/cli-dispatch:run cp "<task>" --verify '<cmd>'` for mechanical work, or the escalation path
+  (call `cp-agent` directly and verify the result yourself) for judgment-heavy work.
 
 ## Triviality gate
 
 Before delegating, ask three questions: (1) single file? (2) expected diff under
 ~50 lines? (3) zero discovery/ambiguity — you could write the exact edit right
 now? If all three are yes, do NOT delegate — do it inline; the delegation's
-fixed cost (runner spawn + babysitting + your own merge/verify cycle) exceeds
+fixed cost (worker spin-up + isolation + your own merge/verify cycle) exceeds
 the work. If several such trivial fixes accumulate, batch them into one
 delegation instead (see "Batch small fixes" below).
 
@@ -288,7 +301,7 @@ When the orchestrator sees a delegation prompt with several small related fixes
 (expected ~50 lines per fix, fixes are related), combine them into a SINGLE
 delegation with an itemized checklist rather than multiple delegations. The
 economics favor one worker, one diff, one verify cycle — per-delegation fixed
-costs (babysitting subagent invocation + orchestrator merge/verify) dominate for
+costs (worker spin-up + orchestrator merge/verify) dominate for
 small changes, so splitting them across separate delegations multiplies that
 overhead for no benefit.
 

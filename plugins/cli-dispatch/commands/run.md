@@ -27,7 +27,7 @@ if [ -z "$PROMPT" ]; then
 fi
 if ! command -v cli-dispatch-run >/dev/null 2>&1; then
   echo "cli-dispatch-run not found on PATH — re-run /cli-dispatch:setup (or scripts/install.sh)."
-  echo "Fallback: delegate via the ${BACKEND}-runner subagent or /cli-dispatch:${BACKEND}-run."
+  echo "Fallback: use /cli-dispatch:${BACKEND}-run, or call ${BACKEND}-agent directly."
   exit 1
 fi
 RC=0
