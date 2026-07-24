@@ -11,7 +11,7 @@ description: |
   available via `ag-agent` / `ag-stream`, a third, **Codex (OpenAI Codex CLI)**, via
   `cx-agent` / `cx-stream`, a fourth, **OpenCode (via OpenRouter)**, via
   `oc-agent` / `oc-stream`, and a fifth, **GitHub Copilot**, via `cp-agent` /
-  `cp-stream` (see the Antigravity, Codex, OpenCode, and GitHub Copilot sections below).
+  `cp-stream` (see the "Other backends" section below).
   Codex adds a real OS-level read-only sandbox (`cx-agent --read-only`).
   Triggers: "claude-ds", "delegate to claude-ds", "run with deepseek", "delegate to
   antigravity/gemini", "run with agy", "delegate to codex", "run with codex/openai",
@@ -141,6 +141,8 @@ Use the bundled helper:
 This script: opens an isolated git worktree (origin/main), symlinks `node_modules` if present,
 runs **claude-ds-stream** in Mode 2 inside the worktree (session-tracked), and leaves the diff
 **UNCOMMITTED**. The session id is printed on stderr → watch it with `/cli-dispatch:watch <id>`.
+The same helper exists for each other backend with the same signature: `ag-worktree-run.sh`,
+`cx-worktree-run.sh`, `oc-worktree-run.sh`, `cp-worktree-run.sh`.
 
 Then **YOU are the reviewer:**
 1. Review the FULL diff with `git -C <worktree> status && git -C <worktree> diff` — check for
@@ -150,141 +152,41 @@ Then **YOU are the reviewer:**
    Note in the commit body that "implementation was delegated to claude-ds (DeepSeek)" (transparency).
 4. Cleanup: `rm <worktree>/node_modules` → `git worktree remove <worktree> --force` → `git worktree prune`.
 
-## Antigravity (Gemini) backend — `ag-agent` / `ag-stream`
-cli-dispatch's second worker is **Antigravity** (`agy`, Google's Gemini-powered agentic CLI).
-It's a *different binary* from `claude` with its own auth/config — the DeepSeek "swap the env
-var" trick does NOT apply. Enable it via `/cli-dispatch:setup` (choose Antigravity/Both).
+## Other backends — Antigravity, Codex, OpenCode, GitHub Copilot
 
-The `ag-*` family mirrors the `ds-*` one, so the workflow is the same — only the command name
-changes:
+Each is a *different binary* from `claude`, with its own auth/config — the DeepSeek "swap the
+env var" trick does NOT apply to any of them. Enable any at `/cli-dispatch:setup`. Every
+`*-agent`/`*-stream` family mirrors `ds-agent`/`claude-ds-stream` exactly (same flags, same
+Modes 1/1-safe/2, same session dir/format) — only the command name and the specifics below
+differ:
+
 ```bash
-ag-agent "<task>"                     # agentic in cwd; live progress on stderr; answer on stdout
-ag-agent -q "<task>"                  # answer only on stdout (banner/progress silenced)
-ag-agent --cwd <dir> "<task>"         # work in <dir>; <dir> is registered as agy's workspace
-ag-agent --resume <conv-id> "<follow-up>"   # continue the same agy conversation
-ag-agent --model "Claude Opus 4.6 (Thinking)" "<task>"   # pick a specific model (see below)
-ag-stream --cwd <dir> -p "<task>"     # background/session-tracked variant (poll status.json)
+ag-agent "<task>"      # Antigravity/Gemini
+cx-agent "<task>"      # Codex/OpenAI
+oc-agent "<task>"      # OpenCode/OpenRouter
+cp-agent "<task>"      # GitHub Copilot
+<prefix>-agent -q "<task>"                   # answer only on stdout
+<prefix>-agent --cwd <dir> "<task>"          # agentic, isolated dir
+<prefix>-agent --resume <id> "<follow-up>"   # continue the same session
+<prefix>-stream --cwd <dir> -p "<task>"      # background/session-tracked variant (poll status.json)
 ```
-- **Model selection (agy proxies multiple families):** `agy models` lists them; pass the EXACT
-  display name to `--model` (config default: `AG_MODEL`). Verified working cross-vendor —
-  e.g. `--model "Claude Opus 4.6 (Thinking)"` actually routes to Claude, `"Gemini 3.1 Pro (High)"`
-  to Gemini. Current list: `Gemini 3.5 Flash (Low|Medium|High)`, `Gemini 3.1 Pro (Low|High)`,
-  `Claude Sonnet 4.6 (Thinking)`, `Claude Opus 4.6 (Thinking)`, `GPT-OSS 120B (Medium)`. Default
-  `Gemini 3.5 Flash (High)`. ⚠ An unknown name makes agy SILENTLY use its default — ag-stream
-  warns when `--model` isn't in `agy models`, but double-check the exact string (incl. suffix).
-- **Same session dir** as DeepSeek (`…/cli-dispatch/sessions/<id>/` with `status.json` etc.), so
-  `/cli-dispatch:sessions` / `watch` work for both. The session id IS the agy conv-id.
-- **How it works:** agy has no `--output-format json` and a non-TTY silent-drop bug, so
-  `ag-stream` runs it under a pseudo-TTY (`script`) and **tails agy's on-disk JSONL transcript**
-  for live progress + the final answer. Requires `script` (pseudo-tty) + `node`.
-- **Auth:** Google sign-in (run `agy` once) or `GEMINI_API_KEY`/`ANTIGRAVITY_API_KEY` in the config.
-- **no read-only mode:** agy has no tool-level write-deny (`--sandbox` restricts the terminal,
-  not file writes — tested), so `--read-only` is rejected. For a no-writes guarantee, isolate
-  in a throwaway/worktree `--cwd` and review the diff.
-- **timeout semantics differ from DeepSeek:** agy spawns detached workers + runs under a pty,
-  so an external tree-kill is unreliable (verified: SIGKILL on the tracked tree left agy
-  working). `--max-runtime N` is therefore enforced via agy's OWN `--print-timeout` (a
-  per-model-wait cap, so total wall-time may exceed N), and the watchdog is only a best-effort
-  backstop for a fully-hung agy. A capped run may report `done` (partial output) or `error`
-  (no final answer), not a guaranteed `error`. For a true wall-clock bound, run it yourself
-  under `timeout(1)`/worktree and don't rely on the worker self-terminating.
-- **Isolation:** same worktree rule for real-repo tasks — run `ag-agent --cwd <worktree>` and
-  review the diff yourself. (Worktree isolation also avoids agy's per-workspace conv-id race.)
-- **Delegation path:** there is no `ag-runner` subagent anymore — use
-  `/cli-dispatch:run ag "<task>" --verify '<cmd>'` for mechanical work, or the escalation path
-  (call `ag-agent` directly in a worktree and verify the result yourself) for judgment-heavy work.
 
-## Codex (OpenAI) backend — `cx-agent` / `cx-stream`
-cli-dispatch's third worker is **Codex** (`codex`, OpenAI's Codex CLI ≥ 0.142.3) — again a
-*different binary* with its own auth. Enable it via `/cli-dispatch:setup` (choose Codex).
+| Backend | Model select | Auth | Sandbox | Notable difference |
+|---|---|---|---|---|
+| **Antigravity** (`ag-*`) | `--model "<display name>"` / `AG_MODEL` — e.g. `--model "Gemini 3.5 Flash (High)"` (default); exact list: `agy models` (proxies multiple families, incl. Claude — verified cross-vendor routing) | Google sign-in (run `agy` once) or `GEMINI_API_KEY`/`ANTIGRAVITY_API_KEY` | **None** — `--read-only` is rejected (tested: `--sandbox` restricts the terminal, not writes) | Runs under a pseudo-TTY (`script`) tailing agy's on-disk JSONL (needs `script` + `node`; no `--output-format json` on agy). `--max-runtime` is enforced via agy's own `--print-timeout` — a best-effort backstop only, since agy spawns detached workers under a pty and an external tree-kill is unreliable (verified); wall time may exceed the cap and a capped run may report `done` with partial output instead of a guaranteed `error`. Worktree isolation also avoids agy's per-workspace conv-id race. |
+| **Codex** (`cx-*`) | `--model <name>` / `CX_MODEL` — e.g. `--model gpt-5.4-mini`; no CLI list command, check `~/.codex/models_cache.json` or `/model` inside codex | `codex login` (ChatGPT/OAuth) or `CODEX_API_KEY` (takes precedence over `OPENAI_API_KEY`) | **Real OS-level** — `--read-only` passes `-s read-only` → macOS Seatbelt / Linux bwrap+seccomp, a kernel-enforced hard-block on writes; genuine no-writes guarantee, no worktree needed for pure analysis. Default `workspace-write` for agentic work; override with `--sandbox read-only\|workspace-write\|danger-full-access`. | `codex exec --json` emits a clean JSONL stream — no pseudo-TTY/file-tail needed. Session id is the codex **thread-id**; `--resume` does not accept `--cwd`. |
+| **OpenCode** (`oc-*`) | `--model <bare-slug>` / `OC_MODEL` — e.g. `--model google/gemma-4-31b-it:free`; live list: `OPENROUTER_API_KEY=<key> opencode models openrouter` | `OPENROUTER_API_KEY` in the config (pasted by the user — never written by Claude) | **None** — `--auto` (always passed) is a functional headless requirement, not a safety opt-in | Unix-only (macOS/Linux/WSL). Invalid slugs fail loudly with an OpenRouter API error. `--resume` verified to target the named session. |
+| **GitHub Copilot** (`cp-*`) | `--model <slug>` / `CP_MODEL` (e.g. `gpt-5.4`, `auto`); `--effort low\|medium\|high` → `--reasoning-effort=<level>` | `COPILOT_GITHUB_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN` (cli-dispatch reuses `gh auth token` when available); active Copilot subscription required | **None** — `--allow-all-tools --no-ask-user` always passed for headless use, not a safety opt-in | Unix-only. Model list only visible via `/model` in the copilot TUI or GitHub Copilot docs — slugs change over time. Balance not queryable from the CLI; use https://github.com/settings/billing. |
 
-The `cx-*` family mirrors the `ds-*` one:
-```bash
-cx-agent "<task>"                       # agentic in cwd; live progress on stderr; answer on stdout
-cx-agent -q "<task>"                    # answer only on stdout
-cx-agent --read-only -q "<question>"    # REAL OS-level read-only sandbox (no writes / no bash)
-cx-agent --cwd <dir> "<task>"           # work in <dir>
-cx-agent --model gpt-5.4-mini "<task>"  # pick a model (see below)
-cx-agent --resume <thread-id> "<follow-up>"   # continue the same codex thread (do NOT pass --cwd)
-cx-stream --cwd <dir> -p "<task>"       # background/session-tracked variant (poll status.json)
-```
-- **Real OS-level read-only sandbox (headline feature):** `cx-agent --read-only` passes
-  `-s read-only` to codex → macOS Seatbelt / Linux bwrap+seccomp, a kernel-enforced hard-block
-  on all file writes. Unlike DeepSeek (tool-layer restriction) and Antigravity (none), this is
-  a genuine no-writes guarantee — no worktree needed for pure analysis. Sandbox defaults to
-  `workspace-write` for agentic work; override with `--sandbox read-only|workspace-write|danger-full-access`.
-- **Model selection:** `--model <name>` (config default `CX_MODEL`; blank = codex's own default).
-  Current top priority: `gpt-5.6-sol` (frontier), `gpt-5.6-terra` (balanced), `gpt-5.6-luna`
-  (fast/cheap, subagents). Also still in the catalog: `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`
-  (fast/cheap, subagents), `gpt-5.3-codex-spark` (ultra-fast coding model). `gpt-5.2`/
-  `gpt-5.3-codex` removed from the catalog entirely. `codex` has no CLI command that lists
-  models — check `~/.codex/models_cache.json` or `/model` inside codex for the live list.
-- **Same session dir** as the others (`…/cli-dispatch/sessions/<id>/`), so `/cli-dispatch:sessions`
-  / `watch` work for all three. The session id is the codex **thread-id**.
-- **How it works:** `codex exec --json` emits a clean JSONL stream → `cx-stream` pipes it
-  through `cx-stream-parse.mjs` (no pseudo-TTY/file-tail needed). Requires `node`.
-- **Auth:** `codex login` (ChatGPT/OAuth — no key for personal use) or `CODEX_API_KEY`
-  (takes precedence over `OPENAI_API_KEY`).
-- **Delegation path:** there is no `cx-runner` subagent anymore — use
-  `/cli-dispatch:run cx "<task>" --verify '<cmd>'` for mechanical work, or the escalation path
-  (call `cx-agent` directly and verify the result yourself) for judgment-heavy work.
+**Same session dir as DeepSeek** for all four (`…/cli-dispatch/sessions/<id>/`), so
+`sessions`/`watch`/`resume`/`kill` work across every backend. **Isolation:** the same worktree
+rule applies (`--cwd <worktree>`, review the diff yourself) — for Antigravity, OpenCode, and
+Copilot, worktree isolation is the *only* safety boundary, since none of the three has any
+OS- or tool-level write-deny.
 
-## OpenCode (via OpenRouter) backend — `oc-agent` / `oc-stream`
-cli-dispatch's fourth worker is **OpenCode** (`opencode`, npm `opencode-ai`), driven through
-**OpenRouter** so any OpenRouter model slug works. Enable it via `/cli-dispatch:setup`
-(choose OpenCode). Unix-only (macOS/Linux/WSL).
-
-The `oc-*` family mirrors the others:
-```bash
-oc-agent "<task>"                          # agentic in cwd; progress on stderr; answer on stdout
-oc-agent -q "<task>"                       # answer only on stdout
-oc-agent --cwd <dir> "<task>"              # work in <dir>
-oc-agent --model google/gemma-4-31b-it:free "<task>"   # bare OpenRouter slug (oc-stream adds openrouter/)
-oc-agent --resume <session-id> "<follow-up>"           # continue the same session (verified: targets the NAMED session)
-oc-stream --cwd <dir> -p "<task>"          # background/session-tracked variant (poll status.json)
-```
-- **NO sandbox at all** — no OS-level or tool-level write-deny; `--auto` (always passed) is a
-  functional headless requirement, not a safety opt-in. Git-worktree isolation is the only
-  safety boundary (same posture as Antigravity).
-- **Model selection:** `--model <bare-slug>` (config default `OC_MODEL`). Invalid slugs fail
-  loudly with an OpenRouter API error. Live list: `OPENROUTER_API_KEY=<key> opencode models openrouter`.
-- **Auth:** `OPENROUTER_API_KEY` in the config (pasted by the user — never written by Claude).
-- **Same session dir** as the others, so `sessions` / `watch` / `resume` / `kill` all work.
-- **Delegation path:** there is no `oc-runner` subagent anymore — use
-  `/cli-dispatch:run oc "<task>" --verify '<cmd>'` for mechanical work, or the escalation path
-  (call `oc-agent` directly and verify the result yourself) for judgment-heavy work.
-
-## GitHub Copilot backend — `cp-agent` / `cp-stream`
-cli-dispatch's fifth worker is **GitHub Copilot** (`copilot`, npm `@github/copilot`). Enable
-it via `/cli-dispatch:setup` (choose GitHub Copilot). Unix-only (macOS/Linux/WSL).
-
-The `cp-*` family mirrors the OpenCode backend:
-```bash
-cp-agent "<task>"                          # agentic in cwd; progress on stderr; answer on stdout
-cp-agent -q "<task>"                       # answer only on stdout
-cp-agent --cwd <dir> "<task>"              # work in <dir>; passed to copilot as --add-dir
-cp-agent --model gpt-5.4 "<task>"          # Copilot model slug (e.g. gpt-5.4, auto)
-cp-agent --effort high "<task>"            # maps to --reasoning-effort=high
-cp-agent --resume <session-id> "<follow-up>"           # continue the same session
-cp-stream --cwd <dir> -p "<task>"          # background/session-tracked variant (poll status.json)
-```
-- **NO sandbox at all** — no OS-level or tool-level write-deny; `--allow-all-tools
-  --no-ask-user` is always passed for headless use, not as a safety opt-in. Git-worktree
-  isolation is the only safety boundary (same posture as OpenCode and Antigravity).
-- **Model selection:** `--model <slug>` (config default `CP_MODEL`). Examples:
-  `gpt-5.4`, `auto`. Current model list is only visible interactively via `/model` in the
-  copilot TUI (auth required) or GitHub Copilot docs — slugs change over time.
-- **Reasoning effort:** `--effort low|medium|high` maps to Copilot's
-  `--reasoning-effort=<level>`.
-- **Auth:** `COPILOT_GITHUB_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN`; cli-dispatch automatically
-  reuses `gh auth token` as `GH_TOKEN` when available. An active GitHub Copilot subscription
-  is required.
-- **Balance:** not queryable from the CLI. `/usage` is interactive-only inside a Copilot REPL;
-  use https://github.com/settings/billing for real usage/limits.
-- **Same session dir** as the others, so `sessions` / `watch` / `resume` / `kill` all work.
-- **Delegation path:** there is no `cp-runner` subagent anymore — use
-  `/cli-dispatch:run cp "<task>" --verify '<cmd>'` for mechanical work, or the escalation path
-  (call `cp-agent` directly and verify the result yourself) for judgment-heavy work.
+**Delegation path (all four):** there is no `ag-/cx-/oc-/cp-runner` subagent anymore — use
+`/cli-dispatch:run <backend> "<task>" --verify '<cmd>'` for mechanical work, or the escalation
+path (call the `*-agent` CLI directly and verify the result yourself) for judgment-heavy work.
 
 ## Triviality gate
 
@@ -319,8 +221,12 @@ Don't trust any output until verified.
 - `/cli-dispatch:cx-run <task>` — delegate to the **Codex (OpenAI)** worker (real read-only sandbox; same workflow).
 - `/cli-dispatch:oc-run <task>` — delegate to the **OpenCode (OpenRouter)** worker (no sandbox — worktree isolation only; same workflow).
 - `/cli-dispatch:cp-run <task>` — delegate to the **GitHub Copilot** worker (no sandbox — worktree isolation only; same workflow).
+- `/cli-dispatch:run <backend> "<task>" --verify '<cmd>'` — the deterministic runner: launch + worktree-isolate + block + verify, zero LLM babysitter tokens. The primary way to delegate mechanical work.
 - `/cli-dispatch:sessions` — list past/active sessions (all backends; shows a `backend` column). Per-backend: `ds-sessions` / `ag-sessions` / `cx-sessions` / `oc-sessions` / `cp-sessions`.
 - `/cli-dispatch:watch <id>` — show a session's compact live status (cost-conscious).
+- `/cli-dispatch:wait <id>` — block until a session reaches a terminal state (or times out), then print a compact summary; one blocking call instead of polling `watch`.
+- `/cli-dispatch:resume <id> <prompt>` — continue a worker session with a follow-up prompt (auto-detects backend).
+- `/cli-dispatch:kill <id>` — stop a running worker session (SIGTERM + state → killed).
 - `/cli-dispatch:clean` — remove stale worker dirs (a `running` session whose process died before finalize, so `status.json` is stuck). Dry-run by default; `--remove` deletes, `--older-than DAYS` also prunes old finished sessions.
 - `/cli-dispatch:clean-schedule` — register a daily OS-level auto-clean (launchd/cron/Scheduled Tasks) that runs `cli-dispatch-clean --remove` in the background; `status` / `uninstall` actions too.
 - `/cli-dispatch:status` — check installation/key/CLI status for all backends. Per-backend: `ds-status` / `ag-status` / `cx-status` / `oc-status` / `cp-status`.
@@ -330,3 +236,6 @@ Don't trust any output until verified.
 - `/cli-dispatch:ag-balance` — Antigravity quota (% left per model + plan), via the local language-server `GetUserStatus` RPC (needs the Antigravity server running).
 - `/cli-dispatch:oc-balance` — OpenCode / OpenRouter credits.
 - `/cli-dispatch:cp-balance` — Copilot usage note (not queryable from the CLI; use GitHub Billing).
+- `/cli-dispatch:gain` — worker token totals by backend, plus Anthropic babysitting cost from legacy runner-subagent sessions.
+- `/cli-dispatch:doctor` — health check for all backends (PATH, keys, CLI auth ✓/✗).
+- `/cli-dispatch:help` — one-screen command reference.

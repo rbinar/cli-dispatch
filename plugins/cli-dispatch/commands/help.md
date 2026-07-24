@@ -20,11 +20,12 @@ cat <<'HELP'
 │    /cli-dispatch:cx-run <task>  Delegate to OpenAI Codex                     │
 │    /cli-dispatch:oc-run <task>  Delegate to OpenCode (OpenRouter)            │
 │    /cli-dispatch:cp-run <task>  Delegate to GitHub Copilot                   │
-│    Escalation: /cli-dispatch:run <backend> "<task>" --verify '<cmd>'         │
+│    Runner: /cli-dispatch:run <backend> "<task>" --verify '<cmd>'             │
 │                                                                               │
 │  MONITOR                                                                      │
 │    /cli-dispatch:sessions       List all sessions (all backends)             │
 │    /cli-dispatch:watch <id>     Live status of one session                   │
+│    /cli-dispatch:wait <id>      Block until session finishes                 │
 │    /cli-dispatch:resume <id> …  Continue a session with a follow-up          │
 │    /cli-dispatch:kill <id>      Stop a running worker session                │
 │    /cli-dispatch:dashboard      Open local web dashboard (port 7878)         │
@@ -41,5 +42,7 @@ cat <<'HELP'
 │    /cli-dispatch:clean-schedule Schedule periodic cleanup                    │
 │                                                                               │
 └───────────────────────────────────────────────────────────────────────────────┘
+
+[CD] in your statusline = cli-dispatch active; ▶N = N workers running right now.
 HELP
 ```

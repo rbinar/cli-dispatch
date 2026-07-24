@@ -7,6 +7,28 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.1.1] — 2026-07-24
+
+### Değiştirildi
+
+- **Dokümanlar yenilendi ve sadeleştirildi.** `README.md`/`README.tr.md`: beş
+  backend'in ayrı kurulum paragrafları tek karşılaştırma tablosuna (CLI/auth/model
+  seçimi) indirildi, worktree/sandbox açıklaması "Güvenlik ve veri" altında tekleşti,
+  `[CD]` statusline rozeti belgelendi (yeni bölüm + Özellikler maddesi) ve eksik olan
+  `/cli-dispatch:run` / `wait` / `gain` satırları Kullanım tablosuna eklendi.
+  `skills/ds-delegate/SKILL.md`: neredeyse özdeş dört backend bölümü tek "Other
+  backends" bölümü + farklar tablosunda birleştirildi (−%27 uzunluk, bilgi kaybı yok);
+  Komutlar listesine eksik yedi komut eklendi. `help.md`: `/cli-dispatch:run` satırının
+  etiketi "Escalation:"dan "Runner:"a düzeltildi, eksik `wait` satırı ve tek satırlık
+  `[CD]` rozet notu eklendi.
+
+### Düzeltildi
+
+- README'lerde deterministik-runner bölümüne giden, öteden beri bozuk anchor
+  (`#deterministic-runner-clidispatchrun--no-llm-babysitter` →
+  `#deterministic-runner-cli-dispatchrun--no-llm-babysitter`) — gerçek
+  `github-slugger` algoritmasıyla doğrulandı.
+
 ## [4.1.0] — 2026-07-24
 
 ### Eklendi

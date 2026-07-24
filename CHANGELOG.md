@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.1.1] — 2026-07-24
+
+### Changed
+
+- **Docs refreshed and simplified.** `README.md`/`README.tr.md`: the five per-backend
+  install paragraphs collapsed into one comparison table (CLI/auth/model-select), the
+  worktree/sandbox explanation centralized under "Security and data", the `[CD]`
+  statusline badge documented (new section + Features bullet), and `/cli-dispatch:run`
+  / `wait` / `gain` added to the previously incomplete Usage table.
+  `skills/ds-delegate/SKILL.md`: four near-identical backend sections merged into one
+  "Other backends" section + differences table (−27% length, no information dropped);
+  seven missing commands added to its Commands list. `help.md`: `/cli-dispatch:run` row
+  relabeled from "Escalation:" to "Runner:", missing `wait` row added, one-line `[CD]`
+  badge note appended.
+
+### Fixed
+
+- Broken pre-existing README anchor to the deterministic-runner section
+  (`#deterministic-runner-clidispatchrun--no-llm-babysitter` →
+  `#deterministic-runner-cli-dispatchrun--no-llm-babysitter`) — verified against the
+  real `github-slugger` algorithm in both READMEs.
+
 ## [4.1.0] — 2026-07-24
 
 ### Added
