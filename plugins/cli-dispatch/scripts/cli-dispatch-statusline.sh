@@ -30,9 +30,22 @@ POLICY="${CLI_DISPATCH_POLICY_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/cli-dispat
 ENABLED=0
 [ -f "$POLICY" ] && grep -q '"enabled"[[:space:]]*:[[:space:]]*true' "$POLICY" 2>/dev/null && ENABLED=1
 
+# Count only sessions that are running AND still alive. `state: running` alone is not
+# liveness: a crashed worker keeps that state until `cli-dispatch-clean` sweeps it, which
+# would pin a permanent phantom "▶1" in the statusline. Use the same staleness signal the
+# rest of the repo uses — status.json mtime (dashboard-server.mjs: 90s; clean: staleSecs).
+STALE_AFTER=90
 RUNNING=0
 if [ -d "$ROOT" ]; then
-  RUNNING=$(grep -l '"state"[[:space:]]*:[[:space:]]*"running"' "$ROOT"/*/status.json 2>/dev/null | wc -l | tr -d ' ')
+  NOW=$(date +%s)
+  for _sf in "$ROOT"/*/status.json; do
+    [ -f "$_sf" ] || continue
+    grep -q '"state"[[:space:]]*:[[:space:]]*"running"' "$_sf" 2>/dev/null || continue
+    # stat is not portable: BSD/macOS uses -f %m, GNU uses -c %Y.
+    _mtime=$(stat -f %m "$_sf" 2>/dev/null || stat -c %Y "$_sf" 2>/dev/null || echo 0)
+    [ "$_mtime" -gt 0 ] || continue
+    [ "$((NOW - _mtime))" -le "$STALE_AFTER" ] && RUNNING=$((RUNNING + 1))
+  done
 fi
 
 [ "$ENABLED" -eq 1 ] || [ "${RUNNING:-0}" -gt 0 ] || exit 0

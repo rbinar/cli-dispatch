@@ -30,6 +30,17 @@ test('2. enabled:false -> null (even with a legacy runners field)', () => {
   assert.equal(buildPolicyContext({ enabled: false, runners: ['ds-runner'] }), null)
 })
 
+// Fail-safe: an `enabled` field that is missing (or any non-true value) must NOT inject.
+// The SDD once claimed the opposite ("missing -> defaults to true"); the code's fail-closed
+// choice is deliberate — a malformed/partial policy file must never start injecting text
+// into every session. Pinned here so nobody "fixes" the code toward the old spec wording.
+test('2b. enabled missing or non-true -> null (fail closed)', () => {
+  assert.equal(buildPolicyContext({}), null, 'no enabled field must not inject')
+  assert.equal(buildPolicyContext({ issueReminder: true }), null, 'other fields do not imply enabled')
+  assert.equal(buildPolicyContext({ enabled: 'true' }), null, 'string "true" is not true')
+  assert.equal(buildPolicyContext({ enabled: 1 }), null, 'truthy non-boolean is not true')
+})
+
 test('3. enabled:true -> routing + escalation + issue sentences, starts with the label', () => {
   const ctx = buildPolicyContext({ enabled: true })
   assert.equal(typeof ctx, 'string')

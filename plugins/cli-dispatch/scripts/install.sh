@@ -266,7 +266,7 @@ echo "Installed cleaner -> cli-dispatch-clean (engine -> $LIBEXEC_DIR/cli-dispat
 
 # ---- Blocking-wait tool (backend-agnostic; always installed) ---------------
 install -m 0755 "$SCRIPT_DIR/cli-dispatch-wait" "$BIN_DIR/cli-dispatch-wait"
-echo "Installed waiter -> cli-dispatch-wait (blocks until a session reaches a terminal state; zero-token polling for *-runner subagents)"
+echo "Installed waiter -> cli-dispatch-wait (blocks until a session reaches a terminal state; zero-token polling, no LLM babysitter)"
 
 # ---- Gain-report tool (backend-agnostic; always installed) -----------------
 install -m 0755 "$SCRIPT_DIR/cli-dispatch-gain" "$BIN_DIR/cli-dispatch-gain"

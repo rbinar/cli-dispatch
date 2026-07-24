@@ -5,21 +5,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this repo is
 
 `cli-dispatch` is a Claude Code **plugin** (not an npm package — there is no `package.json`,
-no build step, no bundler). It ships slash commands, subagent definitions, and standalone
-CLI scripts that let Claude Code delegate work to five external "worker" CLIs — DeepSeek
-(via `claude` pointed at DeepSeek's API), Antigravity/Gemini (`agy`), OpenAI Codex
+no build step, no bundler). It ships slash commands, a SessionStart hook, a skill, and
+standalone CLI scripts that let Claude Code delegate work to five external "worker" CLIs —
+DeepSeek (via `claude` pointed at DeepSeek's API), Antigravity/Gemini (`agy`), OpenAI Codex
 (`codex`), OpenCode (`opencode`, via OpenRouter), and GitHub Copilot (`copilot`) — since
-Claude Code's built-in subagent tool only supports Anthropic models.
+Claude Code's built-in subagent tool only supports Anthropic models. It ships **no subagent
+definitions**: the five `agents/*-runner.md` babysitters were deleted in 4.0.0 (see
+"The deterministic runner + escalation path" below).
 
 Everything the plugin installs lives under `plugins/cli-dispatch/`:
 - `commands/*.md` — slash commands (`/cli-dispatch:*`). Each is markdown with a fenced
   bash (and sometimes PowerShell) block that Claude Code executes directly — there is no
   compiled command layer.
-- `scripts/` — the actual installed CLIs (`ds-agent`, `ag-agent`, `cx-agent`, `oc-agent`,
-  `cp-agent` + their `*-stream` siblings, plus backend-agnostic tools like
-  `cli-dispatch-clean`, `cli-dispatch-wait`, `cli-dispatch-dashboard`). Bash/PowerShell
-  wrappers around Node `*-stream-parse.mjs` parsers. `install.sh`/`install.ps1` copy these
-  into `~/.local/bin` (wrappers) and `~/.local/share/cli-dispatch/` (parsers + shared libs).
+- `scripts/` — the actual installed CLIs. Per-backend: `ds-agent`, `ag-agent`, `cx-agent`,
+  `oc-agent`, `cp-agent` + their `*-stream` siblings and `*-worktree-run.sh` runners.
+  Backend-agnostic: `cli-dispatch-run` (the deterministic runner — the delegation path),
+  `cli-dispatch-wait`, `cli-dispatch-clean`, `cli-dispatch-gain`, `cli-dispatch-dashboard`,
+  and `cli-dispatch-statusline.sh` (the `[CD]` statusline fragment — bash-only by design,
+  glob-loaded from the plugin cache rather than installed to `~/.local/bin`). Bash/PowerShell
+  wrappers around Node engines (`*-stream-parse.mjs` parsers, `verdict-writer.mjs`,
+  `gain-report.mjs`, `dashboard-server.mjs`, `cli-dispatch-clean.mjs`).
+  `install.sh`/`install.ps1` copy these into `~/.local/bin` (wrappers) and
+  `~/.local/share/cli-dispatch/` (engines + shared libs).
+- `hooks/hooks.json` — the SessionStart hook registration. Wires `scripts/policy-inject.mjs`
+  to all five matchers (`startup`/`resume`/`clear`/`compact`/`fork`); `compact` and `fork`
+  matter because compaction drops the injected policy from a long session's context (#118).
 - `skills/ds-delegate/SKILL.md` — the `ds-delegate` skill.
 
 ## Commands
@@ -127,6 +137,16 @@ bash script and a `.ps1` twin for native Windows, installed by `install.sh` and
 `install.ps1` respectively — keep both in sync when changing one. Antigravity, OpenCode,
 and GitHub Copilot backends are Unix-only (macOS/Linux/WSL) for now; only DeepSeek and
 Codex run natively on Windows.
+
+One deliberate exception to the pairing rule: `cli-dispatch-statusline.sh` has **no `.ps1`
+twin**. It is not an installed binary — a combining `~/.claude/hooks/statusline.sh` wrapper
+globs it straight out of the plugin cache — and statusline wrappers of that shape are a
+bash-only convention. Both READMEs say so explicitly ("Unix (bash) statusline setups only").
+
+Parity is also a *behavior* rule, not just a file-existence one: 4.2.0 fixed three cases
+where a `.ps1` had silently drifted from its bash twin (an unreachable `--resume`, an
+unchecked `git worktree add`, a missing empty-verdict fallback). When you change one side,
+diff the guards — not only the happy path.
 
 ## Non-obvious constraints
 

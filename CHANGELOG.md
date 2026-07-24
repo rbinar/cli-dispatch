@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.2.1] — 2026-07-25
+
+Second batch of audit follow-ups: the findings that needed no design decision. The rest are
+tracked in #122 (accounting semantics), #123 (cross-platform thresholds), #124 (guard
+coverage), #125 (dead code).
+
+### Fixed
+
+- **Statusline `▶N` counted dead workers.** `cli-dispatch-statusline.sh` treated
+  `state: running` as liveness, so a crashed worker pinned a phantom `▶1` until
+  `cli-dispatch-clean` swept it — and could be the only reason the badge showed at all. It
+  now applies the same staleness signal the rest of the repo uses (status.json mtime, 90s),
+  with portable `stat` handling for BSD/macOS and GNU.
+- **`install.ps1` left the API-key config world-readable.** `install.sh` protects it with
+  `umask 077` + `chmod 600`; the PowerShell installer wrote it with a plain `Set-Content`.
+  It now breaks ACL inheritance and grants FullControl to the current user only,
+  best-effort (an ACL failure warns instead of aborting the install).
+- **Stale `*-runner.md` references printed at runtime.** `oc-stream`/`cp-stream` pointed
+  users at deleted files on every worker run, and `install.sh` advertised
+  "zero-token polling for *-runner subagents" on every install. Also cleaned from
+  `oc-agent`/`cp-agent` comments.
+
+### Changed
+
+- **`CLAUDE.md` inventory corrected** — it still claimed the plugin ships "subagent
+  definitions" (deleted in 4.0.0) and omitted `hooks/`, `cli-dispatch-run`,
+  `cli-dispatch-gain`, and `cli-dispatch-statusline.sh`. Since this file loads into every
+  session, a wrong inventory leaks straight into agent behavior. The cross-platform pairing
+  rule now also records the deliberate statusline exception and notes that parity is a
+  *behavior* rule (4.2.0 fixed three silent `.ps1` drifts).
+- **`TERMINAL.md`** now documents the backend-agnostic tools it omitted entirely —
+  `cli-dispatch-run` (the delegation path) was not mentioned once.
+- **`commands/setup.md`** — fixed a stale "question 4" reference (there are three) and the
+  user-facing text that described the hook as firing only on new/resumed/cleared sessions
+  (4.1.3 added `compact` and `fork`).
+- **README uninstall step** (EN + TR) actually removes what the installer installs — it
+  listed 2 of ~18 binaries while presenting itself as "a full cleanup".
+- `.specs/dev/sdd/policy-injection.md` corrected: it claimed a missing `enabled` field
+  defaults to `true`, while the implementation fails closed. The code is right; the spec
+  was not.
+
+### Added
+
+- `policy-inject.test.mjs` test 2b — pins the fail-closed contract for a missing/non-boolean
+  `enabled` field, previously untested (and asserted backwards by the spec above).
+
 ## [4.2.0] — 2026-07-25
 
 Findings from a full read-only audit of the post-4.0 codebase. This release fixes the

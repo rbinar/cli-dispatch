@@ -153,15 +153,16 @@ Follow these steps:
 
 7. **Configure per-session policy injection, then optionally a static CLAUDE.md block** so
    the user doesn't need to re-explain the delegation routing in every session. Instead
-   of hand-editing CLAUDE.md, cli-dispatch can auto-inject its delegation policy into every
-   new/resumed/cleared session via a `SessionStart` hook that reads
+   of hand-editing CLAUDE.md, cli-dispatch can auto-inject its delegation policy at every
+   session start — including after compaction and in forked sessions — via a `SessionStart`
+   hook (matchers: startup, resume, clear, compact, fork) that reads
    `~/.config/cli-dispatch/policy.json`. Gather the user's preferences with `AskUserQuestion`
    — the three logical choices below may be grouped into a single call, but keep them clearly
    separated:
 
    1. **header "Policy injection"** — *"Enable per-session policy injection? A SessionStart
-      hook auto-injects the cli-dispatch delegation policy into every new/resumed/cleared
-      session, so you don't hand-edit CLAUDE.md."* Options: **"Enable (recommended)"**
+      hook auto-injects the cli-dispatch delegation policy at every session start — including
+      after auto-compaction and in forked sessions — so you don't hand-edit CLAUDE.md."* Options: **"Enable (recommended)"**
       (`recommended: true`), **"Skip"**.
    2. **header "Issue reminder"** *(ask only if Enable)* — *"Include a reminder to file
       cli-dispatch bugs/ideas as GitHub issues?"* Options: **"Include"** (`recommended: true`),
@@ -225,7 +226,7 @@ Follow these steps:
    rather than deleting it.
 
    **B) CLAUDE.md marker migration + block** (only if the user asked for the static block in
-   question 4). Choose the target file the same way as before — `~/.claude/CLAUDE.md` (global,
+   question 3). Choose the target file the same way as before — `~/.claude/CLAUDE.md` (global,
    all projects) or the project's `CLAUDE.md` (this repo only); ask which with `AskUserQuestion`
    if not already implied. This is a **find-and-replace-in-place** operation — never delete
    unrelated content:

@@ -14,7 +14,7 @@
 # codex's real kernel-enforced sandbox). `--auto` (always passed by oc-stream) auto-approves
 # every permission prompt — a functional requirement for headless use, not a safety opt-in.
 # For a no-writes guarantee, isolate via --cwd to a throwaway dir or a git worktree and
-# review the diff yourself (same posture as the Antigravity/agy backend — see oc-runner.md).
+# review the diff yourself (same posture as the Antigravity/agy backend).
 set -euo pipefail
 
 # Version staleness check

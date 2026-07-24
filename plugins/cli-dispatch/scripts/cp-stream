@@ -183,7 +183,7 @@ BRANCH="$(git -C "$CWD" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
 
 echo "cp-stream → GitHub Copilot worker" >&2
 echo "  cwd:     $CWD" >&2
-echo "  sandbox: none — git-worktree isolation is the only safety boundary (see cp-runner.md)" >&2
+echo "  sandbox: none — git-worktree isolation is the only safety boundary" >&2
 [ -n "$MODEL" ] && echo "  model:   $MODEL" >&2
 [ -n "$EFFORT" ] && echo "  effort:  $EFFORT" >&2
 [ "$RESUME" -eq 1 ] && echo "  resume:  $RESUME_ID" >&2

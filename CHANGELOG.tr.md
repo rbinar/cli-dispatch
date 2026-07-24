@@ -7,6 +7,53 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.2.1] — 2026-07-25
+
+Denetim takibinin ikinci turu: tasarım kararı gerektirmeyen bulgular. Kalanlar #122
+(muhasebe semantiği), #123 (cross-platform eşikler), #124 (guard kapsamı), #125 (ölü kod)
+issue'larında takip ediliyor.
+
+### Düzeltildi
+
+- **Statusline `▶N` ölü worker'ları sayıyordu.** `cli-dispatch-statusline.sh`,
+  `state: running`'i canlılık sanıyordu; çöken bir worker `cli-dispatch-clean` süpürene
+  kadar hayalet bir `▶1` gösteriyor — ve rozetin görünmesinin tek nedeni bile bu
+  olabiliyordu. Artık repo'nun geri kalanının kullandığı bayatlık sinyalini uyguluyor
+  (status.json mtime, 90s), BSD/macOS ve GNU için taşınabilir `stat` işleyişiyle.
+- **`install.ps1` API key tutan config'i herkese okunur bırakıyordu.** `install.sh` bunu
+  `umask 077` + `chmod 600` ile koruyor; PowerShell kurucusu düz `Set-Content` ile
+  yazıyordu. Artık ACL kalıtımını kırıp yalnız mevcut kullanıcıya FullControl veriyor;
+  best-effort (ACL hatası kurulumu düşürmek yerine uyarı basıyor).
+- **Çalışma zamanında basılan artık `*-runner.md` referansları.** `oc-stream`/`cp-stream`
+  her worker koşusunda kullanıcıyı silinmiş dosyalara yönlendiriyordu; `install.sh` da her
+  kurulumda "zero-token polling for *-runner subagents" reklamı yapıyordu.
+  `oc-agent`/`cp-agent` yorumlarından da temizlendi.
+
+### Değiştirildi
+
+- **`CLAUDE.md` envanteri düzeltildi** — plugin'in "subagent definitions" gönderdiğini
+  iddia etmeye devam ediyordu (4.0.0'da silindi) ve `hooks/`, `cli-dispatch-run`,
+  `cli-dispatch-gain`, `cli-dispatch-statusline.sh`'ı atlıyordu. Bu dosya her oturuma
+  yüklendiği için yanlış envanter doğrudan ajan davranışına sızıyor. Cross-platform
+  eşleşme kuralı artık bilinçli statusline istisnasını da kaydediyor ve paritenin bir
+  *davranış* kuralı olduğunu not ediyor (4.2.0 üç sessiz `.ps1` kaymasını düzeltti).
+- **`TERMINAL.md`** artık tümüyle atladığı backend-agnostik araçları belgeliyor —
+  `cli-dispatch-run` (delegasyon yolu) bir kez bile anılmıyordu.
+- **`commands/setup.md`** — bayat "question 4" referansı (üç soru var) ve hook'u yalnız
+  yeni/resume/clear oturumlarında tetikleniyor gibi tanıtan kullanıcıya dönük metin
+  düzeltildi (4.1.3 `compact` ve `fork`'u ekledi).
+- **README kaldırma adımı** (EN + TR) artık kurucunun kurduğu şeyleri gerçekten siliyor —
+  kendini "tam temizlik" diye sunarken ~18 ikiliden 2'sini listeliyordu.
+- `.specs/dev/sdd/policy-injection.md` düzeltildi: eksik `enabled` alanının `true`
+  varsayıldığını söylüyordu, oysa implementasyon fail-closed davranıyor. Kod doğru,
+  spec değildi.
+
+### Eklendi
+
+- `policy-inject.test.mjs` test 2b — eksik/boolean-olmayan `enabled` alanı için fail-closed
+  sözleşmesini sabitliyor; daha önce test edilmiyordu (ve yukarıdaki spec tersini
+  söylüyordu).
+
 ## [4.2.0] — 2026-07-25
 
 4.0 sonrası kod tabanının salt-okunur tam denetiminden çıkan bulgular. Bu sürüm doğruluk

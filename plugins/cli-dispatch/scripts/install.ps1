@@ -197,6 +197,21 @@ $cfgCreated = $false; $cfgChanged = $false
 if (-not (Test-Path $Config)) {
   New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
   Set-Content -Path $Config -Value '# cli-dispatch config — DO NOT COMMIT.' -Encoding UTF8
+  # This file holds API keys/tokens (DEEPSEEK_API_KEY, CODEX_API_KEY, …). The bash installer
+  # protects it with umask 077 + chmod 600; do the NTFS equivalent — break ACL inheritance
+  # and grant FullControl to the current user only. Best-effort: never fail the install over
+  # an ACL edit (non-NTFS volume, restricted host policy).
+  try {
+    $acl = Get-Acl -Path $Config
+    $acl.SetAccessRuleProtection($true, $false)   # protect from inheritance, drop inherited rules
+    foreach ($rule in @($acl.Access)) { [void]$acl.RemoveAccessRule($rule) }
+    $me = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+      $me, 'FullControl', 'Allow')))
+    Set-Acl -Path $Config -AclObject $acl
+  } catch {
+    Write-Host "NOTE: could not restrict permissions on $Config — it holds API keys; tighten it yourself."
+  }
   $cfgCreated = $true
 }
 foreach ($b in @('deepseek', 'codex')) { if (Ensure-ConfigBlock -CfgPath $Config -Backend $b) { $cfgChanged = $true } }
