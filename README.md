@@ -4,7 +4,7 @@
 
 **Use DeepSeek, Gemini, OpenAI Codex, OpenCode (via OpenRouter), or GitHub Copilot as delegated workers inside Claude Code.** Claude Code's built-in subagent tool only supports Anthropic models — cli-dispatch adds portable wrappers so you can hand tasks to any of the five from inside your existing `claude` session.
 
-> ℹ️ **Multi-backend delegation hub.** Five worker backends today — **DeepSeek** (commands `/cli-dispatch:ds-*`), **Antigravity/Gemini** (`/cli-dispatch:ag-run`, wrappers `ag-agent`/`ag-stream`), **Codex** (`/cli-dispatch:cx-run`, wrappers `cx-agent`/`cx-stream`), **OpenCode** (`/cli-dispatch:oc-run`, wrappers `oc-agent`/`oc-stream`), and **GitHub Copilot** (`/cli-dispatch:cp-run`, wrappers `cp-agent`/`cp-stream`). You pick which to install at setup. All five write to the same session layout, so `sessions`/`watch` work across all. The DeepSeek wrapper/config paths keep the `claude-ds` name (that backend's name).
+> ℹ️ **Multi-backend delegation hub.** Five worker backends — **DeepSeek** (`/cli-dispatch:ds-*`), **Antigravity/Gemini** (`/cli-dispatch:ag-run`, wrappers `ag-agent`/`ag-stream`), **Codex** (`/cli-dispatch:cx-run`, `cx-agent`/`cx-stream`), **OpenCode** (`/cli-dispatch:oc-run`, `oc-agent`/`oc-stream`), and **GitHub Copilot** (`/cli-dispatch:cp-run`, `cp-agent`/`cp-stream`). Pick which to install at setup. All five write to the same session layout, so `sessions`/`watch` work across all. The DeepSeek wrapper/config paths keep the `claude-ds` name (that backend's name).
 
 > 📝 **Write-up (Turkish):** [cli-dispatch: a plugin that makes Claude the boss and DeepSeek the worker](https://medium.com/@rbinar/cli-dispatch-claudea-patron-deepseek-e-i%CC%87%C5%9F%C3%A7i-rol%C3%BC-veren-bir-plugin-b232803581fc) — Medium
 
@@ -23,7 +23,7 @@
 **Before you start — you need:**
 - `claude` CLI installed and on your `PATH`
 - `~/.local/bin` on your `PATH` — check: `echo $PATH | grep -q local && echo ok || echo 'add: export PATH="$HOME/.local/bin:$PATH" to ~/.zshrc'`
-- API key/auth for your backend: DeepSeek ([platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys)) · Antigravity uses Google OAuth (`agy` login, no key) · Codex uses ChatGPT OAuth (`codex login`, no key) · OpenCode uses an OpenRouter API key (paste yourself — [openrouter.ai/keys](https://openrouter.ai/keys), no OAuth) · Copilot uses `gh auth login` or `COPILOT_GITHUB_TOKEN`/`GH_TOKEN` plus an active GitHub Copilot subscription
+- API key/auth for your backend — see the table below
 
 Run the commands **one at a time, in order** — don't paste them all at once. Send each command, wait for the result, then move to the next:
 
@@ -59,7 +59,19 @@ The install output says `Run /reload-plugins to apply`. This step is required fo
 /cli-dispatch:setup
 ```
 
-`/cli-dispatch:setup` first **asks which worker backend(s) to install** — DeepSeek, Antigravity (Gemini), Codex, OpenCode, Copilot, or all (`--backends all` or `--backends deepseek,antigravity,codex,opencode,copilot`). If a selected backend's underlying CLI (`claude`/`agy`/`codex`/`opencode`/`copilot`) turns out to be missing, `install.sh` can attempt to auto-install it for you — pass `--install-missing` (opt-in, default off; npm preferred where available, `curl | bash` vendor installers as fallback). Setup only adds this flag after asking your explicit approval and showing exactly which CLIs are missing and which commands will run; it never automates auth (sign-in, API keys) — see [CHANGELOG.md](CHANGELOG.md) for details. For **DeepSeek** it installs the wrapper to `~/.local/bin/claude-ds` and creates a `~/.config/cli-dispatch/config` skeleton; if the key is still empty, setup **automatically opens the config in your platform's default editor** (macOS `open`, Linux `xdg-open`, WSL `explorer.exe`, Windows `notepad`). Add your DeepSeek API key **yourself** in the opened file:
+`/cli-dispatch:setup` first **asks which worker backend(s) to install** — DeepSeek, Antigravity (Gemini), Codex, OpenCode, Copilot, or all (`--backends all` or `--backends deepseek,antigravity,codex,opencode,copilot`). If a selected backend's underlying CLI turns out to be missing, `install.sh` can attempt to auto-install it — pass `--install-missing` (opt-in, default off; npm preferred where available, `curl | bash` vendor installers as fallback). Setup only adds this flag after your explicit approval and shows exactly which CLIs are missing and which commands will run; it never automates auth (sign-in, API keys). See [CHANGELOG.md](CHANGELOG.md) for details.
+
+| Backend | CLI (install) | Auth | Model select |
+|---|---|---|---|
+| **DeepSeek** | `claude` (you already have it) | `DEEPSEEK_API_KEY` in config ([get one](https://platform.deepseek.com/api_keys)) | `DS_MODEL` / `DS_FLASH_MODEL` |
+| **Antigravity (Gemini)** | `agy` — `curl -fsSL https://antigravity.google/cli/install.sh \| bash` (+ `script`, `node`) | Google sign-in (run `agy` once) or `GEMINI_API_KEY` | `--model "<name>"` / `AG_MODEL` — list: `agy models` |
+| **Codex (OpenAI)** | `codex` ≥ 0.142.3 — `npm i -g @openai/codex`, `brew install --cask codex`, or `curl -fsSL https://chatgpt.com/codex/install.sh \| sh` (+ `node`) | `codex login` (ChatGPT/OAuth) or `CODEX_API_KEY`/`OPENAI_API_KEY` | `--model <name>` / `CX_MODEL` — list: `/model` inside codex |
+| **OpenCode (OpenRouter)** | `opencode` — `npm i -g opencode-ai` (+ `node`) | `OPENROUTER_API_KEY` ([get one](https://openrouter.ai/keys)), pasted by you | `--model <bare-slug>` / `OC_MODEL` — list: `opencode models openrouter` |
+| **GitHub Copilot** | `copilot` — `npm i -g @github/copilot`, `brew install --cask copilot-cli`, or `curl -fsSL https://gh.io/copilot-install \| bash` (+ `node` 22+) | `COPILOT_GITHUB_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN` (reuses `gh auth token`); active Copilot subscription required | `--model <slug>` / `CP_MODEL`; `--effort low\|medium\|high` |
+
+Native Windows: DeepSeek and Codex only — install the other three under WSL (see [Windows](#windows)). Sandbox: only Codex's `--read-only` is a kernel-enforced OS sandbox — the rest need worktree isolation (see [Security and data](#security-and-data)).
+
+For DeepSeek and OpenCode, since you paste the key yourself, setup **auto-opens the config file** in your platform's default editor (macOS `open`, Linux `xdg-open`, WSL `explorer.exe`, Windows `notepad`) when the key is still empty:
 
 ```bash
 # ~/.config/cli-dispatch/config
@@ -68,23 +80,15 @@ DS_MODEL="deepseek-v4-pro"
 DS_FLASH_MODEL="deepseek-v4-flash"
 ```
 
-> Want a different editor? Set the `CLI_DISPATCH_EDITOR` environment variable (e.g. `CLI_DISPATCH_EDITOR="code"`; the legacy `CLAUDE_DS_EDITOR` is still honored). If auto-open fails, open the file manually: `${EDITOR:-nano} ~/.config/cli-dispatch/config`.
+> Want a different editor? Set `CLI_DISPATCH_EDITOR` (e.g. `CLI_DISPATCH_EDITOR="code"`; the legacy `CLAUDE_DS_EDITOR` is still honored). If auto-open fails, open the file manually: `${EDITOR:-nano} ~/.config/cli-dispatch/config`.
 
-For the **Antigravity (Gemini)** backend, setup installs `ag-agent`/`ag-stream` instead. It needs the `agy` CLI (`curl -fsSL https://antigravity.google/cli/install.sh | bash`) plus `script` (pseudo-TTY) and `node`; auth is via Google sign-in (run `agy` once) or a `GEMINI_API_KEY`. Native Windows: DeepSeek only — use WSL for the Antigravity backend. agy proxies **multiple model families** — pick one with `ag-agent --model "<name>"` (or the `AG_MODEL` config default): `Gemini 3.1 Pro (High)`, `Claude Opus 4.6 (Thinking)`, `GPT-OSS 120B (Medium)`, … (run `agy models` for the exact list; default `Gemini 3.5 Flash (High)`).
+OpenCode's setup step additionally asks (multiple-choice) for a default model from 2-3 curated free-tier OpenRouter slugs (e.g. `google/gemma-4-31b-it:free`) or a custom slug, writing it to `OC_MODEL`. Copilot's model list is only visible interactively (`/model` in the copilot TUI, or GitHub Copilot docs) — slugs change over time.
 
-For the **Codex (OpenAI Codex CLI)** backend, setup installs `cx-agent`/`cx-stream`. It needs the `codex` CLI (≥ 0.142.3: `npm i -g @openai/codex`, `brew install --cask codex`, or `curl -fsSL https://chatgpt.com/codex/install.sh | sh`) plus `node`; auth is via `codex login` (ChatGPT/OAuth — no API key needed for personal use) or `CODEX_API_KEY` (takes precedence) or `OPENAI_API_KEY`. Select a model with `cx-agent --model <name>` (or the `CX_MODEL` config default; blank = codex's own default): `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna` (fast/cheap, subagents), plus still-available `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.3-codex-spark` (run `/model` inside codex for the live list). **Key advantage:** `cx-agent --read-only` activates codex's **real OS-level sandbox** (macOS Seatbelt / Linux bwrap+seccomp) — a kernel-enforced hard-block on all file writes, not just tool-layer restriction.
-
-For the **OpenCode (via OpenRouter)** backend, setup installs `oc-agent`/`oc-stream`. It needs the `opencode` CLI (`npm i -g opencode-ai`) plus `node`. Auth is an OpenRouter API key (`OPENROUTER_API_KEY`) pasted by **you** — same auto-open-editor mechanism as DeepSeek's key (Claude/the installer never writes the key value itself). Model selection: setup asks (via a multiple-choice question) for a default model from 2-3 curated free-tier OpenRouter slugs (e.g. `google/gemma-4-31b-it:free`) or a custom slug, writing it to `OC_MODEL` in the config; override per-call with `oc-agent --model <bare-slug>` (no `openrouter/` prefix needed — `oc-stream` adds it). List live models with `OPENROUTER_API_KEY=<key> opencode models openrouter`. **Key caveat:** unlike Codex's `cx-agent --read-only` (a real OS-level, kernel-enforced sandbox), OpenCode has **no sandbox at all** — no OS-level or tool-level write-deny. `--auto` (always used internally) auto-approves every permission prompt because a headless run has no TTY to answer prompts — this is a functional requirement, not a safety feature. Isolation is via git worktree only (same posture as the Antigravity backend). Native Windows: not supported — OpenCode is Unix-only (macOS/Linux/WSL) for v1.
-
-For the **GitHub Copilot** backend, setup installs `cp-agent`/`cp-stream`. It needs the `copilot` CLI (`npm i -g @github/copilot`, `brew install --cask copilot-cli`, or `curl -fsSL https://gh.io/copilot-install | bash`) plus `node` and Node 22+. Auth is `COPILOT_GITHUB_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN`; cli-dispatch automatically reuses `gh auth token` as `GH_TOKEN` when available. An active GitHub Copilot subscription is required. Model selection: set `CP_MODEL` in the config or override per-call with `cp-agent --model <slug>` (examples: `gpt-5.4`, `auto`). Current model list is only visible interactively via `/model` in the copilot TUI (auth required) or GitHub Copilot docs — slugs change over time. Reasoning effort: `cp-agent --effort low|medium|high` maps to Copilot's `--reasoning-effort=<level>`. **Key caveat:** like OpenCode, Copilot has **no sandbox at all** — no OS-level or tool-level write-deny. `--allow-all-tools --no-ask-user` is always used internally for headless runs; it is a functional requirement, not a safety feature. Isolation is via git worktree only. Native Windows: not supported — Copilot is Unix-only (macOS/Linux/WSL) for v1.
-
-DeepSeek key: https://platform.deepseek.com/api_keys
-
-`/cli-dispatch:setup` now has a final step that offers, via a yes/no-style question, to write a standing delegation-preference reminder — pointing at the deterministic runner (`/cli-dispatch:run`, no LLM babysitter) as the delegation path — into your global or project `CLAUDE.md`, so you don't have to re-explain your delegation preference every session (idempotent/marker-guarded so re-running setup won't duplicate it).
+`/cli-dispatch:setup` has a final step that offers, via a yes/no question, to write a standing delegation-preference reminder — pointing at the deterministic runner (`/cli-dispatch:run`, no LLM babysitter) — into your global or project `CLAUDE.md`, so you don't have to re-explain your delegation preference every session (idempotent/marker-guarded, so re-running setup won't duplicate it).
 
 ## Session-start policy injection (optional)
 
-That final `/cli-dispatch:setup` step now asks **three preferences** — enable per-session policy injection, whether to include the GitHub-issue reminder, and whether to also write a static CLAUDE.md block — and saves the answers to `~/.config/cli-dispatch/policy.json`. A `SessionStart` hook (fires on `startup`/`resume`/`clear` — deliberately **not** `compact`, so the text doesn't pile up as context gets compacted) then auto-injects a compact delegation policy into every session's context: route mechanical work through the deterministic runner (`/cli-dispatch:run`, no LLM babysitter), escalate yourself when there's no verify command, and a reminder to file cli-dispatch friction points as GitHub issues — all without hand-editing CLAUDE.md.
+That final `/cli-dispatch:setup` step asks **three preferences** — enable per-session policy injection, whether to include the GitHub-issue reminder, and whether to also write a static CLAUDE.md block — and saves the answers to `~/.config/cli-dispatch/policy.json`. A `SessionStart` hook (fires on `startup`/`resume`/`clear` — deliberately **not** `compact`, so the text doesn't pile up as context gets compacted) then auto-injects a compact delegation policy into every session's context: route mechanical work through the deterministic runner (`/cli-dispatch:run`, no LLM babysitter), escalate yourself when there's no verify command, and a reminder to file cli-dispatch friction points as GitHub issues — all without hand-editing CLAUDE.md.
 
 - **Opt-in, default off** — if `policy.json` is missing or has `enabled:false`, the hook is a silent no-op with zero token cost.
 - Complements, doesn't replace, the static CLAUDE.md block (formerly `orchestration-priority`, now `policy:v1`) — enabling both injects the same policy twice per session, so hook-only is recommended. `/cli-dispatch:doctor` reports its status in a **Policy injection** section.
@@ -103,8 +107,8 @@ Update the plugin from inside Claude Code, then reload (run one at a time):
 to the running session (without a full restart). Verify with `/cli-dispatch:status`.
 
 > ℹ️ `/plugin update` refreshes the **commands/skills** only — it does **not** reinstall the
-> worker wrappers in `~/.local/bin`. After an update that changes a wrapper (e.g. a new
-> on-disk field), re-run **`/cli-dispatch:setup`** once to reinstall them.
+> worker wrappers in `~/.local/bin`. After an update that changes a wrapper, re-run
+> **`/cli-dispatch:setup`** once to reinstall them.
 
 <video src="https://github.com/rbinar/cli-dispatch/raw/main/assets/update.mp4" controls width="820"></video>
 
@@ -134,6 +138,25 @@ busy/idle), and `~/.cache/cli-dispatch/sessions/**` (workers). Notes:
 - The Claude Code on-disk transcript format is internal and may change across versions; the
   dashboard renders unknown shapes defensively.
 - A **Config** tab edits the cli-dispatch config file right in the browser. Secret fields (API keys) are write-only — never echoed back once saved — and shown with a masked preview (e.g. `sk-e78f...ea1b`, first 6 + last 4 chars) so you can confirm which key is set without exposing it. Non-secret fields like `*_MODEL` and `*_MODELS` can be viewed and edited directly.
+- Sessions/subagents show per-session token usage and which model ran them; historical runner-subagent sessions carry a legacy cost badge from before the 4.0.0 retirement (see [CHANGELOG.md](CHANGELOG.md)).
+
+## Statusline badge
+
+`scripts/cli-dispatch-statusline.sh` is a statusline **fragment**: a combining
+`~/.claude/hooks/statusline.sh` wrapper pipes the statusline's stdin JSON to it and appends
+its output. It prints a cyan `[CD]` badge when cli-dispatch is **active** (policy injection
+enabled, or ≥1 worker running), plus a yellow `▶N` counter while N worker sessions are
+running — and nothing when inactive.
+
+Wire it up with one line in your combining wrapper, globbing the fragment out of the plugin
+cache (hash/version-named, so glob — don't hardcode a path):
+
+```bash
+CD_SCRIPT=$(ls "$CONFIG_DIR"/plugins/cache/cli-dispatch/cli-dispatch/*/scripts/cli-dispatch-statusline.sh 2>/dev/null | head -1)
+```
+
+It only reads tiny `status.json` files (never `transcript.jsonl`), so it stays cheap even
+though statuslines re-run on every prompt. Unix (bash) statusline setups only.
 
 ## Usage
 
@@ -151,9 +174,11 @@ You use cli-dispatch **from inside Claude Code** — two ways:
 | `/cli-dispatch:cx-run <task>` | Delegate a task to **Codex (OpenAI)** (real read-only sandbox; same session layout) |
 | `/cli-dispatch:oc-run <task>` | Delegate a task to **OpenCode (OpenRouter)** (no sandbox — worktree isolation only; same session layout) |
 | `/cli-dispatch:cp-run <task>` | Delegate a task to **GitHub Copilot** (no sandbox — worktree isolation only; same session layout) |
+| `/cli-dispatch:run <backend> "<task>" --verify '<cmd>'` | Deterministic delegation, zero LLM babysitter tokens — the primary way to delegate mechanical work |
 | `/cli-dispatch:sessions` | List past/active sessions (all backends; shows a `backend` column) |
 | `/cli-dispatch:ds-sessions` / `ag-sessions` / `cx-sessions` / `oc-sessions` / `cp-sessions` | Same list, filtered to just DeepSeek / Antigravity / Codex / OpenCode / Copilot |
 | `/cli-dispatch:watch <id>` | Show a session's live status (cost-aware; any backend) |
+| `/cli-dispatch:wait <id>` | Block until a session finishes (or times out), then print a compact summary — one blocking call instead of polling `watch` |
 | `/cli-dispatch:resume <id> <prompt>` | Continue a worker session with a follow-up prompt (auto-detects backend) |
 | `/cli-dispatch:kill <id>` | Stop a running worker session (SIGTERM + state → killed) |
 | `/cli-dispatch:clean` | Remove stale worker dirs (`running`-but-dead); dry-run by default, `--remove` to delete. Deleting a session also removes `verdict.json` and `verdict-diff.patch`; dry-run marks candidates that still have a patch, and `--preserve-verdicts` archives them under `<sessions-root>/verdict-archive/`. |
@@ -166,6 +191,7 @@ You use cli-dispatch **from inside Claude Code** — two ways:
 | `/cli-dispatch:ag-balance` | Show Antigravity quota (% left per model + plan) — native, via the local language-server `GetUserStatus` RPC |
 | `/cli-dispatch:oc-balance` | Show OpenCode's OpenRouter paid-credit balance (`total_credits - total_usage`) — `:free` models have no quota API |
 | `/cli-dispatch:cp-balance` | Explain Copilot usage visibility — not queryable from the CLI; use GitHub Billing |
+| `/cli-dispatch:gain` | Report worker token totals by backend, plus Anthropic babysitting cost from legacy runner-subagent sessions |
 | `/cli-dispatch:doctor` | Health check for all backends — PATH, API keys, CLI auth ✓/✗ |
 | `/cli-dispatch:help` | One-screen command reference cheat sheet |
 
@@ -176,22 +202,20 @@ All used from inside Claude Code (`/cli-dispatch:ds-run <task>`, `/cli-dispatch:
 - **Five worker backends, one hub** — **DeepSeek** (`ds-*`), **Antigravity / Gemini** (`ag-*`), **Codex / OpenAI** (`cx-*`), **OpenCode / OpenRouter** (`oc-*`), **GitHub Copilot** (`cp-*`). Pick any (or all) at setup; all five write the **same session layout**, so `sessions`, `watch`, `clean`, the balance commands, and the dashboard work across every backend.
 - **Delegate & verify** — the worker generates/implements; Claude Code watches live and verifies the output. Conversation context is not shared → the task must be **self-contained**. The worker = doer, you = reviewer/merge owner.
 - **Session tracking (live watch + resume)** — work is not an opaque background process; each run writes a session dir (status / progress / transcript / meta + the full prompt) and is observable and resumable. → [Session tracking](#session-tracking-live-watch--resume)
-- **`--read-only` mode (Codex = real OS sandbox)** — `cx-agent --read-only` activates a **kernel-enforced** no-writes sandbox (macOS Seatbelt / Linux bwrap+seccomp). DeepSeek's `--read-only` is a tool-layer restriction; Antigravity, OpenCode, and Copilot have no write-deny at all (isolate them in a worktree).
-- **agentic + worktree isolation** — real repo tasks run in a throwaway git worktree; the diff is left **uncommitted** (review → build/test → merge is **on you/Claude**). Bundled helpers: `ds-/ag-/cx-/oc-/cp-worktree-run`.
-- **Deterministic runner, no LLM babysitter (`/cli-dispatch:run`)** — the only delegation path: launches a worker, isolates real repo changes in a worktree, blocks until done, and gates on a machine-checkable `--verify` command — zero Anthropic tokens spent on orchestration. For judgment-heavy work with no verify command, the escalation path is the same runner (or a plain `*-agent` CLI) — you read the compact verdict + diff yourself and follow up with `/cli-dispatch:resume` if needed. → [Deterministic runner](#deterministic-runner-clidispatchrun--no-llm-babysitter)
+- **Isolation & read-only** — real repo tasks run in a throwaway git worktree, diff left uncommitted; Codex's `--read-only` additionally activates a kernel-enforced no-writes sandbox. → [Security and data](#security-and-data)
+- **Deterministic runner, no LLM babysitter (`/cli-dispatch:run`)** — the only delegation path: launches a worker, isolates real repo changes in a worktree, blocks until done, and gates on a machine-checkable `--verify` command — zero Anthropic tokens spent on orchestration. For judgment-heavy work with no verify command, the escalation path is the same runner (or a plain `*-agent` CLI) — you read the compact verdict + diff yourself and follow up with `/cli-dispatch:resume` if needed. → [Deterministic runner](#deterministic-runner-cli-dispatchrun--no-llm-babysitter)
 - **Session-start policy injection (optional)** — a `SessionStart` hook auto-injects a compact delegation policy (deterministic-runner routing, escalation path, issue-filing reminder) into every session's context, configured once at `/cli-dispatch:setup`. Opt-in, default off, zero token cost when disabled. → [Session-start policy injection](#session-start-policy-injection-optional)
-- **Web dashboard** — a local, read-only view: Claude Code sessions → flow → subagents → flow, plus a worker panel. Pinned task/instruction, Markdown-rendered messages, stale-worker detection, live SSE updates. → [Dashboard](#dashboard)
-- **Cost & model visibility** — the dashboard shows what each delegation actually cost (per-session/subagent token usage, per-worker total cost) and which model ran it. Legacy runner-subagent sessions (the five per-backend babysitters, retired — see [CHANGELOG.md](CHANGELOG.md)) carry a warning badge when their own babysitting overhead was disproportionately high vs. the worker they managed; the deterministic runner that replaced them spends zero Anthropic tokens on orchestration, so the badge no longer applies to new delegations.
+- **Statusline badge (optional)** — a cyan `[CD]` badge, plus a yellow `▶N` running-worker counter, in your terminal statusline while cli-dispatch is active. → [Statusline badge](#statusline-badge)
+- **Web dashboard** — a local, read-only view: Claude Code sessions → flow → subagents → flow, plus a worker panel, cost/model visibility, and a Config editor. → [Dashboard](#dashboard)
 - **Native usage / quota** — `/cli-dispatch:balance` (all five at once) or a per-backend `*-balance`; reverse-engineered from each CLI's own local data where available, **no third-party tools**. Copilot is explicitly not CLI-queryable. → [Usage & quota](#usage--quota--native-no-third-party-tool)
 - **Housekeeping** — `/cli-dispatch:clean` prunes stale (`running`-but-dead) worker dirs; `/cli-dispatch:clean-schedule` automates it daily via launchd / cron / Scheduled Tasks.
-- **timeout safety net** — a hung/runaway worker is auto-killed (with its child processes) at a runtime or idle limit; the session goes `state: error`.
-- **global MCP isolation** — workers do not inherit your `~/.claude` MCP servers (playwright, etc.).
+- **Safety net & isolation** — a hung/runaway worker is auto-killed (with its child processes) at a runtime or idle limit, going `state: error`; workers do not inherit your `~/.claude` MCP servers (playwright, etc.).
 
-> ⚠️ **The default mode is not a sandbox.** Workers run agentic → they **can write files / run bash**. Isolate real repo work in a worktree; for a guaranteed "won't write files" use `--read-only` (and on **Codex** that guarantee is kernel-enforced).
+> ⚠️ **The default mode is not a sandbox.** Workers run agentic → they **can write files / run bash**. Isolate real repo work in a worktree. Full sandbox posture per backend: [Security and data](#security-and-data).
 
 ## Session tracking (live watch + resume)
 
-Delegated work is **not an opaque background process**: every backend's output is parsed and each task is written to a **session directory** (same layout for DeepSeek, Antigravity, Codex, OpenCode, and Copilot). You track what the worker is doing in a **live, structured, resumable** way via `/cli-dispatch:sessions` and `/cli-dispatch:watch <id>`.
+Delegated work is **not an opaque background process**: every backend's output is parsed and each task is written to a **session directory** (same layout for DeepSeek, Antigravity, Codex, OpenCode, and Copilot). You track what the worker is doing in a **live, structured, resumable** way via `/cli-dispatch:sessions` and `/cli-dispatch:watch <id>` (or `/cli-dispatch:wait <id>` to block for the result in one call).
 
 Session directory: `${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<id>/` (legacy `claude-ds` path still read as a fallback)
 
@@ -203,13 +227,13 @@ Session directory: `${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<id>/`
 | `meta.json` | Prompt preview, cwd, branch, model, start/end |
 | `prompt.txt` | The **full** task prompt (untruncated; shown pinned atop the worker's dashboard page) |
 
-**Cost-aware watching:** progress is tracked only from the small `status.json` (`/cli-dispatch:watch <id>`); the raw transcript is not read, not tailed in a tight loop — because every read by the orchestrator spends tokens.
+**Cost-aware watching:** progress is tracked only from the small `status.json` (`/cli-dispatch:watch <id>` or `/cli-dispatch:wait <id>`); the raw transcript is not read, not tailed in a tight loop — because every read by the orchestrator spends tokens.
 
 > Requirement: `node` is needed for session tracking/parsing (claude-code already runs in a node environment).
 
 ## Deterministic runner (`/cli-dispatch:run`) — no LLM babysitter
 
-cli-dispatch used to ship five per-backend "babysitter" subagents (`ds-/ag-/cx-/oc-/cp-runner`) that ran each delegation in its own LLM sub-context. Measured across production usage, those babysitters cost roughly **9x** their own worker's output in Anthropic tokens — they defeated the plugin's whole point, so they've been retired (see [CHANGELOG.md](CHANGELOG.md)). The deterministic runner is now the **only** delegation path:
+The five per-backend "babysitter" subagents (`ds-/ag-/cx-/oc-/cp-runner`) that used to run each delegation in its own LLM sub-context were retired in 4.0.0 — measured across production usage, they cost roughly **9x** their own worker's output in Anthropic tokens (see [CHANGELOG.md](CHANGELOG.md)). The deterministic runner is now the **only** delegation path:
 
 ```text
 /cli-dispatch:run <backend> "<task>" --verify '<cmd>'
@@ -356,9 +380,9 @@ git worktree prune         # clean up dead records
 
 ## Security and data
 
+- **Sandbox posture per backend:** only Codex's `--read-only` is a kernel-enforced OS sandbox (macOS Seatbelt / Linux bwrap+seccomp) — a genuine no-writes guarantee, no worktree required for pure analysis. DeepSeek's `--read-only` is a tool-layer restriction only. Antigravity, OpenCode, and Copilot have **no sandbox at all**. For everything else, isolate real repo work in a git worktree — agentic mode doesn't touch the main checkout/other branches; reviewing the diff (build/test) and merging is **up to you**.
 - **Keys never leave your machine:** any key lives in `~/.config/cli-dispatch/config` (0600, outside the repo) and is **never committed**. The plugin/skill never writes a key anywhere; you add it. (Codex and Antigravity normally use their own OAuth sign-in — no key in the config at all.)
 - **Data egress:** the **prompt and code you give a worker are sent to that backend's provider** — DeepSeek, Google (Gemini/Antigravity), OpenAI (Codex), OpenRouter/OpenCode, or GitHub Copilot. Use each only if you accept that. The dashboard and `*-balance` commands are local/read-only and send nothing extra on your behalf.
-- **Isolated work:** real repo tasks run in a separate git worktree; the agentic mode doesn't touch the main checkout/other branches. Reviewing the output (diff + build/test) and merging is **up to you**.
 - **GitHub CLI (`gh`) auth forwarding:** on macOS, `gh` keeps its token in the system Keychain, which sandboxed workers (Codex's `workspace-write`, DeepSeek, agy, OpenCode, Copilot) can't reach — so delegated `gh issue`/`gh pr`/`gh api` calls silently fail. When you're logged in (`gh auth token` succeeds) and haven't set `GH_TOKEN`/`GITHUB_TOKEN` yourself, the runners **export your `gh` token into the worker as `GH_TOKEN`** so its `gh` calls authenticate. Copilot also uses that token path unless `COPILOT_GITHUB_TOKEN` is set explicitly. The token can carry broad scopes (`repo`, `workflow`, even `delete_repo`) and travels into the worker sandbox / provider context — **opt out** by setting `CLI_DISPATCH_NO_GH_TOKEN=1`. `/cli-dispatch:doctor` reports the current state.
 
 ## Architectural role
