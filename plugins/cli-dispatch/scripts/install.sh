@@ -91,7 +91,7 @@ GEMINI_API_KEY=""
 #   "Claude Opus 4.6 (Thinking)"  "Claude Sonnet 4.6 (Thinking)"  "GPT-OSS 120B (Medium)"
 # Override per-call with `ag-agent --model "<name>"`. Run `agy models` for the live list.
 AG_MODEL=""
-# Optional comma-separated candidate model list — when set, the ag-runner babysitter
+# Optional comma-separated candidate model list — when set, the delegating agent
 # picks the best fit from this list (same reasoning as an orchestrator-provided inline
 # list). Leave empty to use only the single AG_MODEL default above.
 AG_MODELS=""
@@ -113,7 +113,7 @@ CODEX_API_KEY=""
 # and gpt-5.3-codex-spark remain available. gpt-5.2/gpt-5.3-codex have dropped.
 # Example: CX_MODEL="gpt-5.6-luna"
 CX_MODEL=""
-# Optional comma-separated candidate model list — when set, the cx-runner babysitter
+# Optional comma-separated candidate model list — when set, the delegating agent
 # picks the best fit from this list (same reasoning as an orchestrator-provided inline
 # list). Leave empty to use only the single CX_MODEL default above.
 CX_MODELS=""
@@ -135,7 +135,7 @@ OPENROUTER_API_KEY=""
 # List live models with: OPENROUTER_API_KEY=<key> opencode models openrouter
 # Free-tier example: google/gemma-4-31b-it:free
 OC_MODEL=""
-# Optional comma-separated candidate model list — when set, the oc-runner babysitter
+# Optional comma-separated candidate model list — when set, the delegating agent
 # picks the best fit from this list (same reasoning as an orchestrator-provided inline
 # list). Leave empty to use only the single OC_MODEL default above.
 OC_MODELS=""
@@ -156,7 +156,7 @@ COPILOT_GITHUB_TOKEN=""
 # Default model slug for the copilot worker. Blank = copilot's own default.
 # Examples: claude-sonnet-4.6, gpt-5.4, auto. Override per-call with `cp-agent --model <slug>`.
 CP_MODEL=""
-# Optional comma-separated candidate model list — when set, the cp-runner babysitter
+# Optional comma-separated candidate model list — when set, the delegating agent
 # picks the best fit from this list (same reasoning as an orchestrator-provided inline
 # list). Leave empty to use only the single CP_MODEL default above.
 CP_MODELS=""
@@ -417,20 +417,11 @@ fi
 POLICY_FILE="$CONFIG_DIR/policy.json"
 if [ "$POLICY_INJECTION" = "on" ] && [ ! -f "$POLICY_FILE" ]; then
   mkdir -p "$CONFIG_DIR"
-  # runners = priority-ordered list of the selected backends (ds,ag,cx,oc,cp → *-runner).
-  _RUNNERS=""
-  [ "$WANT_DS" -eq 1 ] && _RUNNERS="$_RUNNERS\"ds-runner\","
-  [ "$WANT_AG" -eq 1 ] && _RUNNERS="$_RUNNERS\"ag-runner\","
-  [ "$WANT_CX" -eq 1 ] && _RUNNERS="$_RUNNERS\"cx-runner\","
-  [ "$WANT_OC" -eq 1 ] && _RUNNERS="$_RUNNERS\"oc-runner\","
-  [ "$WANT_CP" -eq 1 ] && _RUNNERS="$_RUNNERS\"cp-runner\","
-  _RUNNERS="${_RUNNERS%,}"   # trim trailing comma
   _VER="$(grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' "$SCRIPT_DIR/../.claude-plugin/plugin.json" 2>/dev/null | head -1 | sed 's/.*"\([^"]*\)"[^"]*$/\1/')"
   cat > "$POLICY_FILE" <<POL
 {
   "schemaVersion": 1,
   "enabled": true,
-  "runners": [$_RUNNERS],
   "issueReminder": true,
   "claudeMdBlock": false,
   "pluginVersionAtSetup": "${_VER:-unknown}",

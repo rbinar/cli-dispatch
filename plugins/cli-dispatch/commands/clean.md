@@ -12,11 +12,12 @@ thread-id/session-id) leaves `status.json`
 stuck at `state:"running"` forever — it shows up as **stale** in `/cli-dispatch:sessions` and
 the dashboard, and never gets removed. This command finds and (with `--remove`) deletes them.
 
-It also sweeps **leftover worktree artifacts**: real-repo-changing runs are isolated in a git
-worktree (see CLAUDE.md's "runner/babysitter pattern") named `<backend>-wt-*` (`ds-wt-*`,
-`ag-wt-*`, `cx-wt-*`, `oc-wt-*`, `cp-wt-*`) under `/tmp` / `$TMPDIR` (`$env:TEMP` on Windows). A
-runner that crashes or is killed before its own cleanup leaves that worktree behind forever;
-this sweep finds and (with `--remove`) deletes those too.
+It also sweeps **leftover worktree artifacts**: real-repo-changing delegations (via
+`/cli-dispatch:run` — the deterministic runner — or a plain `*-agent` CLI) are isolated in a
+git worktree named `<backend>-wt-*` (`ds-wt-*`, `ag-wt-*`, `cx-wt-*`, `oc-wt-*`, `cp-wt-*`)
+under `/tmp` / `$TMPDIR` (`$env:TEMP` on Windows). A delegation that crashes or is killed
+before its own cleanup leaves that worktree behind forever; this sweep finds and (with
+`--remove`) deletes those too.
 
 **Detection** = `status.json` mtime: `state:"running"` with no write for longer than the
 stale window ⇒ dead. **Default is a dry-run** (lists only); pass `--remove` to delete.
@@ -67,8 +68,8 @@ case "$OLDER_DAYS"  in ''|*[!0-9]*) OLDER_DAYS=0;; esac
 case "$WT_DAYS"     in ''|*[!0-9]*) WT_DAYS=3;; esac
 
 # ---- worktree artifact sweep -------------------------------------------------------------
-# Real-repo-changing runs are isolated in a git worktree named <backend>-wt-* under /tmp /
-# $TMPDIR (see CLAUDE.md "runner/babysitter pattern"); a runner that crashes or is killed
+# Real-repo-changing delegations (via /cli-dispatch:run or a plain *-agent CLI) are isolated
+# in a git worktree named <backend>-wt-* under /tmp / $TMPDIR; one that crashes or is killed
 # before its own cleanup leaves that worktree behind forever. Dirty worktrees (uncommitted
 # changes) are never touched.
 wtlog() { [ "$QUIET" -eq 1 ] || echo "$@"; }
@@ -209,9 +210,8 @@ param([switch]$Remove, [switch]$PreserveVerdicts, [int]$StaleSecs = 600, [int]$O
 
 # ---- worktree artifact sweep -------------------------------------------------------------
 # Real-repo-changing runs are isolated in a git worktree named <backend>-wt-* under
-# $env:TEMP (see CLAUDE.md "runner/babysitter pattern"); a runner that crashes or is killed
-# before its own cleanup leaves that worktree behind forever. Dirty worktrees (uncommitted
-# changes) are never touched.
+# $env:TEMP; a delegation that crashes or is killed before its own cleanup leaves that
+# worktree behind forever. Dirty worktrees (uncommitted changes) are never touched.
 function Write-WtLog($msg) { if (-not $Quiet) { Write-Host $msg } }
 if (-not $SkipWorktrees) {
   $gitCmd = Get-Command git -ErrorAction SilentlyContinue

@@ -7,6 +7,39 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.0.0] — 2026-07-24
+
+### Kaldırıldı
+
+- **KIRICI: beş LLM babysitter runner subagent'ı emekliye ayrıldı** (#114) —
+  `ds-runner`, `ag-runner`, `cx-runner`, `oc-runner`, `cp-runner` (`agents/*-runner.md`)
+  silindi. Gerçek bir iş istasyonunda 604 runner agent üzerinde ölçüldü: babysitter
+  transcript'leri, worker'ların kendi çıktısının ~9 katı Anthropic token'a mal oluyordu
+  (~7,1M babysitter output'a karşı ~785k worker output) — model haiku'ya pinlenmişken
+  bile — ve plugin'in token tasarrufu amacını boşa çıkarıyordu. Delegasyonun artık tam
+  iki şekli var:
+  - **Makine-doğrulanabilir kontrolü olan mekanik iş** → deterministik runner
+    (`/cli-dispatch:run <backend> "<görev>" --verify '<komut>'`) — worker + worktree
+    izolasyonu + verify + `verdict.json`, sıfır Anthropic token.
+  - **Verify komutu yok ya da verify başarısız** → *escalation path*: orkestratör
+    kompakt verdict'i + diff'i kendisi okur ve `/cli-dispatch:resume` ile devam eder.
+    Maliyet her koşuda değil, yalnızca hata/belirsizlik anında doğar.
+- `install.sh`/`install.ps1`'in yazdığı `policy.json` iskeletinden ve
+  `/cli-dispatch:setup`'ın politika sorularından `runners` alanı çıkarıldı. Mevcut
+  `policy.json` dosyaları çalışmaya devam eder — `policy-inject.mjs` eski `runners`
+  dizisini sessizce yok sayar (geriye uyumluluk, schemaVersion 1 olarak kalır).
+
+### Değiştirildi
+
+- Oturuma enjekte edilen politika artık yargı-ağır işi runner subagent'lara yönlendirmek
+  yerine escalation path'i öğretiyor ("verdict'i + diff'i kendin oku,
+  `/cli-dispatch:resume` ile devam et").
+- Dokümanlar (`README.md`, `README.tr.md`, `CLAUDE.md`, `skills/ds-delegate/SKILL.md`,
+  komut referansları) deterministik runner + escalation modeline göre yeniden yazıldı;
+  demo betiğinin runner sahnesi artık `/cli-dispatch:run` gösteriyor.
+- `/cli-dispatch:gain`'in Anthropic babysitting bölümü eski runner oturumlarını
+  raporlamaya devam ediyor — muhasebe değişmedi, tarihsel oranlar görünür kalıyor.
+
 ## [3.44.0] — 2026-07-19
 
 ### Eklendi

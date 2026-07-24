@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # cli-dispatch-wait — block until a cli-dispatch worker session reaches a terminal state
-# (done|error|killed), polling status.json silently. Exists so *-runner babysitter
-# subagents don't have to hand-roll `sleep 30 && cat status.json` poll loops — the loop
+# (done|error|killed), polling status.json silently. Exists so no consumer (orchestrator,
+# script, CI) has to hand-roll `sleep 30 && cat status.json` poll loops — the loop
 # below prints NOTHING while polling (zero token cost); it only prints a compact summary
 # once the session finishes (or the optional --timeout is hit).
 #   cli-dispatch-wait <session-id> [--timeout SECS] [--poll SECS]

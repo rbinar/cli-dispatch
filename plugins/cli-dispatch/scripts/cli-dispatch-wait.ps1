@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
 # cli-dispatch-wait.ps1 — blocking wait primitive: polls a worker session's status.json until
-# it reaches a terminal state (done/error/killed), then prints a compact summary. Lets *-runner
-# babysitter subagents stop hand-rolling poll loops. See github.com/rbinar/cli-dispatch#88.
+# it reaches a terminal state (done/error/killed), then prints a compact summary. Lets any
+# consumer (orchestrator, script, CI) stop hand-rolling poll loops. See github.com/rbinar/cli-dispatch#88.
 param(
   [Parameter(Position = 0)][string]$SessionId,
   [int]$Timeout = 0,

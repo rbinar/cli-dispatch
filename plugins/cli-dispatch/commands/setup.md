@@ -152,32 +152,27 @@ Follow these steps:
    ```
 
 7. **Configure per-session policy injection, then optionally a static CLAUDE.md block** so
-   the user doesn't need to re-explain the runner delegation order in every session. Instead
+   the user doesn't need to re-explain the delegation routing in every session. Instead
    of hand-editing CLAUDE.md, cli-dispatch can auto-inject its delegation policy into every
    new/resumed/cleared session via a `SessionStart` hook that reads
    `~/.config/cli-dispatch/policy.json`. Gather the user's preferences with `AskUserQuestion`
-   — the four logical choices below may be grouped into a single call, but keep them clearly
+   — the three logical choices below may be grouped into a single call, but keep them clearly
    separated:
 
    1. **header "Policy injection"** — *"Enable per-session policy injection? A SessionStart
       hook auto-injects the cli-dispatch delegation policy into every new/resumed/cleared
       session, so you don't hand-edit CLAUDE.md."* Options: **"Enable (recommended)"**
       (`recommended: true`), **"Skip"**.
-   2. **header "Runners"** *(ask only if the user chose Enable; `multiSelect`)* — *"Which
-      runners to prioritize in the injected policy?"* Offer the five runner names —
-      `ds-runner`, `ag-runner`, `cx-runner`, `oc-runner`, `cp-runner` — and **pre-select the
-      ones that correspond to the backend(s) the user picked in step 2** (DeepSeek→`ds-runner`,
-      Antigravity→`ag-runner`, Codex→`cx-runner`, OpenCode→`oc-runner`, Copilot→`cp-runner`).
-   3. **header "Issue reminder"** *(ask only if Enable)* — *"Include a reminder to file
+   2. **header "Issue reminder"** *(ask only if Enable)* — *"Include a reminder to file
       cli-dispatch bugs/ideas as GitHub issues?"* Options: **"Include"** (`recommended: true`),
       **"Omit"**.
-   4. **header "CLAUDE.md block"** — *"Also write the policy as a static CLAUDE.md block?
+   3. **header "CLAUDE.md block"** — *"Also write the policy as a static CLAUDE.md block?
       (Useful for teammates without the plugin; NOT recommended when the hook is enabled — it
       double-injects the same policy every session.)"* Options: **"No, hook only
       (recommended)"** (`recommended: true`), **"Yes, also add CLAUDE.md block"**, **"Skip
       both"**. If the user chose **Skip** in question 1 (hook disabled), this question instead
       independently offers the static CLAUDE.md block on its own — the pre-existing behavior (a
-      static block, no hook) — and questions 2/3's answers are used only to populate that
+      static block, no hook) — and question 2's answer is used only to populate that
       block's contents.
 
    Then perform these actions:
@@ -186,8 +181,9 @@ Follow these steps:
    `~/.config/cli-dispatch/policy.json` with the Bash tool. This is **not** a secret — no
    `chmod` is required. Idempotency is mandatory: if the file already exists, **read it first
    and show the user the current preferences, then offer to update** rather than blindly
-   overwriting. Populate `runners` only with the known five names
-   (`ds-runner`/`ag-runner`/`cx-runner`/`oc-runner`/`cp-runner`); fill `pluginVersionAtSetup`
+   overwriting. A legacy `runners` field from a pre-4.0 policy.json is harmless — the hook
+   ignores it (the LLM `*-runner` subagents were retired in 4.0.0); preserve it on update or
+   drop it, either is fine. Fill `pluginVersionAtSetup`
    from the `version` field of `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json` and
    `updatedAt` from an ISO-8601 UTC timestamp. Schema:
 
@@ -195,11 +191,10 @@ Follow these steps:
    {
      "schemaVersion": 1,
      "enabled": true,
-     "runners": ["ds-runner", "cx-runner"],
      "issueReminder": true,
      "claudeMdBlock": false,
-     "pluginVersionAtSetup": "3.42.0",
-     "updatedAt": "2026-07-12T00:00:00Z"
+     "pluginVersionAtSetup": "4.0.0",
+     "updatedAt": "2026-07-24T00:00:00Z"
    }
    ```
 
@@ -216,7 +211,6 @@ Follow these steps:
    {
      "schemaVersion": 1,
      "enabled": true,
-     "runners": ["ds-runner", "cx-runner"],
      "issueReminder": true,
      "claudeMdBlock": false,
      "pluginVersionAtSetup": "$VERSION",
@@ -246,35 +240,37 @@ Follow these steps:
    - **Neither present** — append the `policy:v1` block to the end of the target file
      (creating the file first if it doesn't exist).
 
-   Block to write (same three core messages as before — runner delegation priority,
-   resume-instead-of-re-delegate, "pick the babysitter model by difficulty", and the
-   issue-filing reminder; only the marker name changes to `policy:v1`). Omit the final
-   issue-filing paragraph if the user chose **Omit** in question 3:
+   Block to write (same core messages as the injected hook policy — deterministic-runner
+   routing, the escalation path, resume-instead-of-re-delegate, and the issue-filing
+   reminder; only the marker name changes to `policy:v1`). Omit the final
+   issue-filing paragraph if the user chose **Omit** in question 2:
 
    ````markdown
    <!-- cli-dispatch:policy:v1 -->
-   ## cli-dispatch delegation priority
+   ## cli-dispatch delegation routing
 
-   Delegate substantive work to cli-dispatch's own backend runners rather than doing it
-   inline — this preserves native Anthropic token budget. Orchestrate from the main thread;
-   runners execute as background subagent tasks. Priority order (by task difficulty):
+   Route delegations by shape, not reflex — this preserves native Anthropic token budget:
 
-   - `ds-runner` (DeepSeek) — default for medium/hard tasks, exploration, research, scanning.
-   - `ag-runner` (Antigravity/Gemini) — medium/hard tasks.
-   - `cx-runner` (Codex/OpenAI) — medium/hard tasks.
-   - `cp-runner` (GitHub Copilot) — medium/hard tasks.
-   - `oc-runner` (OpenCode/OpenRouter) — medium tasks.
+   - **Trivial single-file surgical fixes** — do them inline; delegation overhead exceeds
+     the work itself.
+   - **Mechanical work with a machine-checkable check** — the deterministic runner:
+     `/cli-dispatch:run <backend> "<task>" --verify '<cmd>'` launches the worker, runs the
+     verify command, and prints a verdict, spending ZERO LLM babysitter tokens.
+   - **No verify command, or verify failed** — escalate yourself: read the verdict + diff
+     directly and follow up with `/cli-dispatch:resume`. Never spawn an LLM subagent to
+     babysit a worker (the `*-runner` subagents were retired in 4.0.0 — babysitting measured
+     ~9x the worker's own output in Anthropic tokens).
 
    **If a delegated worker's output needs a follow-up** (an edit didn't persist, wrong scope,
    a constraint was violated, a small correction is needed) — continue with
-   `/cli-dispatch:resume <same-session-id> "<follow-up>"`. Do NOT launch a new `*-runner`/
-   `*-agent` delegation for the same task: that pays full babysitting cost again (new runner
-   spawn, new verification pass) for what should be one continued conversation. `/cli-dispatch:gain`
+   `/cli-dispatch:resume <same-session-id> "<follow-up>"`. Do NOT launch a new
+   `*-agent` delegation for the same task: that pays the full worker spin-up again
+   for what should be one continued conversation. `/cli-dispatch:gain`
    flags same-cwd, same-backend, <15-minute clusters of trivial (diff < 50 lines) delegations
    as likely instances of this — treat a flagged cluster as a signal to resume instead of
    re-delegating next time.
 
-   Pick the runner's own babysitter model (sonnet/opus) by task difficulty. Also: when you
+   Also: when you
    hit a friction point, bug, or improvement idea while using cli-dispatch itself, consider
    filing it as a GitHub issue at https://github.com/rbinar/cli-dispatch/issues (only if the
    user's repo is actually rbinar/cli-dispatch or they've indicated they want this — don't
@@ -283,10 +279,10 @@ Follow these steps:
    ````
 
    **Double-injection warning (TL3):** if the user enabled the hook (question 1) **and** also
-   chose to add the CLAUDE.md block (question 4), warn them: "you enabled BOTH the hook and the
+   chose to add the CLAUDE.md block (question 3), warn them: "you enabled BOTH the hook and the
    CLAUDE.md block — the same policy will be injected twice per session; consider hook-only."
 
    **C) Report.** Summarize which files were written/updated (`policy.json`, and optionally the
-   CLAUDE.md file), the injection status (enabled/skipped and which runners), whether the old
+   CLAUDE.md file), the injection status (enabled/skipped), whether the old
    orchestration-priority block was migrated, and surface any double-injection warning. If the
    user skipped everything, say so and make no changes.

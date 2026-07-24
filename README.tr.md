@@ -8,13 +8,13 @@
 
 > 📝 **Yazı:** [cli-dispatch: Claude'a patron, DeepSeek'e işçi rolü veren bir plugin](https://medium.com/@rbinar/cli-dispatch-claudea-patron-deepseek-e-i%CC%87%C5%9F%C3%A7i-rol%C3%BC-veren-bir-plugin-b232803581fc) — Medium
 
-![cli-dispatch demo — projende Claude Code başlat, sonra: install, /cli-dispatch:setup, /cli-dispatch:ds-run ve ds/ag/cx/oc/cp-runner ile delege et, kullanımı gör](assets/demo.gif)
+![cli-dispatch demo — projende Claude Code başlat, sonra: install, /cli-dispatch:setup, /cli-dispatch:ds-run ve deterministik /cli-dispatch:run ile delege et, kullanımı gör](assets/demo.gif)
 
-> **Demo** — plugin'i kur, `/cli-dispatch:setup` ile backend(ler)ini seç ve yapılandır, ardından `/cli-dispatch:ds-run` / `ag-run` / `cx-run` / `oc-run` / `cp-run` veya `ds-/ag-/cx-/oc-/cp-runner` subagent'ları ile görev delege et. İşçi üretir; Claude Code canlı izler ve doğrular.
+> **Demo** — plugin'i kur, `/cli-dispatch:setup` ile backend(ler)ini seç ve yapılandır, ardından `/cli-dispatch:ds-run` / `ag-run` / `cx-run` / `oc-run` / `cp-run` ile ya da deterministik, babysitter'sız yol için `/cli-dispatch:run <backend> "<görev>" --verify '<cmd>'` ile görev delege et. İşçi üretir; Claude Code canlı izler ve doğrular.
 
-![cli-dispatch dashboard — canlı session listesi, subagent detayı (ds/ag/cx/oc/cp-runner), backend başına işçi session izi](assets/dashboard.gif)
+![cli-dispatch dashboard — canlı session listesi, subagent detayı, backend başına işçi session izi](assets/dashboard.gif)
 
-> **Dashboard** (`/cli-dispatch:dashboard`) — tüm Claude Code session'larını, subagent'leri (ds/ag/cx/oc/cp-runner) ve bunların başlattığı işçi CLI session'larını canlı gösterir. Durum, görev ve backend başına iz gerçek zamanlı izlenir.
+> **Dashboard** (`/cli-dispatch:dashboard`) — tüm Claude Code session'larını, spawn ettikleri subagent'ları ve cli-dispatch ile delege edilen işçi CLI session'larını canlı gösterir. Durum, görev ve backend başına iz gerçek zamanlı izlenir.
 
 ## Kurulum
 
@@ -80,11 +80,11 @@ DS_FLASH_MODEL="deepseek-v4-flash"
 
 DeepSeek key'i: https://platform.deepseek.com/api_keys
 
-`/cli-dispatch:setup` artık son bir adımda, evet/hayır tarzı bir soruyla, global veya proje `CLAUDE.md`'ine kalıcı bir "bu runner'lara delege etmeyi tercih et" hatırlatması yazmayı önerir, böylece her oturumda delegasyon tercihini yeniden anlatman gerekmez (idempotent/marker-guarded, tekrar setup çalıştırmak onu çoğaltmaz).
+`/cli-dispatch:setup` artık son bir adımda, evet/hayır tarzı bir soruyla, global veya proje `CLAUDE.md`'ine kalıcı bir delegasyon-tercihi hatırlatması yazmayı önerir — deterministik runner'ı (`/cli-dispatch:run`, LLM babysitter yok) delegasyon yolu olarak işaret eder — böylece her oturumda delegasyon tercihini yeniden anlatman gerekmez (idempotent/marker-guarded, tekrar setup çalıştırmak onu çoğaltmaz).
 
 ## Oturum-başı politika enjeksiyonu (opsiyonel)
 
-`/cli-dispatch:setup`'ın bu son adımı artık **dört tercih** sorar — oturum-başı politika enjeksiyonunu etkinleştir/etkinleştirme, hangi runner'ların öncelikli olacağı, GitHub-issue hatırlatmasının dahil edilip edilmeyeceği ve ayrıca statik bir CLAUDE.md bloğu yazılıp yazılmayacağı — ve yanıtları `~/.config/cli-dispatch/policy.json`'a kaydeder. Bir `SessionStart` hook'u (`startup`/`resume`/`clear`'da tetiklenir — `compact` bilinçli olarak hariç tutulur, böylece context sıkıştırıldıkça metin birikip token şişirmez) sonra her oturumun context'ine kompakt bir delegasyon politikası otomatik enjekte eder: hangi işin hangi runner'a (`ds-/ag-/cx-/oc-/cp-runner`) delege edileceği, her subagent'ın atanmış modeliyle isimlendirilmesi ve cli-dispatch sorunlarını GitHub issue olarak açma hatırlatması — hepsi elle CLAUDE.md düzenlemeye gerek kalmadan.
+`/cli-dispatch:setup`'ın bu son adımı artık **üç tercih** sorar — oturum-başı politika enjeksiyonunu etkinleştir/etkinleştirme, GitHub-issue hatırlatmasının dahil edilip edilmeyeceği ve ayrıca statik bir CLAUDE.md bloğu yazılıp yazılmayacağı — ve yanıtları `~/.config/cli-dispatch/policy.json`'a kaydeder. Bir `SessionStart` hook'u (`startup`/`resume`/`clear`'da tetiklenir — `compact` bilinçli olarak hariç tutulur, böylece context sıkıştırıldıkça metin birikip token şişirmez) sonra her oturumun context'ine kompakt bir delegasyon politikası otomatik enjekte eder: mekanik işi deterministik runner'a (`/cli-dispatch:run`, LLM babysitter yok) yönlendir, verify komutu yoksa escalation'ı kendin yap, ve cli-dispatch sorunlarını GitHub issue olarak açma hatırlatması — hepsi elle CLAUDE.md düzenlemeye gerek kalmadan.
 
 - **Opt-in, varsayılan kapalı** — `policy.json` yoksa veya `enabled:false` ise, hook sessiz bir no-op'tur, sıfır token maliyeti.
 - Statik CLAUDE.md bloğunun (eski `orchestration-priority`, şimdi `policy:v1`) yerine geçmez, tamamlayıcısıdır — ikisi birden açılırsa aynı politika oturum başına iki kez enjekte edilir, bu yüzden yalnızca hook önerilir. `/cli-dispatch:doctor`, durumunu bir **Policy injection** bölümünde raporlar.
@@ -174,12 +174,11 @@ Hepsi Claude Code içinden kullanılır (`/cli-dispatch:ds-run <görev>`, `/cli-
 - **Session takibi (canlı izleme + resume)** — iş opak bir arka plan süreci değildir; her çalışma bir session dizini yazar (status / progress / transcript / meta + tam prompt) ve izlenebilir/sürdürülebilir. → [Session takibi](#session-takibi-canlı-izleme--resume)
 - **`--read-only` mod (Codex = gerçek OS sandbox)** — `cx-agent --read-only` **kernel-zorunlu** yazma-yok sandbox'ı aktive eder (macOS Seatbelt / Linux bwrap+seccomp). DeepSeek'in `--read-only`'si araç-katmanı kısıtı; Antigravity, OpenCode ve Copilot'ta hiç yazma-engeli yok (worktree'de izole et).
 - **agentic + worktree izolasyonu** — gerçek repo görevleri tek-kullanımlık git worktree'de çalışır; diff **commit'siz** bırakılır (incele → build/test → merge **sende/Claude'da**). Yardımcılar: `ds-/ag-/cx-/oc-/cp-worktree-run`.
-- **Backend başına runner subagent (`ds-/ag-/cx-/oc-/cp-runner`)** — tüm delegasyonu izole bir alt-bağlama devret; modu seçer, işi izole eder, doğrular, kısa sonuç döner — yönetim gürültüsü orkestratöre girmez. → [runner subagent'lar](#ds-runner-subagent-bağlamı-temiz-tut)
-- **Çok adaylı model seçimi** — `ag-`/`cx-`/`oc-`/`cp-runner`'a delege ederken (ds-runner hariç) görev prompt'unda 2+ aday model verebilirsin; babysitter subagent hangisinin işe en uygun olduğuna karar verip birini seçer ve seçimi + nedenini raporlar. Aynı dört backend ayrıca config dosyasında kalıcı bir virgülle-ayrılmış aday listesi de destekler (`AG_MODELS`, `CX_MODELS`, `OC_MODELS`, `CP_MODELS` — çoğul, mevcut tekil `AG_MODEL`/`CX_MODEL`/`OC_MODEL`/`CP_MODEL`'in yanında), böylece her seferinde listeyi yeniden yazmana gerek kalmaz. Prompt'ta açık model/liste verilmezse runner önce config listesine bakar, yoksa tekil default'a döner.
-- **Oturum-başı politika enjeksiyonu (opsiyonel)** — bir `SessionStart` hook'u, `/cli-dispatch:setup`'ta bir kez yapılandırılan kompakt bir delegasyon politikasını (runner önceliği, subagent isimlendirmesi, issue-açma hatırlatması) her oturumun context'ine otomatik enjekte eder. Opt-in, varsayılan kapalı, kapalıyken sıfır token maliyeti. → [Oturum-başı politika enjeksiyonu](#oturum-başı-politika-enjeksiyonu-opsiyonel)
+- **Deterministik runner, LLM babysitter yok (`/cli-dispatch:run`)** — tek delegasyon yolu: bir işçi başlatır, gerçek repo değişikliklerini worktree'de izole eder, bitene kadar bloklar ve makine-kontrol-edilebilir bir `--verify` komutuna göre geçit koyar — orkestrasyonda sıfır Anthropic token harcanır. Verify komutu olmayan, muhakeme-yoğun işler için escalation yolu aynı runner'dır (veya doğrudan bir `*-agent` CLI) — kompakt verdict + diff'i kendin okur, gerekirse `/cli-dispatch:resume` ile devam edersin. → [Deterministik runner](#deterministik-runner-clidispatchrun--llm-babysitter-yok)
+- **Oturum-başı politika enjeksiyonu (opsiyonel)** — bir `SessionStart` hook'u, `/cli-dispatch:setup`'ta bir kez yapılandırılan kompakt bir delegasyon politikasını (deterministik-runner yönlendirmesi, escalation path, issue-açma hatırlatması) her oturumun context'ine otomatik enjekte eder. Opt-in, varsayılan kapalı, kapalıyken sıfır token maliyeti. → [Oturum-başı politika enjeksiyonu](#oturum-başı-politika-enjeksiyonu-opsiyonel)
 - **Web dashboard** — local, salt-okunur: Claude Code session'ları → akış → subagent'lar → akış, + worker paneli. Üstte sabit görev/talimat, Markdown render, stale-worker tespiti, canlı SSE. → [Dashboard](#dashboard)
 - **Native kullanım / kota** — `/cli-dispatch:balance` (beşi birden) ya da backend başına `*-balance`; mümkün olduğunda her CLI'nın kendi local verisinden, **üçüncü-parti araç yok**. Copilot CLI'dan sorgulanamaz. → [Kullanım & kota](#kullanım--kota--native-üçüncü-parti-araç-yok)
-- **Dashboard maliyet & kullanım görünürlüğü** — dashboard her session/subagent için Anthropic token kullanımını, worker başına toplam delegasyon maliyetini, babysitter'ın kendi token kullanımı worker'ınkine göre orantısız yüksekse bir "high overhead" uyarı rozetini ve her Claude Code session/subagent'ının gerçekte hangi modeli kullandığını gösteren bir model rozetini gösterir; böylece düşük-değerli veya yüksek-overhead delegasyonları kolayca fark edebilirsin.
+- **Dashboard maliyet & kullanım görünürlüğü** — dashboard her session/subagent için Anthropic token kullanımını, worker başına toplam delegasyon maliyetini ve her Claude Code session/subagent'ının gerçekte hangi modeli kullandığını gösteren bir model rozetini gösterir. Legacy runner-subagent session'ları (beş backend-başına babysitter, artık kaldırıldı — bkz. [CHANGELOG.md](CHANGELOG.md)) yönettikleri worker'a göre kendi babysitting overhead'i orantısız yüksekse bir uyarı rozeti taşır; onların yerini alan deterministik runner orkestrasyonda sıfır Anthropic token harcadığından, bu rozet yeni delegasyonlar için artık geçerli değildir.
 - **Temizlik** — `/cli-dispatch:clean` stale (`running` ama ölü) worker dizinlerini budar; `/cli-dispatch:clean-schedule` bunu launchd / cron / Scheduled Tasks ile günlük otomatikleştirir.
 - **timeout güvenlik ağı** — asılı/kaçak işçi, süre veya durgunluk limitinde (çocuk süreçleriyle birlikte) otomatik öldürülür; session `state: error` olur.
 - **global MCP izolasyonu** — işçiler senin `~/.claude` MCP sunucularını (playwright, vb.) miras almaz.
@@ -204,38 +203,35 @@ Session dizini: `${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<id>/` (e
 
 > Gereksinim: session takibi/parse için `node` gerekir (claude-code zaten node ortamında çalışır).
 
-## ds-runner subagent (bağlamı temiz tut)
+## Deterministik runner (`/cli-dispatch:run`) — LLM babysitter yok
 
-Bir delegasyonu adım adım kendin yönetmek yerine, tümünü paketlenmiş **`ds-runner`**
-subagent'ına devredebilirsin (Claude Code içinde "şu görevi ds-runner ile yap" dersin).
-O; modu seçer, işi izole eder, **doğrular** (repo/kod görevinde build/test) ve kısa bir sonuç
-döndürür — yönetim gürültüsü orkestratörün bağlamına hiç girmez. İşçi her zaman DeepSeek'tir;
-subagent'ın *kendi* (babysitter) modelini Claude Code zorluğa göre seçer (Claude Code içeride
-şu çağrıyı yapar, sen `Agent(...)`'ı elle yazmazsın):
+cli-dispatch eskiden her delegasyonu kendi LLM alt-bağlamında çalıştıran beş backend-başına
+"babysitter" subagent gönderiyordu (`ds-/ag-/cx-/oc-/cp-runner`). Prodüksiyonda ölçüldüğünde bu
+babysitter'lar kendi işçisinin çıktısının kabaca **9 katı** Anthropic token'ı tüketti — plugin'in
+tüm amacını baltalıyorlardı, bu yüzden kaldırıldılar (bkz. [CHANGELOG.md](CHANGELOG.md)).
+Deterministik runner artık **tek** delegasyon yoludur:
 
 ```text
-Agent(subagent_type="ds-runner", model="haiku",  prompt="<kendine yeten görev>")   # saf üretim/analiz
-Agent(subagent_type="ds-runner", model="sonnet", prompt="<repo/kod görevi>")        # build/test doğrulaması gerekir
+/cli-dispatch:run <backend> "<görev>" --verify '<cmd>'
 ```
 
-Uzun/agentic işler, doğrulama ya da paralel birden çok iş için değerli; tek-atışlık basit işte
-doğrudan `/cli-dispatch:ds-run` yeter.
+`cli-dispatch-run` işçiyi başlatır (`ds` DeepSeek / `ag` Antigravity / `cx` Codex / `oc` OpenCode
+/ `cp` GitHub Copilot), gerçek repo değişikliklerini git worktree'de izole eder, bitene kadar
+(veya timeout'a kadar) bloklar, `--verify` komutunu çalıştırır ve kompakt bir verdict basar —
+**orkestrasyonda sıfır LLM babysitter token'ı harcanır.** Codex'te `--read-only` hâlâ **gerçek
+OS-düzey sandbox'ı** (macOS Seatbelt / Linux bwrap+seccomp) aktive eder — kernel düzeyinde sert
+yazma engeli, gerçek bir yazma garantisi için worktree gerekmez.
 
-## cx-runner subagent (Codex ikizi — bağlamı temiz tut)
+**Escalation yolu** (muhakeme-yoğun iş, makine-kontrol-edilebilir verify yok): hâlâ hiçbir LLM
+babysitter subagent yok. Sen (Claude Code) deterministik runner'ı — veya doğrudan bir
+`*-agent` CLI'ı — çalıştırırsın, ama `--verify`'a geçit koymak yerine kompakt verdict'i ve diff'i
+kendin okur, sonuç bir tur daha gerektiriyorsa `/cli-dispatch:resume <session-id> "<prompt>"`
+ile devam edersin.
 
-Codex backend'inin kendi paralel subagent'ı vardır: **`cx-runner`**. `ds-runner` ile aynı şekilde çalışır — modu seçer, gerektiğinde işi git worktree'de izole eder, **doğrular** (repo görevinde build/test) ve kısa bir sonuç döndürür — ancak işçi her zaman Codex'tir. Diğer backend'lere göre öne çıkan avantajı Mod A'dır: `--read-only`, **gerçek bir OS-düzey sandbox** (macOS Seatbelt / Linux bwrap+seccomp) aktive eder; kernel düzeyinde sert yazma engeli — gerçek bir yazma garantisi için worktree gerekmez. Claude Code içinde "şu görevi cx-runner ile yap" dersin veya `Agent(subagent_type="cx-runner", ...)` kullanırsın.
-
-## ag-runner subagent (Antigravity ikizi — bağlamı temiz tut)
-
-Antigravity backend'inin kendi paralel subagent'ı vardır: **`ag-runner`**. `ds-runner` ile aynı şekilde çalışır — modu seçer, gerektiğinde işi git worktree'de izole eder, **doğrular** (repo görevinde build/test) ve kısa bir sonuç döndürür — ancak işçi her zaman Antigravity'dir (`agy` / `ag-agent` ile). agy birden çok model ailesi proxy'ler (Gemini, Claude, GPT — güncel liste için `agy models`), bu sayede delege akışını değiştirmeden işçiyi değiştirebilirsin. Claude Code içinde "şu görevi ag-runner ile yap" dersin veya `Agent(subagent_type="ag-runner", ...)` kullanırsın.
-
-## oc-runner subagent (OpenCode ikizi — bağlamı temiz tut)
-
-OpenCode backend'inin kendi paralel subagent'ı vardır: **`oc-runner`**. `ds-runner` ile aynı şekilde çalışır — modu seçer, gerektiğinde işi git worktree'de izole eder, **doğrular** (repo görevinde build/test) ve kısa bir sonuç döndürür — ancak işçi her zaman OpenCode'dur (OpenRouter üzerinden, `oc-agent` / `oc-stream` ile). İki ayrıcalığı vardır: (a) OpenCode'da hiç sandbox yok — ne OS-düzeyinde ne tool-katmanında yazma-engeli; izolasyon yalnızca git worktree ile sağlanır (Antigravity ile aynı duruş). (b) Model seçimi **bare OpenRouter slug'ları** kullanır, `openrouter/` öneki gerekmez (`oc-stream` otomatik ekler); örneğin `oc-agent --model google/gemma-4-31b-it:free`. Claude Code içinde "şu görevi oc-runner ile yap" dersin veya `Agent(subagent_type="oc-runner", ...)` kullanırsın.
-
-## cp-runner subagent (GitHub Copilot ikizi — bağlamı temiz tut)
-
-GitHub Copilot backend'inin kendi paralel subagent'ı vardır: **`cp-runner`**. `ds-runner` ile aynı şekilde çalışır — modu seçer, gerektiğinde işi git worktree'de izole eder, **doğrular** (repo görevinde build/test) ve kısa bir sonuç döndürür — ancak işçi her zaman GitHub Copilot'tur (`cp-agent` / `cp-stream` ile). İki ayrıcalığı vardır: (a) Copilot'ta da hiç sandbox yok — ne OS-düzeyinde ne tool-katmanında yazma-engeli; izolasyon yalnızca git worktree ile sağlanır. (b) Aktif bir GitHub Copilot aboneliği ve `gh` / `GH_TOKEN` auth gerekir; öncelik sırası `COPILOT_GITHUB_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN`, cli-dispatch mümkünse `gh auth token` değerini otomatik `GH_TOKEN` olarak kullanır. Claude Code içinde "şu görevi cp-runner ile yap" dersin veya `Agent(subagent_type="cp-runner", ...)` kullanırsın.
+Tek dosyalık, önemsiz bir düzeltme için (yaklaşık 50 satırın çok altında, sıfır keşif/belirsizlik)
+delegasyonu hiç kullanma, doğrudan inline yap — herhangi bir delegasyonun sabit maliyeti buna
+değmez. Repo değişikliği olmayan basit, tek-atışlık bir iş için düz `/cli-dispatch:ds-run` /
+`ag-run` / `cx-run` / `oc-run` / `cp-run` komutları yeterlidir.
 
 ## Kullanım & kota — native, üçüncü-parti araç yok
 
@@ -309,7 +305,6 @@ cp-agent --resume <session-id> "devam"
 
 Bayraklar (cx-agent / cx-stream): `--read-only`, `--sandbox <mod>`, `--cwd <dir>`, `--resume <id>`, `--model <m>`, `--max-runtime`/`--idle-timeout`, `-q`.
 Bayraklar (cp-agent / cp-stream): `--cwd <dir>`, `--resume <id>`, `--model <m>`, `--effort low|medium|high`, `--max-runtime`/`--idle-timeout`, `-q`.
-(`cx-runner` bunlardan biri **değildir** — o bir Claude Code subagent'ıdır, `~/.local/bin`'de yer almaz.)
 
 > 📄 Terminalden kurulum, tüm komutlar, bayraklar ve env override'larının tam referansı: [TERMINAL.md](TERMINAL.md).
 

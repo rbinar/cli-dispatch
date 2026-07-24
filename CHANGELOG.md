@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.0.0] — 2026-07-24
+
+### Removed
+
+- **BREAKING: the five LLM babysitter runner subagents are retired** (#114) —
+  `ds-runner`, `ag-runner`, `cx-runner`, `oc-runner`, `cp-runner` (`agents/*-runner.md`)
+  are deleted. Measured across 604 runner agents on a real workstation, babysitter
+  transcripts cost ~9x the workers' own output in Anthropic tokens (~7.1M babysitter
+  output vs ~785k worker output), defeating the plugin's token-saving purpose — even
+  with the model pinned to haiku. Delegation now has exactly two shapes:
+  - **Mechanical work with a machine-checkable check** → the deterministic runner
+    (`/cli-dispatch:run <backend> "<task>" --verify '<cmd>'`) — worker + worktree
+    isolation + verify + `verdict.json`, zero Anthropic tokens.
+  - **No verify command, or verify failed** → the *escalation path*: the orchestrator
+    reads the compact verdict + diff itself and follows up with `/cli-dispatch:resume`.
+    Cost is incurred only on failure/ambiguity, not on every run.
+- The `runners` field is dropped from the `policy.json` skeleton written by
+  `install.sh`/`install.ps1` and from `/cli-dispatch:setup`'s policy questions. Existing
+  `policy.json` files keep working — `policy-inject.mjs` silently ignores a legacy
+  `runners` array (back-compat, schemaVersion stays 1).
+
+### Changed
+
+- The injected session policy now teaches the escalation path ("read the verdict + diff
+  yourself, follow up with `/cli-dispatch:resume`") instead of routing judgment-heavy
+  work to runner subagents.
+- Docs (`README.md`, `README.tr.md`, `CLAUDE.md`, `skills/ds-delegate/SKILL.md`,
+  command references) rewritten around the deterministic runner + escalation model;
+  the demo script's runner scene now shows `/cli-dispatch:run`.
+- `/cli-dispatch:gain`'s Anthropic babysitting section still reports legacy runner
+  sessions — accounting is unchanged so historical ratios stay visible.
+
 ## [3.44.0] — 2026-07-19
 
 ### Added

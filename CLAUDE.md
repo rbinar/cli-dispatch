@@ -15,10 +15,6 @@ Everything the plugin installs lives under `plugins/cli-dispatch/`:
 - `commands/*.md` — slash commands (`/cli-dispatch:*`). Each is markdown with a fenced
   bash (and sometimes PowerShell) block that Claude Code executes directly — there is no
   compiled command layer.
-- `agents/*-runner.md` — the five babysitter subagent definitions (`ds-runner`,
-  `ag-runner`, `cx-runner`, `oc-runner`, `cp-runner`). Each manages one delegation to its
-  backend: launches the worker, isolates it (git worktree for real repo changes), verifies
-  the result with real build/test commands, and reports back — it never edits files itself.
 - `scripts/` — the actual installed CLIs (`ds-agent`, `ag-agent`, `cx-agent`, `oc-agent`,
   `cp-agent` + their `*-stream` siblings, plus backend-agnostic tools like
   `cli-dispatch-clean`, `cli-dispatch-wait`, `cli-dispatch-dashboard`). Bash/PowerShell
@@ -75,9 +71,9 @@ run — regardless of backend — creates `~/.cache/cli-dispatch/sessions/<id>/`
   including the `human-controlled` takeover sub-object).
 - `meta.json` — static fields: `cwd`, `backend`, `model`, `startedAt`, `promptPreview`.
 - `transcript.jsonl` — the full raw JSONL stream. Never read this while polling — it's for
-  resume/audit only. Consumers (`*-runner` agents, `gain`, `clean`) are explicitly warned
-  in-repo against reading it in a hot loop; it's the main cost sink this repo optimizes
-  against.
+  resume/audit only. Consumers (`gain`, `clean`, any orchestrator following up on a run)
+  are explicitly warned in-repo against reading it in a hot loop; it's the main cost sink
+  this repo optimizes against.
 - `progress.log` — terse human-readable tail, safe to read a few lines of.
 - `changed-files.json` — `{files, diffstat}`, written after a repo-changing run finishes.
 
@@ -88,17 +84,17 @@ from stdin and normalizes it into this same session-dir shape — this is what l
 `cli-dispatch-clean` all be backend-agnostic. `parse-utils.mjs` holds the logic shared
 across parsers (status-file throttling, session fd management, formatting).
 
-**The runner/babysitter pattern.** Each `*-runner.md` subagent follows the same shape:
-pick a mode (pure generation vs. real repo change, the latter isolated in a git worktree),
-launch the worker CLI synchronously (never fire-and-forget — a background monitor's
-completion would land in a sub-context that's already gone), poll `status.json` with
-long sleeps (or the newer `cli-dispatch-wait` blocking primitive) rather than re-reading
-growing context every turn, and — for real repo changes — verify with actual build/test
-commands run by the runner itself, never trust the worker's own self-report. This
-poll-cost-minimization concern shows up repeatedly across the codebase (`cli-dispatch-wait`,
-the "Cost-conscious" section in every runner def, `gain`'s babysitter/worker output ratio)
-because runner subagent transcripts are the dominant Anthropic token cost this plugin
-generates.
+**The deterministic runner + escalation path.** Delegation runs through `cli-dispatch-run`
+(the `/cli-dispatch:run` command): it isolates real repo changes in a git worktree, launches
+the worker CLI, runs the `--verify` command itself (never trusting the worker's self-report),
+and writes a `verdict.json` — all as plain shell, spending zero Anthropic tokens. When there
+is no machine-checkable verify (or verify fails), the *orchestrator* escalates: it reads the
+compact verdict + diff directly and follows up with `/cli-dispatch:resume`. The plugin used
+to ship five LLM `*-runner` babysitter subagents for this instead; they were retired in
+4.0.0 (issue #114) after `gain` measured their transcripts at ~9x the workers' own output in
+Anthropic tokens. `gain`'s babysitter/worker ratio and the `cli-dispatch-wait` blocking
+primitive remain for accounting of legacy sessions and for any consumer that must block on
+a session reaching a terminal state.
 
 **Session-dir root resolution** is duplicated (by design, not accidentally) across
 `watch.md`, `resume.md`, `kill.md`, `sessions.md`, `gain.md`, `cli-dispatch-clean`, and

@@ -641,9 +641,9 @@ async function renderConfigEditor() {
         html += '<span id="err_' + escAttr(k) + '" class="err" style="margin-left:8px"></span>'
         html += '</div>'
         if (!item.secret && k.endsWith('_MODELS')) {
-          html += '<div class="small muted" style="margin-top:2px">Comma-separated candidate model list (optional). When the delegation prompt names no explicit model, the babysitter checks this list first and picks the best fit itself — same reasoning as an orchestrator-provided list, just persisted here instead of retyped each time. Leave empty to keep using the single default above.</div>'
+          html += '<div class="small muted" style="margin-top:2px">Comma-separated candidate model list (optional). When the delegation prompt names no explicit model, the delegating agent checks this list first and picks the best fit itself — same reasoning as an orchestrator-provided list, just persisted here instead of retyped each time. Leave empty to keep using the single default above.</div>'
         } else if (!item.secret && k.endsWith('_MODEL')) {
-          html += '<div class="small muted" style="margin-top:2px">Single default model, used only when no --model is passed and no candidate list applies. For multi-candidate selection (babysitter picks one), either list candidates in the task prompt, or set the matching ' + esc(k.replace(/_MODEL$/, '') + '_MODELS') + ' field below for a standing default list.</div>'
+          html += '<div class="small muted" style="margin-top:2px">Single default model, used only when no --model is passed and no candidate list applies. For multi-candidate selection (the delegating agent picks one), either list candidates in the task prompt, or set the matching ' + esc(k.replace(/_MODEL$/, '') + '_MODELS') + ' field below for a standing default list.</div>'
         }
         html += '</div>'
       }

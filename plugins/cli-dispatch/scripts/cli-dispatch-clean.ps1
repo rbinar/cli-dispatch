@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
 # cli-dispatch-clean.ps1 — Windows launcher for the stale-worker cleanup engine, AND the
 # worktree-artifact sweep (leftover *-wt-* dirs under $env:TEMP that a crashed/killed runner
-# never cleaned up — see CLAUDE.md "runner/babysitter pattern": real repo changes are isolated
+# never cleaned up — see CLAUDE.md "deterministic runner + escalation path": real repo changes are isolated
 # in a worktree, and a runner that dies before its own cleanup leaves that worktree behind
 # forever). Session cleanup is delegated to cli-dispatch-clean.mjs (installed share dir →
 # legacy claude-ds → next to this script); the worktree sweep runs directly in this launcher
