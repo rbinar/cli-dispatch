@@ -352,8 +352,11 @@ For a full cleanup, in order: (1) remove the plugin, (2) delete the wrapper + co
 
 ```bash
 # macOS / Linux / WSL / Git Bash
-rm -f  ~/.local/bin/claude-ds ~/.local/bin/claude-ds-stream
-rm -rf ~/.local/share/cli-dispatch ~/.local/share/claude-ds   # stream parsers (also legacy path)
+rm -f  ~/.local/bin/claude-ds ~/.local/bin/claude-ds-stream ~/.local/bin/ds-agent
+rm -f  ~/.local/bin/{ag,cx,oc,cp}-agent ~/.local/bin/{ag,cx,oc,cp}-stream
+rm -f  ~/.local/bin/cli-dispatch-{run,wait,clean,gain,dashboard}
+rm -f  ~/.local/bin/{ds,cx}-worktree-run.* ~/.local/bin/stream-utils.sh ~/.local/bin/version-check.sh
+rm -rf ~/.local/share/cli-dispatch ~/.local/share/claude-ds   # engines/parsers (also legacy path)
 rm -rf ~/.cache/cli-dispatch ~/.cache/claude-ds               # session records (also legacy path)
 rm -rf ~/.config/cli-dispatch ~/.config/claude-ds             # config (incl. API key) — deleting removes the key too (also legacy path)
 ```

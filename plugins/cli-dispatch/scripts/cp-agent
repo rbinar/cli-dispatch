@@ -15,7 +15,7 @@
 # (always passed by cp-stream) auto-approves tools and prevents interactive questions —
 # a functional requirement for headless use, not a safety opt-in.
 # For a no-writes guarantee, isolate via --cwd to a throwaway dir or a git worktree and
-# review the diff yourself (same posture as the Antigravity/agy backend — see cp-runner.md).
+# review the diff yourself (same posture as the Antigravity/agy backend).
 set -euo pipefail
 
 # Version staleness check

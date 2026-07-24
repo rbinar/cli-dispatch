@@ -7,7 +7,19 @@
 
 `claude-ds` (the DeepSeek backend of the **cli-dispatch** plugin) makes DeepSeek runnable as a delegate worker straight from the terminal. It wraps the Claude Code CLI so all model slots route through DeepSeek's Anthropic-compatible API. The architectural split: **DeepSeek is the worker** (executes tasks, writes code, runs commands); **you are the orchestrator** (review output, own git history, approve merges).
 
-This document covers only the terminal-runnable commands. The three executables installed to `~/.local/bin` (`claude-ds`, `claude-ds-stream`, `ds-agent`) plus the worktree script (`ds-worktree-run.sh`) are all you need from a shell.
+This document covers only the terminal-runnable commands. Three DeepSeek executables land in `~/.local/bin` (`claude-ds`, `claude-ds-stream`, `ds-agent`), plus the worktree script (`ds-worktree-run.sh`) — those are the DeepSeek-specific ones this document explains.
+
+`install.sh` also installs backend-agnostic tools regardless of which backend you picked, and they work from a shell too:
+
+| Tool | What it does |
+|---|---|
+| `cli-dispatch-run` | **The deterministic runner** — launches a worker, isolates it in a git worktree, runs your `--verify` command itself, writes `verdict.json`. This is the delegation path; the LLM babysitter subagents were retired in 4.0.0. |
+| `cli-dispatch-wait` | Blocks until a session reaches a terminal state, then prints a compact summary (silent while polling). |
+| `cli-dispatch-clean` | Prunes stale (`running`-but-dead) session dirs and leftover worktree artifacts. |
+| `cli-dispatch-gain` | Reports worker token totals per backend. |
+| `cli-dispatch-dashboard` | Serves the local read-only web dashboard. |
+
+See [README.md](README.md) for `cli-dispatch-run`'s full flag set and the escalation path.
 
 ## How it works
 

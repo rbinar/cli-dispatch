@@ -367,8 +367,11 @@ Tam temizlik için sırayla: (1) plugin'i kaldır, (2) wrapper + config dosyalar
 
 ```bash
 # macOS / Linux / WSL / Git Bash
-rm -f  ~/.local/bin/claude-ds ~/.local/bin/claude-ds-stream
-rm -rf ~/.local/share/cli-dispatch ~/.local/share/claude-ds   # stream parser'ları (eski yol dahil)
+rm -f  ~/.local/bin/claude-ds ~/.local/bin/claude-ds-stream ~/.local/bin/ds-agent
+rm -f  ~/.local/bin/{ag,cx,oc,cp}-agent ~/.local/bin/{ag,cx,oc,cp}-stream
+rm -f  ~/.local/bin/cli-dispatch-{run,wait,clean,gain,dashboard}
+rm -f  ~/.local/bin/{ds,cx}-worktree-run.* ~/.local/bin/stream-utils.sh ~/.local/bin/version-check.sh
+rm -rf ~/.local/share/cli-dispatch ~/.local/share/claude-ds   # engine/parser'lar (eski yol dahil)
 rm -rf ~/.cache/cli-dispatch ~/.cache/claude-ds               # session kayıtları (eski yol dahil)
 rm -rf ~/.config/cli-dispatch ~/.config/claude-ds             # config (API key dahil) — silinince key de gider (eski yol dahil)
 ```
