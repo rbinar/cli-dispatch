@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.1.0] — 2026-07-24
+
+### Added
+
+- **Statusline badge (`[CD]`)** — new `scripts/cli-dispatch-statusline.sh`, a statusline
+  *fragment* (same pattern as caveman's): a combining `~/.claude/hooks/statusline.sh`
+  wrapper pipes the statusline stdin JSON to it and appends its output. Prints a cyan
+  `[CD]` badge when cli-dispatch is active (policy injection enabled, or ≥1 worker
+  running) plus a yellow `▶N` counter while N worker sessions are running; prints
+  nothing when inactive. Reads only tiny `status.json` files (never
+  `transcript.jsonl`) so it stays statusline-cheap. Wire-up is one glob line in the
+  combining wrapper (documented in the script header); the fragment ships in the
+  plugin cache, nothing extra is installed. Unix statusline setups only.
+
 ## [4.0.0] — 2026-07-24
 
 ### Removed
