@@ -7,6 +7,20 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.1.0] — 2026-07-24
+
+### Eklendi
+
+- **Statusline rozeti (`[CD]`)** — yeni `scripts/cli-dispatch-statusline.sh`, bir
+  statusline *fragment'i* (caveman'inkiyle aynı desen): birleştirici
+  `~/.claude/hooks/statusline.sh` sarmalayıcısı statusline stdin JSON'unu ona da
+  boru'lar ve çıktısını ekler. cli-dispatch aktifken (policy injection açık ya da ≥1
+  worker koşuyorken) camgöbeği `[CD]` rozeti, N worker oturumu koşarken de sarı `▶N`
+  sayacı basar; pasifken hiçbir şey basmaz. Yalnızca minik `status.json` dosyalarını
+  okur (asla `transcript.jsonl` değil), statusline için ucuz kalır. Bağlama, sarmalayıcıya
+  tek bir glob satırı eklemekten ibaret (script başlığında belgeli); fragment plugin
+  cache'inde gelir, ekstra kurulum yok. Şimdilik yalnız Unix statusline kurulumları.
+
 ## [4.0.0] — 2026-07-24
 
 ### Kaldırıldı
