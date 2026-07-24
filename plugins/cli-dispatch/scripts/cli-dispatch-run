@@ -423,7 +423,21 @@ if [ "${#VERIFY[@]}" -gt 0 ] && [ "$STATE" != "human-controlled" ]; then
   VERIFY_RESULTS_PATH="$(mktemp)"
   TEMP_FILES+=("$VERIFY_RESULTS_PATH")
   VERIFY_TIMEOUT_MS=$((VERIFY_TIMEOUT * 1000))
+  # run-verify must not abort the script under `set -e`: verdict.json is the escalation
+  # path's ONLY data source, so a node-level crash here has to fall through to
+  # build-verdict rather than exiting with no verdict at all.
+  #
+  # Fail CLOSED, though: build-verdict's readJson() swallows a parse error and returns {},
+  # which buildVerdict maps to `exitCode: 0` — i.e. an unreadable verify file would be
+  # reported as a PASS. An unknown verify result must never read as success, so synthesize
+  # an explicit failure instead.
+  set +e
   "$NODE_BIN" "$VERDICT_WRITER" run-verify "$WORKTREE_PATH" "$VERIFY_TIMEOUT_MS" 40 "${VERIFY[@]}" > "$VERIFY_RESULTS_PATH"
+  RUN_VERIFY_EXIT=$?
+  set -e
+  if [ "$RUN_VERIFY_EXIT" -ne 0 ] || [ ! -s "$VERIFY_RESULTS_PATH" ]; then
+    printf '%s\n' "{\"commands\":[],\"exitCode\":1,\"failedAt\":null,\"tail\":\"run-verify crashed (exit $RUN_VERIFY_EXIT) — verify result unknown, treated as FAIL\"}" > "$VERIFY_RESULTS_PATH"
+  fi
 fi
 
 set +e
