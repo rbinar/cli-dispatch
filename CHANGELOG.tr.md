@@ -7,6 +7,42 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.2.0] — 2026-07-25
+
+4.0 sonrası kod tabanının salt-okunur tam denetiminden çıkan bulgular. Bu sürüm doğruluk
+hatalarını düzeltiyor; kalan bulgular issue olarak takip ediliyor.
+
+### Düzeltildi
+
+- **Windows'ta `--resume`'a hiçbir giriş yolu yoktu.** `cli-dispatch-run.ps1`'in
+  prompt-zorunlu kontrolünde `$Resume` muafiyeti yoktu; `--resume <id>` orada (exit 5),
+  `--resume <id> --prompt …` ise sonraki "resume prompt alamaz" kapısında ölüyordu —
+  üçüncü bir yol yoktu. Bash ikizi hep doğruydu
+  (`[ -z "$RESUME" ] && [ -z "$PROMPT$PROMPT_FILE" ]`); `.ps1` kontrolü artık ona uyuyor.
+- **İki PowerShell worktree runner'ında `git worktree add` hataları sessizce yutuluyordu.**
+  `ds-`/`cx-worktree-run.ps1` hem exit kodunu hem hata çıktısını (`2>$null`) atıyordu;
+  başarısız `add` sonrası script devam ediyor ve worker var olmayan/yanlış dizinde
+  koşuyordu — teslimatı sessizce kayboluyordu. İkisi de artık taze bir yolla bir kez
+  retry ediyor (bash ikizleriyle aynı) ve o da başarısızsa teşhis mesajıyla sert biçimde
+  hata veriyor.
+- **Çöken bir `run-verify`, geçen bir verify gibi raporlanabiliyordu.** `verdict.json`
+  escalation path'in tek veri kaynağı; ama `run-verify` çağrısı `set -e` altındaydı, yani
+  node seviyesinde bir çökme hiç verdict yazılmadan script'i öldürüyordu. Naif düzeltme
+  daha kötüsünü yapardı: `build-verdict`'in `readJson()`'ı parse hatasını yutup `{}`
+  döndürüyor, bu da `exitCode: 0`'a eşleniyor — yani okunamayan bir verify dosyası
+  **başarı** olarak okunurdu. Runner artık **fail-closed** davranıyor: sonucun bilinmediğini
+  söyleyen açık bir verify hatası üretiyor. `cli-dispatch-run.ps1`'e de bash ikizinde zaten
+  bulunan boş-verdict fallback'i eklendi.
+
+### Eklendi
+
+- **`__tests__/cli-dispatch-run-verify.test.mjs`** — `--verify` → `verdict.json` bağlantısı
+  için altı uçtan uca test; bu yol daha önce kapsam dışıydı (yalnız altındaki motor test
+  ediliyordu). Seam olarak `--resume` kullanılıyor: tohumlanmış bir oturuma yeniden
+  bağlanmak, worker başlatmadan gerçek verify → verdict yolunu sürüyor. Yukarıdaki
+  fail-closed davranışı için regresyon testi de dahil; mutasyonla doğrulandı (fix geri
+  alındığında test 4 düşüyor).
+
 ## [4.1.3] — 2026-07-25
 
 ### Düzeltildi

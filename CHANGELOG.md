@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.2.0] — 2026-07-25
+
+Findings from a full read-only audit of the post-4.0 codebase. This release fixes the
+correctness bugs; the remaining findings are tracked as issues.
+
+### Fixed
+
+- **`--resume` was completely unreachable on Windows.** `cli-dispatch-run.ps1`'s
+  prompt-required check had no `$Resume` exemption, so `--resume <id>` died there (exit 5)
+  and `--resume <id> --prompt …` died at the later "resume cannot take a prompt" guard —
+  there was no third path. The bash twin was always correct
+  (`[ -z "$RESUME" ] && [ -z "$PROMPT$PROMPT_FILE" ]`); the `.ps1` check now matches.
+- **`git worktree add` failures were silently ignored in both PowerShell worktree runners.**
+  `ds-`/`cx-worktree-run.ps1` discarded the exit code *and* the error output (`2>$null`),
+  so a failed `add` fell through and the worker ran in a nonexistent/wrong directory — its
+  work silently lost. Both now retry once with a fresh path (matching the bash twins) and
+  hard-fail with a diagnostic if that also fails.
+- **A crashed `run-verify` could be reported as a passing verify.** `verdict.json` is the
+  escalation path's only data source, but the `run-verify` call sat under `set -e`, so a
+  node-level crash killed the script before any verdict was written. The naive fix would
+  have been worse: `build-verdict`'s `readJson()` swallows parse errors and returns `{}`,
+  which maps to `exitCode: 0` — an unreadable verify file would have read as **success**.
+  The runner now fails **closed**, synthesizing an explicit verify failure that says the
+  result is unknown. `cli-dispatch-run.ps1` gained the matching empty-verdict fallback its
+  bash twin already had.
+
+### Added
+
+- **`__tests__/cli-dispatch-run-verify.test.mjs`** — six end-to-end tests for the
+  `--verify` → `verdict.json` wiring, previously uncovered (only the engine underneath was
+  tested). Uses `--resume` as the seam, since re-attaching to a seeded session drives the
+  real verify → verdict path without launching a worker. Includes a regression test for the
+  fail-closed behavior above, verified by mutation (reverting the fix fails test 4).
+
 ## [4.1.3] — 2026-07-25
 
 ### Fixed

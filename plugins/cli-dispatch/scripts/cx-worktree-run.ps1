@@ -102,7 +102,18 @@ if ($inPlace) {
     $refName = $baseRef.Substring(7)
     git -C $Repo fetch origin $refName 2>$null
   }
-  git -C $Repo worktree add -b $Branch $WT $baseRef 2>$null
+  # A failed `worktree add` must NOT fall through: the worker would then run in a
+  # nonexistent/wrong directory and its work would be silently lost. Retry once with a
+  # fresh path (the usual cause is a name collision), then hard-fail (mirrors the bash twin).
+  git -C $Repo worktree add -b $Branch $WT $baseRef
+  if ($LASTEXITCODE -ne 0) {
+    $WT = Join-Path ([System.IO.Path]::GetTempPath()) ("cx-wt-" + [System.IO.Path]::GetRandomFileName().Substring(0, 6))
+    git -C $Repo worktree add -b $Branch $WT $baseRef
+    if ($LASTEXITCODE -ne 0) {
+      Write-Error "cx-worktree-run: git worktree add failed (exit $LASTEXITCODE) for branch '$Branch' at '$WT'"
+      exit 1
+    }
+  }
 
   $repoNM = Join-Path $Repo "node_modules"
   $wtNM = Join-Path $WT "node_modules"

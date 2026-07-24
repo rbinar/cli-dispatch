@@ -62,7 +62,11 @@ if (-not $Backend -or -not $Cwd) {
   Show-Usage
   exit 5
 }
-if ((-not $Prompt) -and (-not $PromptFile)) {
+# --resume re-attaches to an existing session and carries no prompt, so it is exempt from
+# the prompt requirement (mirrors the bash twin's `[ -z "$RESUME" ] && [ -z "$PROMPT..." ]`).
+# Without this exemption there was NO way to reach the resume path: promptless resume died
+# here and prompted resume died at the later "--resume cannot take a prompt" guard.
+if ((-not $Resume) -and (-not $Prompt) -and (-not $PromptFile)) {
   Write-Host 'cli-dispatch-run: --prompt or --prompt-file is required'
   Show-Usage
   exit 5
@@ -475,6 +479,12 @@ try {
   } else {
     $verdictOut = & $NodeBin $VerdictWriter build-verdict $SessionDir $StatusPath $MetaPath $ChangedPath $timeoutExpired
     $verdictExit = $LASTEXITCODE
+  }
+  # build-verdict failed (threw before printing) → don't write an empty/invalid file that
+  # would crash downstream JSON.parse consumers; record the failure as valid JSON instead
+  # (mirrors the bash twin).
+  if ([string]::IsNullOrWhiteSpace($verdictOut)) {
+    $verdictOut = "{`"schemaVersion`":1,`"error`":`"build-verdict failed (exit $verdictExit) — see stderr`",`"sessionId`":`"$SessionId`",`"exitCode`":$verdictExit}"
   }
   Set-Content -Path (Join-Path $SessionDir 'verdict.json') -Value $verdictOut
 
