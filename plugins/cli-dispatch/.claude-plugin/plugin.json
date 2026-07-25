@@ -1,6 +1,6 @@
 {
   "name": "cli-dispatch",
-  "version": "4.2.1",
+  "version": "4.3.0",
   "description": "Delegate tasks to the right worker CLI — multi-backend delegation hub. Backends: DeepSeek-powered Claude Code (claude-ds), Antigravity / Gemini (agy, ag-agent), OpenAI Codex CLI (codex, cx-agent), OpenCode via OpenRouter (opencode, oc-agent), and GitHub Copilot CLI (copilot, cp-agent). Setup-time backend selection, deterministic runner (cli-dispatch-run — worker + verify with zero LLM babysitter tokens), single-command ds/ag/cx/oc/cp-agent, session tracking (live monitoring + resume), read-only mode (Codex only — real OS-level sandbox; OpenCode/Copilot have no sandbox equivalent, isolation is via git worktree only), global MCP isolation, runtime/idle timeout safety net, fully-agentic tasks in isolated worktrees, optional auto-install of missing worker CLIs (`--install-missing`/`-InstallMissing`, opt-in).",
   "author": { "name": "rbinar", "url": "https://github.com/rbinar" },
   "homepage": "https://github.com/rbinar/cli-dispatch",

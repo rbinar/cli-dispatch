@@ -1,13 +1,14 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, writeFileSync, readFileSync, statSync, rmSync, utimesSync, mkdirSync } from 'node:fs'
+import { spawn, execFileSync } from 'node:child_process'
+import { mkdtempSync, writeFileSync, readFileSync, statSync, rmSync, utimesSync, mkdirSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import http from 'node:http'
 import {
-  readHead, readTail, collectProcTree, mapFlow
+  readHead, readTail, collectProcTree, mapFlow,
+  readVerdict, readChangedFiles, clipLines
 } from '../dashboard-utils.mjs'
 import { markTakeoverActive, touchTakeoverHeartbeat, clearTakeoverState } from '../parse-utils.mjs'
 
@@ -44,20 +45,38 @@ function stopServer(child) {
   })
 }
 
-function httpRequest({ port, method, path: reqPath }) {
+// `headers` and `payload` support exist so the authenticated POST surface can be tested at all
+// — before this, every POST route (/api/clean, /api/config) was unreachable from the suite.
+// `headers` is also what makes response assertions like content-type possible.
+function httpRequest({ port, method, path: reqPath, headers, payload }) {
   return new Promise((resolve, reject) => {
-    const req = http.request({ hostname: '127.0.0.1', port, method, path: reqPath }, (res) => {
+    const req = http.request({ hostname: '127.0.0.1', port, method, path: reqPath, headers }, (res) => {
       let body = ''
       res.on('data', (c) => { body += c })
       res.on('end', () => {
         let json = null
         try { json = JSON.parse(body) } catch {}
-        resolve({ status: res.statusCode, body: json, raw: body })
+        resolve({ status: res.statusCode, body: json, raw: body, headers: res.headers })
       })
     })
     req.on('error', reject)
+    if (payload != null) req.write(typeof payload === 'string' ? payload : JSON.stringify(payload))
     req.end()
   })
+}
+
+// PROJECTS_DIR / CC_SESSIONS_DIR are derived from os.homedir() (dashboard-server.mjs:43-44) with
+// NO env override, so a test that touches /api/workers would otherwise scan the developer's real
+// ~/.claude/projects — hundreds of transcripts and hundreds of MB of capped readTail per test.
+// os.homedir() honours $HOME on POSIX, so overriding HOME isolates both in one line.
+// CLI_DISPATCH_SESSIONS_DIR still overrides WORKERS_ROOT independently.
+function startServerIsolated({ sessionsDir, homeDir, port, env }) {
+  return startServer({
+    ...process.env,
+    HOME: homeDir,
+    CLI_DISPATCH_SESSIONS_DIR: sessionsDir,
+    ...env,
+  }, port)
 }
 
 // ---- readHead / readTail ----
@@ -424,5 +443,783 @@ test('touchTakeoverHeartbeat: refreshes lastHeartbeat while takeover is still ac
     assert.equal(st2.takeover, undefined)
   } finally {
     rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+// ---- GET / (the SPA itself) ----
+// The dashboard's whole reason to exist was never asserted to return 200. public-page.test.mjs
+// checks that the client script PARSES; this checks that the server actually SERVES it.
+test('GET / serves the dashboard HTML', async () => {
+  const sessionsDir = mkdtempSync(path.join(tmpdir(), 'dash-root-'))
+  const homeDir = mkdtempSync(path.join(tmpdir(), 'dash-home-'))
+  const port = 18800 + Math.floor(Math.random() * 1000)
+  const child = startServerIsolated({ sessionsDir, homeDir, port })
+  try {
+    const actualPort = await waitForServerReady(child)
+    const res = await httpRequest({ port: actualPort, method: 'GET', path: '/' })
+    assert.equal(res.status, 200)
+    assert.match(String(res.headers['content-type']), /^text\/html/)
+    // Structural anchors the client script depends on existing.
+    assert.ok(res.raw.includes('<div class="layout">'), 'layout grid must be present')
+    assert.ok(res.raw.includes('id="view"'), 'main view container must be present')
+    assert.ok(res.raw.includes('id="tabW"'), 'workers tab must be present')
+  } finally {
+    await stopServer(child)
+    rmSync(sessionsDir, { recursive: true, force: true })
+    rmSync(homeDir, { recursive: true, force: true })
+  }
+})
+
+// ---- babysitter accounting removal (4.3.0) ----
+// Two halves of the same assertion, deliberately in one test: the babysitter fields must be
+// GONE, and the worker -> parent-Claude-Code-session linkage they were bolted onto must SURVIVE.
+// Testing only the removal would let someone "simplify" buildWorkerParentIndex away entirely
+// and still pass.
+test('GET /api/workers drops babysitter accounting but keeps the parent-session linkage', async () => {
+  const sessionsDir = mkdtempSync(path.join(tmpdir(), 'dash-nobaby-'))
+  const homeDir = mkdtempSync(path.join(tmpdir(), 'dash-home-'))
+  const workerId = 'ds-run-1784855285-379'
+  const ccSessionId = '6f7826b9-f5ad-434f-8fde-acf0c7b4717c'
+  const project = '-Users-someone-Repos-demo'
+  const port = 18800 + Math.floor(Math.random() * 1000)
+
+  const wDir = path.join(sessionsDir, workerId)
+  mkdirSync(wDir, { recursive: true })
+  writeFileSync(path.join(wDir, 'status.json'), JSON.stringify({
+    sessionId: workerId, backend: 'deepseek', state: 'done',
+    usage: { input_tokens: 10, output_tokens: 5 },
+  }))
+  writeFileSync(path.join(wDir, 'meta.json'), JSON.stringify({
+    backend: 'deepseek', model: 'deepseek-v4-pro', cwd: '/tmp/ds-wt-oUSONx',
+  }))
+
+  // A Claude Code transcript that mentions the worker id is what makes the linkage resolve.
+  const projDir = path.join(homeDir, '.claude', 'projects', project)
+  mkdirSync(projDir, { recursive: true })
+  writeFileSync(path.join(projDir, ccSessionId + '.jsonl'),
+    JSON.stringify({ type: 'user', message: { role: 'user', content: 'launched ' + workerId } }) + '\n')
+
+  const child = startServerIsolated({ sessionsDir, homeDir, port })
+  try {
+    const actualPort = await waitForServerReady(child)
+    const res = await httpRequest({ port: actualPort, method: 'GET', path: '/api/workers' })
+    assert.equal(res.status, 200)
+    const row = res.body.find(w => w.id === workerId)
+    assert.ok(row, 'the seeded worker must be listed')
+
+    // The list route no longer resolves it at all (4.3.0): the row stopped rendering
+    // "from <project>", and resolving it cost a 2MB readTail per Claude Code transcript on the
+    // SSE-refreshed path.
+    assert.ok(!('parentSession' in row), 'the list row must not resolve parentSession')
+    assert.ok(!('babysitterUsage' in row), 'row must not carry babysitterUsage')
+    assert.ok(!/babysitter/i.test(res.raw), 'no babysitter wording may remain in the list payload')
+
+    // Kept, on the detail route: the linkage itself, minus the accounting bolted onto it.
+    const flow = await httpRequest({ port: actualPort, method: 'GET', path: '/api/worker/' + workerId + '/flow' })
+    assert.ok(flow.body.parentSession, 'parentSession linkage must survive the babysitter removal')
+    assert.equal(flow.body.parentSession.id, ccSessionId)
+    assert.equal(flow.body.parentSession.project, project)
+    assert.ok(!('babysitterUsage' in flow.body.parentSession), 'parentSession must not carry babysitterUsage')
+    assert.ok(!('subagentId' in flow.body.parentSession), 'parentSession must not carry the unread subagentId')
+    assert.ok(!/babysitter/i.test(flow.raw), 'no babysitter wording may remain in the flow payload')
+  } finally {
+    await stopServer(child)
+    rmSync(sessionsDir, { recursive: true, force: true })
+    rmSync(homeDir, { recursive: true, force: true })
+  }
+})
+
+// ---- verdict.json / changed-files.json readers (4.3.0) ----
+
+function seedDir(prefix) {
+  return mkdtempSync(path.join(tmpdir(), prefix))
+}
+
+// Modelled on a real on-disk verdict (session 6f7826b9): verify failed with exit 4, one changed
+// file, stranded, worktree already gone.
+const REAL_VERDICT = {
+  schemaVersion: 1,
+  sessionId: '6f7826b9-f5ad-434f-8fde-acf0c7b4717c',
+  backend: 'ds',
+  model: 'deepseek-v4-pro',
+  state: 'done',
+  completedVia: 'autonomous',
+  exitCode: 1,
+  worktree: '/tmp/ds-wt-oUSONx',
+  branch: 'ds-run-1784855285-379',
+  baseRef: 'origin/main',
+  diffstat: ' 1 file changed, 67 insertions(+)',
+  changedFiles: ['app/services/x.py', 'tests/test_x.py'],
+  diffPatchPath: '/somewhere/verdict-diff.patch',
+  verify: {
+    commands: ['python -m pytest tests/test_x.py -q'],
+    exitCode: 4,
+    failedAt: 0,
+    tail: 'no tests ran in 0.00s\nERROR: file or directory not found\n',
+  },
+  stranded: true,
+  worktreeRemoved: false,
+  startedAt: '2026-07-24T01:08:05.441Z',
+  endedAt: '2026-07-24T01:09:38.817Z',
+}
+
+test('readVerdict: returns null when verdict.json is absent', () => {
+  const dir = seedDir('vr-none-')
+  try { assert.equal(readVerdict(dir), null) } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('readVerdict: returns null for unparseable JSON instead of throwing', () => {
+  const dir = seedDir('vr-bad-')
+  try {
+    writeFileSync(path.join(dir, 'verdict.json'), '{not json')
+    assert.equal(readVerdict(dir), null)
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('readVerdict: reads a real verdict shape', () => {
+  const dir = seedDir('vr-real-')
+  try {
+    writeFileSync(path.join(dir, 'verdict.json'), JSON.stringify(REAL_VERDICT))
+    const v = readVerdict(dir)
+    assert.equal(v.malformed, false)
+    assert.equal(v.exitCode, 1)
+    assert.equal(v.outcome, 'verify-failed')
+    assert.equal(v.verify.state, 'fail')
+    assert.equal(v.verify.exitCode, 4)
+    assert.equal(v.verify.failedAt, 0)
+    assert.equal(v.verify.source, 'verdict')
+    assert.equal(v.verify.commands.length, 1)
+    assert.equal(v.stranded, true)
+    assert.equal(v.branch, 'ds-run-1784855285-379')
+    assert.equal(v.backend, 'ds')
+    assert.equal(v.recordedAt, '2026-07-24T01:09:38.817Z')
+    assert.deepEqual(v.changedFiles, ['app/services/x.py', 'tests/test_x.py'])
+    // Structurally always false, so it must not be forwarded at all.
+    assert.ok(!('worktreeRemoved' in v), 'the dead worktreeRemoved field must not be exposed')
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+// THE fail-closed test. cli-dispatch-run writes this shape when build-verdict throws; its
+// `exitCode` is a node exit status, NOT the 0-5 contract value, so reading it as one would
+// report a crashed run as a pass whenever that status happened to be 0.
+test('readVerdict: the build-failure shape is malformed, never a pass', () => {
+  const dir = seedDir('vr-err-')
+  try {
+    writeFileSync(path.join(dir, 'verdict.json'), JSON.stringify({
+      schemaVersion: 1,
+      error: 'build-verdict failed (exit 5) — see stderr',
+      sessionId: 'x',
+      exitCode: 5,
+    }))
+    const v = readVerdict(dir)
+    assert.equal(v.malformed, true)
+    assert.equal(v.outcome, 'unknown')
+    assert.notEqual(v.outcome, 'pass')
+    assert.equal(v.exitCode, null, 'a node exit status must not masquerade as the contract code')
+    assert.match(v.error, /build-verdict failed/)
+    assert.equal(v.verify, null)
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('readVerdict: an exitCode of 0 in the build-failure shape still is not a pass', () => {
+  const dir = seedDir('vr-err0-')
+  try {
+    writeFileSync(path.join(dir, 'verdict.json'), JSON.stringify({
+      schemaVersion: 1, error: 'boom', sessionId: 'x', exitCode: 0,
+    }))
+    const v = readVerdict(dir)
+    assert.equal(v.malformed, true)
+    assert.notEqual(v.outcome, 'pass')
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('readVerdict: an unknown future schemaVersion is treated as unknown, not assumed-passing', () => {
+  const dir = seedDir('vr-sv-')
+  try {
+    writeFileSync(path.join(dir, 'verdict.json'), JSON.stringify({ ...REAL_VERDICT, schemaVersion: 2, exitCode: 0 }))
+    const v = readVerdict(dir)
+    assert.equal(v.malformed, true)
+    assert.notEqual(v.outcome, 'pass')
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('readVerdict: maps the whole cli-dispatch-run exit-code contract', () => {
+  const dir = seedDir('vr-map-')
+  try {
+    const cases = [[0, 'pass'], [1, 'verify-failed'], [2, 'error'], [3, 'timeout'],
+      [4, 'human-controlled'], [5, 'setup-error'], [42, 'unknown']]
+    for (const [code, outcome] of cases) {
+      writeFileSync(path.join(dir, 'verdict.json'), JSON.stringify({ ...REAL_VERDICT, exitCode: code }))
+      assert.equal(readVerdict(dir).outcome, outcome, 'exitCode ' + code)
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+// 124/126/127 mean the CHECK never ran. Calling that a FAIL blames the worker for the
+// operator's typo; calling it a pass is worse.
+test('readVerdict: a broken verify harness is neither pass nor fail', () => {
+  const dir = seedDir('vr-harness-')
+  try {
+    for (const code of [124, 126, 127]) {
+      writeFileSync(path.join(dir, 'verdict.json'), JSON.stringify({
+        ...REAL_VERDICT, verify: { ...REAL_VERDICT.verify, exitCode: code },
+      }))
+      assert.equal(readVerdict(dir).verify.state, 'harness', 'verify exit ' + code)
+    }
+    writeFileSync(path.join(dir, 'verdict.json'), JSON.stringify({
+      ...REAL_VERDICT, verify: { ...REAL_VERDICT.verify, exitCode: 0 },
+    }))
+    assert.equal(readVerdict(dir).verify.state, 'pass')
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('readVerdict: verify:null stays null — an unchecked run is not a passing run', () => {
+  const dir = seedDir('vr-noverify-')
+  try {
+    writeFileSync(path.join(dir, 'verdict.json'), JSON.stringify({ ...REAL_VERDICT, verify: null, exitCode: 0 }))
+    const v = readVerdict(dir)
+    assert.equal(v.verify, null)
+    assert.equal(v.outcome, 'pass', 'the RUN passed...')
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('readVerdict: normalizes backend to the short form, null when unrecognised', () => {
+  const dir = seedDir('vr-backend-')
+  try {
+    const cases = [['cx', 'cx'], ['codex', 'cx'], ['deepseek', 'ds'], ['nonsense', null]]
+    for (const [input, want] of cases) {
+      writeFileSync(path.join(dir, 'verdict.json'), JSON.stringify({ ...REAL_VERDICT, backend: input }))
+      assert.equal(readVerdict(dir).backend, want, 'backend ' + input)
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('readVerdict: falls back to the legacy status.verify shape only when the verdict has none', () => {
+  const dir = seedDir('vr-legacy-')
+  try {
+    const statusVerify = { cmd: 'make test', exit: 2, tail: 'legacy tail' }
+    // verdict.verify present -> it wins.
+    writeFileSync(path.join(dir, 'verdict.json'), JSON.stringify(REAL_VERDICT))
+    let v = readVerdict(dir, { statusVerify })
+    assert.equal(v.verify.source, 'verdict')
+    assert.equal(v.verify.exitCode, 4)
+    // verdict.verify absent -> the older {cmd, exit, tail} shape is normalized in.
+    writeFileSync(path.join(dir, 'verdict.json'), JSON.stringify({ ...REAL_VERDICT, verify: null }))
+    v = readVerdict(dir, { statusVerify })
+    assert.equal(v.verify.source, 'status')
+    assert.deepEqual(v.verify.commands, ['make test'])
+    assert.equal(v.verify.exitCode, 2)
+    assert.equal(v.verify.failedAt, 0, 'a single failing command implies index 0')
+    assert.equal(v.verify.state, 'fail')
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('readVerdict: stranded is true only when literally true', () => {
+  const dir = seedDir('vr-stranded-')
+  try {
+    for (const raw of [false, undefined, 'true', 1, null]) {
+      writeFileSync(path.join(dir, 'verdict.json'), JSON.stringify({ ...REAL_VERDICT, stranded: raw }))
+      assert.equal(readVerdict(dir).stranded, false, 'stranded ' + JSON.stringify(raw))
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('readVerdict: a huge verify tail is capped but keeps its line structure', () => {
+  const dir = seedDir('vr-tail-')
+  try {
+    // One pathological 5MB line — verdict-writer caps LINES, not bytes, so this reaches us.
+    const huge = 'x'.repeat(5 * 1024 * 1024)
+    writeFileSync(path.join(dir, 'verdict.json'), JSON.stringify({
+      ...REAL_VERDICT, verify: { ...REAL_VERDICT.verify, tail: huge },
+    }))
+    const tail = readVerdict(dir).verify.tail
+    assert.ok(tail.length <= 8192 + 2, 'tail must be byte-capped, got ' + tail.length)
+
+    // And the regression this exists for: clip() would collapse newlines, making a failing
+    // test report one unreadable line.
+    writeFileSync(path.join(dir, 'verdict.json'), JSON.stringify({
+      ...REAL_VERDICT, verify: { ...REAL_VERDICT.verify, tail: 'line one\nline two\nline three' },
+    }))
+    const multi = readVerdict(dir).verify.tail
+    assert.ok(multi.includes('\n'), 'embedded newlines must survive')
+    assert.equal(multi, 'line one\nline two\nline three')
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('clipLines: keeps the LAST lines and byte-caps them', () => {
+  const many = Array.from({ length: 100 }, (_, i) => 'line' + i).join('\n')
+  const out = clipLines(many, 5)
+  assert.ok(out.includes('line99'), 'the newest line must survive')
+  assert.ok(!out.includes('line50'), 'older lines must be dropped')
+  assert.ok(out.startsWith('…'), 'truncation must be visible')
+  assert.equal(clipLines(''), '')
+  assert.equal(clipLines(null), '')
+  assert.equal(clipLines('short'), 'short', 'untruncated input gains no marker')
+})
+
+test('readChangedFiles: keeps per-file status and preexistingDirty', () => {
+  const dir = seedDir('cf-')
+  try {
+    writeFileSync(path.join(dir, 'changed-files.json'), JSON.stringify({
+      files: [{ path: 'a.py', status: 'M' }, { path: 'new.py', status: '??' }],
+      diffstat: ' 2 files changed, 19 insertions(+), 3 deletions(-)',
+      preexistingDirty: ['CLAUDE.md'],
+    }))
+    const cf = readChangedFiles(dir)
+    assert.equal(cf.files.length, 2)
+    assert.deepEqual(cf.files[0], { path: 'a.py', status: 'M' })
+    assert.equal(cf.files[1].status, '??')
+    assert.deepEqual(cf.preexistingDirty, ['CLAUDE.md'])
+    assert.equal(cf.truncated, false)
+    assert.match(cf.diffstat, /2 files changed/)
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('readChangedFiles: null when absent, and an empty file list with preexistingDirty is valid', () => {
+  const dir = seedDir('cf-edge-')
+  try {
+    assert.equal(readChangedFiles(dir), null)
+    // A real on-disk shape (session 019f5351): the worker changed nothing, but something was
+    // already dirty. That is not an error and must render.
+    writeFileSync(path.join(dir, 'changed-files.json'), JSON.stringify({
+      files: [], diffstat: '', preexistingDirty: ['CLAUDE.md'],
+    }))
+    const cf = readChangedFiles(dir)
+    assert.deepEqual(cf.files, [])
+    assert.deepEqual(cf.preexistingDirty, ['CLAUDE.md'])
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('readChangedFiles: caps a pathological file list and says so', () => {
+  const dir = seedDir('cf-cap-')
+  try {
+    const files = Array.from({ length: 900 }, (_, i) => ({ path: 'f' + i + '.js', status: 'M' }))
+    writeFileSync(path.join(dir, 'changed-files.json'), JSON.stringify({ files, diffstat: '', preexistingDirty: [] }))
+    const cf = readChangedFiles(dir)
+    assert.equal(cf.files.length, 500)
+    assert.equal(cf.truncated, true)
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+// ---- /api/workers verdict surfacing (4.3.0) ----
+
+// One fixture, three session shapes, so a single server spawn covers the whole matrix:
+// a deterministic run, a plain worker, and a worker whose verdict.json is corrupt.
+function seedWorkerFixture() {
+  const sessionsDir = mkdtempSync(path.join(tmpdir(), 'dash-verdict-'))
+  const homeDir = mkdtempSync(path.join(tmpdir(), 'dash-home-'))
+
+  const det = path.join(sessionsDir, 'det-1')
+  mkdirSync(det, { recursive: true })
+  writeFileSync(path.join(det, 'status.json'), JSON.stringify({ backend: 'deepseek', state: 'done' }))
+  writeFileSync(path.join(det, 'meta.json'), JSON.stringify({ backend: 'deepseek', startedAt: '2026-07-24T01:00:00.000Z' }))
+  writeFileSync(path.join(det, 'verdict.json'), JSON.stringify(REAL_VERDICT))
+  writeFileSync(path.join(det, 'changed-files.json'), JSON.stringify({
+    files: [{ path: 'a.py', status: 'M' }, { path: 'b.py', status: 'M' }, { path: 'c.py', status: '??' }],
+    diffstat: ' 3 files changed, 42 insertions(+), 7 deletions(-)',
+    preexistingDirty: ['CHANGELOG.md'],
+  }))
+  writeFileSync(path.join(det, 'verdict-diff.patch'), 'diff --git a/a.py b/a.py\n+x\n')
+
+  const plain = path.join(sessionsDir, 'plain-1')
+  mkdirSync(plain, { recursive: true })
+  writeFileSync(path.join(plain, 'status.json'), JSON.stringify({ backend: 'codex', state: 'done' }))
+  writeFileSync(path.join(plain, 'meta.json'), JSON.stringify({ backend: 'codex', startedAt: '2026-07-24T00:00:00.000Z' }))
+
+  const bad = path.join(sessionsDir, 'bad-1')
+  mkdirSync(bad, { recursive: true })
+  writeFileSync(path.join(bad, 'status.json'), JSON.stringify({ backend: 'opencode', state: 'done' }))
+  writeFileSync(path.join(bad, 'meta.json'), JSON.stringify({ backend: 'opencode', startedAt: '2026-07-23T00:00:00.000Z' }))
+  writeFileSync(path.join(bad, 'verdict.json'), '{not json')
+
+  return { sessionsDir, homeDir }
+}
+
+test('GET /api/workers surfaces the verdict when one exists', async () => {
+  const { sessionsDir, homeDir } = seedWorkerFixture()
+  const port = 18800 + Math.floor(Math.random() * 1000)
+  const child = startServerIsolated({ sessionsDir, homeDir, port })
+  try {
+    const actualPort = await waitForServerReady(child)
+    const res = await httpRequest({ port: actualPort, method: 'GET', path: '/api/workers' })
+    assert.equal(res.status, 200)
+    const row = res.body.find(w => w.id === 'det-1')
+    assert.ok(row)
+    assert.equal(row.hasVerdict, true)
+    assert.equal(row.verdict.outcome, 'verify-failed')
+    assert.equal(row.verdict.verify, 'fail')
+    assert.equal(row.verdict.verifyExit, 4)
+    assert.equal(row.verdict.exitCode, 1)
+    assert.equal(row.verdict.stranded, true)
+    assert.equal(row.verdict.malformed, false)
+    assert.equal(row.verdict.branch, 'ds-run-1784855285-379')
+    // changed-files.json wins over the verdict's flatter list (3 files vs the verdict's 2).
+    assert.equal(row.changedFileCount, 3)
+    assert.match(row.diffstat, /3 files changed/)
+    assert.equal(row.hasDiff, true)
+    // The tail is detail-view payload and must never ride along on the list route.
+    assert.ok(!('tail' in row.verdict), 'the list row must not carry the verify tail')
+    assert.ok(!/no tests ran/.test(res.raw), 'no verify output may appear in the list payload')
+  } finally {
+    await stopServer(child)
+    rmSync(sessionsDir, { recursive: true, force: true })
+    rmSync(homeDir, { recursive: true, force: true })
+  }
+})
+
+// The common case on a real machine is a row with NO verdict (107 of 120 here). It must look
+// complete, not broken, and must not imply the session failed a check it never ran.
+test('GET /api/workers omits verdict fields cleanly for a plain worker', async () => {
+  const { sessionsDir, homeDir } = seedWorkerFixture()
+  const port = 18800 + Math.floor(Math.random() * 1000)
+  const child = startServerIsolated({ sessionsDir, homeDir, port })
+  try {
+    const actualPort = await waitForServerReady(child)
+    const res = await httpRequest({ port: actualPort, method: 'GET', path: '/api/workers' })
+    const row = res.body.find(w => w.id === 'plain-1')
+    assert.ok(row)
+    assert.equal(row.hasVerdict, false)
+    assert.equal(row.verdict, null, 'strictly null so the client can branch on one key')
+    assert.equal(row.changedFileCount, 0)
+    assert.equal(row.diffstat, '')
+    assert.equal(row.hasDiff, false)
+    assert.equal(row.verdictPending, false)
+    // Every pre-existing field must still be there — the enrichment is additive.
+    for (const k of ['id', 'backend', 'state', 'stale', 'started', 'cwd', 'model', 'prompt', 'usage']) {
+      assert.ok(k in row, 'pre-existing field missing: ' + k)
+    }
+  } finally {
+    await stopServer(child)
+    rmSync(sessionsDir, { recursive: true, force: true })
+    rmSync(homeDir, { recursive: true, force: true })
+  }
+})
+
+// One corrupt file must not poison the route or its neighbours.
+test('GET /api/workers survives a corrupt verdict.json without affecting other rows', async () => {
+  const { sessionsDir, homeDir } = seedWorkerFixture()
+  const port = 18800 + Math.floor(Math.random() * 1000)
+  const child = startServerIsolated({ sessionsDir, homeDir, port })
+  try {
+    const actualPort = await waitForServerReady(child)
+    const res = await httpRequest({ port: actualPort, method: 'GET', path: '/api/workers' })
+    assert.equal(res.status, 200, 'the route must not 500')
+    const bad = res.body.find(w => w.id === 'bad-1')
+    assert.ok(bad, 'the session with the corrupt verdict must still be listed')
+    assert.equal(bad.hasVerdict, false)
+    assert.equal(bad.verdict, null)
+    // ...and its neighbour is unaffected.
+    assert.equal(res.body.find(w => w.id === 'det-1').verdict.outcome, 'verify-failed')
+  } finally {
+    await stopServer(child)
+    rmSync(sessionsDir, { recursive: true, force: true })
+    rmSync(homeDir, { recursive: true, force: true })
+  }
+})
+
+// ---- GET /api/worker/:id/diff ----
+
+test('GET /api/worker/:id/diff serves the patch as plain text', async () => {
+  const { sessionsDir, homeDir } = seedWorkerFixture()
+  const port = 18800 + Math.floor(Math.random() * 1000)
+  const child = startServerIsolated({ sessionsDir, homeDir, port })
+  try {
+    const actualPort = await waitForServerReady(child)
+    const res = await httpRequest({ port: actualPort, method: 'GET', path: '/api/worker/det-1/diff' })
+    assert.equal(res.status, 200)
+    assert.match(String(res.headers['content-type']), /^text\/plain/)
+    assert.equal(res.headers['x-content-type-options'], 'nosniff')
+    assert.equal(res.headers['x-cli-dispatch-diff-source'], 'verdict-diff.patch')
+    assert.equal(res.headers['x-cli-dispatch-diff-truncated'], '0')
+    assert.match(res.raw, /^diff --git/)
+  } finally {
+    await stopServer(child)
+    rmSync(sessionsDir, { recursive: true, force: true })
+    rmSync(homeDir, { recursive: true, force: true })
+  }
+})
+
+test('GET /api/worker/:id/diff 404s with no patch, 400s on a bad id, and rejects POST', async () => {
+  const { sessionsDir, homeDir } = seedWorkerFixture()
+  const port = 18800 + Math.floor(Math.random() * 1000)
+  const child = startServerIsolated({ sessionsDir, homeDir, port })
+  try {
+    const actualPort = await waitForServerReady(child)
+    const none = await httpRequest({ port: actualPort, method: 'GET', path: '/api/worker/plain-1/diff' })
+    assert.equal(none.status, 404)
+    assert.equal(none.body.error, 'no diff')
+    const traversal = await httpRequest({ port: actualPort, method: 'GET', path: '/api/worker/..%2F..%2Fetc/diff' })
+    assert.ok(traversal.status === 400 || traversal.status === 404, 'traversal must not be served')
+    const posted = await httpRequest({ port: actualPort, method: 'POST', path: '/api/worker/det-1/diff' })
+    assert.equal(posted.status, 404, 'the method guard must reject POST')
+  } finally {
+    await stopServer(child)
+    rmSync(sessionsDir, { recursive: true, force: true })
+    rmSync(homeDir, { recursive: true, force: true })
+  }
+})
+
+// THE containment test. verdict.json is written by five external worker CLIs, so its
+// diffPatchPath is attacker-influencable absolute-path input. Serving it would be an
+// arbitrary-file-read primitive. This test exists so nobody "simplifies" the route back to
+// reading that field.
+test('GET /api/worker/:id/diff never follows verdict.diffPatchPath', async () => {
+  const sessionsDir = mkdtempSync(path.join(tmpdir(), 'dash-diffpath-'))
+  const homeDir = mkdtempSync(path.join(tmpdir(), 'dash-home-'))
+  const port = 18800 + Math.floor(Math.random() * 1000)
+  const dir = path.join(sessionsDir, 'evil-1')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(path.join(dir, 'status.json'), JSON.stringify({ backend: 'deepseek', state: 'done' }))
+  writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({ backend: 'deepseek' }))
+  // A verdict pointing at a file outside the session dir, and NO patch inside it.
+  writeFileSync(path.join(dir, 'verdict.json'), JSON.stringify({ ...REAL_VERDICT, diffPatchPath: '/etc/passwd' }))
+
+  const child = startServerIsolated({ sessionsDir, homeDir, port })
+  try {
+    const actualPort = await waitForServerReady(child)
+    const res = await httpRequest({ port: actualPort, method: 'GET', path: '/api/worker/evil-1/diff' })
+    assert.equal(res.status, 404, 'must not serve a file it was pointed at')
+    assert.ok(!/root:/.test(res.raw), '/etc/passwd content must never reach the response')
+    // And the flow route must not leak it either.
+    const flow = await httpRequest({ port: actualPort, method: 'GET', path: '/api/worker/evil-1/flow' })
+    assert.equal(flow.body.diff.available, false)
+    assert.equal(flow.body.diff.url, null)
+  } finally {
+    await stopServer(child)
+    rmSync(sessionsDir, { recursive: true, force: true })
+    rmSync(homeDir, { recursive: true, force: true })
+  }
+})
+
+test('GET /api/worker/:id/diff caps a huge patch and reports the true size', async () => {
+  const sessionsDir = mkdtempSync(path.join(tmpdir(), 'dash-bigdiff-'))
+  const homeDir = mkdtempSync(path.join(tmpdir(), 'dash-home-'))
+  const port = 18800 + Math.floor(Math.random() * 1000)
+  const dir = path.join(sessionsDir, 'big-1')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(path.join(dir, 'status.json'), JSON.stringify({ backend: 'deepseek', state: 'done' }))
+  writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({ backend: 'deepseek' }))
+  const size = 600 * 1024
+  writeFileSync(path.join(dir, 'diff.patch'), 'd'.repeat(size))
+
+  const child = startServerIsolated({ sessionsDir, homeDir, port })
+  try {
+    const actualPort = await waitForServerReady(child)
+    const res = await httpRequest({ port: actualPort, method: 'GET', path: '/api/worker/big-1/diff' })
+    assert.equal(res.status, 200)
+    assert.equal(res.headers['x-cli-dispatch-diff-source'], 'diff.patch')
+    assert.equal(res.headers['x-cli-dispatch-diff-bytes'], String(size))
+    assert.equal(res.headers['x-cli-dispatch-diff-truncated'], '1')
+    assert.ok(res.raw.length <= 512 * 1024, 'body must be capped, got ' + res.raw.length)
+  } finally {
+    await stopServer(child)
+    rmSync(sessionsDir, { recursive: true, force: true })
+    rmSync(homeDir, { recursive: true, force: true })
+  }
+})
+
+test('GET /api/worker/:id/flow carries the full verdict, changed files and diff pointer', async () => {
+  const { sessionsDir, homeDir } = seedWorkerFixture()
+  const port = 18800 + Math.floor(Math.random() * 1000)
+  const child = startServerIsolated({ sessionsDir, homeDir, port })
+  try {
+    const actualPort = await waitForServerReady(child)
+    const det = await httpRequest({ port: actualPort, method: 'GET', path: '/api/worker/det-1/flow' })
+    assert.equal(det.status, 200)
+    assert.equal(det.body.verdict.verify.commands.length, 1)
+    assert.ok(det.body.verdict.verify.tail.length > 0, 'the tail belongs on the detail route')
+    assert.equal(det.body.verdict.verify.failedAt, 0)
+    assert.equal(det.body.verdict.worktreeExists, false, 'the fixture worktree does not exist')
+    assert.equal(det.body.changedFiles.source, 'changed-files.json')
+    assert.equal(det.body.changedFiles.files[0].status, 'M')
+    assert.deepEqual(det.body.changedFiles.preexistingDirty, ['CHANGELOG.md'])
+    assert.equal(det.body.diff.available, true)
+    assert.equal(det.body.diff.source, 'verdict-diff.patch')
+    assert.equal(det.body.diff.url, '/api/worker/det-1/diff')
+
+    // A plain worker keeps every pre-existing key and simply carries nulls for the new ones.
+    const plain = await httpRequest({ port: actualPort, method: 'GET', path: '/api/worker/plain-1/flow' })
+    assert.equal(plain.body.verdict, null)
+    assert.equal(plain.body.changedFiles, null)
+    assert.equal(plain.body.diff.available, false)
+    for (const k of ['steps', 'state', 'prompt', 'model', 'cwd', 'startedAt', 'finalResultPreview', 'usage']) {
+      assert.ok(k in plain.body, 'pre-existing flow field missing: ' + k)
+    }
+  } finally {
+    await stopServer(child)
+    rmSync(sessionsDir, { recursive: true, force: true })
+    rmSync(homeDir, { recursive: true, force: true })
+  }
+})
+
+// ---- POST /api/clean authentication (4.3.0) ----
+
+function seedStaleSession() {
+  const sessionsDir = mkdtempSync(path.join(tmpdir(), 'dash-cleanauth-'))
+  const homeDir = mkdtempSync(path.join(tmpdir(), 'dash-home-'))
+  const dir = path.join(sessionsDir, 'stale-1')
+  mkdirSync(dir, { recursive: true })
+  const statusPath = path.join(dir, 'status.json')
+  writeFileSync(statusPath, JSON.stringify({ state: 'running', backend: 'deepseek' }))
+  writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({ backend: 'deepseek' }))
+  const old = new Date(Date.now() - 2000 * 1000)
+  utimesSync(statusPath, old, old)
+  return { sessionsDir, homeDir, dir }
+}
+
+// This route does fs.rmSync(recursive) on session dirs. Unauthenticated, any page the user had
+// open could delete a running worker's transcript, prompt and recovery diff cross-origin —
+// readBody ignores Content-Type, so text/plain (CORS-simple, no preflight) got through.
+test('POST /api/clean is rejected without the custom header, and deletes nothing', async () => {
+  const { sessionsDir, homeDir, dir } = seedStaleSession()
+  const port = 18800 + Math.floor(Math.random() * 1000)
+  const child = startServerIsolated({ sessionsDir, homeDir, port })
+  try {
+    const actualPort = await waitForServerReady(child)
+    const res = await httpRequest({
+      port: actualPort, method: 'POST', path: '/api/clean',
+      // Exactly the attacker's request: a CORS-simple content type, no custom header.
+      headers: { 'Content-Type': 'text/plain' },
+      payload: JSON.stringify({ staleSecs: 1 }),
+    })
+    assert.ok(res.status === 403 || res.status === 400, 'expected a rejection, got ' + res.status)
+    // The assertion that matters is on the filesystem, not the status code.
+    assert.ok(statSync(dir).isDirectory(), 'the session dir must still exist')
+  } finally {
+    await stopServer(child)
+    rmSync(sessionsDir, { recursive: true, force: true })
+    rmSync(homeDir, { recursive: true, force: true })
+  }
+})
+
+test('POST /api/clean still works for the dashboard itself', async () => {
+  const { sessionsDir, homeDir, dir } = seedStaleSession()
+  const port = 18800 + Math.floor(Math.random() * 1000)
+  const child = startServerIsolated({ sessionsDir, homeDir, port })
+  try {
+    const actualPort = await waitForServerReady(child)
+    const res = await httpRequest({
+      port: actualPort, method: 'POST', path: '/api/clean',
+      headers: {
+        'Content-Type': 'application/json',
+        'Origin': 'http://127.0.0.1:' + actualPort,
+        'Host': '127.0.0.1:' + actualPort,
+        'X-CLI-Dispatch-Takeover': '1',
+      },
+      payload: JSON.stringify({ staleSecs: 1 }),
+    })
+    assert.equal(res.status, 200)
+    assert.equal(res.body.removed, 1)
+    assert.throws(() => statSync(dir), 'the stale dir should be gone')
+  } finally {
+    await stopServer(child)
+    rmSync(sessionsDir, { recursive: true, force: true })
+    rmSync(homeDir, { recursive: true, force: true })
+  }
+})
+
+// ---- GET /api/clean?worktrees=1 (4.3.0) ----
+//
+// This surface exists because cli-dispatch-clean's sweep NEVER removes a dirty worktree
+// (commands/clean.md), and a dirty worktree is exactly what a successful run leaves behind — so
+// nothing automated will ever clean these and, until now, nothing reported them either.
+test('GET /api/clean?worktrees=1 lists leftover worktrees and flags the dirty ones', async () => {
+  const tmpRoot = mkdtempSync(path.join(tmpdir(), 'dash-wtscan-'))
+  const sessionsDir = mkdtempSync(path.join(tmpdir(), 'dash-wtsess-'))
+  const homeDir = mkdtempSync(path.join(tmpdir(), 'dash-home-'))
+  const port = 18800 + Math.floor(Math.random() * 1000)
+
+  // A real git repo plus two real linked worktrees: one clean, one with an uncommitted change.
+  const repo = path.join(tmpRoot, 'repo')
+  mkdirSync(repo, { recursive: true })
+  const git = (args, cwd) => execFileSync('git', args, { cwd, stdio: 'ignore' })
+  git(['init', '-q', '-b', 'main'], repo)
+  git(['config', 'user.email', 't@example.com'], repo)
+  git(['config', 'user.name', 'T'], repo)
+  writeFileSync(path.join(repo, 'a.txt'), 'base\n')
+  git(['add', 'a.txt'], repo)
+  git(['commit', '-qm', 'base'], repo)
+
+  const cleanWt = path.join(tmpRoot, 'ds-wt-clean1')
+  const dirtyWt = path.join(tmpRoot, 'cx-wt-dirty1')
+  git(['worktree', 'add', '-q', '-b', 'wt-clean', cleanWt], repo)
+  git(['worktree', 'add', '-q', '-b', 'wt-dirty', dirtyWt], repo)
+  writeFileSync(path.join(dirtyWt, 'a.txt'), 'changed by the worker\n')
+
+  // TMPDIR is one of the scanned roots, so pointing it at the fixture isolates the scan.
+  const child = startServerIsolated({ sessionsDir, homeDir, port, env: { TMPDIR: tmpRoot } })
+  try {
+    const actualPort = await waitForServerReady(child)
+    const res = await httpRequest({ port: actualPort, method: 'GET', path: '/api/clean?worktrees=1' })
+    assert.equal(res.status, 200)
+    const byPath = Object.fromEntries(res.body.items.map(i => [i.path, i]))
+    const clean = byPath[cleanWt]
+    const dirty = byPath[dirtyWt]
+    assert.ok(clean, 'the clean worktree must be listed')
+    assert.ok(dirty, 'the dirty worktree must be listed')
+    assert.equal(clean.dirty, false)
+    assert.equal(dirty.dirty, true, 'an uncommitted change must be reported')
+    assert.ok(dirty.files >= 1)
+    assert.equal(res.body.dirty, 1)
+    // The backend prefix is parsed from the directory name, and the parent repo is resolved from
+    // the worktree's own .git pointer — it is recorded nowhere else.
+    assert.equal(clean.backend, 'ds')
+    assert.equal(dirty.backend, 'cx')
+    // realpath both sides: on macOS the fixture lives under /var, which is a symlink to
+    // /private/var, and git records the resolved path. Either spelling works in the command.
+    assert.equal(realpathSync(dirty.sourceRepo), realpathSync(repo),
+      'source repo must be resolvable for the cleanup command')
+    // The repo itself is not a *-wt-* directory and must not appear.
+    assert.ok(!byPath[repo], 'only *-wt-* directories may be listed')
+  } finally {
+    await stopServer(child)
+    try { execFileSync('git', ['-C', repo, 'worktree', 'remove', cleanWt, '--force'], { stdio: 'ignore' }) } catch {}
+    try { execFileSync('git', ['-C', repo, 'worktree', 'remove', dirtyWt, '--force'], { stdio: 'ignore' }) } catch {}
+    rmSync(tmpRoot, { recursive: true, force: true })
+    rmSync(sessionsDir, { recursive: true, force: true })
+    rmSync(homeDir, { recursive: true, force: true })
+  }
+})
+
+test('GET /api/clean?worktrees=1 reports "unknown" rather than "clean" for a non-worktree dir', async () => {
+  const tmpRoot = mkdtempSync(path.join(tmpdir(), 'dash-wtbogus-'))
+  const sessionsDir = mkdtempSync(path.join(tmpdir(), 'dash-wtsess-'))
+  const homeDir = mkdtempSync(path.join(tmpdir(), 'dash-home-'))
+  const port = 18800 + Math.floor(Math.random() * 1000)
+  // Named like a worktree but is not one: git status will fail. Calling that "clean" would invite
+  // a delete; it has to read as "could not tell".
+  mkdirSync(path.join(tmpRoot, 'ds-wt-bogus'), { recursive: true })
+
+  const child = startServerIsolated({ sessionsDir, homeDir, port, env: { TMPDIR: tmpRoot } })
+  try {
+    const actualPort = await waitForServerReady(child)
+    const res = await httpRequest({ port: actualPort, method: 'GET', path: '/api/clean?worktrees=1' })
+    const item = res.body.items.find(i => i.path.endsWith('ds-wt-bogus'))
+    assert.ok(item)
+    assert.equal(item.dirty, null, 'an indeterminate state must be null, not false')
+    assert.equal(item.sourceRepo, '')
+  } finally {
+    await stopServer(child)
+    rmSync(tmpRoot, { recursive: true, force: true })
+    rmSync(sessionsDir, { recursive: true, force: true })
+    rmSync(homeDir, { recursive: true, force: true })
+  }
+})
+
+test('GET /api/clean (no worktrees param) still returns the stale-session listing', async () => {
+  const { sessionsDir, homeDir, dir } = seedStaleSession()
+  const port = 18800 + Math.floor(Math.random() * 1000)
+  const child = startServerIsolated({ sessionsDir, homeDir, port })
+  try {
+    const actualPort = await waitForServerReady(child)
+    const res = await httpRequest({ port: actualPort, method: 'GET', path: '/api/clean?staleSecs=600' })
+    assert.equal(res.status, 200)
+    assert.equal(res.body.root, sessionsDir, 'the worktree branch must not shadow the session listing')
+    assert.ok(res.body.items.some(i => i.id === 'stale-1'))
+    assert.ok(statSync(dir).isDirectory())
+  } finally {
+    await stopServer(child)
+    rmSync(sessionsDir, { recursive: true, force: true })
+    rmSync(homeDir, { recursive: true, force: true })
   }
 })

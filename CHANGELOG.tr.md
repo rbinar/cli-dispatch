@@ -7,6 +7,143 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.3.0] — 2026-07-25
+
+Dashboard'u 4.0.0'ın gönderdiği mimariye hizalar. Dashboard'a 3.43.x'ten beri anlamlı bir dokunuş
+olmamıştı — 4.0.0 `public-page.mjs`'te iki satır değiştirdi — dolayısıyla deterministik runner'ın
+tüm çıktısı görünmezdi (`verdict`, `changed-files`, `changedFiles`, `--verify` ve
+`cli-dispatch-run` üç dashboard dosyasında da **sıfır** kez geçiyordu), buna karşılık ölü bir
+"Babysitter cost" paneli yerini koruyordu. #122'nin (AU5) dashboard yarısını kapatır.
+
+### Eklendi
+
+- **`verdict.json` ve `changed-files.json` artık birinci sınıf dashboard verisi.**
+  `dashboard-utils.mjs`'e `readVerdict` / `readChangedFiles` / `clipLines` eklendi;
+  `dashboard-server.mjs`'te iki yeni cache ile mtime+size kapılı. `/api/workers` satırları
+  `hasVerdict`, `verdictPending`, `changedFileCount`, `diffstat`, `hasDiff`, `usagePartial`,
+  `errorKind`, `error` ve kompakt bir `verdict` objesi kazandı. `/api/worker/<id>/flow` tam
+  verdict'i (verify komutları, `failedAt`, çıktı kuyruğu), dosya başına git durumu ve
+  `preexistingDirty` ile değişen dosya listesini, `worktreeExists`, `sourceRepo`, `branch`,
+  `endedAt` ve bir `diff` işaretçisi kazandı. Boyut sınırı önemli: `verdict-writer.mjs` verify
+  kuyruğunu 40 *satırda* sınırlıyor ama bayt sınırı koymuyor; `clipLines` ikisini de sınırlar ve
+  `clip()`'in aksine satır yapısını korur — başarısız bir test raporunun bütün yükü o yapıdır.
+- **Worker satırı bir koşunun gerçekte ne yaptığını gösteriyor.** Verdict varsa `⚙RUN` işareti,
+  kompakt `verify ✓` / `verify ✗ e4` rozeti, ve verify sonucu ile değişim boyutunu (`1 file +67`)
+  taşıyan ikinci bir satır. Verdict'i olmayan worker tam eskisi gibi render edilir — gerçek bir
+  makinede 120 session'ın 107'si bu durumda — işaret yok, verify token'ı yok, kırmızı yok.
+- **Worker detay görünümü artık verdict ile başlıyor**, silinen babysitter panelinin bulunduğu
+  yerde: runner'ın exit kodunu cümleye çeviren, her zaman görünür bir şerit; ardından verify
+  komutları (hatadan sonraki komutlar `not run` olarak işaretlenir, çünkü `runVerify` ilkinde
+  durur), çıktı kuyruğu, değişen dosyalar ve koşu ortamı için katlanabilir paneller. Beşi de
+  `data-pk` anlık görüntüsüyle canlı yenilemelerde açık/kapalı durumunu korur — önceki tek-panel
+  yaklaşımı dört yeni paneli 600 ms'de bir çarpar ve 3.15.2'nin flicker düzeltmesini bozardı.
+- **`GET /api/worker/<id>/diff`** `verdict-diff.patch`'i (yoksa `diff.patch`) `nosniff` ile
+  `text/plain` olarak servis eder, `readHead` ile 512 KB'da sınırlar, gerçek boyutu ve kırpılmayı
+  response header'larında bildirir. Aday yolları `WORKERS_ROOT + id`'den **yeniden hesaplar** ve
+  `verdict.diffPatchPath`'i asla okumaz: o alan, beş harici worker CLI'sinin yazdığı bir dosyadan
+  gelen absolute path'tir; izlemek "session dizinine yazabilen herhangi bir dosyayı okur"
+  primitifi olurdu. Bir test bunu sabitler.
+- **`verify-fail` filtre çipi.** Her verify hatasının `state`'i `"done"` olduğu için `done` çipinin
+  içinde saklanıyor; yaşam döngüsü çipleri bunu yapısal olarak ifade edemiyor.
+- **Workers boş durumuna run özeti**, listenin zaten çektiği satırlardan client tarafında
+  türetilir (yeni endpoint yok, dolayısıyla çip sayımlarıyla asla çelişemez):
+  `runs 13 · verify ✓ 6 · ✗ 5 · none 2`, artı herhangi bir koşu bir worktree'de commit'lenmemiş
+  değişiklik kaydettiyse ⚙ Bakım'a işaret eden bir satır.
+- **Artık kalmış worktree listesi** — yeni `GET /api/clean?worktrees=1`, `/tmp` ve `$TMPDIR`'ı
+  `*-wt-*` artıkları için tarar ve her birinin backend'ini, yaşını, kirli/temiz durumunu ve
+  çözülmüş kaynak repo'sunu bildirir; ⚙ Bakım panelinde "Clean stale sessions" yanındaki
+  **Leftover worktrees** butonuyla yüzeye çıkar. **Tasarım gereği salt-okunurdur — silme butonu
+  yoktur**: `cli-dispatch-clean`'in süpürmesi commit'lenmemiş değişiklik içeren bir worktree'yi
+  bilinçli olarak asla kaldırmaz (`commands/clean.md`) ve kirli worktree tam olarak başarılı bir
+  koşunun geride bıraktığı şeydir (runner commit etmez); yani hiçbir otomatik iş bunları
+  temizlemeyecek ve şimdiye kadar hiçbir yüzey de bildirmiyordu. Yalnız elle bulunabilirlerdi.
+  Panel her biri için kopyalanabilir bir `git worktree remove` komutuyla listeler ve kararı
+  insana bırakır; yalnızca worktree'ye *benzeyen* bir dizin durumunu temiz değil bilinmeyen
+  olarak bildirir, böylece güvenle silinebilir sanılamaz.
+- **`public-page.test.mjs`** — dashboard'ın 764 satırlık client SPA'sını kapsayan ilk test. Her
+  inline `<script>`'i tarayıcının yaptığı gibi derler (CHANGELOG 3.15.2 böyle bir testin tüm
+  sayfayı bozan bir template-literal kaçışını yakaladığını söylüyor, ama hiç commit'lenmemişti),
+  SPA'yı sahte bir DOM'a karşı değerlendirip saf fonksiyonlarını test eder ve kaçış kurallarını
+  düşmanca fixture'larla sabitler. 3.15.2'nin tam hatası yeniden enjekte edilerek boş olmadığı
+  doğrulandı: süit yeşilden 8 hataya düşüyor. Bu sürüm yazılırken üç gerçek kaçış hatası yakaladı.
+
+### Değişti
+
+- **`killed` ve `stale` artık hata olarak raporlanmıyor.** `workerBucket`'ın catch-all'ı 5.
+  enum state'i `killed`'ı `error` kovasına gönderiyordu — fonksiyonun kendi yorumunun
+  `human-controlled` için bir kez düzeltildiğini kaydettiği hatanın aynısı — ve `stale`'i `error`'a
+  katıyordu, bu da bayat bir worker'ı hata listesini taramak dışında bulunamaz kılıyordu. İkisi de
+  kendi kovasına, nokta rengine ve filtre çipine kavuştu; *ölen* bir worker yeni kırmızı `.dead`
+  noktasını alırken `killed` amber kalıyor. Catch-all artık açık bir `unknown` kovası, böylece
+  sonradan eklenen 6. bir state hataya iftira edilmek yerine bilinmeyen olarak görünür.
+- **Verify hatası worker state'inden ayrı bir eksende sunuluyor** ve runner'ın exit kodu çıplak
+  sayı olarak değil, cümleye açılıp sahibine atfedilerek gösteriliyor. Exit 124/126/127 bozuk bir
+  *koşum ortamı* olarak bildirilir, işin başarısızlığı olarak değil. `verify: null` olan bir koşu
+  `no verify requested` der ve asla yeşil tik almaz.
+- **Worker satırından `from <parent session>` ve ayrı proje satırı çıktı.** İlki babysitter dönemi
+  provenansıydı ve `/api/workers`'ın en pahalı alanıydı; ikincisi bir koşuda `tmp/ds-wt-oUSONx`
+  render ediyordu, yani repo değil atılacak worktree. Parent-session bağlantısının kendisi
+  **değişmedi** ve tam olarak gösterilmeye devam ediyor — yalnızca detay route'una taşındı. Sonuç:
+  120 gerçek session'da **`/api/workers` 4480 ms → 36 ms**.
+- **`normalizeBackend` `parse-utils.mjs`'e taşındı** (`verdict-writer.mjs`'ten re-export edilir).
+
+### Kaldırıldı
+
+- **Babysitter muhasebesi, tümüyle** — "Babysitter cost" paneli, 4x "high overhead" rozeti,
+  `parentSession.babysitterUsage`, hiç okunmayan `parentSession.subagentId` ve bunları üreten
+  subagent taraması. 4.0.0 sonrası onaylı yolda `babysitterUsage` her zaman `null` olduğu için
+  rozet hiç ateşlenmiyordu; ateşlendiğinde ise alakasız bir subagent'ın tüm token kullanımını
+  worker'a faturalıyordu, çünkü eşleşme worker id'sinin transcript metninde substring aramasıydı.
+  **Worker → parent Claude Code session bağlantısı ve `linkedWorkers` paneli KALDIRILMADI** —
+  yalnız üzerine monte edilmiş muhasebe kaldırıldı.
+- Bu kaldırma sunucudaki en pahalı I/O'yu da götürüyor: eşleşen her subagent transcript'inin her
+  satırı için 4 MB `readTail` + `JSON.parse`, SSE ile yenilenen `/api/workers` yolunda, canlı bir
+  transcript'e her yazımda yeniden ödenerek.
+
+### Düzeltildi
+
+- **`POST /api/clean` kimlik doğrulaması olmadan özyinelemeli silme yapıyordu.** Bayat session
+  dizinlerinde hiçbir auth kontrolü olmadan `fs.rmSync(recursive, force)` çağırıyordu, oysa aynı
+  sunucudaki `POST /api/config` Origin + Host + özel header kapısını doğru şekilde istiyordu.
+  `readBody` `Content-Type`'ı yok saydığı için, kullanıcının açık olan herhangi bir sayfası
+  `text/plain` (CORS-simple, preflight yok) ile `{"staleSecs":1}` gönderebilir — ki bu bir saniye
+  sessiz kalan her çalışan worker'ı kapsar — ve transcript'ini, prompt'unu ve kurtarma diff'ini
+  silebilirdi. Artık aynı şekilde kapılı; `GET /api/clean` yalnız listelemeye devam ediyor. Test
+  iddiasını status kodu üzerinde değil dosya sistemi üzerinde kuruyor.
+- **`readBody`'nin 64 KB sınırı hiçbir şeyi sınırlamıyordu.** Sınırı aşınca promise'i reject
+  ediyor ama `data` dinleyicisini sökmüyordu, buffer isteğin sonuna kadar büyümeye devam ediyordu.
+  Artık isteği destroy ediyor.
+- **Koşu ortasındaki token anlık görüntüsü artık toplam gibi sunulmuyor.** `status.usagePartial`
+  dashboard'da sıfır kez geçiyordu, dolayısıyla öldürülmüş bir worker'ın anlık görüntüsü
+  `51.7k in / 0 out` olarak render ediliyordu — satış argümanı token muhasebesi olan bir üründe
+  belirli bir yanlış sayı. Kısmi sayımlar artık etiketleniyor.
+- **Kimlik doğrulama hatası artık genel kırmızı hata olarak gösterilmiyor.** `errorKind: 'auth'`
+  worker'ın hiç başlamadığı anlamına gelir; prompt, model veya repo suçsuzdur — ve yönlendirdiği
+  akışın hiç adımı yoktur. Artık amber `auth` rozeti ve `/cli-dispatch:doctor` ile ⚙ yapılandırma
+  görünümüne işaret eden bir panel alıyor.
+- **Açık detay görünümü bir verdict'i asla göstermezdi.** `watchDetail`, worker `done` bildirdiği
+  anda aboneliği kesiyor — ki bu, `cli-dispatch-run`'ın verify'ı koşmasından (600 s'ye kadar) ve
+  `verdict.json`'ı yazmasından *önce*. Yordam artık verdict beklemedeyken de akışı açık tutuyor;
+  bekleme, runner'ın verify başlamadan önce oluşturduğu `verdict-diff.patch` işaretinden saptanır.
+- **`stranded` artık uyarı olarak sunulmuyor.** `.specs/dev/sdd/deterministic-runner.md`,
+  `stranded: true`'yu normal başarılı bir koşunun *beklenen* değeri olarak tanımlıyor — runner asla
+  commit etmez, dolayısıyla commit'lenmemiş değişiklik worker'ın işini yaptığı anlamına gelir — ve
+  gerçek bir makinedeki 9 stranded verdict'in 4'ü verify'ı geçmişti. Detay görünümü bunu zaman
+  damgasıyla, koşu sonunda kaydedilmiş bir olgu olarak belirtir ve temizlik komutunu **yalnız**
+  canlı bir `stat` worktree'nin hâlâ var olduğunu doğrularsa sunar; parent repo'yu worktree'nin
+  kendi `.git` işaretçisinden çözer (session dizininde hiçbir yerde kayıtlı değildir). Worktree
+  gitmişse bunu söyler, var olmayan bir dizini silmeni istemek yerine.
+- **Bozuk veya hatalı bir `verdict.json` artık geçmiş gibi okunamıyor.** `cli-dispatch-run`,
+  `build-verdict` fırlattığında `{schemaVersion, error, sessionId, exitCode}` şekli yazar; oradaki
+  `exitCode` 0-5 sözleşme değeri değil bir *node exit kodudur*. Parse edilemeyen JSON ve bilinmeyen
+  bir gelecek `schemaVersion` aynı şekilde ele alınır. Üçü de `malformed` + `unknown` olarak
+  yüzeye çıkar ve bozuk bir dosya yanındakileri zehirleyemez.
+- **Dokümanlar düzeltildi:** dashboard `dashboard-server.mjs` banner'ında, başlangıç satırında,
+  `commands/dashboard.md`'de ve iki README'de "read-only" diye tanıtılıyordu; bu iki bakımdan
+  yanlıştı — `POST /api/clean` dizin siler, `POST /api/config` API key'leri diske yazar.
+  `CLAUDE.md`'nin session-dir sözleşmesi hiç sahip olmadığı `verdict.json` maddesini (iki tuzağıyla
+  birlikte) ve `changed-files.json`'ın `preexistingDirty` alanını kazandı.
+
 ## [4.2.1] — 2026-07-25
 
 Denetim takibinin ikinci turu: tasarım kararı gerektirmeyen bulgular. Kalanlar #122

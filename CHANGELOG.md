@@ -7,6 +7,154 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.3.0] — 2026-07-25
+
+Realigns the dashboard with the architecture 4.0.0 shipped. The dashboard had not been
+meaningfully touched since 3.43.x — 4.0.0 changed two lines of `public-page.mjs` — so the
+deterministic runner's entire output was invisible in it (`verdict`, `changed-files`,
+`changedFiles`, `--verify` and `cli-dispatch-run` had **zero** occurrences across
+`dashboard-server.mjs`, `public-page.mjs` and `dashboard-utils.mjs`) while a dead
+"Babysitter cost" panel still occupied space. Closes the dashboard half of #122 (AU5).
+
+### Added
+
+- **`verdict.json` and `changed-files.json` are now first-class dashboard data.** New
+  `readVerdict` / `readChangedFiles` / `clipLines` in `dashboard-utils.mjs`, mtime+size-gated
+  through two new caches in `dashboard-server.mjs`. `/api/workers` rows gain `hasVerdict`,
+  `verdictPending`, `changedFileCount`, `diffstat`, `hasDiff`, `usagePartial`, `errorKind`,
+  `error`, and a compact `verdict` object (`exitCode`, `outcome`, `verify`, `verifyExit`,
+  `stranded`, `branch`, `state`, `recordedAt`, `malformed`, `error`). `/api/worker/<id>/flow`
+  gains the full verdict (verify commands, `failedAt`, output tail), the changed-file list with
+  per-file git status and `preexistingDirty`, `worktreeExists`, `sourceRepo`, `branch`,
+  `endedAt`, and a `diff` pointer. The size cap matters: `verdict-writer.mjs` caps a verify tail
+  at 40 *lines* with no byte limit, so `clipLines` caps both — and unlike `clip()` it preserves
+  line structure, which is the whole payload of a failing test report.
+- **The worker row shows what a run actually did.** A `⚙RUN` marker when a verdict exists, a
+  compact `verify ✓` / `verify ✗ e4` badge, and a second line carrying the verify result and the
+  change size (`1 file +67`). A worker with no verdict renders exactly as before — the common
+  case by far (107 of 120 session dirs on a real machine) — with no marker, no verify token and
+  nothing red.
+- **A worker's detail view now leads with its verdict**, in the slot the deleted babysitter panel
+  occupied: an always-visible strip translating the runner's exit code into a sentence, then
+  collapsible panels for the verify commands (marking commands after the failure as `not run`,
+  because `runVerify` stops at the first one), the output tail, the changed files, and the run
+  environment. All five preserve their open/closed state across live refreshes via `data-pk`
+  snapshotting — the previous single-panel snapshot would have slammed four new panels shut every
+  600 ms, regressing 3.15.2's flicker fix.
+- **`GET /api/worker/<id>/diff`** serves `verdict-diff.patch` (else `diff.patch`) as
+  `text/plain` with `nosniff`, capped at 512 KB via `readHead`, reporting the true size and
+  truncation in response headers. It **recomputes** the candidate paths from `WORKERS_ROOT + id`
+  and never reads `verdict.diffPatchPath`: that field is an absolute path out of a file five
+  external worker CLIs write, so following it would be an arbitrary-file-read primitive gated
+  only on "can write into a session dir". A test pins that.
+- **A `verify-fail` filter chip.** Every verify failure has `state: "done"` and so hides inside
+  the `done` chip; the lifecycle chips are structurally unable to express it.
+- **A run summary on the Workers empty state**, derived client-side from the rows the list already
+  fetched (no new endpoint, so it can never disagree with the chip counts):
+  `runs 13 · verify ✓ 6 · ✗ 5 · none 2`, plus a pointer to ⚙ Maintenance when any run recorded
+  uncommitted changes in a worktree.
+- **A leftover-worktree listing** — new `GET /api/clean?worktrees=1` scans `/tmp` and `$TMPDIR` for
+  `*-wt-*` artifacts and reports each one's backend, age, dirty/clean state and resolved source
+  repo; surfaced behind a **Leftover worktrees** button in the ⚙ Maintenance panel, next to
+  "Clean stale sessions". It is **read-only by design — there is no delete button**:
+  `cli-dispatch-clean`'s sweep deliberately never removes a worktree with uncommitted changes
+  (`commands/clean.md`), and a dirty worktree is exactly what a successful run leaves behind (the
+  runner does not commit), so nothing automated will ever clean these and — until now — nothing
+  reported them either. They could only be found by hand. The panel lists them with a copyable
+  `git worktree remove` command per entry and leaves the decision to the human; a directory that
+  merely *looks* like a worktree reports its state as unknown rather than clean, so it can never
+  be mistaken for something safe to delete.
+- **`public-page.test.mjs`** — the first test to ever cover the dashboard's 764-line client SPA.
+  It compiles each inline `<script>` exactly as a browser would (CHANGELOG 3.15.2 credits such a
+  test with catching a template-literal escape that broke the entire page, but none was ever
+  committed), evaluates the SPA against a fake DOM to unit-test its pure functions, and pins the
+  escaping rules with hostile fixtures. Verified non-vacuous by re-injecting 3.15.2's exact bug:
+  the suite goes from green to 8 failures. It caught three real escaping mistakes while this
+  release was being written.
+
+### Changed
+
+- **`killed` and `stale` are no longer reported as errors.** `workerBucket`'s catch-all sent the
+  5th enum state `killed` to the `error` bucket — the identical bug the function's own comment
+  records having already fixed once for `human-controlled` — and merged `stale` into `error`,
+  making a stale worker unfindable except by hunting the error list. Both now have their own
+  bucket, dot colour and filter chip; a worker that *died* gets a new red `.dead` dot while
+  `killed` stays amber. The catch-all is now an explicit `unknown` bucket, so a 6th state added
+  later surfaces as unknown instead of being libelled a failure. A table-driven test asserts every
+  bucket the function can return has a chip and a dot.
+- **A verify failure is presented on its own axis from the worker's state**, and the runner's
+  exit code is spelled out and attributed (`runner exit 1 — worker finished (done), verify
+  failed`) rather than printed as a bare number beside a state badge. Exit 124/126/127 are
+  reported as a broken *harness* (`⚠ verify command not found`), not as a failure of the work.
+  A run with `verify: null` reads `no verify requested` and never gets a green tick.
+- **The worker row dropped `from <parent session>` and the standalone project line.** The former
+  is babysitter-era provenance and was the single most expensive field on `/api/workers`; the
+  latter rendered `tmp/ds-wt-oUSONx` for a run, i.e. the throwaway worktree rather than the repo.
+  The parent-session linkage itself is unchanged and still shown in full — it simply moved to the
+  detail route. **`/api/workers` is 4480 ms → 36 ms** on 120 real sessions as a result, and
+  `linkedWorkers` stopped triggering the same scan for fields it discarded.
+- **`normalizeBackend` moved to `parse-utils.mjs`** (re-exported from `verdict-writer.mjs`) so the
+  dashboard can map the short/long backend spellings without importing a module its own header
+  explains it must not statically depend on.
+
+### Removed
+
+- **Babysitter accounting, entirely** — the "Babysitter cost" panel, the 4× "high overhead" badge,
+  `parentSession.babysitterUsage`, the never-read `parentSession.subagentId`, and the subagent
+  scan that produced them. On the sanctioned post-4.0.0 path `babysitterUsage` was always `null`
+  so the badge never fired; when it did fire it billed an unrelated subagent's entire token usage
+  to the worker, because the match was a substring search for the worker id in transcript text.
+  **The worker → parent-Claude-Code-session linkage and the `linkedWorkers` panel are NOT removed**
+  — only the accounting bolted onto them.
+- The removal takes the most expensive I/O in the server with it: a 4 MB `readTail` plus a
+  `JSON.parse` of every line of every matching subagent transcript, on the SSE-refreshed
+  `/api/workers` path, re-paid on every write to a live transcript. `dashboard-server.mjs` is
+  1409 → ~1400 lines with the verdict feature added on top.
+
+### Fixed
+
+- **`POST /api/clean` performed an unauthenticated recursive delete.** It called
+  `fs.rmSync(recursive, force)` on stale session dirs with no auth check at all, while
+  `POST /api/config` on the same server correctly required the Origin + Host + custom-header gate.
+  `readBody` ignores `Content-Type`, so any page the user had open could send `text/plain` (a
+  CORS-simple type, no preflight) with `{"staleSecs":1}` — which matches every running worker
+  quiet for a second — and delete its transcript, prompt and recovery diff. Now gated identically;
+  `GET /api/clean` still only lists. The test asserts on the filesystem, not the status code.
+- **`readBody`'s 64 KB cap bounded nothing.** Past the limit it rejected the promise but left the
+  `data` handler attached, so the buffer kept growing for the rest of the request. It now destroys
+  the request.
+- **A mid-run token snapshot is no longer presented as a total.** `status.usagePartial` had zero
+  occurrences in the dashboard, so a killed worker's snapshot rendered as `51.7k in / 0 out` — a
+  specific wrong number, in a product whose selling point is token accounting. Partial counts are
+  now labelled, and a zero output count is shown as `out not captured` rather than `0 out`.
+- **An authentication failure is no longer shown as a generic red error.** `errorKind: 'auth'`
+  means the worker never started, so nothing about the prompt, model or repo is at fault — and the
+  flow it sent you to read has no steps in it. It now gets an amber `auth` badge and a panel
+  pointing at `/cli-dispatch:doctor` and the ⚙ configuration view.
+- **The open detail view would never have shown a verdict.** `watchDetail` unsubscribes the moment
+  a worker reports `done` — which is *before* `cli-dispatch-run` runs verify (up to 600 s) and
+  writes `verdict.json`. The predicate now also keeps the stream open while a verdict is pending,
+  detected from the `verdict-diff.patch` marker the runner creates before verify starts.
+- **`stranded` is no longer presented as a warning.** `.specs/dev/sdd/deterministic-runner.md`
+  defines `stranded: true` as the *expected* value of a normal successful run — the runner never
+  commits, so uncommitted changes mean the worker did its job — and 4 of the 9 stranded verdicts on
+  a real machine had passed verify. The detail view states it as a recorded-at-run-end fact with
+  its timestamp, and offers a cleanup command **only** when a live `stat` confirms the worktree
+  still exists, resolving the parent repo from the worktree's own `.git` pointer (it is recorded
+  nowhere in the session dir). When the worktree is gone it says so instead of telling you to
+  remove a directory that is not there.
+- **A malformed or corrupt `verdict.json` can no longer read as a pass.** `cli-dispatch-run` writes
+  a `{schemaVersion, error, sessionId, exitCode}` shape when `build-verdict` throws, where
+  `exitCode` is a *node exit status* rather than the 0-5 contract value; unparseable JSON and an
+  unknown future `schemaVersion` are treated the same way. All three surface as `malformed` with
+  outcome `unknown`, and one corrupt file cannot poison its neighbours in the response.
+- **Docs corrected:** the dashboard was described as "read-only" in `dashboard-server.mjs`'s
+  banner, its startup line, `commands/dashboard.md` and both READMEs, which was false on two
+  counts — `POST /api/clean` deletes directories and `POST /api/config` writes API keys to disk.
+  `CLAUDE.md`'s session-dir contract gained the `verdict.json` entry it never had (including both
+  of its traps) and `changed-files.json`'s `preexistingDirty` field. `README.md:141` /
+  `README.tr.md:141` no longer advertise the legacy cost badge this release deletes.
+
 ## [4.2.1] — 2026-07-25
 
 Second batch of audit follow-ups: the findings that needed no design decision. The rest are

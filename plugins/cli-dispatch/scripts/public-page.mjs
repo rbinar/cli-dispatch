@@ -25,10 +25,11 @@ header b{color:var(--accent)} .grow{flex:1}
 .item:hover{background:var(--hover)}.item.sel{background:var(--hover)}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}
 .busy{background:var(--success)}.idle{background:var(--warning)}.closed{background:var(--bd)}
+.dead{background:var(--error)}
 .muted{color:var(--dim)}.small{font-size:11px}
 .main{overflow:auto;padding:14px;grid-column:3;grid-row:1}
 .crumb{margin-bottom:10px;color:var(--dim)}.crumb a{color:var(--accent);cursor:pointer;text-decoration:none}
-.badge{border:1px solid var(--bd);border-radius:6px;padding:1px 7px;font-size:11px;color:var(--dim);margin-left:6px}
+.badge{border:1px solid var(--bd);border-radius:6px;padding:1px 7px;font-size:11px;color:var(--dim);margin-left:6px;white-space:nowrap}
 .step{padding:6px 10px;border-left:2px solid var(--bd);margin:4px 0}
 .step.tool{border-color:var(--accent)}.step.prompt{border-color:var(--accent)}.step.message{border-color:var(--accent)}
 .step.thinking{border-color:var(--bd);color:var(--accent);font-style:italic}.step.log{border-color:var(--bd)}
@@ -41,7 +42,7 @@ header b{color:var(--accent)} .grow{flex:1}
 .md-code{background:var(--hover);border:1px solid var(--bd);border-radius:4px;padding:0 4px;font-size:12px}
 .md-pre{background:var(--code-bg);border:1px solid var(--bd);border-radius:6px;padding:8px 10px;margin:4px 0;overflow:auto;white-space:pre-wrap;color:var(--fg)}
 .md a{color:var(--accent)}.md strong{color:var(--fg)}
-.panel.task .md{max-height:38vh;overflow:auto}.panel.task .sabody{padding-top:4px}
+.panel.task .md,.scrollbox{max-height:38vh;overflow:auto}.panel.task .sabody{padding-top:4px}
 .sa{display:inline-block;margin:3px 6px 3px 0;padding:3px 8px;border:1px solid var(--bd);border-radius:6px;cursor:pointer;color:var(--accent)}
 .sa:hover{background:var(--hover)}.empty{color:var(--dim);padding:20px}
 .panel{border:1px solid var(--bd);border-radius:8px;margin-bottom:10px;background:var(--panel)}
@@ -53,6 +54,8 @@ header b{color:var(--accent)} .grow{flex:1}
 .sabody{padding:2px 8px 8px}
 .panel.act{border-color:var(--success);background:var(--ok-bg)}
 .panel.act>summary{color:var(--success)}
+.panel.bad{border-color:var(--error);background:var(--err-bg)}
+.panel.bad>summary{color:var(--error)}
 .panel.wk{border-color:var(--accent);background:var(--wk-panel)}
 .panel.wk>summary{color:var(--accent)}
 .sa.act{border-color:var(--success);color:var(--success)}
@@ -61,6 +64,17 @@ a.agentlink{color:var(--accent);cursor:pointer}
 .human{background:var(--human)}
 .badge.human{border-color:var(--human);color:var(--human)}
 .badge.warn{border-color:var(--warning);color:var(--warning)}
+.badge.err{border-color:var(--error);color:var(--error)}
+.badge.pass{border-color:var(--success);color:var(--success)}
+.badge.fail{border-color:var(--error);color:var(--error)}
+.badge.run{border-color:var(--accent);color:var(--accent)}
+.item .l1{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.item .l1 .badge{margin-left:0}
+.item .l1 .c{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vrow{display:flex;gap:6px;align-items:flex-start}.vrow>pre{flex:1;min-width:0;margin:4px 0}
+.item .ell{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pathline{word-break:break-all}
+.warnt{color:var(--warning)}
 #takeover{display:none;margin-bottom:10px}
 .tkbar{display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .tkbtn{background:var(--hover);border:1px solid var(--bd);color:var(--fg);border-radius:6px;padding:5px 12px;cursor:pointer;font:inherit}
@@ -101,15 +115,6 @@ body.dragging-rail,body.dragging-rail *{user-select:none}
 </div>
 <script>
 let mode='cc', sel=null, flt='busy', wFlt='all', loadListGen=0
-// "High overhead" heuristic: flag a worker row when its babysitter (the Claude Code runner
-// that dispatched it) burned more than HIGH_OVERHEAD_RATIO times the OUTPUT tokens the worker
-// itself produced on its own (usually cheaper) backend — i.e. delegation likely cost MORE
-// Anthropic-native tokens than it saved. 4x is chosen as a middle point of a defensible 3-5x
-// range: tolerant of normal babysitter overhead (polling/verification/reasoning) while still
-// catching clear waste. When the worker's own usage was never captured (e.g. the Antigravity
-// backend does not report usage), the ratio is unprovable — we deliberately do NOT flag in
-// that case, to avoid crying wolf on backends that simply don't report usage.
-const HIGH_OVERHEAD_RATIO = 4
 function setFilter(k){ flt=k; loadList() }
 function setWFilter(k){ wFlt=k; loadList() }
 const RAIL_MIN=260, RAIL_MAX=400
@@ -154,15 +159,41 @@ function setEmptyMainState(){
   if(v._k==='empty:'+mode && v._h===text) return
   v._k='empty:'+mode; v._h=text; v.className='empty'; v.innerHTML=text
 }
-function workersOverviewHtml(agg){
+// Summarises the deterministic runner across all rows. Computed client-side from the array
+// loadList already has in hand — no new endpoint, and guaranteed consistent with the chip counts.
+function runsSummaryHtml(rows){
+  if(!rows||!rows.length) return ''
+  const runs=rows.filter(w=>w.hasVerdict)
+  if(!runs.length) return ''
+  let pass=0,fail=0,harness=0,none=0
+  runs.forEach(w=>{
+    const v=w.verdict&&w.verdict.verify
+    if(v==='pass') pass++
+    else if(v==='fail') fail++
+    else if(v==='harness') harness++
+    else none++
+  })
+  const bits=['runs '+runs.length]
+  if(pass) bits.push('<span class="ok">verify ✓ '+pass+'</span>')
+  if(fail) bits.push('<span class="err">✗ '+fail+'</span>')
+  if(harness) bits.push('<span class="warnt">⚠ '+harness+'</span>')
+  if(none) bits.push('<span class="muted">none '+none+'</span>')
+  // Only the detail route resolves whether a worktree still exists, so this counts what was
+  // RECORDED as stranded and points at the surface that can actually check.
+  const stranded=runs.filter(w=>w.verdict&&w.verdict.stranded).length
+  const tail=stranded?'<div class="small muted">'+stranded+' run'+(stranded===1?'':'s')+' recorded uncommitted changes in a worktree — see ⚙ Maintenance</div>':''
+  return '<div class="small" style="margin-bottom:10px">'+bits.join(' · ')+'</div>'+tail
+}
+function workersOverviewHtml(agg, rows){
+  const summary=runsSummaryHtml(rows)
   const keys=Object.keys(agg||{}).sort()
-  if(!keys.length) return '<div class="empty">No usage data yet.</div>'
+  if(!keys.length) return summary+'<div class="empty">No usage data yet.</div>'
   const cards=keys.map(k=>{
     const a=agg[k]||{}
     const nd=Number(a.noDataSessions)||0
     return '<div class="worker-overview-card"><div class="worker-overview-name">'+esc(k)+'</div><div class="small muted">'+esc(fmtTok(a.inputTokens))+' in / '+esc(fmtTok(a.outputTokens))+' out</div>'+(nd?'<div class="small muted">'+nd+' sessions no data</div>':'')+'</div>'
   }).join('')
-  return '<div class="worker-overview"><div class="worker-overview-grid">'+cards+'</div></div>'
+  return summary+'<div class="worker-overview"><div class="worker-overview-grid">'+cards+'</div></div>'
 }
 // Live updates via Server-Sent Events. One detail stream for the open item; it
 // pushes a 'change' event whenever the watched file/dir changes (fs.watch).
@@ -258,17 +289,126 @@ async function j(u){const r=await fetch(u);return r.json()}
 // Single source of truth for how a worker's raw {state, stale} maps to a filter-chip/badge
 // bucket. 'human-controlled' gets its own bucket (previously fell through the catch-all
 // into 'error', which is wrong — a human quietly watching a session is not a failure).
+//
+// 'killed' got the same treatment for the same reason: the 5-value enum is
+// running|done|error|killed|human-controlled (parse-utils.mjs), and 'killed' used to hit the
+// catch-all and be reported as an error. A human stopping a worker is an interruption, not a
+// failure. 'stale' likewise left the 'error' bucket — "we lost track of it" is not "it failed",
+// and merging them made a stale worker unfindable except by hunting the error list.
+//
+// The catch-all is now an explicit 'unknown' bucket rather than 'error', so a 6th state added
+// later surfaces as unknown instead of being libelled a failure — i.e. it cannot reintroduce
+// the exact bug this function has now been patched for twice.
+// NB: the server only sets w.stale for state==='running' (dashboard-server.mjs), so the stale
+// check must stay above the running check. (No backticks anywhere in this file — including in
+// comments — because the whole page is a single backtick template on the server side.)
 function workerBucket(w){
   if(w.state==='human-controlled') return 'human'
-  if(w.stale||w.state==='error') return 'error'
+  if(w.state==='error') return 'error'
+  if(w.stale) return 'stale'
   if(w.state==='running') return 'running'
   if(w.state==='done') return 'done'
-  return 'error'
+  if(w.state==='killed') return 'killed'
+  return 'unknown'
 }
-function isHighOverhead(w){
-  return !!(w.parentSession && w.parentSession.babysitterUsage &&
-    w.parentSession.babysitterUsage.outTok != null && w.usage && w.usage.outTok != null &&
-    w.parentSession.babysitterUsage.outTok > HIGH_OVERHEAD_RATIO * w.usage.outTok)
+// Bucket -> presentation. Table rather than nested ternaries so adding a bucket cannot silently
+// fall through to whatever the last ternary happened to be.
+const WORKER_DOT={running:'busy',stale:'idle',human:'human',done:'closed',error:'dead',killed:'idle',unknown:'closed'}
+const WORKER_BADGE_CLS={stale:'badge warn',human:'badge human',error:'badge err',killed:'badge warn'}
+// Order the chips render in; every bucket workerBucket can return must appear here (pinned by test).
+const WORKER_BUCKETS=['running','stale','human','done','error','killed','unknown']
+
+// ---- deterministic-runner presentation ----
+//
+// Two independent axes, deliberately never merged into one badge:
+//   the dot + state badge = the WORKER's lifecycle (did the process finish?)
+//   the verify token       = did the WORK pass its check?
+// That is why "done" next to a red "verify" reads correctly rather than as a contradiction.
+
+// 'none'/'unknown' get NO badge: a run nobody asked to check must never look green.
+const VERIFY_BADGE={pass:['pass','verify ✓'],fail:['fail','verify ✗'],harness:['warn','verify ⚠']}
+function verifyBadgeHtml(w){
+  const v=w.verdict; if(!v) return ''
+  const spec=VERIFY_BADGE[v.verify]; if(!spec) return ''
+  const ex=Number(v.verifyExit)
+  const suffix=(v.verify!=='pass'&&Number.isFinite(ex))?' e'+ex:''
+  return ' <span class="badge '+spec[0]+'">'+spec[1]+suffix+'</span>'
+}
+
+// Exit 126/127 mean the verify command itself was unusable and 124 that it timed out — the check
+// never ran, so calling it a FAIL would blame the worker for the operator's typo.
+function verifyPhrase(v){
+  if(!v) return ''
+  const ex=Number(v.verifyExit)
+  if(v.verify==='pass') return '<span class="ok">✓ verify</span>'
+  if(v.verify==='harness'){
+    const why=(ex===127||ex===126)?'command not found':(ex===124?'timed out':'did not run')
+    return '<span class="warnt">⚠ verify '+why+'</span>'
+  }
+  if(v.verify==='fail') return '<span class="err">✗ verify'+(Number.isFinite(ex)?' exit '+ex:'')+'</span>'
+  if(v.verify==='none') return '<span class="muted">no verify requested</span>'
+  return ''
+}
+
+// ' 3 files changed, 42 insertions(+), 7 deletions(-)' -> '3 files +42/-7'. Falls back to a bare
+// file count, because a real on-disk shape has changed files with an empty diffstat.
+function changeSize(w){
+  const ds=String(w.diffstat||'')
+  const f=ds.match(/(\\d+) files? changed/)
+  if(f){
+    const ins=ds.match(/(\\d+) insertion/), del=ds.match(/(\\d+) deletion/)
+    let out=f[1]+' file'+(f[1]==='1'?'':'s')
+    if(ins) out+=' +'+ins[1]
+    if(del) out+=(ins?'/':' ')+'-'+del[1]
+    return out
+  }
+  const n=Number(w.changedFileCount)
+  return Number.isFinite(n)&&n>0?(n+' file'+(n===1?'':'s')):''
+}
+
+// The row's second line. Every token is omitted when unknown, and the whole line is omitted when
+// nothing is known — so a plain worker session looks complete rather than empty.
+//
+// Deliberately NOT here: the stranded/worktree state. Only the detail route resolves whether the
+// worktree still exists (a stat per row would put worker-supplied absolute paths on the
+// SSE-refreshed path), and 'stranded' alone is the EXPECTED outcome of a successful run
+// (.specs/dev/sdd/deterministic-runner.md) — so on its own it is not row-worthy news.
+// A mid-run snapshot is not a total. Every partial session on a real machine has
+// output_tokens:0 alongside 51.7k-190k input, which fmtUsage renders as "51.7k in / 0 out" — a
+// specific wrong number, in a product whose selling point is token accounting.
+function usageTokenStr(w){
+  const u=fmtUsage(w.usage)
+  if(!u||!u.tokStr) return ''
+  if(!w.usagePartial) return u.tokStr
+  const outTok=w.usage&&w.usage.outTok
+  // Plain string surgery, not a regex: a '/' inside a regex literal has to be written '\\/' to
+  // survive this file's outer template literal, and getting that wrong breaks the whole page.
+  const zeroOut=' / 0 out'
+  if(!outTok){
+    const base=u.tokStr.endsWith(zeroOut)?u.tokStr.slice(0,-zeroOut.length):u.tokStr
+    return base+' · out not captured'
+  }
+  return u.tokStr+'~'
+}
+
+// Lifecycle buckets are mutually exclusive with each other, but "failed its check" is a different
+// axis: all verify-failures sit in the 'done' bucket, so the chip row cannot express them.
+function matchesWorkerFilter(w,flt){
+  if(flt==='all') return true
+  if(flt==='verify-fail') return !!(w.verdict&&w.verdict.verify==='fail')
+  return workerBucket(w)===flt
+}
+
+function runLineHtml(w){
+  // An auth failure is not a task failure: the worker never started, so there is no run to report.
+  if(w.errorKind==='auth'){
+    return '<span class="warnt">authentication failed — the worker never ran</span>'+(w.error?' · '+esc(w.error):'')
+  }
+  const parts=[]
+  if(w.verdictPending) parts.push('<span class="live">⚙ verify in progress…</span>')
+  else { const ph=verifyPhrase(w.verdict); if(ph) parts.push(ph) }
+  const cs=changeSize(w); if(cs) parts.push(esc(cs))
+  return parts.join(' · ')
 }
 
 async function loadList(){
@@ -278,7 +418,7 @@ async function loadList(){
   // Generation guard: a tab switch mid-fetch must not let the stale response win the rail.
   const gen=++loadListGen
   const frag=document.createDocumentFragment(); const sig=[]
-  let agg=null
+  let agg=null, wRows=null
   if(mode==='cc'){
     const ss=await j('/api/sessions')
     if(gen!==loadListGen) return
@@ -295,26 +435,60 @@ async function loadList(){
     const pair=await Promise.all([j('/api/workers'),j('/api/workers/aggregate')])
     if(gen!==loadListGen) return
     const ws=pair[0], a=pair[1]||{}
-    agg=a
-    const wCounts={all:ws.length,running:0,human:0,done:0,error:0}
+    agg=a; wRows=ws
+    const wCounts={all:ws.length}
+    WORKER_BUCKETS.forEach(k=>{wCounts[k]=0})
     ws.forEach(w=>{ const k=workerBucket(w); wCounts[k]=(wCounts[k]||0)+1 })
     fb.style.display='flex'
-    fb.innerHTML=[['all',wCounts.all],['running',wCounts.running],['human',wCounts.human],['done',wCounts.done],['error',wCounts.error]].map(([k,n])=>'<span class="fchip'+(wFlt===k?' on':'')+'" onclick="setWFilter(\\''+k+'\\')">'+k+'<span class="c">'+n+'</span></span>').join('')
+    // Chips are derived from WORKER_BUCKETS so a new bucket can never be filterable-but-hidden.
+    // 'unknown' is a should-never-happen bucket, so it only earns a chip once something is in it.
+    // Second group: an outcome chip, not a lifecycle one. Worth its own slot because every
+    // verify-failure has state 'done' and is therefore invisible in the lifecycle chips.
+    const verifyFails=ws.filter(w=>w.verdict&&w.verdict.verify==='fail').length
+    const anyVerdict=ws.some(w=>w.hasVerdict)
+    const wChips=[['all',wCounts.all]]
+      .concat(WORKER_BUCKETS.filter(k=>k!=='unknown'||wCounts.unknown>0).map(k=>[k,wCounts[k]]))
+      .concat(anyVerdict?[['verify-fail',verifyFails]]:[])
+    fb.innerHTML=wChips.map(([k,n])=>'<span class="fchip'+(wFlt===k?' on':'')+'" onclick="setWFilter(\\''+k+'\\')">'+k+'<span class="c">'+n+'</span></span>').join('')
     document.getElementById('meta').textContent=ws.length+' workers'
-    const shown=wFlt==='all'?ws:ws.filter(w=>workerBucket(w)===wFlt)
+    const shown=ws.filter(w=>matchesWorkerFilter(w,wFlt))
     shown.forEach(w=>{
       const bucket=workerBucket(w)
       const live=bucket==='running'
-      const dot=live?'busy':bucket==='human'?'human':bucket==='done'?'closed':bucket==='error'?'idle':'idle'
-      const badge=w.stale?'stale':w.state
-      const badgeCls='badge'+(bucket==='human'?' human':'')
+      const dot=WORKER_DOT[bucket]||'closed'
+      // An auth failure never ran the task, so amber "auth" is truer than a red "error".
+      const isAuth=w.errorKind==='auth'
+      const badge=isAuth?'auth':(bucket==='stale'?'stale':(w.state||'unknown'))
+      const badgeCls=isAuth?'badge warn':(WORKER_BADGE_CLS[bucket]||'badge')
       const u=fmtUsage(w.usage)
+      const tokStr=usageTokenStr(w)
       let usageLine=''
-      if(u&&(u.tokStr||u.costStr)){
-        usageLine=' · '+(u.tokStr?esc(u.tokStr):'')+(u.tokStr&&u.costStr?' · ':'')+(u.costStr?esc(u.costStr):'')
+      if(tokStr||(u&&u.costStr)){
+        usageLine=' · '+(tokStr?esc(tokStr):'')+(tokStr&&u&&u.costStr?' · ':'')+((u&&u.costStr)?esc(u.costStr):'')
       }
-      const proj=shortProj(w.cwd)
-      const h='<div class="item'+(sel===w.id?' sel':'')+'"><div><span class="dot '+dot+'"></span>'+esc(w.backend)+' <span class="c">'+(w.model?esc(w.model):'default')+'</span> <span class="'+badgeCls+'">'+esc(badge)+'</span>'+(isHighOverhead(w)?' <span class="badge warn">high overhead</span>':'')+'</div>'+(proj?'<div class="small muted">'+esc(proj)+'</div>':'')+(w.parentSession?'<div class="small muted">from '+esc(shortSessionProj(w.parentSession.project))+'</div>':'')+'<div class="small muted">'+esc(w.prompt||w.id.slice(0,8))+'</div><div class="small muted">'+esc(fmtDT(w.started))+(w.lastTool?' · '+esc(w.lastTool):'')+usageLine+'</div></div>'
+      // Dropped from the row in 4.3.0, to buy the space the outcome line needs:
+      //  - "from <parent CC session>": babysitter-era provenance. The deterministic runner has no
+      //    babysitter, so it is now historical trivia — and it was the single most expensive field
+      //    on this route. Still shown in full in the detail view.
+      //  - the standalone project line: shortProj(cwd) on a run yields "tmp/ds-wt-oUSONx", i.e. the
+      //    throwaway worktree rather than the repo — noise on exactly the rows this is about. It is
+      //    folded into the metadata line below, where it reads as one token among several.
+      //  - the literal "default" for a missing model: absence already means default.
+      //  - lastTool on a finished row: a fossil once the worker is dead, so it is kept only while
+      //    the row is live (3.40.2's "only what changes moment to moment", applied to rows).
+      const origin=shortProj(w.cwd)
+      const runLine=runLineHtml(w)
+      const h='<div class="item'+(sel===w.id?' sel':'')+'">'
+        +'<div class="l1"><span class="dot '+dot+'"></span>'+esc(w.backend)
+        +(w.model?' <span class="c">'+esc(w.model)+'</span>':'')
+        +(w.hasVerdict?' <span class="badge run">⚙RUN</span>':'')
+        +' <span class="'+badgeCls+'">'+esc(badge)+'</span>'
+        +verifyBadgeHtml(w)
+        +'</div>'
+        +(runLine?'<div class="small muted ell">'+runLine+'</div>':'')
+        +'<div class="small muted ell">'+esc(w.prompt||w.id.slice(0,8))+'</div>'
+        +'<div class="small muted">'+esc(fmtDT(w.started))+(origin?' · '+esc(origin):'')+(live&&w.lastTool?' · '+esc(w.lastTool):'')+usageLine+'</div>'
+        +'</div>'
       const it=E(h); it.onclick=()=>openWorker(w); frag.appendChild(it); sig.push(h)
     })
   }
@@ -327,7 +501,7 @@ async function loadList(){
     el.replaceChildren(frag); rail.scrollTop=sc
   }
   if(sel || hasOpenDetailView()) return
-  if(mode==='w'){ setView('workers-overview', workersOverviewHtml(agg)) }
+  if(mode==='w'){ setView('workers-overview', workersOverviewHtml(agg, wRows)) }
   else if(mode==='cc'){ setEmptyMainState() }
 }
 // worker progress.log lines already carry a leading glyph per event type (written by
@@ -363,31 +537,16 @@ function renderFlow(steps){
     return '<div class="step log">'+esc(s.text)+'</div>'
   }).join('')
 }
-function usageHtml(usage){
+function usageHtml(usage,partial){
   const u=fmtUsage(usage,true)
   if(!u||(!u.tokStr&&!u.costStr)) return ''
   const parts=[]
-  if(u.tokStr) parts.push(u.tokStr)
+  // A killed or interrupted worker leaves a mid-run snapshot. Every partial session on a real
+  // machine has output_tokens 0, which would otherwise read as "the worker produced nothing".
+  if(u.tokStr) parts.push(partial&&!(usage&&usage.outTok)?u.tokStr.replace(' / 0 out','')+' · out not captured':u.tokStr)
   if(u.costStr) parts.push(u.costStr)
-  return '<div class="small muted" style="margin:4px 8px 12px">Usage: '+esc(parts.join(' · '))+'</div>'
-}
-function babysitterUsageHtml(w, workerUsage){
-  if(!w.parentSession||!w.parentSession.babysitterUsage) return ''
-  const bUsage=w.parentSession.babysitterUsage
-  const bFmt=fmtUsage(bUsage,true)
-  if(!bFmt||!bFmt.tokStr) return ''
-  const wFmt=workerUsage?fmtUsage(workerUsage,true):null
-  const wHasTokens=wFmt&&wFmt.tokStr
-  if(wHasTokens){
-    const totalUsage={
-      inTok:(bUsage.inTok||0)+(workerUsage.inTok||0),
-      outTok:(bUsage.outTok||0)+(workerUsage.outTok||0)
-    }
-    const tFmt=fmtUsage(totalUsage,true)
-    const tTokStr=tFmt?tFmt.tokStr:''
-    return '<div class="small muted" style="margin:4px 8px 12px">Babysitter cost: '+esc(bFmt.tokStr)+'<br>Total: '+esc(tTokStr)+'</div>'
-  }
-  return '<div class="small muted" style="margin:4px 8px 12px">Babysitter cost: '+esc(bFmt.tokStr)+' (worker-side usage not captured — total unknown)</div>'
+  const note=partial?' (partial — mid-run snapshot, not a final total)':''
+  return '<div class="small muted" style="margin:4px 8px 12px">Usage: '+esc(parts.join(' · '))+esc(note)+'</div>'
 }
 function workerPanelHtml(lw){ if(!lw||!lw.length) return ''
   return '<details class="panel wk"><summary>Worker sessions (ds/ag/cx/oc/cp) <span class="badge">'+lw.length+'</span></summary><div class="sabody">'+lw.map(w=>'<span class="sa" onclick="openWorkerById(\\''+escAttr(w.id)+'\\')">'+esc(w.backend)+' ('+(w.model?esc(w.model):'default')+'): '+esc(w.prompt||w.id.slice(0,12))+' <span class="c">'+esc(w.stale?'stale':w.state)+'</span></span>').join('')+'</div></details>' }
@@ -533,25 +692,201 @@ function renderTakeoverBar(w){
   el.style.display='none'; el.innerHTML=''
 }
 // ==== end human-takeover UI ========================================================
+// ---- verdict panels (worker detail view) ----
+//
+// Sentences for cli-dispatch-run's exit code, attributed to the RUNNER. A bare number next to a
+// state badge ("done · exit 1") is exactly the confusion to avoid: the two measure different
+// subjects, so the UI's job is to say whose code it is.
+const RUNNER_EXIT_TEXT={
+  0:'worker finished and verify passed',
+  1:'worker finished (done), verify failed',
+  2:'worker died or was killed',
+  3:'timed out waiting for the worker',
+  4:'a human took over; verify was never run',
+  5:'setup or usage error'
+}
+function runnerExitSentence(v){
+  const ex=Number(v.exitCode)
+  if(!Number.isFinite(ex)) return ''
+  const t=RUNNER_EXIT_TEXT[ex]
+  return 'runner exit '+ex+(t?' — '+t:'')
+}
+
+// Always visible, never a <details>: this is the answer to "what happened".
+function verdictStripHtml(flow){
+  const v=flow.verdict; if(!v) return ''
+  if(v.malformed){
+    return '<div class="panel bad"><div class="sabody"><b>⚙ run</b> — verdict could not be built'
+      +(v.error?': '+esc(v.error):'')+'</div></div>'
+  }
+  const cls=v.verify&&v.verify.state==='fail'?'panel bad':(v.verify&&v.verify.state==='pass'?'panel act':'panel')
+  const l1='<b>⚙ deterministic run</b> · '+esc(runnerExitSentence(v))
+  const bits=[]
+  const ph=verifyPhrase({verify:v.verify?v.verify.state:'none',verifyExit:v.verify?v.verify.exitCode:null})
+  if(ph) bits.push(ph)
+  if(v.verify&&v.verify.commands.length>1&&Number.isFinite(Number(v.verify.failedAt))){
+    bits.push('command '+(Number(v.verify.failedAt)+1)+' of '+v.verify.commands.length)
+  }
+  const cs=changeSize({diffstat:v.diffstat,changedFileCount:(flow.changedFiles?flow.changedFiles.files.length:v.changedFiles.length)})
+  if(cs) bits.push(esc(cs))
+  // verdict.state is a run-end snapshot; status.state is live and a --resume can legitimately
+  // move it. Only mention the pair when they actually disagree.
+  const liveState=flow.state||''
+  const snap=v.state||''
+  const drift=(snap&&liveState&&snap!==liveState)?'<div class="small muted">state now: '+esc(liveState)+' · at run end: '+esc(snap)+'</div>':''
+  return '<div class="'+cls+'"><div class="sabody">'+l1
+    +(bits.length?'<div class="small">'+bits.join(' · ')+'</div>':'')+drift+'</div></div>'
+}
+
+function verifyPanelHtml(flow,openMap){
+  const v=flow.verdict&&flow.verdict.verify; if(!v) return ''
+  const failed=v.state==='fail'||v.state==='harness'
+  const cls=failed?'panel bad':(v.state==='pass'?'panel act':'panel')
+  const failedAt=Number(v.failedAt)
+  const rows=v.commands.map((c,i)=>{
+    // runVerify breaks at the first failure, so anything after it genuinely never ran and must
+    // not be shown as passed.
+    let mark='<span class="ok">✓</span>', note=''
+    if(Number.isFinite(failedAt)&&v.state!=='pass'){
+      if(i===failedAt){ mark='<span class="err">✗</span>' }
+      else if(i>failedAt){ mark='<span class="muted">·</span>'; note=' <span class="badge">not run</span>' }
+    }
+    // flex row: the marker must sit BESIDE the command, not above it — <pre> is a block element.
+    return '<div class="vrow">'+mark+note+'<pre class="md-pre pathline">'+esc(c)+'</pre></div>'
+  }).join('')
+  const sum='verify '+(v.state==='pass'?'✓ passed':(v.state==='harness'?'⚠ did not run':'✗ exit '+esc(String(v.exitCode))))
+  return '<details class="panel-x '+cls+'" data-pk="verify"'+(openState(openMap,'verify',failed)?' open':'')
+    +'><summary>'+sum+'</summary><div class="sabody">'+rows+'</div></details>'
+}
+
+// A SIBLING of the verify panel, not nested: .panel>summary is a direct-child selector and
+// .panel carries its own background, so nesting would render an inset box inside .panel.bad.
+function verifyTailHtml(flow,openMap){
+  const v=flow.verdict&&flow.verdict.verify; if(!v||!v.tail) return ''
+  const failed=v.state==='fail'||v.state==='harness'
+  return '<details class="panel" data-pk="tail"'+(openState(openMap,'tail',failed)?' open':'')
+    +'><summary>output tail</summary><div class="sabody"><pre class="md-pre scrollbox">'+esc(v.tail)+'</pre></div></details>'
+}
+
+// Status -> class via a WHITELIST; the raw git status code never reaches a class attribute.
+const FILE_STATUS_CLS={'M':'','A':'ok','D':'err','??':'warn'}
+function changedFilesPanelHtml(flow,openMap,workerId){
+  const cf=flow.changedFiles; if(!cf) return ''
+  const rows=cf.files.map(f=>{
+    const cls=FILE_STATUS_CLS[f.status]||''
+    const badge=f.status?'<span class="badge '+cls+'">'+esc(f.status)+'</span> ':''
+    return '<div class="pathline">'+badge+esc(f.path)+'</div>'
+  }).join('')
+  // Paths that were already dirty before the worker started, i.e. explicitly not its work. This
+  // attribution cannot be reconstructed anywhere else in the product.
+  const pre=cf.preexistingDirty.length
+    ? '<div class="small muted" style="margin-top:8px">already dirty before this worker started — not its work:</div>'
+      +cf.preexistingDirty.map(f=>'<div class="pathline small muted">'+esc(f)+'</div>').join('')
+    : ''
+  const trunc=cf.truncated?'<div class="small muted">(list truncated)</div>':''
+  const sum='changed files <span class="badge">'+cf.files.length+'</span>'+(cf.diffstat?' <span class="small muted">'+esc(cf.diffstat)+'</span>':'')
+  // The href is BUILT from the worker id rather than taken from flow.diff.url: the server already
+  // validates ids with okId before serving anything, so re-deriving the URL here removes the trust
+  // boundary entirely instead of escaping across it. Same construction as takeoverStart.
+  const bytes=Number(flow.diff&&flow.diff.bytes)
+  const link=(flow.diff&&flow.diff.available&&workerId)
+    ? '<div style="margin-top:8px"><a href="/api/worker/'+escAttr(encodeURIComponent(workerId))+'/diff" target="_blank" rel="noopener">'+esc(flow.diff.source)+'</a>'
+      +(Number.isFinite(bytes)?' <span class="small muted">'+bytes+' bytes'+(flow.diff.truncated?', showing the first 512 KB':'')+'</span>':'')+'</div>'
+    : ''
+  return '<details class="panel" data-pk="files"'+(openState(openMap,'files',false)?' open':'')
+    +'><summary>'+sum+'</summary><div class="sabody">'+rows+pre+trunc+link+'</div></details>'
+}
+
+function runEnvPanelHtml(flow,openMap){
+  const v=flow.verdict; if(!v||v.malformed) return ''
+  const row=(k,val)=>val?'<div class="small"><span class="muted">'+k+'</span> <span class="pathline">'+esc(val)+'</span></div>':''
+  let strandedBlock=''
+  if(v.stranded){
+    // 'stranded' is the EXPECTED outcome of a successful run — the runner never commits, so
+    // uncommitted changes mean the worker did its job. Stated as a recorded fact with its
+    // provenance, never as a warning.
+    const when=v.recordedAt?' ('+esc(fmtDT(v.recordedAt))+')':''
+    strandedBlock='<div class="small" style="margin-top:6px">recorded at run end'+when+': uncommitted changes in <span class="pathline">'+esc(v.worktree)+'</span></div>'
+    if(v.worktreeExists){
+      strandedBlock+='<div class="small warnt">that worktree is still on disk</div>'
+      // The parent repo is recorded NOWHERE in the session dir, so it has to be resolved from the
+      // worktree's own .git pointer; without it only the repo-less form is offered.
+      const repo=v.sourceRepo
+      const cmds=repo
+        ? 'rm -f "'+v.worktree+'/node_modules"\\ngit -C "'+repo+'" worktree remove "'+v.worktree+'" --force\\ngit -C "'+repo+'" worktree prune'
+        : 'git -C "'+v.worktree+'" worktree remove "'+v.worktree+'" --force'
+      strandedBlock+='<pre class="md-pre pathline">'+esc(cmds)+'</pre>'
+      strandedBlock+='<div class="small muted">or sweep everything older than N days with /cli-dispatch:clean --worktree-days N</div>'
+    }else{
+      // Telling someone to remove a directory that is not there would be the exact dishonesty
+      // this view exists to avoid.
+      strandedBlock+='<div class="small muted">that worktree is no longer on disk; the changes survive only in the recorded patch</div>'
+    }
+  }
+  const via=v.completedVia==='human-takeover'?'handed to a human mid-run':v.completedVia
+  return '<details class="panel" data-pk="env"'+(openState(openMap,'env',false)?' open':'')
+    +'><summary>run environment</summary><div class="sabody">'
+    +row('branch',v.branch)+row('base',v.baseRef)+row('worktree',v.worktree)
+    +row('completed',via)+row('started',fmtDT(v.startedAt))+row('ended',fmtDT(v.recordedAt))
+    +strandedBlock+'</div></details>'
+}
+
+// An auth failure means the worker never started: nothing about the prompt, model or repo is at
+// fault, and the flow it would send you to read has no steps in it.
+function authPanelHtml(flow){
+  if(flow.errorKind!=='auth') return ''
+  return '<div class="panel bad"><div class="sabody"><b>authentication failed — the worker never ran</b>'
+    +(flow.error?'<div class="small">'+esc(flow.error)+'</div>':'')
+    +'<div class="small muted">check the backend key with /cli-dispatch:doctor, or set it in the ⚙ configuration view</div>'
+    +'</div></div>'
+}
+
+// Collapse-state preservation, generalised. :541 used to snapshot exactly one panel by CSS
+// selector; with five panels a live-refreshing worker would slam them shut every 600ms, which is
+// a direct regression of the flicker fix in 3.15.2.
+function snapshotPanels(){
+  const m={}
+  const v=document.getElementById('view')
+  if(!v) return m
+  const nodes=v.querySelectorAll('details[data-pk]')
+  for(let i=0;i<nodes.length;i++){ m[nodes[i].getAttribute('data-pk')]=nodes[i].open }
+  return m
+}
+function openState(map,key,dflt){
+  return (map&&Object.prototype.hasOwnProperty.call(map,key))?map[key]:dflt
+}
+
 async function openWorker(w){
   sel=w.id;
   document.getElementById('sidePanel').innerHTML=''
   document.getElementById('crumb').innerHTML='<a onclick="back()">workers</a> › '+esc(w.backend)+' <span class="c">'+(w.model?esc(w.model):'default')+'</span> '+esc(w.id.slice(0,12))+' <span class="muted">('+esc(w.stale?'stale':w.state)+')</span>'
   renderTakeoverBar(w)
-  const taskPanel=document.querySelector('#view details.panel.task'); const taskOpen=taskPanel?taskPanel.open:false
+  // Snapshot every panel's open/closed state before the re-render, not just the task panel: a
+  // live-refreshing worker would otherwise slam the verify panel shut every 600ms.
+  const openMap=snapshotPanels()
   const key='worker:'+w.id
   const v=document.getElementById('view')
   if(v._k!==key){ v._k=key; v._h=null; v.className=''; v.innerHTML='loading…' }
   const flow=await j('/api/worker/'+w.id+'/flow')
   let h=''
-  if(flow.prompt) h+='<details class="panel task"'+(taskOpen?' open':'')+'><summary>Görev / talimat</summary><div class="sabody"><div class="md">'+md(flow.prompt)+'</div></div></details>'
-  h+=usageHtml(flow.usage)
-  h+=babysitterUsageHtml(w, flow.usage)
+  // What happened (the run's own verdict) comes before what was asked (the prompt).
+  h+=authPanelHtml(flow)
+  h+=verdictStripHtml(flow)
+  h+=verifyPanelHtml(flow,openMap)
+  h+=verifyTailHtml(flow,openMap)
+  h+=changedFilesPanelHtml(flow,openMap,w.id)
+  h+=runEnvPanelHtml(flow,openMap)
+  if(flow.prompt) h+='<details class="panel task" data-pk="task"'+(openState(openMap,'task',false)?' open':'')+'><summary>Görev / talimat</summary><div class="sabody"><div class="md">'+md(flow.prompt)+'</div></div></details>'
+  h+=usageHtml(flow.usage,flow.usagePartial)
   h+='<div class="term-flow">'+renderFlow(flow.steps)
   if(flow.finalResultPreview) h+='<div class="step message" style="margin-top:10px">⏺ <b>result:</b> '+esc(flow.finalResultPreview)+'</div>'
   h+='</div>'
   setView(key,h); loadList()
-  watchDetail(((w.state==='running'&&!w.stale)||w.state==='human-controlled')?'worker:'+w.id:null, ()=>openWorker(w))
+  // verdictPending keeps the stream open through the runner's verify phase. Without it the view
+  // unsubscribes the moment the worker reports done — which is BEFORE cli-dispatch-run runs
+  // verify (up to 600s) and writes verdict.json, so the verdict would never appear.
+  const stillLive=(w.state==='running'&&!w.stale)||w.state==='human-controlled'||flow.verdictPending===true
+  watchDetail(stillLive?'worker:'+w.id:null, ()=>openWorker(w))
 }
 async function openConfigView() {
   sel = null
@@ -653,6 +988,7 @@ async function renderConfigEditor() {
     html += '<div style="padding:8px 12px;border-bottom:1px solid var(--bd);font-weight:bold;color:var(--accent)">Maintenance</div>'
     html += '<div class="sabody" style="padding:12px">'
     html += '<button class="tkbtn" id="cleanBtn" onclick="openCleanPanel()" style="font-size:11px;padding:2px 8px">Clean stale sessions</button>'
+    html += ' <button class="tkbtn" id="wtBtn" onclick="openWorktreePanel()" style="font-size:11px;padding:2px 8px">Leftover worktrees</button>'
     html += '</div></div>'
     // Static <datalist> model-ID suggestions for AG/CX/CP backends.
     // AG_MODEL/AG_MODELS options sourced from verified live output of "agy models" on this machine.
@@ -732,11 +1068,58 @@ async function openCleanPanel() {
   }
 }
 
+// Lists leftover *-wt-* worktree artifacts. Read-only BY DESIGN — no delete button.
+// cli-dispatch-clean's sweep never removes a dirty worktree (commands/clean.md), and a dirty
+// worktree is exactly what a successful run leaves behind, so these can only be resolved by hand.
+// Offering a delete here would make the dashboard the one surface that breaks that invariant.
+async function openWorktreePanel() {
+  const panel = document.getElementById('cleanPanel')
+  panel.style.display = 'block'
+  panel.innerHTML = 'Scanning…'
+  try {
+    const data = await j('/api/clean?worktrees=1')
+    if (!data.count) {
+      panel.innerHTML = '<div style="padding:8px;color:var(--dim)">No leftover worktrees in ' + esc((data.roots || []).join(', ')) + '.</div>'
+        + '<button class="tkbtn" onclick="closeCleanPanel()" style="margin-top:8px">Close</button>'
+      return
+    }
+    let html = '<div style="margin-bottom:8px;color:var(--dim)">Found <b>' + data.count + '</b> worktree artifact(s)'
+      + (data.dirty ? ', <b>' + data.dirty + '</b> with uncommitted changes' : '') + ':</div>'
+    for (var i = 0; i < data.items.length; i++) {
+      var it = data.items[i]
+      // dirty === null means git could not tell us (missing binary, or not a valid worktree).
+      var state = it.dirty === null
+        ? '<span class="muted">unknown</span>'
+        : (it.dirty ? '<span class="warnt">' + it.files + ' uncommitted</span>' : '<span class="muted">clean</span>')
+      html += '<div class="clean-item">' + (it.backend ? esc(it.backend) + ' · ' : '') + state
+        + ' · ' + it.ageDays + 'd · <span class="pathline">' + esc(it.path) + '</span></div>'
+    }
+    // One copyable block rather than a per-item button: the parent repo is only sometimes
+    // resolvable, and a clean worktree is what the automated sweep already handles.
+    var cmds = []
+    for (var k = 0; k < data.items.length; k++) {
+      var w = data.items[k]
+      cmds.push(w.sourceRepo
+        ? 'git -C "' + w.sourceRepo + '" worktree remove "' + w.path + '" --force'
+        : 'git -C "' + w.path + '" worktree remove "' + w.path + '" --force')
+    }
+    html += '<div class="small muted" style="margin-top:8px">Review each one, then remove by hand — the dashboard deliberately will not delete a worktree with uncommitted changes:</div>'
+    html += '<pre class="md-pre pathline">' + esc(cmds.join('\\n')) + '</pre>'
+    html += '<div class="small muted">Clean, idle ones are swept automatically by /cli-dispatch:clean --worktree-days N.</div>'
+    html += '<button class="tkbtn" onclick="closeCleanPanel()" style="margin-top:8px">Close</button>'
+    panel.innerHTML = html
+  } catch (e) {
+    panel.innerHTML = '<div class="err">Failed: ' + esc(e.message) + '</div>'
+  }
+}
+
 async function confirmClean() {
   const panel = document.getElementById('cleanPanel')
   panel.innerHTML = 'Deleting…'
   try {
-    const res = await fetch('/api/clean', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ staleSecs: _cleanStaleSecs }) })
+    // X-CLI-Dispatch-Takeover is the non-CORS-simple header that forces a preflight the server
+    // never grants cross-origin; POST /api/clean now requires it, as POST /api/config already did.
+    const res = await fetch('/api/clean', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CLI-Dispatch-Takeover': '1' }, body: JSON.stringify({ staleSecs: _cleanStaleSecs }) })
     const body = await res.json()
     var html = '<div style="margin-bottom:8px">Removed <b>' + body.removed + '</b> of <b>' + body.count + '</b> stale sessions.</div>'
     if (body.failed && body.failed.length) {

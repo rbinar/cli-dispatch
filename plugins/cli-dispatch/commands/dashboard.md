@@ -5,7 +5,7 @@ allowed-tools: Bash
 
 # cli-dispatch dashboard
 
-Launch the **local, read-only web dashboard**. It shows active Claude Code CLI sessions
+Launch the **local web dashboard**. It shows active Claude Code CLI sessions
 (across all projects, active pinned on top); click a session to see its **flow**, the
 **subagents** it spawned, and click a subagent to drill into *its* flow — plus a panel for the
 cli-dispatch **worker** delegations (DeepSeek / Antigravity / Codex / OpenCode / Copilot).

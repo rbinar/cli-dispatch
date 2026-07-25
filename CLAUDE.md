@@ -85,7 +85,21 @@ run — regardless of backend — creates `~/.cache/cli-dispatch/sessions/<id>/`
   are explicitly warned in-repo against reading it in a hot loop; it's the main cost sink
   this repo optimizes against.
 - `progress.log` — terse human-readable tail, safe to read a few lines of.
-- `changed-files.json` — `{files, diffstat}`, written after a repo-changing run finishes.
+- `changed-files.json` — `{files, diffstat, preexistingDirty}`, written after a repo-changing run
+  finishes. `files` is `[{path, status}]` with git's `M`/`A`/`D`/`??` codes; `preexistingDirty`
+  lists paths that were already dirty *before* the worker started and are therefore excluded
+  from `files` — the only record of that attribution. Written for every worktree-mode worker,
+  not just runs.
+- `verdict.json` — written **only** by `cli-dispatch-run`, once, at terminal time. Its presence
+  is therefore the only available signal that a session came through the deterministic runner
+  (positive-only: a run killed before the write leaves none). Carries the verify result,
+  branch/baseRef/worktree, diffstat, `stranded`, and an `exitCode` following the 0-5 contract in
+  `.specs/dev/sdd/deterministic-runner.md` — which is the RUNNER's code, not the worker's, and
+  must never be rendered next to `status.state` as if it were. Two traps: `cli-dispatch-run`
+  also writes a `{schemaVersion, error, sessionId, exitCode}` shape when `build-verdict` throws
+  (there `exitCode` is a node exit status, so treating it as the contract value can report a
+  crash as a pass), and `stranded: true` is the EXPECTED outcome of a successful run — the
+  runner never commits, so uncommitted changes mean the worker did its job.
 
 Each backend's `*-stream-parse.mjs` (`ds-`, `cx-`, `cp-`, `oc-`, plus
 `ag-transcript-parse.mjs` for Antigravity) reads that backend's native JSONL event stream

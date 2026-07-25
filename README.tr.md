@@ -120,7 +120,7 @@ Plugin'i Claude Code içinden güncelle, sonra reload et (teker teker çalışt�
 /cli-dispatch:dashboard
 ```
 
-Disk'te zaten var olan veriler üzerinde **local, salt-okunur web dashboard**. Aktif Claude Code
+Disk'te zaten var olan veriler üzerinde **local web dashboard**. Aktif Claude Code
 CLI session'larını listeler (tüm projeler, **busy** olanlar üstte sabit); bir session'a tıkla →
 **akışını** gör (mesajlar / tool çağrıları / sonuçlar), spawn ettiği **subagent'ları** gör,
 subagent'a tıkla → *onun* akışına in (spawn derinliğine göre iç içe). İkinci panel cli-dispatch
@@ -130,15 +130,25 @@ session'lar otomatik yenilenir.
 `~/.claude/projects/**` (Claude Code transcript'leri), `~/.claude/sessions/*.json` (canlı
 busy/idle) ve `~/.cache/cli-dispatch/sessions/**` (worker'lar) okur. Notlar:
 - **Plugin'in başlattığı tek uzun-süreli süreç.** Yalnızca `127.0.0.1`'e bağlanır, varsayılan
-  olarak **salt-okunur**dur, config/key'lere asla dokunmaz. Bir worker'ın detay görünümünde
-  opt-in bir **human-takeover** aksiyonu, zaten sahip olunan worker session'larına dar-kapsamlı,
-  kimlik-doğrulamalı bir yazma yolu açar (headless process'i öldür, PTY terminal bağla) — genel
-  shell yok, keyfi komut yok. Yazdırılan `kill <pid>` ile durdur (ya da terminalde
+  olarak **çoğunlukla okur**: diskte zaten var olan veriyi okur, artı her biri Origin + Host +
+  özel header kontrolü isteyen üç dar kapsamlı yazma yolu — **Config** editörü (aşağıda), bayat
+  session temizliği, ve bir worker'ın detay görünümündeki opt-in **human-takeover** aksiyonu
+  (headless process'i öldürür, PTY terminal bağlar; yalnız zaten sahip olunan worker
+  session'larına). Genel shell yok, keyfi komut yok. Yazdırılan `kill <pid>` ile durdur (ya da terminalde
   `cli-dispatch-dashboard` çalıştırdıysan Ctrl-C).
 - Claude Code'un disk transcript formatı internal'dır ve sürümler arası değişebilir; dashboard
   bilinmeyen yapıları savunmacı render eder.
 - Bir **Config** sekmesi cli-dispatch config dosyasını doğrudan tarayıcıda düzenler. Secret alanlar (API key'ler) write-only'dir (kaydedildikten sonra asla geri gösterilmez); maskelenmiş bir önizleme (ör. `sk-e78f...ea1b`, ilk 6 + son 4 karakter) hangi key'in ayarlı olduğunu göstermeni sağlar. Secret olmayan alanlar (`*_MODEL` / `*_MODELS` vb.) tarayıcıda doğrudan görüntülenebilir ve düzenlenebilir.
-- Session/subagent'lar için session başına token kullanımını ve hangi modelin çalıştığını gösterir; legacy runner-subagent session'ları 4.0.0'daki kaldırılıştan önceki bir legacy maliyet rozeti taşır (bkz. [CHANGELOG.md](CHANGELOG.md)).
+- Session/subagent'lar için session başına token kullanımını ve hangi modelin çalıştığını gösterir.
+  Koşu ortasında yakalanmış token sayıları (öldürülmüş ya da kesilmiş bir worker) toplam gibi
+  gösterilmez, kısmi olarak etiketlenir.
+- **Deterministik runner sonuçları birinci sınıf.** `/cli-dispatch:run` ile başlatılan bir worker
+  `verdict.json` yazar ve dashboard onu okur: worker satırına `⚙RUN` işareti, exit kodlu bir
+  verify ✓/✗ rozeti ve değişim boyutu gelir; detay görünümüne verify komutları ve çıktı kuyruğu,
+  git durumlarıyla değişen dosyalar (worker çalışmadan önce zaten kirli olan yollar ayrı
+  gösterilir), branch/base/worktree ve diff'e bir bağlantı eklenir. Verify başarısızlığı
+  worker'ın state'inden ayrı bir eksende gösterilir — çünkü "worker bitti ama kontrol geçmedi"
+  ile "worker öldü" farklı sonuçlardır.
 
 ## Statusline rozeti
 
@@ -205,7 +215,7 @@ Hepsi Claude Code içinden kullanılır (`/cli-dispatch:ds-run <görev>`, `/cli-
 - **Deterministik runner, LLM babysitter yok (`/cli-dispatch:run`)** — tek delegasyon yolu: bir işçi başlatır, gerçek repo değişikliklerini worktree'de izole eder, bitene kadar bloklar ve makine-kontrol-edilebilir bir `--verify` komutuna göre geçit koyar — orkestrasyonda sıfır Anthropic token harcanır. Verify komutu olmayan, muhakeme-yoğun işler için escalation yolu aynı runner'dır (veya doğrudan bir `*-agent` CLI) — kompakt verdict + diff'i kendin okur, gerekirse `/cli-dispatch:resume` ile devam edersin. → [Deterministik runner](#deterministik-runner-cli-dispatchrun--llm-babysitter-yok)
 - **Oturum-başı politika enjeksiyonu (opsiyonel)** — bir `SessionStart` hook'u, `/cli-dispatch:setup`'ta bir kez yapılandırılan kompakt bir delegasyon politikasını (deterministik-runner yönlendirmesi, escalation path, issue-açma hatırlatması) her oturumun context'ine otomatik enjekte eder. Opt-in, varsayılan kapalı, kapalıyken sıfır token maliyeti. → [Oturum-başı politika enjeksiyonu](#oturum-başı-politika-enjeksiyonu-opsiyonel)
 - **Statusline rozeti (opsiyonel)** — cli-dispatch aktifken terminal statusline'ında cyan bir `[CD]` rozeti, ayrıca sarı bir `▶N` çalışan-worker sayacı. → [Statusline rozeti](#statusline-rozeti)
-- **Web dashboard** — local, salt-okunur: Claude Code session'ları → akış → subagent'lar → akış, + worker paneli, maliyet/model görünürlüğü ve bir Config editörü. → [Dashboard](#dashboard)
+- **Web dashboard** — local görünüm: Claude Code session'ları → akış → subagent'lar → akış, + her koşunun verify sonucu ve diff'iyle worker paneli, maliyet/model görünürlüğü ve bir Config editörü. → [Dashboard](#dashboard)
 - **Native kullanım / kota** — `/cli-dispatch:balance` (beşi birden) ya da backend başına `*-balance`; mümkün olduğunda her CLI'nın kendi local verisinden, **üçüncü-parti araç yok**. Copilot CLI'dan sorgulanamaz. → [Kullanım & kota](#kullanım--kota--native-üçüncü-parti-araç-yok)
 - **Temizlik** — `/cli-dispatch:clean` stale (`running` ama ölü) worker dizinlerini budar; `/cli-dispatch:clean-schedule` bunu launchd / cron / Scheduled Tasks ile günlük otomatikleştirir.
 - **Güvenlik ağı & izolasyon** — asılı/kaçak işçi, süre veya durgunluk limitinde (çocuk süreçleriyle birlikte) otomatik öldürülür, session `state: error` olur; işçiler senin `~/.claude` MCP sunucularını (playwright, vb.) miras almaz.
