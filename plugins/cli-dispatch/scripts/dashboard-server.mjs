@@ -142,6 +142,16 @@ function normalizeUsage(u) {
   if (inTok !== undefined && inTok !== null) inTok = Number(inTok)
   if (outTok !== undefined && outTok !== null) outTok = Number(outTok)
   if (costUsd !== undefined && costUsd !== null) costUsd = Number(costUsd)
+  // Issue #99, applied here in 4.5.0 so this agrees with gain-report.mjs's usage(): Codex reports
+  // cache-INCLUSIVE input_tokens with cached_input_tokens as a subset (88% of the total on a real
+  // machine), so counting the whole thing as work offloaded overstated the headline by ~2x.
+  //
+  // The cached <= inTok guard is load-bearing, not defensive: OpenCode reports cached_input_tokens
+  // as a SEPARATE counter that can exceed input_tokens (196k in / 300k cached on real data), and
+  // subtracting there would produce a negative token count. Keep both implementations in step —
+  // two surfaces disagreeing about the same file is the bug this fixes.
+  const cached = Number(u.cached_input_tokens)
+  if (Number.isFinite(inTok) && Number.isFinite(cached) && cached <= inTok) inTok -= cached
   return { inTok, outTok, costUsd }
 }
 
@@ -369,11 +379,24 @@ function listWorkers(skipParentIndex = false) {
   return out
 }
 
+// Per-backend worker token totals. These are the tokens that went to a NON-Anthropic backend, so
+// they are the measurable part of what the plugin exists to do: work that did not hit the Anthropic
+// account. Two honesty caveats are carried alongside the numbers rather than left implicit:
+//   noDataSessions  — some backends report no usage at all (agy exposes none), so the totals
+//                     UNDER-report and a reader must be told, or they will read 0 as "free".
+//   partialSessions — a killed or interrupted worker leaves a mid-run snapshot, which was
+//                     previously summed into the totals as if it were final.
+// The legacy babysitter cost that partially offsets this lives in /cli-dispatch:gain, which walks
+// ~/.claude/projects — deliberately NOT done here, since that transcript scan is exactly what was
+// removed from this route's path in 4.3.0.
 function workerUsageAggregate() {
   const out = {}
   for (const w of listWorkers(true)) {
     const backend = w.backend || 'deepseek'
-    const row = out[backend] || { inputTokens: 0, outputTokens: 0, sessions: 0, noDataSessions: 0 }
+    const row = out[backend] || {
+      inputTokens: 0, outputTokens: 0, sessions: 0, noDataSessions: 0, partialSessions: 0,
+      runSessions: 0, runInputTokens: 0, runOutputTokens: 0,
+    }
     row.sessions++
     const inTok = w.usage && typeof w.usage.inTok === 'number' && Number.isFinite(w.usage.inTok) ? w.usage.inTok : null
     const outTok = w.usage && typeof w.usage.outTok === 'number' && Number.isFinite(w.usage.outTok) ? w.usage.outTok : null
@@ -382,6 +405,14 @@ function workerUsageAggregate() {
     } else {
       if (inTok !== null) row.inputTokens += inTok
       if (outTok !== null) row.outputTokens += outTok
+      if (w.usagePartial) row.partialSessions++
+    }
+    // The deterministic-runner subset: these carry zero Anthropic babysitter cost by construction,
+    // so they are the cleanest evidence of offload the plugin has.
+    if (w.hasVerdict) {
+      row.runSessions++
+      if (inTok !== null) row.runInputTokens += inTok
+      if (outTok !== null) row.runOutputTokens += outTok
     }
     out[backend] = row
   }
@@ -1227,7 +1258,14 @@ const CONFIG_KEYS = {
 //    here; the client receives no account names, no emails, and no token material.
 //  - A probe that times out or errors yields 'unknown', NEVER 'logged-out'. "Could not check" and
 //    "not logged in" are different claims, and only one of them is safe to assert.
-const AUTH_PROBE_TIMEOUT_MS = 3000
+// 3s keeps the ⚙ view responsive on the default path. Overridable because the ceiling is about
+// machine load, not correctness: on a loaded machine (or under a parallel test run) a trivial
+// probe can miss a tight deadline and be reported as 'unknown', which is honest but makes a test
+// that asserts a real login flaky.
+const AUTH_PROBE_TIMEOUT_MS = (() => {
+  const v = Number(process.env.CLI_DISPATCH_AUTH_PROBE_TIMEOUT_MS)
+  return Number.isFinite(v) && v > 0 ? v : 3000
+})()
 const AUTH_CACHE_TTL_MS = 60 * 1000
 const ANSI_RE = new RegExp(String.fromCharCode(27) + "\\[[0-9;]*[A-Za-z]", "g")
 let authProbeCache = null   // { at: number, value: object }

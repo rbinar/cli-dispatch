@@ -4,9 +4,13 @@
 // Run with:
 //   node --test plugins/cli-dispatch/scripts/__tests__/cli-dispatch-run-integration.test.mjs
 //
-// This is intentionally a plain script (not node:test). Each scenario uses isolated
-// fixtures created with mkdtemp + explicit setup/teardown.
+// Converted to node:test in 4.5.0 (issue #125). It was a hand-rolled main() + process.exit(),
+// which collapsed four scenarios into ONE reporting unit: a single failure told you the file
+// failed, not which scenario. No correctness was lost by the old shape — process.exit(1) does
+// surface as a failure under `node --test` — only the ability to see which case broke.
+// Each scenario still uses isolated fixtures created with mkdtemp + explicit teardown.
 
+import { test } from 'node:test'
 import { execSync, spawnSync } from 'child_process'
 import fs from 'fs'
 import path from 'path'
@@ -151,33 +155,8 @@ function scenarioNoFlagAlwaysKeepsWorktree() {
   }
 }
 
-function main() {
-  const scenarios = [
-    ['a) regression dirty + exitCode 0', scenarioRegressedDirtyWithExitZeroKeepsWorktree],
-    ['b) clean + exitCode 0 + flag', scenarioCleanWithExitZeroAndFlagRemovesWorktree],
-    ['c) clean + exitCode 1 + flag', scenarioCleanExitOneKeepsWorktree],
-    ['d) clean + no --cleanup-if-clean', scenarioNoFlagAlwaysKeepsWorktree],
-  ]
-
-  const results = []
-  for (const [label, fn] of scenarios) {
-    try {
-      fn()
-      results.push([label, 'PASS'])
-    } catch (e) {
-      results.push([label, `FAIL: ${e}`])
-      console.error(`\n!!! Scenario ${label} FAILED !!!`)
-      console.error(e)
-    }
-  }
-
-  console.log('\n=== SUMMARY ===')
-  for (const [label, status] of results) {
-    console.log(`${status.startsWith('PASS') ? 'PASS' : 'FAIL'} — ${label}`)
-  }
-
-  const anyFail = results.some(([, status]) => !status.startsWith('PASS'))
-  process.exit(anyFail ? 1 : 0)
-}
-
-main()
+// One node:test per scenario, so a failure names the case that broke.
+test('a) a pre-existing dirty repo with exitCode 0 keeps the worktree', scenarioRegressedDirtyWithExitZeroKeepsWorktree)
+test('b) a clean worktree with exitCode 0 and --cleanup-if-clean is removed', scenarioCleanWithExitZeroAndFlagRemovesWorktree)
+test('c) a clean worktree with exitCode 1 keeps the worktree', scenarioCleanExitOneKeepsWorktree)
+test('d) without --cleanup-if-clean the worktree is always kept', scenarioNoFlagAlwaysKeepsWorktree)

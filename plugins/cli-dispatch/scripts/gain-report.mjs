@@ -43,12 +43,15 @@ export function usage(u){
 // A runner babysitter actually EXECUTES a wrapper CLI in a Bash tool call; other
 // subagents at most mention the names (or read the scripts via a path prefix, which
 // the leading [^/] boundary excludes). Bare-name invocation is how the runner defs work.
+// `cli-dispatch-run` is deliberately absent: it IS the sanctioned path and spends no Anthropic
+// tokens, so matching it here would score the fix as if it were the problem.
 export const RUNNER_RE=/(?:^|[;&|(]\s*|\s)(?:claude-ds(?:-stream)?|ds-agent|ds-worktree-run(?:\.sh)?|ag-agent|ag-stream|cx-agent|cx-stream|oc-agent|oc-stream|cp-agent|cp-stream)(?=\s|$)/
 
-// Runner subagents are pinned to haiku in their frontmatter; a CLI-invoking
-// subagent on any other model is NOT a sanctioned runner (it's a main-loop
-// /cli-dispatch:run invocation surfaced as a subagent, or a forbidden model
-// override) and must not inflate the babysitter/worker ratio numerator.
+// LEGACY gate. The retired ds-/ag-/cx-/oc-/cp-runner subagents were pinned to haiku in their
+// frontmatter, so this is what identifies a real pre-4.0.0 babysitter in the transcript history.
+// It is deliberately NOT widened to today's path: a subagent that invokes a worker CLI on any
+// other model is not a babysitter, and counting it would inflate a ratio whose only remaining
+// purpose is historical accounting. Deterministic runs are counted separately, from verdict.json.
 export const PINNED_RUNNER_MODEL_RE=/haiku/i
 
 // Real polling signal: a Bash command that reads a session status.json directly.
@@ -168,6 +171,16 @@ async function runMain(){
   const byBackend=new Map()
   let totalNoData=0, trivialCount=0, oldest='', newest=''
   const trivialSessions=[]
+  // Deterministic runs, i.e. sessions that came through cli-dispatch-run. Its verdict.json is
+  // written once at terminal time and is the only available signal (positive-only: a run killed
+  // before the write leaves none). These cost ZERO Anthropic babysitter tokens by construction —
+  // the runner is plain shell — which is the whole point of the 4.0.0 architecture and was
+  // invisible in this report until now.
+  // Same four verify buckets the dashboard uses, so the two surfaces cannot disagree about the
+  // same files. 124/126/127 mean the CHECK never ran (timeout / not executable / not found) —
+  // that is not a failure of the work, and calling it one would blame a worker for a typo.
+  const runs={total:0,verifyPass:0,verifyFail:0,verifyHarness:0,verifyNone:0,input:0,output:0}
+  const VERIFY_HARNESS_EXITS=new Set([124,126,127])
   for(const d of fs.readdirSync(ROOT)){
     const dir=path.join(ROOT,d)
     try{ if(!fs.statSync(dir).isDirectory()) continue }catch{ continue }
@@ -184,6 +197,20 @@ async function runMain(){
         trivialCount++
         trivialSessions.push({sessionId:d,cwd:m.cwd||'',backend,diffstat:cf.diffstat,startedAt:m.startedAt||''})
       }
+    }
+    const vd=read(path.join(dir,'verdict.json'))
+    if(vd && typeof vd==='object' && Object.keys(vd).length>0){
+      runs.total++
+      // The {schemaVersion,error,...} shape cli-dispatch-run writes when build-verdict throws
+      // carries no verify result — count it as unchecked rather than as a pass.
+      const v=(!vd.error && vd.verify && typeof vd.verify==='object')?vd.verify:null
+      const ex=Number(v && v.exitCode)
+      if(!v) runs.verifyNone++
+      else if(ex===0) runs.verifyPass++
+      else if(VERIFY_HARNESS_EXITS.has(ex)) runs.verifyHarness++
+      else runs.verifyFail++
+      const ru=usage(st.usage)
+      if(ru){ runs.input+=ru.input; runs.output+=ru.output }
     }
     const row=byBackend.get(backend)||{sessions:0,input:0,output:0,noData:0}
     row.sessions++
@@ -208,6 +235,16 @@ async function runMain(){
   console.log('')
   console.log(`sessions with no usage data: ${totalNoData}`)
   console.log('')
+  if(runs.total>0){
+    // Reported separately from the babysitting section below because the two measure different
+    // architectures: a deterministic run has no LLM supervising it at all.
+    const vbits=[`✓ ${runs.verifyPass}`,`✗ ${runs.verifyFail}`]
+    if(runs.verifyHarness>0) vbits.push(`⚠ ${runs.verifyHarness} (check never ran)`)
+    vbits.push(`none ${runs.verifyNone}`)
+    console.log(`deterministic runs (verdict.json present): ${runs.total}  |  verify ${vbits.join(' · ')}`)
+    console.log(`  worker tokens on those runs: ${fmt(runs.input)} in / ${fmt(runs.output)} out  ·  Anthropic babysitter tokens: 0 (the runner is plain shell)`)
+    console.log('')
+  }
   if(trivialCount>0) console.log(`trivial delegations (diff < 50 lines): ${trivialCount} — cheaper done inline; batch or inline next time`)
 
   // Cluster trivial sessions by (cwd,backend), chaining consecutive startedAt values under a
@@ -304,7 +341,10 @@ async function runMain(){
     for(const [,row] of byBackend){ totalWorkerOutput+=row.output; totalWorkerInput+=row.input }
 
     console.log('')
-    console.log('Anthropic babysitting (runner subagents only, all projects on this machine)')
+    console.log('Anthropic babysitting — LEGACY (pre-4.0.0 runner subagents; all projects on this machine)')
+    console.log('The ds-/ag-/cx-/oc-/cp-runner subagents were retired in 4.0.0, so this section is')
+    console.log('historical: it measures sessions from when an LLM sat and watched a worker. Runs on')
+    console.log('the current path appear in the deterministic-runs line above, with zero cost here.')
     console.log('model                 agents      input     output     cacheW      cacheR')
     console.log('-------------------- ---------- ---------- ---------- ---------- ----------')
     for(const [model,am] of [...anthroByModel.entries()].sort((a,b)=>a[0].localeCompare(b[0]))){
@@ -326,10 +366,10 @@ async function runMain(){
     const avgTurns=runnerAgents>0?(runnerTurnsTotal/runnerAgents):0
 
     console.log('')
-    console.log(`ratio: pinned-runner (haiku) babysitter output ≈ ${ratio}% of worker output  |  worker input offloaded: ${fmt(totalWorkerInput)} tokens`)
+    console.log(`ratio (legacy sessions): babysitter output ≈ ${ratio}% of worker output  |  worker input offloaded: ${fmt(totalWorkerInput)} tokens`)
     if(excludedNonPinnedOutput>0 || excludedBlindOutput>0){
       const parts=[]
-      if(excludedNonPinnedOutput>0) parts.push(`${fmt(excludedNonPinnedOutput)} output from non-pinned-model CLI-invoking subagents (main-loop /cli-dispatch:run or model-overridden)`)
+      if(excludedNonPinnedOutput>0) parts.push(`${fmt(excludedNonPinnedOutput)} output from CLI-invoking subagents that are NOT legacy runners (they were never pinned to haiku) — post-4.0.0 this is the normal case, not an anomaly`)
       if(excludedBlindOutput>0) parts.push(`${fmt(excludedBlindOutput)} output from blind-backend runners`)
       console.log(`excluded from numerator: ${parts.join('; ')}`)
     }

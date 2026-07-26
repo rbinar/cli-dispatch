@@ -369,3 +369,69 @@ test('#109 — CLI_DISPATCH_NO_CWD_CONTRACT=1 opts out', () => {
   const brief = fs.readFileSync(path.join(out, 'brief.txt'), 'utf8')
   assert.equal(brief.trim(), 'do the thing')
 })
+
+// ---------------------------------------------------------------------------- #124
+// The leak post-check answers one question: did the worker write OUTSIDE the tree it was
+// given? Only ds-worktree-run.sh asked it (11 GUARD_REPO refs; 0 in ag/cx/oc/cp), so on the
+// other four backends a worker that resolved an absolute path back out of its worktree did so
+// silently. These tests run the real scripts against a real repo for ALL FIVE, so the guard
+// cannot regress on one backend while passing on another.
+
+const ALL_RUNNERS = [
+  ['ds', 'ds-worktree-run.sh'],
+  ['ag', 'ag-worktree-run.sh'],
+  ['cx', 'cx-worktree-run.sh'],
+  ['oc', 'oc-worktree-run.sh'],
+  ['cp', 'cp-worktree-run.sh'],
+]
+
+for (const [backend, script] of ALL_RUNNERS) {
+  test(`#124 [${backend}] a worker writing outside its worktree is caught`, () => {
+    const repo = mkRepo()
+    // STUB_WRITE_TO points the stub at the repo it was NOT given — a real leak.
+    const r = runRunner(script, { repo, env: { STUB_WRITE_TO: repo } })
+    assert.ok(r.output.includes('post-check FAIL'), `${backend}: leak not reported\n${r.output}`)
+    assert.equal(r.status, 1, `${backend}: a leak must exit non-zero`)
+    assert.ok(/patch saved:/.test(r.output), `${backend}: the recovery patch must be reported`)
+  })
+
+  test(`#124 [${backend}] a clean run reports no leak`, () => {
+    const repo = mkRepo()
+    const r = runRunner(script, { repo })
+    assert.ok(r.output.includes('post-check OK'), `${backend}: clean run not confirmed\n${r.output}`)
+    assert.equal(r.status, 0, `${backend}: a clean run must exit 0`)
+  })
+
+  // The guard must fire only on NEW dirt. A pre-existing untracked file (a stray CLAUDE.md,
+  // editor droppings) previously failed every perfectly good run in production.
+  test(`#124 [${backend}] pre-existing dirt is not blamed on the worker`, () => {
+    const repo = mkRepo()
+    fs.writeFileSync(path.join(repo, 'was-already-here.txt'), 'not the worker\n')
+    const r = runRunner(script, { repo })
+    assert.ok(!r.output.includes('post-check FAIL'), `${backend}: false positive on pre-existing dirt\n${r.output}`)
+    assert.equal(r.status, 0, `${backend}: pre-existing dirt must not fail the run`)
+  })
+
+  test(`#124 [${backend}] --post-check mode works standalone`, () => {
+    const repo = mkRepo()
+    const clean = spawnSync('bash', [path.join(SCRIPTS_DIR, script), '--post-check', repo],
+      { encoding: 'utf8', env: { ...process.env, ...GIT_ENV } })
+    assert.equal(clean.status, 0, `${backend}: clean repo should pass --post-check`)
+    assert.ok(`${clean.stdout}`.includes('post-check OK'))
+    fs.writeFileSync(path.join(repo, 'dirty.txt'), 'x\n')
+    const dirty = spawnSync('bash', [path.join(SCRIPTS_DIR, script), '--post-check', repo],
+      { encoding: 'utf8', env: { ...process.env, ...GIT_ENV } })
+    assert.equal(dirty.status, 1, `${backend}: dirty repo should fail --post-check`)
+    assert.ok(`${dirty.stderr}`.includes('post-check FAIL'))
+  })
+}
+
+// mkRepo: a plain main checkout (the in-place helper above builds a linked worktree instead).
+function mkRepo() {
+  const repo = mkdtemp('cd-guard-repo-')
+  const env = { ...process.env, ...GIT_ENV }
+  execSync('git init -q -b main', { cwd: repo, env })
+  fs.writeFileSync(path.join(repo, 'note.txt'), 'seed\n')
+  execSync('git add note.txt && git commit -q -m seed', { cwd: repo, env })
+  return repo
+}

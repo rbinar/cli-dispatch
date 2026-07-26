@@ -6,7 +6,7 @@ param()
 $ErrorActionPreference = 'Stop'
 
 function Show-Usage {
-  Write-Host 'usage: cli-dispatch-run --backend <ds|ag|cx|oc|cp> --cwd <repo> [--prompt <text> | --prompt-file <path>] [--branch <name>] [--base-ref <ref>] [--model <slug>] [--effort low|medium|high] [--verify <cmd>] [--verify-timeout SECS] [--timeout SECS] [--resume <session-id>] [--cleanup-if-clean]'
+  Write-Host 'usage: cli-dispatch-run --backend <ds|ag|cx|oc|cp> --cwd <repo> [--prompt <text> | --prompt-file <path>] [--branch <name>] [--model <slug>] [--effort low|medium|high] [--verify <cmd>] [--verify-timeout SECS] [--timeout SECS] [--resume <session-id>] [--cleanup-if-clean]'
 }
 
 function Need-Value {
@@ -23,7 +23,6 @@ $Cwd = ''
 $Prompt = ''
 $PromptFile = ''
 $Branch = ''
-$BaseRef = ''
 $Model = ''
 $Effort = ''
 $Verify = @()
@@ -40,7 +39,6 @@ while ($i -lt $args.Count) {
     '--prompt' { Need-Value '--prompt' $i $args.Count; $Prompt = $args[$i + 1]; $i += 2 }
     '--prompt-file' { Need-Value '--prompt-file' $i $args.Count; $PromptFile = $args[$i + 1]; $i += 2 }
     '--branch' { Need-Value '--branch' $i $args.Count; $Branch = $args[$i + 1]; $i += 2 }
-    '--base-ref' { Need-Value '--base-ref' $i $args.Count; $BaseRef = $args[$i + 1]; $i += 2 }
     '--model' { Need-Value '--model' $i $args.Count; $Model = $args[$i + 1]; $i += 2 }
     '--effort' { Need-Value '--effort' $i $args.Count; $Effort = $args[$i + 1]; $i += 2 }
     '--verify' { Need-Value '--verify' $i $args.Count; $Verify += $args[$i + 1]; $i += 2 }
