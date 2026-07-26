@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.4.0] — 2026-07-26
+
+The ⚙ Configuration view answered "is this backend authenticated?" by asking "is there a key for it
+in `~/.config/cli-dispatch/config`?" — which is the wrong question for three of the five backends.
+`setup.md`, the comments `install.sh` writes into the generated config, and `README.md` all state
+that Antigravity, Codex and Copilot normally sign in through their own CLI and have **no key in the
+config at all**. So the view reported `○ not set` for backends that demonstrably work, and
+`doctor.md` answered the same question with an unverified guess phrased as a pass ("using Google
+sign-in"). `README.md` has meanwhile advertised per-backend "CLI auth ✓/✗" that only `gh` delivered.
+
+### Added
+
+- **Per-backend auth state in the ⚙ Configuration view.** Each backend group now leads with an
+  `auth` line that combines both credential sources and never claims more than it knows:
+  `✓ key in config` / `✓ logged in (ChatGPT)` / `✓ logged in (gh)` / `✗ not logged in` +
+  the command that fixes it / `could not check` / `CLI not installed`. New
+  `GET /api/backend-auth` — its own route rather than extra cost inside `/api/config`, since it
+  spawns child processes and caches on a different clock (60 s TTL; ~590 ms cold, ~1 ms warm).
+- **Real probes replace the guesses in `/cli-dispatch:doctor`** for all four backends that have a
+  login: `codex login status` (a local read of `~/.codex/auth.json`, and it reports the *method* —
+  a ChatGPT subscription and an API key bill differently), `gh auth token` for Copilot (the repo's
+  own definition of "logged in", and unlike `gh auth status` it reads the keyring with **no network
+  round-trip**, so it cannot stall the view offline), and `opencode auth list` for OpenCode.
+- **Session history as evidence where no probe exists.** `agy` has no auth subcommand at all, and
+  the repo's only existing Antigravity check spawns a real `agy -p "ping"` with a 35-second cap —
+  far too slow for a config view. For Antigravity and DeepSeek the view says so plainly and adds
+  the strongest cheap evidence available, which the session dirs already carry: the last successful
+  run per backend and its count of `errorKind: 'auth'` failures.
+- **The four credential env vars the view could not see** are now reported (presence only, never a
+  value): `ANTIGRAVITY_API_KEY`, `OPENAI_API_KEY`, `GH_TOKEN`, `GITHUB_TOKEN`. Every one is honoured
+  by a wrapper but absent from `CONFIG_KEYS`, so a user authenticated through any of them still read
+  as "not set".
+
+### Security
+
+- **No probe output ever leaves the server.** Each result is parsed into an enum plus a short method
+  string inside `dashboard-server.mjs`; the client receives no account names, no emails and no token
+  material. This matters most for Copilot: `gh auth token` *prints the token*, so it is
+  length-checked and discarded, never stored, logged, or included in a response. A test asserts the
+  payload contains no `gho_`/`sk-or-v1`/account identity even when every probe is made to emit them.
+- **Probes cannot prompt.** Fixed argv (no shell), `stdin` closed, 3-second timeout, `SIGKILL` on
+  expiry — so a login prompt can never sit waiting behind a dashboard request.
+- **A probe that cannot run reports `unknown`, never `logged-out`.** "Could not check" and "not
+  logged in" are different claims and only one of them is safe to assert; a timeout, a missing CLI
+  and unrecognised output each get their own state. Pinned by tests.
+
+### Fixed
+
+- **`doctor.md` no longer reports a pass it did not verify.** The Antigravity, Codex and Copilot
+  sections printed reassuring sign-in text purely because the key was absent. Codex and Copilot now
+  probe for real; Antigravity reports the key honestly and falls back to run history; OpenCode's
+  missing key is no longer treated as automatically fatal, since `opencode auth login` exists.
+- **`codex login status` parsing bug caught by its own test:** `"Not logged in"` lower-cased still
+  contains `"logged in"`, so the naive positive match reported a logged-out user as logged in. The
+  negation is now tested first.
+
 ## [4.3.0] — 2026-07-25
 
 Realigns the dashboard with the architecture 4.0.0 shipped. The dashboard had not been

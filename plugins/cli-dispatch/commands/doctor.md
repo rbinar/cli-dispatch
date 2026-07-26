@@ -15,6 +15,12 @@ chk() { command -v "$1" >/dev/null 2>&1 && ok "$1 on PATH ($(command -v "$1"))" 
 CFG="${CLI_DISPATCH_CONFIG:-${CLAUDE_DS_CONFIG:-}}"
 [ -n "$CFG" ] || { CFG="$HOME/.config/cli-dispatch/config"; [ -f "$CFG" ] || { [ -f "$HOME/.config/claude-ds/config" ] && CFG="$HOME/.config/claude-ds/config"; }; }
 
+# Session-dir root — same resolution order as watch/resume/kill/sessions/gain/clean/wait:
+# CLI_DISPATCH_SESSIONS_DIR env override -> ~/.cache/cli-dispatch/sessions -> legacy claude-ds.
+# Used below only as evidence for a backend that has no auth probe of its own.
+SESS="${CLI_DISPATCH_SESSIONS_DIR:-}"
+[ -n "$SESS" ] || { SESS="${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions"; [ -d "$SESS" ] || SESS="${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions"; }
+
 echo "── Prerequisites ───────────────────────────────────────"
 chk claude
 chk node
@@ -35,7 +41,25 @@ if command -v ag-agent >/dev/null 2>&1; then
   chk ag-stream
   chk agy
   command -v script >/dev/null 2>&1 && ok "script (pseudo-tty) found" || bad "script missing (ag backend needs it)"
-  [ -f "$CFG" ] && ( . "$CFG"; [ -n "${GEMINI_API_KEY:-}" ] && ok "GEMINI_API_KEY set" || ok "no GEMINI_API_KEY — using Google sign-in (run 'agy' once if not signed in)" )
+  # agy has NO auth subcommand, and the only real check spawns `agy -p "ping"` with a 35s cap
+  # (ag-stream's preflight) — far too slow here. So report the key honestly and, when there is no
+  # key, fall back to the strongest cheap evidence: did an antigravity worker recently succeed?
+  [ -f "$CFG" ] && ( . "$CFG"
+    if [ -n "${GEMINI_API_KEY:-}" ]; then ok "GEMINI_API_KEY set"
+    elif [ -n "${ANTIGRAVITY_API_KEY:-}" ]; then ok "ANTIGRAVITY_API_KEY set"
+    else
+      AG_LAST="$(ls -1dt "$SESS"/*/ 2>/dev/null | while read -r d; do
+        grep -lq '"backend"[[:space:]]*:[[:space:]]*"antigravity"' "$d/status.json" 2>/dev/null \
+          && grep -q '"state"[[:space:]]*:[[:space:]]*"done"' "$d/status.json" 2>/dev/null \
+          && { basename "$d"; break; }
+      done)"
+      if [ -n "$AG_LAST" ]; then
+        ok "no key in config — Google sign-in (last antigravity worker succeeded, so the sign-in is live)"
+      else
+        echo "  – no key in config and no successful run on record — sign in once with: agy"
+      fi
+    fi
+  )
 else
   echo "  – ag-agent not installed (optional — /cli-dispatch:setup to add)"
 fi
@@ -49,7 +73,17 @@ if command -v cx-agent >/dev/null 2>&1; then
     [ -f "$CFG" ] && ( . "$CFG"
       if [ -n "${CODEX_API_KEY:-}" ]; then ok "CODEX_API_KEY set"
       elif [ -n "${OPENAI_API_KEY:-}" ]; then ok "OPENAI_API_KEY set"
-      else ok "no API key in config — OAuth via 'codex login' (run once if not signed in)"
+      else
+        # A real probe, not a guess: `codex login status` reads ~/.codex/auth.json locally (~140ms)
+        # and reports the METHOD, which matters — a ChatGPT subscription and an API key bill
+        # differently. stdin is closed so it can never wait on a prompt.
+        CX_AUTH="$(codex login status </dev/null 2>&1)"
+        case "$CX_AUTH" in
+          *"Logged in"*ChatGPT*) ok "logged in via codex login (ChatGPT)" ;;
+          *"Logged in"*"API key"*) ok "logged in via codex login (API key)" ;;
+          *"Logged in"*) ok "logged in via codex login" ;;
+          *) bad "not logged in and no key in config — run: codex login" ;;
+        esac
       fi
     )
   else
@@ -85,7 +119,11 @@ if command -v cp-agent >/dev/null 2>&1; then
   [ -f "$CFG" ] && ( . "$CFG"
     if [ -n "${COPILOT_GITHUB_TOKEN:-}" ]; then ok "COPILOT_GITHUB_TOKEN set"
     elif [ -n "${GH_TOKEN:-}" ] || [ -n "${GITHUB_TOKEN:-}" ]; then ok "GH_TOKEN/GITHUB_TOKEN set"
-    else ok "no token in config — will try gh auth token forwarding; active Copilot subscription required"
+    elif [ -z "${CLI_DISPATCH_NO_GH_TOKEN:-}" ] && command -v gh >/dev/null 2>&1 && [ -n "$(gh auth token 2>/dev/null)" ]; then
+      # Not a guess: this is the repo's own definition of "logged in" for Copilot, and it reads the
+      # keyring with no network round-trip (see stream-utils.sh's maybe_export_gh_token).
+      ok "no token in config — using gh auth token (forwarded as GH_TOKEN); active Copilot subscription required"
+    else bad "no token in config and gh is not authenticated — run: gh auth login  (or set COPILOT_GITHUB_TOKEN)"
     fi
   )
 else
