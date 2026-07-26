@@ -60,7 +60,15 @@ while ($i -lt $args.Count) {
   switch ($args[$i]) {
     "--remove" { $remove = $true; $engineArgs += $args[$i]; $i++ }
     "--quiet" { $quiet = $true; $engineArgs += $args[$i]; $i++ }
-    "--worktree-days" { if ($i + 1 -lt $args.Count) { $wtDays = [int]$args[$i + 1] }; $i += 2 }
+    "--worktree-days" {
+        # TryParse, not a [int] cast: PowerShell throws on [int]"abc" and killed the whole sweep.
+        # Bash silently falls back to the default here, so match that rather than crashing.
+        if ($i + 1 -lt $args.Count) {
+          $parsed = 0
+          if ([int]::TryParse($args[$i + 1], [ref]$parsed)) { $wtDays = $parsed }
+        }
+        $i += 2
+      }
     "--skip-worktrees" { $skipWorktrees = $true; $i++ }
     default { $engineArgs += $args[$i]; $i++ }
   }
@@ -92,7 +100,10 @@ if (-not $skipWorktrees) {
   $prunedRepos = @()
 
   if ($tmpRoot -and (Test-Path $tmpRoot)) {
-    $cutoff = (Get-Date).AddDays(-$wtDays)
+    # Mirror `find -mtime +N` exactly: find divides the age by 86400 with integer truncation and
+    # then tests > N, so the real threshold is (N+1) whole days, not N. AddDays(-$wtDays) removed
+    # worktrees a full day earlier than the bash sweep on the same flags.
+    $cutoff = (Get-Date).AddDays(-($wtDays + 1))
     $candidates = Get-ChildItem -Path $tmpRoot -Directory -Filter "*-wt-*" -ErrorAction SilentlyContinue |
       Where-Object { $_.LastWriteTime -lt $cutoff }
     foreach ($wt in $candidates) {

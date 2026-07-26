@@ -9,8 +9,44 @@ set -euo pipefail
 # INHERITED repo, not $REPO, and in-place detection could hand the worker the user's main
 # checkout with zero isolation. Drop them before the first git call.
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_NAMESPACE
+# ---- shared repo-dirty check (used by both --post-check and normal-run guard) ----
+# Returns 0 (clean) or 1 (dirty). On dirty: saves a patch of the changes and prints
+# the FAIL message + status output to stderr (caller decides what to do with exit code).
+_check_repo_clean() {
+  local repo="$1"
+  # Same gate as the normal run below: rev-parse exits 0 while PRINTING "false" inside a
+  # bare repo or a .git admin dir, so compare the output, not the exit status.
+  [ "$(git -C "$repo" rev-parse --is-inside-work-tree 2>/dev/null)" = "true" ] || { echo "Not a git repo (or not a work tree): $repo" >&2; return 1; }
+  local status_out
+  status_out="$(git -C "$repo" status --short)"
+  if [ -z "$status_out" ]; then
+    echo ">>> post-check OK: $repo is clean"
+    return 0
+  fi
+  local ts patch_file
+  ts="$(date +%s)"
+  # Temp dir, not "$repo/.." — that parent is a directory the runner does not own.
+  patch_file="${TMPDIR:-/tmp}/cli-dispatch-leaked-changes-${ts}.patch"
+  git -C "$repo" diff > "$patch_file"
+  # Note: git diff does not cover untracked files; status --short above does list them.
+  echo ">>> post-check FAIL: $repo is dirty — worker leaked changes outside worktree" >&2
+  echo ">>> patch saved: $patch_file" >&2
+  echo "$status_out" >&2
+  return 1
+}
+
+# --post-check mode: verify main repo wasn't dirtied by a worker
+if [ "${1:-}" = "--post-check" ]; then
+  if [ "$#" -ne 2 ]; then
+    echo "usage: ag-worktree-run.sh --post-check <repo-path>" >&2
+    exit 1
+  fi
+  _check_repo_clean "$2"
+  exit
+fi
+
 if [ "$#" -lt 3 ]; then
-  echo "usage: ag-worktree-run.sh <repo-path> <branch> <brief-file>" >&2
+  echo "usage: ag-worktree-run.sh [--post-check <repo-path>] | <repo-path> <branch> <brief-file>" >&2
   exit 1
 fi
 REPO="$1"; BRANCH="$2"; BRIEF="$3"
@@ -34,6 +70,7 @@ STREAM="$(command -v ag-stream 2>/dev/null || true)"
 # Detection: a linked worktree's git-dir differs from its git-common-dir.
 # Escape hatch: CLI_DISPATCH_NO_IN_PLACE=1 forces the legacy nested-worktree behaviour.
 IN_PLACE=0
+GUARD_REPO="$REPO"
 GIT_DIR_ABS="$(git -C "$REPO" rev-parse --absolute-git-dir 2>/dev/null || true)"
 GIT_COMMON_ABS="$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
 if [ -z "$GIT_COMMON_ABS" ]; then
@@ -45,6 +82,15 @@ fi
 [ -n "$GIT_COMMON_ABS" ] && GIT_COMMON_ABS="$( (cd "$GIT_COMMON_ABS" && pwd -P) 2>/dev/null || true)"
 if [ "${CLI_DISPATCH_NO_IN_PLACE:-0}" != "1" ] && [ -n "$GIT_DIR_ABS" ] && [ -n "$GIT_COMMON_ABS" ] && [ "$GIT_DIR_ABS" != "$GIT_COMMON_ABS" ]; then
   IN_PLACE=1
+  # Leak-guard the MAIN checkout instead of $REPO — writes into $REPO are the point now.
+  # `worktree list --porcelain` lists the main worktree first; dirname(git-common-dir) is
+  # wrong for --separate-git-dir layouts and for worktrees of a bare repo.
+  _MAIN="$(git -C "$REPO" worktree list --porcelain 2>/dev/null | sed -n '1s/^worktree //p')"
+  if [ -n "$_MAIN" ] && [ "$(git -C "$_MAIN" rev-parse --is-inside-work-tree 2>/dev/null)" = "true" ]; then
+    GUARD_REPO="$_MAIN"
+  else
+    GUARD_REPO=""
+  fi
 fi
 
 if [ "$IN_PLACE" -eq 1 ]; then
@@ -95,6 +141,11 @@ else
     ln -s "$REPO/node_modules" "$WT/node_modules"
   fi
 fi
+# Snapshot the guarded repo's dirt BEFORE the worker runs: the post-check below must fail
+# only on NEW entries, or any pre-existing untracked file (a stray CLAUDE.md, editor
+# droppings) fails every perfectly good run — this false-positived in production.
+PRE_STATUS=""
+[ -n "$GUARD_REPO" ] && PRE_STATUS="$(git -C "$GUARD_REPO" status --short 2>/dev/null || true)"
 echo ">>> Running ag-stream (Antigravity/Gemini, session-tracked) in $WT ..."
 # --cwd is registered as agy's active workspace (via --add-dir) so files land here.
 "$STREAM" --cwd "$WT" -p "$(cat "$BRIEF")"
@@ -107,3 +158,25 @@ else
   echo "    rm -f \"$WT/node_modules\"; git -C \"$REPO\" worktree remove \"$WT\" --force; git -C \"$REPO\" worktree prune"
 fi
 git -C "$WT" status --short
+
+# Post-run: verify the guarded repo gained no NEW dirt from the worker (issue #68).
+# The worker should only write inside $WT; new entries in $GUARD_REPO's status mean it
+# resolved an absolute path back out of the tree it was given. In in-place mode $GUARD_REPO
+# is the MAIN checkout, never the target worktree the caller asked us to write to (#108).
+if [ -z "$GUARD_REPO" ]; then
+  echo ">>> post-check skipped: no main checkout to guard"
+  exit 0
+fi
+POST_STATUS="$(git -C "$GUARD_REPO" status --short 2>/dev/null || true)"
+NEW_DIRT="$(comm -13 <(printf '%s\n' "$PRE_STATUS" | sort) <(printf '%s\n' "$POST_STATUS" | sort) | grep -v '^$' || true)"
+if [ -z "$NEW_DIRT" ]; then
+  echo ">>> post-check OK: no new changes in $GUARD_REPO"
+  exit 0
+fi
+TS="$(date +%s)"
+PATCH_FILE="${TMPDIR:-/tmp}/cli-dispatch-leaked-changes-${TS}.patch"
+git -C "$GUARD_REPO" diff > "$PATCH_FILE" 2>/dev/null || true
+echo ">>> post-check FAIL: worker leaked NEW changes outside the worktree into $GUARD_REPO" >&2
+echo ">>> patch saved: $PATCH_FILE" >&2
+printf '%s\n' "$NEW_DIRT" >&2
+exit 1

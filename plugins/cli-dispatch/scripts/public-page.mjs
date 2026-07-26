@@ -184,8 +184,53 @@ function runsSummaryHtml(rows){
   const tail=stranded?'<div class="small muted">'+stranded+' run'+(stranded===1?'':'s')+' recorded uncommitted changes in a worktree — see ⚙ Maintenance</div>':''
   return '<div class="small" style="margin-bottom:10px">'+bits.join(' · ')+'</div>'+tail
 }
+// Worker tokens that went to a NON-Anthropic backend. Deliberately worded "offloaded from
+// Anthropic", not "saved": what is measured is which tokens did not hit the Anthropic account.
+// Claiming a saving would be a counterfactual — an inline Claude would have used some different,
+// unknown number of tokens for the same task — and this dashboard does not get to guess it.
+//
+// Both caveats ride along with the number instead of being left implicit, because without them a
+// reader takes an under-reported total at face value:
+//   - backends that expose no usage at all (agy exposes none) make the total a FLOOR, not a total;
+//   - a killed worker leaves a mid-run snapshot, which is counted but flagged.
+// The legacy babysitter cost that partially offsets this needs a walk of ~/.claude/projects, which
+// is exactly the scan 4.3.0 removed from this route — so it stays in /cli-dispatch:gain.
+function offloadSummaryHtml(agg){
+  const keys=Object.keys(agg||{})
+  if(!keys.length) return ''
+  let inTok=0,outTok=0,sessions=0,noData=0,partial=0,runSessions=0,runIn=0,runOut=0
+  keys.forEach(k=>{
+    const a=agg[k]||{}
+    inTok+=Number(a.inputTokens)||0
+    outTok+=Number(a.outputTokens)||0
+    sessions+=Number(a.sessions)||0
+    noData+=Number(a.noDataSessions)||0
+    partial+=Number(a.partialSessions)||0
+    runSessions+=Number(a.runSessions)||0
+    runIn+=Number(a.runInputTokens)||0
+    runOut+=Number(a.runOutputTokens)||0
+  })
+  if(!inTok&&!outTok) return ''
+  let h='<div class="small"><b>Offloaded from Anthropic</b> '
+    + '<span class="ok">' + esc(fmtTok(inTok)) + ' in / ' + esc(fmtTok(outTok)) + ' out</span>'
+    + ' <span class="muted">across ' + sessions + ' worker session' + (sessions===1?'':'s') + '</span></div>'
+  if(runSessions>0){
+    // The deterministic-runner subset is the cleanest evidence available: zero Anthropic babysitter
+    // tokens by construction, because the runner is plain shell.
+    h+='<div class="small muted">of which ' + runSessions + ' deterministic run'
+      + (runSessions===1?'':'s') + ': ' + esc(fmtTok(runIn)) + ' in / ' + esc(fmtTok(runOut))
+      + ' out, with no Anthropic supervision at all</div>'
+  }
+  const caveats=[]
+  if(noData>0) caveats.push(noData + ' session' + (noData===1?'':'s') + ' report no usage, so this is a floor rather than a total')
+  if(partial>0) caveats.push(partial + ' counted from a mid-run snapshot')
+  if(caveats.length) h+='<div class="small warnt">' + esc(caveats.join(' · ')) + '</div>'
+  h+='<div class="small muted">/cli-dispatch:gain adds the legacy babysitter cost that offsets this</div>'
+  return '<div style="margin-bottom:10px">' + h + '</div>'
+}
+
 function workersOverviewHtml(agg, rows){
-  const summary=runsSummaryHtml(rows)
+  const summary=offloadSummaryHtml(agg)+runsSummaryHtml(rows)
   const keys=Object.keys(agg||{}).sort()
   if(!keys.length) return summary+'<div class="empty">No usage data yet.</div>'
   const cards=keys.map(k=>{

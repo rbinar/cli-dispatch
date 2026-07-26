@@ -383,8 +383,16 @@ test('GET /api/workers/aggregate sums worker usage by backend', async () => {
     actualPort = await waitForServerReady(child)
     const res = await httpRequest({ port: actualPort, method: 'GET', path: '/api/workers/aggregate' })
     assert.equal(res.status, 200)
-    assert.deepEqual(res.body.codex, { inputTokens: 100, outputTokens: 20, sessions: 2, noDataSessions: 1 })
-    assert.deepEqual(res.body.opencode, { inputTokens: 300, outputTokens: 45, sessions: 1, noDataSessions: 0 })
+    // 4.5.0 added partialSessions + the deterministic-run subset to this shape; deepEqual keeps
+    // that shape pinned, so a future field cannot appear here unnoticed.
+    assert.deepEqual(res.body.codex, {
+      inputTokens: 100, outputTokens: 20, sessions: 2, noDataSessions: 1,
+      partialSessions: 0, runSessions: 0, runInputTokens: 0, runOutputTokens: 0,
+    })
+    assert.deepEqual(res.body.opencode, {
+      inputTokens: 300, outputTokens: 45, sessions: 1, noDataSessions: 0,
+      partialSessions: 0, runSessions: 0, runInputTokens: 0, runOutputTokens: 0,
+    })
     assert.equal(res.body.antigravity, undefined)
   } finally {
     await stopServer(child)
@@ -1242,7 +1250,7 @@ function stubCliDir(scripts) {
   return dir
 }
 
-async function withAuthServer(stubs, fn) {
+async function withAuthServer(stubs, fn, env) {
   const binDir = stubCliDir(stubs)
   const sessionsDir = mkdtempSync(path.join(tmpdir(), 'dash-authsess-'))
   const homeDir = mkdtempSync(path.join(tmpdir(), 'dash-home-'))
@@ -1254,7 +1262,15 @@ async function withAuthServer(stubs, fn) {
     // silently test the wrong branch). The real codex/opencode/gh live in ~/.local/bin, nvm and
     // Homebrew, none of which are on this PATH — so the isolation still holds.
     // Alternate credential vars are cleared so altCreds is deterministic.
-    env: { PATH: binDir + ':/usr/bin:/bin', GH_TOKEN: '', GITHUB_TOKEN: '', OPENAI_API_KEY: '', ANTIGRAVITY_API_KEY: '' },
+    // A generous probe deadline: `node --test` runs files in parallel, and under that load a
+    // trivial stub can miss the 3s production default and be reported 'unknown' — correct
+    // behaviour, but it made this test flaky. The timeout-specific test below sets its own.
+    env: {
+      PATH: binDir + ':/usr/bin:/bin',
+      GH_TOKEN: '', GITHUB_TOKEN: '', OPENAI_API_KEY: '', ANTIGRAVITY_API_KEY: '',
+      CLI_DISPATCH_AUTH_PROBE_TIMEOUT_MS: '15000',
+      ...(env || {}),
+    },
   })
   try {
     const actualPort = await waitForServerReady(child)
@@ -1328,7 +1344,7 @@ test('GET /api/backend-auth reports logged-out only when the probe actually said
 // assert. A hanging or missing CLI must never be rendered as a red cross.
 test('GET /api/backend-auth reports unknown, not logged-out, when a probe cannot run', async () => {
   await withAuthServer({
-    // Sleeps well past the 3s probe timeout.
+    // Sleeps well past the (deliberately short) probe timeout set below.
     codex: SH + 'sleep 30\n',
     // gh absent from the stub dir entirely.
     opencode: SH + 'echo "something we do not recognise"\n',
@@ -1339,7 +1355,7 @@ test('GET /api/backend-auth reports unknown, not logged-out, when a probe cannot
     assert.match(b.cx.note, /timed out/)
     assert.equal(b.cp.state, 'cli-missing', 'a missing CLI is not a logged-out user')
     assert.equal(b.oc.state, 'unknown', 'unparseable output must not be guessed either way')
-  })
+  }, { CLI_DISPATCH_AUTH_PROBE_TIMEOUT_MS: '1200' })
 })
 
 test('GET /api/backend-auth carries session evidence for the probe-less backends', async () => {
@@ -1391,4 +1407,97 @@ test('GET /api/backend-auth caches, so opening the view repeatedly does not resp
     const calls = readFileSync(marker, 'utf8').trim().split('\n').length
     assert.equal(calls, 1, 'the codex probe should have run once, ran ' + calls + ' times')
   })
+})
+
+// ---- token offload accounting (4.5.0) ----
+//
+// The dashboard and `gain` must never disagree about the same status.json. They did: the dashboard
+// counted Codex's cache-INCLUSIVE input_tokens whole, so its headline "offloaded" figure was ~2x
+// gain's (6.8M vs 3.5M on a real machine). Issue #99 established the rule; these tests pin it on
+// this side too.
+test('GET /api/workers/aggregate subtracts cached input (#99) and never goes negative', async () => {
+  const sessionsDir = mkdtempSync(path.join(tmpdir(), 'dash-offload-'))
+  const homeDir = mkdtempSync(path.join(tmpdir(), 'dash-home-'))
+  const port = 18800 + Math.floor(Math.random() * 1000)
+
+  const seed = (id, backend, usage, extra = {}) => {
+    const d = path.join(sessionsDir, id)
+    mkdirSync(d, { recursive: true })
+    writeFileSync(path.join(d, 'status.json'), JSON.stringify({ backend, state: 'done', usage, ...extra }))
+    writeFileSync(path.join(d, 'meta.json'), JSON.stringify({ backend }))
+    return d
+  }
+
+  // Codex's real shape: cached_input_tokens is a SUBSET of input_tokens (88% on real data).
+  seed('cx-1', 'codex', { input_tokens: 1000, cached_input_tokens: 880, output_tokens: 50 })
+  // OpenCode's real shape: cached_input_tokens is a SEPARATE counter that can EXCEED input_tokens.
+  // Subtracting there would report a negative token count, so the guard must skip it.
+  seed('oc-1', 'opencode', { input_tokens: 196, cached_input_tokens: 300, output_tokens: 7 })
+  // DeepSeek reports no cached_input_tokens at all — untouched.
+  seed('ds-1', 'deepseek', { input_tokens: 500, output_tokens: 200 })
+  // A killed worker leaves a mid-run snapshot: counted, but it must be flagged rather than
+  // silently summed as if it were a final total.
+  seed('ds-2', 'deepseek', { input_tokens: 100, output_tokens: 0 }, { usagePartial: true })
+  // A backend that exposes no usage at all (agy) makes the total a floor, not a total.
+  seed('ag-1', 'antigravity', null)
+
+  const child = startServerIsolated({ sessionsDir, homeDir, port })
+  try {
+    const actualPort = await waitForServerReady(child)
+    const res = await httpRequest({ port: actualPort, method: 'GET', path: '/api/workers/aggregate' })
+    assert.equal(res.status, 200)
+    const cx = res.body.codex
+    const oc = res.body.opencode
+    const ds = res.body.deepseek
+    const ag = res.body.antigravity
+
+    assert.equal(cx.inputTokens, 120, 'cached input must be subtracted: 1000 - 880')
+    assert.equal(oc.inputTokens, 196, 'cached > input must be left alone, never negative')
+    assert.ok(oc.inputTokens > 0, 'a negative token count would be nonsense')
+    assert.equal(ds.inputTokens, 600, 'no cached field means no adjustment (500 + 100)')
+
+    // The two honesty caveats must be reportable, not implicit.
+    assert.equal(ds.partialSessions, 1, 'a mid-run snapshot must be counted as partial')
+    assert.equal(ag.noDataSessions, 1, 'a usage-less backend must be reportable as such')
+    assert.equal(ag.inputTokens, 0)
+  } finally {
+    await stopServer(child)
+    rmSync(sessionsDir, { recursive: true, force: true })
+    rmSync(homeDir, { recursive: true, force: true })
+  }
+})
+
+test('GET /api/workers/aggregate isolates the deterministic-run subset', async () => {
+  const sessionsDir = mkdtempSync(path.join(tmpdir(), 'dash-offrun-'))
+  const homeDir = mkdtempSync(path.join(tmpdir(), 'dash-home-'))
+  const port = 18800 + Math.floor(Math.random() * 1000)
+  const seed = (id, withVerdict) => {
+    const d = path.join(sessionsDir, id)
+    mkdirSync(d, { recursive: true })
+    writeFileSync(path.join(d, 'status.json'), JSON.stringify({
+      backend: 'deepseek', state: 'done', usage: { input_tokens: 100, output_tokens: 10 },
+    }))
+    writeFileSync(path.join(d, 'meta.json'), JSON.stringify({ backend: 'deepseek' }))
+    if (withVerdict) writeFileSync(path.join(d, 'verdict.json'), JSON.stringify(REAL_VERDICT))
+  }
+  seed('run-1', true)
+  seed('plain-1', false)
+
+  const child = startServerIsolated({ sessionsDir, homeDir, port })
+  try {
+    const actualPort = await waitForServerReady(child)
+    const res = await httpRequest({ port: actualPort, method: 'GET', path: '/api/workers/aggregate' })
+    const ds = res.body.deepseek
+    assert.equal(ds.sessions, 2)
+    // Deterministic runs carry zero Anthropic babysitter cost by construction, so isolating them
+    // is the cleanest evidence of offload the plugin has.
+    assert.equal(ds.runSessions, 1, 'only the session with a verdict is a deterministic run')
+    assert.equal(ds.runInputTokens, 100)
+    assert.equal(ds.runOutputTokens, 10)
+    assert.equal(ds.inputTokens, 200, 'the overall total still counts both')
+  } finally {
+    await stopServer(child)
+    rmSync(sessionsDir, { recursive: true, force: true })
+    rmSync(homeDir, { recursive: true, force: true })
+  }
 })

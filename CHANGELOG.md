@@ -7,6 +7,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.5.0] — 2026-07-26
+
+Closes the four audit issues left open since 4.2.1 (#122 AU4, #123, #124, #125's decision-free half)
+and adds a token-offload summary to the dashboard. Along the way it fixes a **2x error in the
+headline savings number** — see Fixed.
+
+### Added
+
+- **Token offload on the Workers overview.** `Offloaded from Anthropic — 3.5M in / 785.5K out across
+  120 worker sessions`, with the deterministic-runner subset called out separately (those carry zero
+  Anthropic supervision by construction). Deliberately worded **offloaded**, not *saved*: which
+  tokens did not hit the Anthropic account is measurable, whereas a saving is a counterfactual —
+  nobody knows what an inline Claude would have spent on the same task, and the dashboard does not
+  get to guess. Both caveats ride along with the number rather than being left implicit: how many
+  sessions report no usage at all (so the total is a **floor**, not a total) and how many were
+  counted from a mid-run snapshot.
+- **`/cli-dispatch:gain` now reports deterministic runs** — count, verify outcome breakdown, worker
+  tokens, and explicitly `Anthropic babysitter tokens: 0 (the runner is plain shell)`. Detected from
+  `verdict.json`, which until now `gain` did not read at all. Resolves #122's `gain` half (AU4).
+- **The leak post-check now guards all five backends** (#124). It answers one question — did the
+  worker write OUTSIDE the tree it was given? — and only `ds-worktree-run.sh` asked it (11
+  `GUARD_REPO` references; **0** in ag/cx/oc/cp). On the other four a worker that resolved an
+  absolute path back out of its worktree did so silently. All five now carry the same
+  `--post-check` mode, pre-run dirt snapshot (so only NEW dirt fails), and recovery-patch output.
+  Covered by 20 new tests that run the real scripts against real repos, per backend.
+- **`CLI_DISPATCH_AUTH_PROBE_TIMEOUT_MS`** overrides the 3-second auth-probe deadline. The ceiling
+  is about machine load, not correctness: on a loaded machine a trivial probe can miss it and be
+  reported `unknown` — honest, but it made a test flaky.
+
+### Fixed
+
+- 🔴 **The dashboard over-reported worker input tokens by ~2x.** Codex reports cache-INCLUSIVE
+  `input_tokens` with `cached_input_tokens` as a subset — **88% of the total on real data**
+  (3.38M of 3.82M). `gain` subtracts it (issue #99); the dashboard did not, so the same session
+  files produced `6.8M in` in one surface and `3.5M in` in the other. Both now report
+  `3,464,536 in / 785,496 out` exactly. The `cached <= input` guard is load-bearing rather than
+  defensive: OpenCode reports `cached_input_tokens` as a **separate** counter that can exceed
+  `input_tokens` (196k in / 300k cached on real data), where subtracting would yield a negative
+  token count. Pinned by tests, including that negative case.
+- **`gain`'s babysitting section said the opposite of the truth.** Its caveat described
+  "non-pinned-model CLI-invoking subagents" as the excluded anomaly, when post-4.0.0 that is the
+  **normal** case; the heading claimed to measure "runner subagents only" after those subagents had
+  been retired. The section is now explicitly labelled LEGACY (pre-4.0.0) and says where today's
+  runs are counted instead. `cli-dispatch-run` stays deliberately out of `RUNNER_RE` — it is the
+  sanctioned path and spends no Anthropic tokens, so matching it would score the fix as the problem.
+- **Cross-platform threshold semantics** (#123), with bash as canonical:
+  - `cli-dispatch-clean.ps1` swept worktrees a full day earlier than bash. `find -mtime +N`
+    truncates the age to whole 24-hour periods and then requires strictly more than N, so the real
+    threshold is **N+1 whole days** — measured, not assumed: a 3.5-day-old directory is *not* swept
+    by `+3`, a 4.0-day-old one is. The `.ps1` now mirrors that. Deleting someone's worktree a day
+    early is the worse failure, so bash wins.
+  - `cli-dispatch-clean.ps1` **crashed** on a non-numeric `--worktree-days` (`[int]"abc"` throws in
+    PowerShell, taking the whole sweep with it). Bash silently falls back to the default; the `.ps1`
+    now uses `TryParse` and does the same.
+  - `cli-dispatch-wait.ps1` polled one extra interval past the requested deadline (`-gt` vs bash's
+    `-ge`). At exactly `--timeout` seconds the wait is now over on both platforms.
+
+### Changed
+
+- **`--base-ref` removed from `cli-dispatch-run` and its `.ps1` twin** (#125). It was parsed and
+  assigned on both platforms and **read nowhere** — the worktree runners compute their own base ref.
+  A caller passing it now gets `unknown arg` and exit 5 instead of silently getting nothing, which
+  is the honest outcome: the flag never worked.
+- **`cli-dispatch-run-integration.test.mjs` converted to `node:test`** (#125). Its hand-rolled
+  `main()` + `process.exit()` collapsed four scenarios into one reporting unit, so a failure told
+  you the file broke, not which case. No correctness was lost by the old shape — `process.exit(1)`
+  does surface as a failure under `node --test` — only observability.
+- **`"subagent"` dropped from `marketplace.json`'s keywords** (#125) — the subagents it described
+  were retired in 4.0.0.
+
+Test suite 278 → 305.
+
 ## [4.4.0] — 2026-07-26
 
 The ⚙ Configuration view answered "is this backend authenticated?" by asking "is there a key for it

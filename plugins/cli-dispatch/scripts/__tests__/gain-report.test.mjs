@@ -5,6 +5,8 @@ import {
   backendFromCommand,
   analyzeAgentEvents,
   computeBabysitRatio,
+  RUNNER_RE,
+  PINNED_RUNNER_MODEL_RE,
 } from '../gain-report.mjs'
 
 // --- Fix 1 helper: real polling signal (status.json direct read, NOT cli-dispatch-wait) ---
@@ -122,4 +124,30 @@ test('computeBabysitRatio: combined numerator across pinned non-blind runners', 
 test('computeBabysitRatio: null ratio when denominator is zero', () => {
   const r = computeBabysitRatio({runnerRecords:[], workerOutputTotal:0, blindBackends:new Set(), pollThreshold:5})
   assert.equal(r.ratioPct, null)
+})
+
+// --- #122 AU4: deterministic runs are counted, and cli-dispatch-run is NOT a babysitter ---
+
+// The retired *-runner subagents were pinned to haiku, which is what identifies a real pre-4.0.0
+// babysitter in transcript history. `cli-dispatch-run` must stay OUT of RUNNER_RE: it IS the
+// sanctioned path and spends no Anthropic tokens, so matching it would score the fix as the problem.
+test('RUNNER_RE matches the retired wrapper CLIs but never cli-dispatch-run', () => {
+  for (const cmd of ['ds-agent -p x', 'claude-ds-stream --cwd /tmp', 'ag-stream y', 'cx-agent', 'oc-stream', 'cp-agent']) {
+    assert.ok(RUNNER_RE.test(cmd), 'should match a legacy runner invocation: ' + cmd)
+  }
+  for (const cmd of [
+    'cli-dispatch-run ds "task" --verify "npm test"',
+    '/cli-dispatch:run cx "task"',
+    'cli-dispatch-wait abc',
+  ]) {
+    assert.equal(RUNNER_RE.test(cmd), false, 'must NOT be scored as a babysitter: ' + cmd)
+  }
+})
+
+// The gate is deliberately narrow. Widening it to today's path would inflate a ratio whose only
+// remaining purpose is historical accounting.
+test('PINNED_RUNNER_MODEL_RE identifies the legacy haiku pinning only', () => {
+  assert.ok(PINNED_RUNNER_MODEL_RE.test('claude-haiku-4-5-20251001'))
+  assert.equal(PINNED_RUNNER_MODEL_RE.test('claude-opus-5'), false)
+  assert.equal(PINNED_RUNNER_MODEL_RE.test('claude-sonnet-5'), false)
 })

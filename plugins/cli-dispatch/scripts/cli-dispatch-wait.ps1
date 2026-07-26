@@ -99,7 +99,9 @@ while ($true) {
 
   if ($Timeout -gt 0) {
     $elapsedSeconds = ((Get-Date) - $startTime).TotalSeconds
-    if ($elapsedSeconds -gt $Timeout) {
+    # -ge, matching the bash twin: at exactly --timeout seconds the wait is over. With -gt the
+    # PowerShell side polled one extra interval past the deadline the caller asked for.
+    if ($elapsedSeconds -ge $Timeout) {
       Write-Summary $state
       $elapsedInt = [math]::Floor($elapsedSeconds)
       Write-Host "TIMEOUT after ${elapsedInt}s, state still: $state"

@@ -7,6 +7,78 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.5.0] — 2026-07-26
+
+4.2.1'den beri açık kalan dört denetim issue'sunu kapatır (#122 AU4, #123, #124, #125'in karar
+gerektirmeyen yarısı) ve dashboard'a token offload özeti ekler. Bu sırada **manşet tasarruf
+sayısındaki 2 kat hatayı** da düzeltir — bkz. Düzeltildi.
+
+### Eklendi
+
+- **Workers genel görünümünde token offload.** `Offloaded from Anthropic — 3.5M in / 785.5K out
+  across 120 worker sessions`, deterministik runner alt kümesi ayrıca belirtilir (onlar yapısı
+  gereği sıfır Anthropic gözetimi taşır). Bilinçli olarak **offloaded** denir, *saved* denmez:
+  hangi token'ın Anthropic hesabına gitmediği ölçülebilir, ama tasarruf karşı-olgusaldır — aynı işi
+  inline Claude yapsa ne harcardı kimse bilmiyor ve dashboard'ın tahmin etme yetkisi yok. İki
+  çekince sayının yanında taşınır, örtük bırakılmaz: kaç session hiç usage bildirmiyor (yani toplam
+  bir **taban** değerdir) ve kaçı koşu ortası anlık görüntüden sayıldı.
+- **`/cli-dispatch:gain` artık deterministik koşuları bildiriyor** — sayı, verify sonuç dağılımı,
+  worker token'ları ve açıkça `Anthropic babysitter tokens: 0 (the runner is plain shell)`.
+  `verdict.json`'dan saptanır; `gain` şimdiye kadar o dosyayı hiç okumuyordu. #122'nin `gain`
+  yarısını (AU4) çözer.
+- **Leak post-check artık beş backend'i de koruyor** (#124). Tek bir soruyu yanıtlar — worker
+  kendisine verilen ağacın DIŞINA yazdı mı? — ve bunu yalnız `ds-worktree-run.sh` soruyordu (11
+  `GUARD_REPO` referansı; ag/cx/oc/cp'de **0**). Diğer dördünde, worktree'sinin dışına çıkan bir
+  absolute path'i çözen worker bunu sessizce yapıyordu. Beşi de artık aynı `--post-check` modunu,
+  koşu öncesi kir anlık görüntüsünü (yalnız YENİ kir hata verir) ve kurtarma patch'i çıktısını
+  taşıyor. Gerçek script'leri gerçek repo'lara karşı, backend başına koşan 20 yeni testle kapsandı.
+- **`CLI_DISPATCH_AUTH_PROBE_TIMEOUT_MS`** 3 saniyelik auth-probe süresini geçersiz kılar. Bu üst
+  sınır doğrulukla değil makine yüküyle ilgili: yüklü bir makinede önemsiz bir probe onu kaçırıp
+  `unknown` bildirebiliyor — dürüst, ama bir testi kararsız yapıyordu.
+
+### Düzeltildi
+
+- 🔴 **Dashboard worker input token'larını ~2 kat fazla bildiriyordu.** Codex cache-INCLUSIVE
+  `input_tokens` bildiriyor ve `cached_input_tokens` bir alt küme — **gerçek veride toplamın %88'i**
+  (3.82M'nin 3.38M'i). `gain` bunu çıkarıyor (issue #99); dashboard çıkarmıyordu, dolayısıyla aynı
+  session dosyaları bir yüzeyde `6.8M in`, diğerinde `3.5M in` veriyordu. İkisi de artık birebir
+  `3,464,536 in / 785,496 out` bildiriyor. `cached <= input` guard'ı savunma amaçlı değil, taşıyıcı:
+  OpenCode `cached_input_tokens`'ı **ayrı** bir sayaç olarak bildiriyor ve `input_tokens`'ı
+  aşabiliyor (gerçek veride 196k in / 300k cached) — orada çıkarma negatif token sayısı üretirdi.
+  O negatif vaka dahil testlerle sabitlendi.
+- **`gain`'in babysitting bölümü gerçeğin tersini söylüyordu.** Çekincesi "pinned-model olmayan
+  CLI çağıran subagent'ları" dışlanan anomali gibi tarif ediyordu; oysa 4.0.0 sonrası bu **normal**
+  vaka. Başlık ise o subagent'lar kaldırıldıktan sonra "yalnız runner subagent'ları" ölçtüğünü iddia
+  ediyordu. Bölüm artık açıkça LEGACY (4.0.0 öncesi) etiketli ve bugünün koşularının nerede
+  sayıldığını söylüyor. `cli-dispatch-run` bilinçli olarak `RUNNER_RE` dışında kalıyor — o onaylı
+  yol ve Anthropic token'ı harcamıyor; eşleştirmek çözümü sorun gibi puanlamak olurdu.
+- **Cross-platform eşik semantiği** (#123), bash kanonik:
+  - `cli-dispatch-clean.ps1` worktree'leri bash'ten tam bir gün önce süpürüyordu. `find -mtime +N`
+    yaşı tam 24 saatlik dilimlere kırpıp sonra kesinlikle N'den büyük olmasını istiyor, yani gerçek
+    eşik **N+1 tam gün** — varsayım değil, ölçüm: 3.5 günlük bir dizin `+3` ile süpürülmüyor,
+    4.0 günlük süpürülüyor. `.ps1` artık bunu birebir taklit ediyor. Birinin worktree'sini bir gün
+    erken silmek daha kötü bir başarısızlık, o yüzden bash kazanıyor.
+  - `cli-dispatch-clean.ps1` sayısal olmayan `--worktree-days` ile **çöküyordu**
+    (PowerShell'de `[int]"abc"` fırlatır ve tüm süpürmeyi götürür). Bash sessizce varsayılana
+    düşüyor; `.ps1` artık `TryParse` kullanıp aynısını yapıyor.
+  - `cli-dispatch-wait.ps1` istenen süreden bir aralık fazla yokluyordu (`-gt`, bash'in `-ge`'sine
+    karşı). Tam `--timeout` saniyede bekleme artık iki platformda da bitiyor.
+
+### Değişti
+
+- **`--base-ref`, `cli-dispatch-run` ve `.ps1` ikizinden kaldırıldı** (#125). İki platformda da
+  ayrıştırılıp atanıyor ama **hiçbir yerde okunmuyordu** — worktree runner'ları kendi base ref'ini
+  hesaplıyor. Onu geçen bir çağıran artık sessizce hiçbir şey almak yerine `unknown arg` ve exit 5
+  alıyor; bu dürüst sonuç: flag hiç çalışmamıştı.
+- **`cli-dispatch-run-integration.test.mjs` `node:test`'e çevrildi** (#125). Elle yazılmış
+  `main()` + `process.exit()` dört senaryoyu tek raporlama birimine çöküyordu, yani hata dosyanın
+  bozulduğunu söylüyordu, hangi vakanın değil. Eski şekilde doğruluk kaybı yoktu —
+  `process.exit(1)` `node --test` altında hata olarak görünür — yalnız gözlemlenebilirlik.
+- **`marketplace.json` keyword'lerinden `"subagent"` çıkarıldı** (#125) — tarif ettiği subagent'lar
+  4.0.0'da kaldırıldı.
+
+Test süiti 278 → 305.
+
 ## [4.4.0] — 2026-07-26
 
 ⚙ Configuration görünümü "bu backend kimlik doğrulamış mı?" sorusunu "`~/.config/cli-dispatch/config`
