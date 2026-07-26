@@ -2,17 +2,11 @@ import { execSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { NON_TERMINAL_STATES, TERMINAL_STATES } from './parse-utils.mjs'
+import { NON_TERMINAL_STATES, TERMINAL_STATES, normalizeBackend } from './parse-utils.mjs'
 
-const VALID_BACKENDS = new Set(['ds', 'ag', 'cx', 'oc', 'cp'])
-// The stream parsers write the LONG backend name into status.json/meta.json
-// (e.g. "codex"), while cli-dispatch-run speaks the short form — accept both.
-const BACKEND_ALIASES = { deepseek: 'ds', antigravity: 'ag', codex: 'cx', opencode: 'oc', copilot: 'cp' }
-export function normalizeBackend(value) {
-  const b = String(value ?? '').toLowerCase()
-  if (VALID_BACKENDS.has(b)) return b
-  return BACKEND_ALIASES[b] ?? null
-}
+// Moved to parse-utils.mjs (the shared session-dir contract) in 4.3.0 so the dashboard can
+// read it without importing this module. Re-exported here so existing importers keep working.
+export { normalizeBackend }
 
 function toLines(value) {
   return String(value ?? '').replace(/\r\n/g, '\n').split('\n')

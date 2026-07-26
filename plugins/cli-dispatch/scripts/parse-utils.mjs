@@ -45,6 +45,23 @@ export function isNonTerminalState(state) {
   return NON_TERMINAL_STATES.has(state)
 }
 
+// ---- backend name normalization ----
+
+// Two spellings of the same five backends coexist on disk: the stream parsers write the LONG
+// name into status.json/meta.json ("codex"), while cli-dispatch-run and verdict.json use the
+// SHORT form ("cx"). Any consumer that reads both files needs the mapping, so it lives here in
+// the shared-contract module rather than in verdict-writer.mjs (which re-exports it for
+// compatibility). dashboard-server.mjs deliberately does not import verdict-writer.mjs —
+// see the comment at the top of that file about static imports of optionally-installed modules.
+// Returns null for an unrecognised value; callers decide whether that is fatal.
+const VALID_BACKENDS = new Set(['ds', 'ag', 'cx', 'oc', 'cp'])
+const BACKEND_ALIASES = { deepseek: 'ds', antigravity: 'ag', codex: 'cx', opencode: 'oc', copilot: 'cp' }
+export function normalizeBackend(value) {
+  const b = String(value ?? '').toLowerCase()
+  if (VALID_BACKENDS.has(b)) return b
+  return BACKEND_ALIASES[b] ?? null
+}
+
 // ---- dashboard transition sentinel ----
 
 // The dashboard watches WORKERS_ROOT shallowly, so transitions inside an existing

@@ -8,6 +8,7 @@
 // isolation — dashboard-server.mjs imports these instead of defining them locally.
 
 import fs from 'node:fs'
+import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 
 export const FLOW_CAP = 400          // max events returned per flow request
@@ -49,6 +50,29 @@ export function readTail(file, maxBytes = 65536) {
 }
 export const lines = (s) => s.split('\n').filter((l) => l.trim())
 export const clip = (s, n = 140) => { s = String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n) + '…' : s }
+
+// Like clip(), but for text whose LINE STRUCTURE is the payload — a verify command's output
+// tail, for instance. clip() collapses all whitespace, which would turn a failing test report
+// into one unreadable line, so it must not be used for these.
+//
+// verdict-writer.mjs's tailText() caps the tail at 40 LINES with no byte limit, so a single
+// pathological line (a minified bundle in an error message) can still be megabytes. Cap both.
+export function clipLines(s, maxLines = 40, maxBytes = 8192) {
+  let text = String(s == null ? '' : s).replace(/\r\n/g, '\n')
+  if (!text) return ''
+  const all = text.split('\n')
+  let truncated = false
+  if (all.length > maxLines) {
+    text = all.slice(all.length - maxLines).join('\n')
+    truncated = true
+  }
+  if (text.length > maxBytes) {
+    // Keep the END of the text: for a failure tail the last lines are the informative ones.
+    text = text.slice(text.length - maxBytes)
+    truncated = true
+  }
+  return truncated ? '…\n' + text : text
+}
 
 // Pull a readable preview out of a message.content that may be string or block array.
 export function contentText(content) {
@@ -219,4 +243,170 @@ export function collectProcTree(rootPid) {
   }
   visit(rootPid)
   return all
+}
+
+// ---- deterministic-runner artifacts (verdict.json / changed-files.json) ----
+//
+// Only `cli-dispatch-run` writes verdict.json, and only once the session has reached a terminal
+// state, so its PRESENCE is the single available signal that a session came through the
+// deterministic runner. That signal is positive-only: a run killed before the verdict is written
+// leaves none, so "no verdict" means "no verdict was recorded", never "this was not a run".
+//
+// Both readers take the session DIRECTORY, build their own paths, and return null for
+// missing-or-unparseable input. Neither ever reads transcript.jsonl, and neither ever follows
+// verdict.diffPatchPath — that field is an absolute path read out of a file written by five
+// external CLIs, so treating it as a path to open would be an arbitrary-file-read primitive.
+
+// cli-dispatch-run's exit-code contract (.specs/dev/sdd/deterministic-runner.md).
+const VERDICT_OUTCOMES = {
+  0: 'pass',
+  1: 'verify-failed',
+  2: 'error',
+  3: 'timeout',
+  4: 'human-controlled',
+  5: 'setup-error',
+}
+
+// 124 is verdict-writer's own timeout code; 126/127 are the shell's "not executable" / "not
+// found". All three mean the CHECK never ran, which is neither a pass nor a failure of the work.
+const VERIFY_HARNESS_EXITS = new Set([124, 126, 127])
+
+function verifyStateFor(exitCode) {
+  if (!Number.isFinite(exitCode)) return 'unknown'
+  if (exitCode === 0) return 'pass'
+  if (VERIFY_HARNESS_EXITS.has(exitCode)) return 'harness'
+  return 'fail'
+}
+
+function num(value) {
+  const n = Number(value)
+  return Number.isFinite(n) ? n : null
+}
+
+function readJsonOrNull(file) {
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'))
+  } catch {
+    return null
+  }
+}
+
+// Normalizes verdict.json's `verify` and status.json's older `{cmd, exit, tail}` shape into one
+// object. verdict.json wins; status.verify is a fallback for sessions that never got a verdict.
+function normalizeVerify(raw, source) {
+  if (!raw || typeof raw !== 'object') return null
+  const commands = Array.isArray(raw.commands)
+    ? raw.commands.slice(0, 20).map((c) => clip(c, 200))
+    : (raw.cmd ? [clip(raw.cmd, 200)] : [])
+  const exitCode = num(raw.exitCode ?? raw.exit)
+  // runVerify stops at the first failure, so failedAt indexes the command that broke.
+  let failedAt = num(raw.failedAt)
+  if (failedAt == null && exitCode != null && exitCode !== 0) failedAt = 0
+  return {
+    source,
+    commands,
+    exitCode,
+    failedAt,
+    state: verifyStateFor(exitCode),
+    tail: clipLines(raw.tail),
+  }
+}
+
+export function readVerdict(sessionDir, { statusVerify } = {}) {
+  const raw = readJsonOrNull(path.join(sessionDir, 'verdict.json'))
+  if (!raw || typeof raw !== 'object') return null
+
+  // cli-dispatch-run writes {schemaVersion, error, sessionId, exitCode} when build-verdict
+  // itself threw. That file is valid JSON but carries none of the real fields, and its exitCode
+  // is a node exit status rather than the 0-5 contract value — so it must never be read as one.
+  // A future schema we do not understand is treated the same way: unknown, not assumed-passing.
+  const schemaVersion = num(raw.schemaVersion)
+  const buildError = typeof raw.error === 'string' && raw.error ? raw.error : ''
+  const malformed = !!buildError || (schemaVersion != null && schemaVersion > 1) || !raw.state
+
+  if (malformed) {
+    return {
+      malformed: true,
+      error: buildError,
+      exitCode: null,
+      outcome: 'unknown',
+      verify: null,
+      changedFiles: [],
+      stranded: false,
+      branch: '',
+      baseRef: '',
+      worktree: '',
+      backend: normalizeBackendLocal(raw.backend),
+      model: typeof raw.model === 'string' ? raw.model : '',
+      state: typeof raw.state === 'string' ? raw.state : '',
+      completedVia: '',
+      diffstat: '',
+      recordedAt: typeof raw.endedAt === 'string' ? raw.endedAt : '',
+      startedAt: typeof raw.startedAt === 'string' ? raw.startedAt : '',
+    }
+  }
+
+  const exitCode = num(raw.exitCode)
+  const verify = normalizeVerify(raw.verify, 'verdict')
+    || normalizeVerify(statusVerify, 'status')
+  return {
+    malformed: false,
+    error: '',
+    exitCode,
+    outcome: (exitCode != null && VERDICT_OUTCOMES[exitCode]) || 'unknown',
+    verify,
+    changedFiles: Array.isArray(raw.changedFiles) ? raw.changedFiles.map(String) : [],
+    // Recorded at run end, NOT live truth: verdict-writer's hasStrandedChanges() also returns
+    // false when `git status` throws, so false conflates "clean tree" with "could not tell".
+    // Only `true` carries information; callers must not render `false` as a positive claim.
+    stranded: raw.stranded === true,
+    branch: typeof raw.branch === 'string' ? raw.branch : '',
+    baseRef: typeof raw.baseRef === 'string' ? raw.baseRef : '',
+    worktree: typeof raw.worktree === 'string' ? raw.worktree : '',
+    backend: normalizeBackendLocal(raw.backend),
+    model: typeof raw.model === 'string' ? raw.model : '',
+    state: typeof raw.state === 'string' ? raw.state : '',
+    completedVia: typeof raw.completedVia === 'string' ? raw.completedVia : '',
+    diffstat: clip(raw.diffstat, 120),
+    recordedAt: typeof raw.endedAt === 'string' ? raw.endedAt : '',
+    startedAt: typeof raw.startedAt === 'string' ? raw.startedAt : '',
+  }
+  // NB: worktreeRemoved is deliberately absent. verdict-writer.mjs hardcodes it to false and
+  // nothing ever rewrites the file (cli-dispatch-run cleans the worktree AFTER writing it), so
+  // forwarding a field that is structurally always false would only invite the UI to render it.
+}
+
+// Local copy of the mapping to keep this module import-free of parse-utils; kept tiny and in
+// sync deliberately (parse-utils.normalizeBackend is the canonical one).
+const BACKEND_SHORT = new Set(['ds', 'ag', 'cx', 'oc', 'cp'])
+const BACKEND_LONG = { deepseek: 'ds', antigravity: 'ag', codex: 'cx', opencode: 'oc', copilot: 'cp' }
+function normalizeBackendLocal(value) {
+  const b = String(value ?? '').toLowerCase()
+  if (BACKEND_SHORT.has(b)) return b
+  return BACKEND_LONG[b] ?? null
+}
+
+const CHANGED_FILE_CAP = 500
+const PREEXISTING_CAP = 100
+
+// changed-files.json is written for EVERY worktree-mode worker, not just runs (48 of 120 session
+// dirs here have one, vs 13 verdicts), and it keeps two things verdict.changedFiles drops: the
+// per-file M/A/D/?? status, and preexistingDirty — paths already dirty before the worker started,
+// i.e. explicitly not its work. That attribution cannot be reconstructed from anywhere else.
+export function readChangedFiles(sessionDir) {
+  const raw = readJsonOrNull(path.join(sessionDir, 'changed-files.json'))
+  if (!raw || typeof raw !== 'object') return null
+  const rawFiles = Array.isArray(raw.files) ? raw.files : []
+  const files = rawFiles.slice(0, CHANGED_FILE_CAP).map((f) => ({
+    path: String(f && f.path != null ? f.path : ''),
+    status: String(f && f.status != null ? f.status : ''),
+  }))
+  const preexisting = Array.isArray(raw.preexistingDirty) ? raw.preexistingDirty : []
+  return {
+    source: 'changed-files.json',
+    diffstat: clip(raw.diffstat, 120),
+    files,
+    truncated: rawFiles.length > CHANGED_FILE_CAP,
+    preexistingDirty: preexisting.slice(0, PREEXISTING_CAP).map(String),
+  }
 }

@@ -120,7 +120,7 @@ to the running session (without a full restart). Verify with `/cli-dispatch:stat
 /cli-dispatch:dashboard
 ```
 
-A **local, read-only web dashboard** over data that already lives on disk. It lists active
+A **local web dashboard** over data that already lives on disk. It lists active
 Claude Code CLI sessions (all projects, **busy** ones pinned on top); click a session to see
 its **flow** (messages / tool calls / results), the **subagents** it spawned, and click a
 subagent to drill into *its* flow (nested by spawn depth). A second panel shows the
@@ -130,15 +130,25 @@ Busy sessions auto-refresh.
 It reads `~/.claude/projects/**` (Claude Code transcripts), `~/.claude/sessions/*.json` (live
 busy/idle), and `~/.cache/cli-dispatch/sessions/**` (workers). Notes:
 - **The only long-running process the plugin starts.** It binds `127.0.0.1` only, is
-  **read-only by default**, and never touches your config/keys. An opt-in **human-takeover**
-  action on a worker's detail view exposes a narrowly-scoped, authenticated write path to
-  already-owned worker sessions only (kill the headless process, attach a PTY terminal) — no
+  read-**mostly**: it reads data already on disk, plus three narrowly-scoped write paths that
+  each require an Origin + Host + custom-header check — the **Config** editor (below), stale-session
+  cleanup, and an opt-in **human-takeover** action on a worker's detail view that attaches to
+  already-owned worker sessions only (kill the headless process, attach a PTY terminal). No
   general shell, no arbitrary command. Stop the dashboard with the printed `kill <pid>` (or
   Ctrl-C if you run `cli-dispatch-dashboard` yourself in a terminal).
 - The Claude Code on-disk transcript format is internal and may change across versions; the
   dashboard renders unknown shapes defensively.
 - A **Config** tab edits the cli-dispatch config file right in the browser. Secret fields (API keys) are write-only — never echoed back once saved — and shown with a masked preview (e.g. `sk-e78f...ea1b`, first 6 + last 4 chars) so you can confirm which key is set without exposing it. Non-secret fields like `*_MODEL` and `*_MODELS` can be viewed and edited directly.
-- Sessions/subagents show per-session token usage and which model ran them; historical runner-subagent sessions carry a legacy cost badge from before the 4.0.0 retirement (see [CHANGELOG.md](CHANGELOG.md)).
+- Sessions/subagents show per-session token usage and which model ran them. Token counts captured
+  mid-run (a killed or interrupted worker) are labelled as partial rather than shown as totals.
+- **Deterministic-runner results are first class.** A worker launched via
+  [`/cli-dispatch:run`](#deterministic-runner-cli-dispatchrun--no-llm-babysitter) writes a
+  `verdict.json`, and the dashboard reads it: the worker row gets a `⚙RUN` marker plus a
+  verify ✓/✗ badge with its exit code and the change size, and the detail view adds the verify
+  commands and output tail, the changed files with their git status (separating paths that were
+  already dirty before the worker started), the branch/base/worktree, and a link to the diff.
+  A verify failure is shown on its own axis from the worker's state, because "the worker finished
+  but the check failed" and "the worker died" are different outcomes.
 
 ## Statusline badge
 
@@ -206,7 +216,7 @@ All used from inside Claude Code (`/cli-dispatch:ds-run <task>`, `/cli-dispatch:
 - **Deterministic runner, no LLM babysitter (`/cli-dispatch:run`)** — the only delegation path: launches a worker, isolates real repo changes in a worktree, blocks until done, and gates on a machine-checkable `--verify` command — zero Anthropic tokens spent on orchestration. For judgment-heavy work with no verify command, the escalation path is the same runner (or a plain `*-agent` CLI) — you read the compact verdict + diff yourself and follow up with `/cli-dispatch:resume` if needed. → [Deterministic runner](#deterministic-runner-cli-dispatchrun--no-llm-babysitter)
 - **Session-start policy injection (optional)** — a `SessionStart` hook auto-injects a compact delegation policy (deterministic-runner routing, escalation path, issue-filing reminder) into every session's context, configured once at `/cli-dispatch:setup`. Opt-in, default off, zero token cost when disabled. → [Session-start policy injection](#session-start-policy-injection-optional)
 - **Statusline badge (optional)** — a cyan `[CD]` badge, plus a yellow `▶N` running-worker counter, in your terminal statusline while cli-dispatch is active. → [Statusline badge](#statusline-badge)
-- **Web dashboard** — a local, read-only view: Claude Code sessions → flow → subagents → flow, plus a worker panel, cost/model visibility, and a Config editor. → [Dashboard](#dashboard)
+- **Web dashboard** — a local view: Claude Code sessions → flow → subagents → flow, plus a worker panel with each run's verify result and diff, cost/model visibility, and a Config editor. → [Dashboard](#dashboard)
 - **Native usage / quota** — `/cli-dispatch:balance` (all five at once) or a per-backend `*-balance`; reverse-engineered from each CLI's own local data where available, **no third-party tools**. Copilot is explicitly not CLI-queryable. → [Usage & quota](#usage--quota--native-no-third-party-tool)
 - **Housekeeping** — `/cli-dispatch:clean` prunes stale (`running`-but-dead) worker dirs; `/cli-dispatch:clean-schedule` automates it daily via launchd / cron / Scheduled Tasks.
 - **Safety net & isolation** — a hung/runaway worker is auto-killed (with its child processes) at a runtime or idle limit, going `state: error`; workers do not inherit your `~/.claude` MCP servers (playwright, etc.).

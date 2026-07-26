@@ -4,10 +4,13 @@
 //   • active Claude Code CLI sessions → their flow → the subagents they spawned → each subagent's flow
 //   • cli-dispatch worker delegations (DeepSeek / Antigravity / Codex / OpenCode / Copilot)
 // Stdlib only (node:http/fs/path/os/crypto) — no npm deps, matching the existing parsers.
-// Binds 127.0.0.1 ONLY. Never reads config/secrets. All :id params are path-sanitised.
-// Read-only by default. An opt-in human-takeover capability, if explicitly installed,
-// exposes a narrowly-scoped, authenticated write path to already-owned worker sessions
-// only (no general shell, no arbitrary command) — supported for the codex, deepseek,
+// Binds 127.0.0.1 ONLY. All :id params are path-sanitised.
+// Read-MOSTLY: it reads data already on disk, plus three narrowly-scoped write paths, each
+// requiring the Origin + Host + X-CLI-Dispatch-Takeover gate — the Config editor (which does
+// read and write the cli-dispatch config file, secrets write-only and masked on read), stale-
+// session cleanup, and the opt-in human-takeover PTY. No general shell, no arbitrary command.
+// The takeover capability, if explicitly installed, attaches only to already-owned worker
+// sessions — supported for the codex, deepseek,
 // antigravity, opencode, and copilot backends (see .specs/dev/sdd/human-takeover.md;
 // ADR-0001/ADR-0002, both Accepted).
 //
@@ -21,7 +24,7 @@ import os from 'node:os'
 import crypto from 'node:crypto'
 import https from 'node:https'
 import { fileURLToPath } from 'node:url'
-import { spawnSync, execSync } from 'node:child_process'
+import { spawnSync, execSync, execFileSync } from 'node:child_process'
 // NOTE: pty-host.mjs / takeover-cmd.mjs are deliberately NOT imported statically here.
 // They are only needed for the opt-in human-takeover write path and install.sh does not
 // ship them in every configuration — a static top-level import would ERR_MODULE_NOT_FOUND
@@ -30,7 +33,7 @@ import { spawnSync, execSync } from 'node:child_process'
 import { PAGE } from './public-page.mjs'
 import {
   FLOW_CAP, readHead, readTail, lines, clip, contentText,
-  sumUsageFromEvents, mapFlow, collectProcTree
+  mapFlow, collectProcTree, readVerdict, readChangedFiles
 } from './dashboard-utils.mjs'
 import { readJsonFile, markTakeoverActive, touchTakeoverHeartbeat, clearTakeoverState, NON_TERMINAL_STATES } from './parse-utils.mjs'
 
@@ -43,10 +46,9 @@ const VENDOR_DIR = path.join(SELF_DIR, 'vendor')
 const HOME = os.homedir()
 const PROJECTS_DIR = path.join(HOME, '.claude', 'projects')
 const parentIndexCache = new Map() // keyed by CC session id -> { mtime, workerIds: string[] }
-const subagentCache = new Map() // keyed by subagent file path -> { mtime, matchedWorkerIds: string[], usage: { inTok: number, outTok: number } | null }
 const sessionTailCache = new Map() // keyed by CC session .jsonl path -> { mtime, head, tail, model, foundTail } — the readHead/readTail/parse result, invalidated by mtime
 
-// Bounded-size cache write: these three caches accumulate one entry per file/session seen
+// Bounded-size cache write: these caches accumulate one entry per file/session seen
 // across the dashboard's lifetime with no natural eviction, which is an unbounded-growth
 // (memory leak) risk on long-running installs. Insertion-order (Map's native order) is good
 // enough here — real LRU (promoting on read) isn't worth the complexity for a dashboard cache.
@@ -56,6 +58,38 @@ function cacheSet(map, key, value) {
     map.delete(map.keys().next().value) // evict oldest insertion-order entry
   }
   map.set(key, value)
+}
+
+// verdict.json / changed-files.json are small and written once at terminal time, but /api/workers
+// is on the SSE refresh path, so they get the same mtime-gated treatment as sessionTailCache.
+const verdictCache = new Map()       // keyed by verdict.json path -> { mtime, size, tag, value }
+const changedFilesCache = new Map()  // keyed by changed-files.json path -> { mtime, size, tag, value }
+
+// Reads `file` through `cache`, revalidating on BOTH mtime and size: verdict.json is written with
+// `printf > file` (cli-dispatch-run), not an atomic rename, so a same-second rewrite is possible
+// and mtime alone could serve stale content. An absent file costs one stat and is not cached —
+// caching absence would need its own invalidation rule for no gain. `tag` lets a caller
+// invalidate on inputs beyond the file itself (see the status.verify fallback below).
+function cachedArtifact(cache, file, tag, read) {
+  const st = safeStat(file)
+  if (!st) return null
+  const hit = cache.get(file)
+  if (hit && hit.mtime === st.mtimeMs && hit.size === st.size && hit.tag === tag) return hit.value
+  const value = read()
+  cacheSet(cache, file, { mtime: st.mtimeMs, size: st.size, tag, value })
+  return value
+}
+
+// The deterministic runner truncates verdict-diff.patch into existence BEFORE running verify
+// (cli-dispatch-run), and verify can take up to 600s. So "patch present, verdict absent" means a
+// run is in its verify phase right now. Without this the dashboard's detail view unsubscribes the
+// moment the worker reports done and never sees the verdict land.
+// Only checked for recently-active sessions so the common case (120 finished sessions) pays
+// nothing: a pending verdict is by definition minutes old at most.
+const VERDICT_PENDING_WINDOW_MS = 15 * 60 * 1000
+function isVerdictPending(dir, statusMtime) {
+  if (!statusMtime || Date.now() - statusMtime > VERDICT_PENDING_WINDOW_MS) return false
+  return !!safeStat(path.join(dir, 'verdict-diff.patch'))
 }
 const CC_SESSIONS_DIR = path.join(HOME, '.claude', 'sessions')
 const CACHE = process.env.XDG_CACHE_HOME || path.join(HOME, '.cache')
@@ -206,7 +240,9 @@ function listSessions() {
   return out
 }
 
-// sumUsageFromEvents, mapFlow — imported from dashboard-utils.mjs
+// mapFlow — imported from dashboard-utils.mjs. sumUsageFromEvents is no longer imported here:
+// its only server-side caller summed a babysitter subagent's tokens (retired in 4.3.0). It stays
+// exported from dashboard-utils.mjs, where mapFlow still uses it for CC session/subagent usage.
 
 // ---- subagents ----
 function listSubagents(sess) {
@@ -270,6 +306,17 @@ function listWorkers(skipParentIndex = false) {
     // concept (status.json.takeover.lastHeartbeat, reaped elsewhere), not this headless-
     // worker mtime heuristic, so it can never be misflagged stale by this line.
     const stale = rawState === 'running' && mtime > 0 && (Date.now() - mtime > 90000)
+    // Deterministic-runner artifacts. Both are absent for most sessions (13 verdicts vs 48
+    // changed-files vs 120 dirs on a real machine), and an absent file costs a single stat.
+    // NEVER transcript.jsonl — the dashboard does not read it, on any path.
+    const verifyTag = s.verify ? JSON.stringify(s.verify) : 'null'
+    const verdict = cachedArtifact(verdictCache, path.join(dir, 'verdict.json'), verifyTag,
+      () => readVerdict(dir, { statusVerify: s.verify }))
+    const changed = cachedArtifact(changedFilesCache, path.join(dir, 'changed-files.json'), 'x',
+      () => readChangedFiles(dir))
+    // changed-files.json is richer and covers more sessions; the verdict's flat list is a fallback.
+    const changedCount = changed ? changed.files.length : (verdict ? verdict.changedFiles.length : 0)
+    const diffstat = (changed && changed.diffstat) || (verdict && verdict.diffstat) || ''
     out.push({
       id: d,
       backend: s.backend || m.backend || 'deepseek',
@@ -284,7 +331,32 @@ function listWorkers(skipParentIndex = false) {
       events: s.events || 0,
       toolCounts: s.toolCounts || {},
       usage: normalizeUsage(s.usage),
+      // A mid-run snapshot, not a final total — the UI must not present it as one.
+      usagePartial: s.usagePartial === true,
+      // 'auth' means the worker never started; nothing about the task failed.
+      errorKind: s.errorKind || null,
+      error: clip(s.error, 200) || '',
       finalResultPreview: clip(s.finalResultPreview, 200),
+      // hasVerdict, not "deterministic": the signal is positive-only (see readVerdict).
+      hasVerdict: !!verdict,
+      verdictPending: verdict ? false : isVerdictPending(dir, mtime),
+      changedFileCount: changedCount,
+      diffstat,
+      // Both artifacts come from the same `git status` in write_diff_artifacts, so a non-empty
+      // file list implies a non-empty patch — no extra stat needed to answer "is there a diff?".
+      hasDiff: changedCount > 0,
+      verdict: verdict ? {
+        exitCode: verdict.exitCode,
+        outcome: verdict.outcome,
+        verify: verdict.verify ? verdict.verify.state : 'none',
+        verifyExit: verdict.verify ? verdict.verify.exitCode : null,
+        stranded: verdict.stranded,
+        branch: verdict.branch,
+        state: verdict.state,
+        recordedAt: verdict.recordedAt,
+        malformed: verdict.malformed,
+        error: verdict.error,
+      } : null,
     })
   }
   if (!skipParentIndex) {
@@ -313,6 +385,64 @@ function workerUsageAggregate() {
     }
     out[backend] = row
   }
+  return out
+}
+
+// ---- leftover worktree artifacts ----
+//
+// Why this exists at all: cli-dispatch-clean's sweep NEVER removes a dirty worktree
+// (commands/clean.md: "DIRTY (skipped, uncommitted changes)"), and a dirty worktree is exactly
+// what a successful run leaves behind — the runner does not commit. So the automated sweep is
+// guaranteed never to clean these, and until now no surface reported them: they could only ever
+// be found by hand. This lists them (with a copyable command) and deliberately offers NO delete
+// action, because "dirty is never deleted" is a safety invariant the dashboard must not be the
+// one surface to break.
+const WT_PATTERN = /-wt-/
+const WT_SCAN_CAP = 200
+
+function worktreeScanRoots() {
+  const roots = ['/tmp']
+  const t = process.env.TMPDIR
+  if (t && t.replace(/\/+$/, '') !== '/tmp') roots.push(t)
+  return roots
+}
+
+// A linked worktree's .git is a FILE: "gitdir: <repo>/.git/worktrees/<name>". Same derivation as
+// commands/clean.md and resolveWorktreeSourceRepo above.
+function findLeftoverWorktrees() {
+  const out = []
+  for (const base of worktreeScanRoots()) {
+    if (!isDir(base)) continue
+    let entries = []
+    try { entries = fs.readdirSync(base) } catch { continue }
+    for (const name of entries) {
+      if (!WT_PATTERN.test(name)) continue
+      if (out.length >= WT_SCAN_CAP) return out
+      const dir = path.join(base, name)
+      const st = safeStat(dir)
+      if (!st || !st.isDirectory()) continue
+      const backend = (name.match(/^([a-z]{2})-wt-/) || [])[1] || ''
+      let dirty = null   // null = could not tell (git missing, or not a valid worktree)
+      let files = 0
+      try {
+        const porcelain = execFileSync('git', ['-C', dir, 'status', '--porcelain'],
+          { encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'ignore'] })
+        const changed = lines(porcelain)
+        dirty = changed.length > 0
+        files = changed.length
+      } catch { dirty = null }
+      out.push({
+        path: dir,
+        backend,
+        ageDays: Math.floor((Date.now() - st.mtimeMs) / 86400000),
+        mtime: st.mtimeMs,
+        dirty,
+        files,
+        sourceRepo: resolveWorktreeSourceRepo(dir),
+      })
+    }
+  }
+  out.sort((a, b) => b.mtime - a.mtime)
   return out
 }
 
@@ -346,7 +476,96 @@ function workerFlow(id) {
   const m = readJSON(path.join(dir, 'meta.json')) || {}
   let prompt = m.promptPreview || ''
   try { const pf = path.join(dir, 'prompt.txt'); if (fs.existsSync(pf)) { const full = fs.readFileSync(pf, 'utf8'); if (full.trim()) prompt = full } } catch {}
-  return { steps, state: s.state || '?', prompt, model: m.model || '', cwd: m.cwd || '', startedAt: m.startedAt || '', finalResultPreview: clip(s.finalResultPreview, 600), usage: normalizeUsage(s.usage) }
+  const verifyTag = s.verify ? JSON.stringify(s.verify) : 'null'
+  const verdict = cachedArtifact(verdictCache, path.join(dir, 'verdict.json'), verifyTag,
+    () => readVerdict(dir, { statusVerify: s.verify }))
+  const changed = cachedArtifact(changedFilesCache, path.join(dir, 'changed-files.json'), 'x',
+    () => readChangedFiles(dir))
+  return {
+    steps,
+    state: s.state || '?',
+    prompt,
+    model: m.model || '',
+    cwd: m.cwd || '',
+    branch: m.branch || '',
+    startedAt: m.startedAt || '',
+    endedAt: m.endedAt || '',
+    finalResultPreview: clip(s.finalResultPreview, 600),
+    usage: normalizeUsage(s.usage),
+    usagePartial: s.usagePartial === true,
+    errorKind: s.errorKind || null,
+    error: clip(s.error, 300) || '',
+    hasVerdict: !!verdict,
+    verdictPending: verdict ? false : isVerdictPending(dir, safeStat(path.join(dir, 'status.json'))?.mtimeMs || 0),
+    // Which Claude Code session dispatched this worker. Resolved here rather than on /api/workers
+    // because it is the expensive lookup and this route is fetched on a click, not on a timer.
+    parentSession: buildWorkerParentIndex().get(id) || null,
+    verdict: verdict ? {
+      ...verdict,
+      // Live truth, deliberately computed ONLY here and not on the SSE-refreshed list route:
+      // `worktree` is an absolute path read out of a worker-written file, so it gets the
+      // smallest possible operation (existence, no read) and only on explicit user action.
+      worktreeExists: !!(verdict.worktree && path.isAbsolute(verdict.worktree) && safeStat(verdict.worktree)),
+      // Resolved from the worktree's own .git pointer, the way clean.md already does it — the
+      // parent repo path is recorded NOWHERE in the session dir (both verdict.worktree and
+      // meta.cwd are the worktree), so a `git -C <repo> worktree remove` command is otherwise
+      // impossible to build.
+      sourceRepo: resolveWorktreeSourceRepo(verdict.worktree),
+    } : null,
+    changedFiles: changed || (verdict && verdict.changedFiles.length ? {
+      source: 'verdict',
+      diffstat: verdict.diffstat,
+      files: verdict.changedFiles.map(f => ({ path: f, status: '' })),
+      truncated: false,
+      preexistingDirty: [],
+    } : null),
+    diff: describeDiff(dir, id),
+  }
+}
+
+// A linked worktree's .git is a FILE containing "gitdir: <repo>/.git/worktrees/<name>".
+// Same derivation as commands/clean.md. Best-effort: '' whenever anything is unexpected.
+function resolveWorktreeSourceRepo(worktree) {
+  if (!worktree || !path.isAbsolute(worktree)) return ''
+  try {
+    const gitPath = path.join(worktree, '.git')
+    const st = safeStat(gitPath)
+    if (!st || !st.isFile()) return ''
+    const m = readHead(gitPath, 4096).match(/^gitdir:\s*(.+)$/m)
+    if (!m) return ''
+    const gitdir = m[1].trim()
+    const idx = gitdir.indexOf('/.git/worktrees/')
+    return idx > 0 ? gitdir.slice(0, idx) : ''
+  } catch {
+    return ''
+  }
+}
+
+// Candidate patch files, recomputed from WORKERS_ROOT + id. verdict.diffPatchPath is NEVER used:
+// it is an absolute path read out of a file written by five external CLIs, so opening it would
+// be an arbitrary-file-read primitive gated only on "can write into a session dir".
+const DIFF_CANDIDATES = ['verdict-diff.patch', 'diff.patch']
+const DIFF_MAX_BYTES = 512 * 1024
+
+function findDiffFile(dir) {
+  for (const name of DIFF_CANDIDATES) {
+    const file = path.join(dir, name)
+    const st = safeStat(file)
+    if (st && st.isFile() && st.size > 0) return { file, name, size: st.size }
+  }
+  return null
+}
+
+function describeDiff(dir, id) {
+  const found = findDiffFile(dir)
+  if (!found) return { available: false, source: null, bytes: 0, truncated: false, url: null }
+  return {
+    available: true,
+    source: found.name,
+    bytes: found.size,
+    truncated: found.size > DIFF_MAX_BYTES,
+    url: '/api/worker/' + encodeURIComponent(id) + '/diff',
+  }
 }
 
 // ---- routing ----
@@ -357,7 +576,10 @@ function linkedWorkers(file) {
   let txt = ''; try { txt = readTail(file, 2 * 1024 * 1024) } catch { return [] }
   if (!txt) return []
   const out = [], seen = new Set()
-  for (const w of listWorkers()) {
+  // skipParentIndex: this function reads only id/backend/state/stale/model/prompt. Calling
+  // listWorkers() with the parent index made every SSE refresh of a session-flow view re-run
+  // buildWorkerParentIndex (a 2MB readTail per Claude Code transcript) for fields it discards.
+  for (const w of listWorkers(true)) {
     if (w.id && !seen.has(w.id) && txt.includes(w.id)) { seen.add(w.id); out.push({ id: w.id, backend: w.backend, state: w.state, stale: w.stale, model: w.model, prompt: w.prompt }) }
   }
   return out
@@ -386,102 +608,37 @@ function buildWorkerParentIndex() {
     }
   }
 
+  // Newest transcript first: when several CC sessions mention the same worker id, attribute the
+  // worker to the most recently active one. This is deterministic (readdirSync order is not) and
+  // free — the mtime is already collected above.
+  //
+  // It replaces a subagent scan (readdirSync of every session's subagents/ dir plus a 2MB
+  // readTail of every agent-*.jsonl, and on a hit a further 4MB readTail + JSON.parse of every
+  // line) that existed to produce two things: `babysitterUsage`, retired in 4.3.0 along with the
+  // rest of the babysitter accounting, and a `subagentId` the client never read. Post-4.0.0 no
+  // sanctioned path dispatches a worker from inside a subagent — /cli-dispatch:run runs from the
+  // main loop — so the scan was measuring the same retired architecture.
+  sessions.sort((a, b) => b.mtime - a.mtime)
+
   for (const s of sessions) {
-    const currentMtime = s.mtime
     let workerIdsInSession = []
     const cached = parentIndexCache.get(s.sessionId)
-    if (cached && cached.mtime === currentMtime) {
+    if (cached && cached.mtime === s.mtime) {
       workerIdsInSession = cached.workerIds
     } else {
       let txt = ''
       try { txt = readTail(s.file, 2 * 1024 * 1024) } catch {}
       if (txt) {
         for (const wid of workerIds) {
-          if (txt.includes(wid)) {
-            workerIdsInSession.push(wid)
-          }
+          if (txt.includes(wid)) workerIdsInSession.push(wid)
         }
       }
-      cacheSet(parentIndexCache, s.sessionId, { mtime: currentMtime, workerIds: workerIdsInSession })
+      cacheSet(parentIndexCache, s.sessionId, { mtime: s.mtime, workerIds: workerIdsInSession })
     }
 
-    const subagentMatchesForSession = new Map()
-    if (workerIdsInSession.length > 0) {
-      const sDir = path.join(PROJECTS_DIR, s.project, s.sessionId)
-      const subDir = path.join(sDir, 'subagents')
-      if (isDir(subDir)) {
-        let subagentFiles = []
-        try {
-          subagentFiles = fs.readdirSync(subDir)
-            .filter(f => f.startsWith('agent-') && f.endsWith('.jsonl'))
-            .map(f => {
-              const filePath = path.join(subDir, f)
-              const agentId = f.slice(6, -6)
-              let mtime = 0
-              try { mtime = fs.statSync(filePath).mtimeMs } catch {}
-              return { agentId, filePath, mtime }
-            })
-            .sort((a, b) => b.mtime - a.mtime)
-        } catch {}
-
-        for (const subFile of subagentFiles) {
-          const filePath = subFile.filePath
-          const currentSubMtime = subFile.mtime
-          let cachedSub = subagentCache.get(filePath)
-
-          if (!cachedSub || cachedSub.mtime !== currentSubMtime) {
-            let txt = ''
-            try { txt = readTail(filePath, 2 * 1024 * 1024) } catch {}
-            const matchedWorkerIds = []
-            let usage = null
-
-            if (txt) {
-              for (const wid of workerIdsInSession) {
-                if (txt.includes(wid)) {
-                  matchedWorkerIds.push(wid)
-                }
-              }
-              if (matchedWorkerIds.length > 0) {
-                const all = lines(readTail(filePath, 4 * 1024 * 1024))
-                const evs = []
-                for (const l of all) { try { evs.push(JSON.parse(l)) } catch {} }
-                const sumRes = sumUsageFromEvents(evs)
-                usage = sumRes.haveUsage ? { inTok: sumRes.inTok, outTok: sumRes.outTok } : null
-              }
-            }
-            cachedSub = { mtime: currentSubMtime, matchedWorkerIds, usage }
-            cacheSet(subagentCache, filePath, cachedSub)
-          }
-
-          for (const wid of cachedSub.matchedWorkerIds) {
-            if (!subagentMatchesForSession.has(wid)) {
-              subagentMatchesForSession.set(wid, {
-                subagentId: subFile.agentId,
-                babysitterUsage: cachedSub.usage
-              })
-            }
-          }
-        }
-      }
-    }
-
+    // First writer wins, and the sort above makes "first" mean "most recently active".
     for (const wid of workerIdsInSession) {
-      const existing = reverseMap.get(wid)
-      const subMatch = subagentMatchesForSession.get(wid) || { subagentId: null, babysitterUsage: null }
-      // Prefer a resolved subagent-level match over a bare transcript-only match,
-      // regardless of session iteration order. Once we have a resolved subagentId,
-      // no later bare match can displace it (first-wins among resolved matches).
-      const shouldSet =
-        !existing ||
-        (existing.subagentId === null && subMatch.subagentId !== null)
-      if (shouldSet) {
-        reverseMap.set(wid, {
-          id: s.sessionId,
-          project: s.project,
-          subagentId: subMatch.subagentId,
-          babysitterUsage: subMatch.babysitterUsage
-        })
-      }
+      if (!reverseMap.has(wid)) reverseMap.set(wid, { id: s.sessionId, project: s.project })
     }
   }
 
@@ -1071,7 +1228,11 @@ function readBody(req) {
     req.on('data', chunk => {
       body += chunk
       if (body.length > 65536) {
+        // The promise settles once, but without destroying the request the 'data' handler keeps
+        // appending for the rest of it — so the cap bounded nothing.
+        req.destroy()
         reject(new Error('Request body too large'))
+        return
       }
     })
     req.on('end', () => {
@@ -1098,8 +1259,21 @@ const server = http.createServer(async (req, res) => {
     if (Object.prototype.hasOwnProperty.call(VENDOR_FILES, p)) return serveVendorAsset(p, res)
     if (p === '/api/stream') return sse(req, res, u.searchParams.get('watch') || 'sessions')
     if (p === '/api/sessions') return send(res, 200, listSessions())
-    if (p === '/api/workers') return send(res, 200, listWorkers())
+    // parentSession moved to the detail route in 4.3.0: the worker row no longer renders
+    // "from <project>", and resolving it cost a 2MB readTail per Claude Code transcript on the
+    // SSE-refreshed list path.
+    if (p === '/api/workers') return send(res, 200, listWorkers(true))
     if (p === '/api/workers/aggregate') return send(res, 200, workerUsageAggregate())
+
+    if (p === '/api/clean' && req.method === 'GET' && u.searchParams.get('worktrees') === '1') {
+      const items = findLeftoverWorktrees()
+      return send(res, 200, {
+        roots: worktreeScanRoots(),
+        count: items.length,
+        dirty: items.filter(i => i.dirty === true).length,
+        items,
+      })
+    }
 
     if (p === '/api/clean' && req.method === 'GET') {
       let staleSecs = parseInt(u.searchParams.get('staleSecs'), 10)
@@ -1109,6 +1283,11 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (p === '/api/clean' && req.method === 'POST') {
+      // Same gate POST /api/config uses. Without it any page the user had open could delete
+      // session dirs cross-origin: readBody ignores Content-Type, so text/plain (CORS-simple, no
+      // preflight) with a JSON body reached this handler, and staleSecs:1 matches every running
+      // worker quiet for a second — taking its transcript, prompt and recovery diff with it.
+      if (!checkTakeoverAuth(req, res, { requireCustomHeader: true })) return
       let staleSecs = 600
       try {
         const body = await readBody(req)
@@ -1319,6 +1498,29 @@ const server = http.createServer(async (req, res) => {
       if (!dir.startsWith(path.resolve(WORKERS_ROOT) + path.sep) || !isDir(dir)) return send(res, 404, { error: 'not found' })
       return send(res, 200, workerFlow(id))
     }
+
+    // Serves the run's diff as plain text. Same okId + containment guards as /flow above; the
+    // method guard is new-route-only policy (retrofitting the older read routes is #125's job).
+    // nosniff matters: the body is worker-authored code and filenames, and the browser must never
+    // be talked into treating it as HTML.
+    if ((m = p.match(/^\/api\/worker\/([^/]+)\/diff$/)) && req.method === 'GET') {
+      const id = decodeURIComponent(m[1]); if (!okId(id)) return send(res, 400, { error: 'bad id' })
+      const dir = path.resolve(path.join(WORKERS_ROOT, id))
+      if (!dir.startsWith(path.resolve(WORKERS_ROOT) + path.sep) || !isDir(dir)) return send(res, 404, { error: 'not found' })
+      const found = findDiffFile(dir)
+      if (!found) return send(res, 404, { error: 'no diff' })
+      // readHead, not readTail: a patch is only meaningful from the top.
+      const body = readHead(found.file, DIFF_MAX_BYTES)
+      res.writeHead(200, {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'X-Content-Type-Options': 'nosniff',
+        'Cache-Control': 'no-store',
+        'X-CLI-Dispatch-Diff-Source': found.name,
+        'X-CLI-Dispatch-Diff-Bytes': String(found.size),
+        'X-CLI-Dispatch-Diff-Truncated': found.size > DIFF_MAX_BYTES ? '1' : '0',
+      })
+      return res.end(body)
+    }
     // ---- human-takeover write endpoints (opt-in; see .specs/dev/sdd/human-takeover.md) ----
     if ((m = p.match(/^\/api\/worker\/([^/]+)\/takeover$/)) && req.method === 'POST') {
       return await handleTakeover(req, res, m[1])
@@ -1399,7 +1601,7 @@ function listen(port, tries = 12) {
   server.listen(port, '127.0.0.1', () => {
     ACTUAL_PORT = server.address().port
     const url = 'http://127.0.0.1:' + ACTUAL_PORT
-    console.error('cli-dispatch dashboard → ' + url + '  (read-only by default; Ctrl-C to stop)')
+    console.error('cli-dispatch dashboard → ' + url + '  (local; Ctrl-C to stop)')
     if (OPEN) {
       const cmd = process.platform === 'darwin' ? 'open' : (process.platform === 'win32' ? 'explorer.exe' : 'xdg-open')
       try { spawnSync(cmd, [url], { stdio: 'ignore' }) } catch {}
