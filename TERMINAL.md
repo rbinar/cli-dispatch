@@ -199,7 +199,9 @@ Post-check only, without running a worker:
 plugins/cli-dispatch/scripts/ds-worktree-run.sh --post-check <repo-path>
 ```
 
-Windows equivalent: `ds-worktree-run.ps1` (uses junction instead of symlink for `node_modules`).
+On Windows, run the same `.sh` under WSL or Git Bash. The `.ps1` worktree runners were removed in
+4.6.0 (issue #125) — no code path selected them, and `cli-dispatch-run.ps1` requires bash for
+worktree runs regardless. Every other Windows path stays native PowerShell.
 
 ## Session tracking
 

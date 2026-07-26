@@ -152,6 +152,12 @@ bash script and a `.ps1` twin for native Windows, installed by `install.sh` and
 and GitHub Copilot backends are Unix-only (macOS/Linux/WSL) for now; only DeepSeek and
 Codex run natively on Windows.
 
+The `*-worktree-run.sh` runners are **outside** the pairing rule as of 4.6.0: they are bash-only
+on every platform. `ds-worktree-run.ps1`/`cx-worktree-run.ps1` used to exist and were deleted
+(issue #125) because no code path selected them — `cli-dispatch-run.ps1` hardcodes the `.sh` name
+and exits 5 without bash — so they were a second copy of the leak-guard logic that could only
+drift. Repo tasks on Windows go through WSL or Git Bash. Do not "restore parity" here.
+
 One deliberate exception to the pairing rule: `cli-dispatch-statusline.sh` has **no `.ps1`
 twin**. It is not an installed binary — a combining `~/.claude/hooks/statusline.sh` wrapper
 globs it straight out of the plugin cache — and statusline wrappers of that shape are a

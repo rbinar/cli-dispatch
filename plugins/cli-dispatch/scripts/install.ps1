@@ -101,9 +101,26 @@ Set-Content -Path (Join-Path $BinDir "cli-dispatch-run.cmd") -Value (New-Shim "c
 Copy-Item -Force (Join-Path $ScriptDir "verdict-writer.mjs") (Join-Path $LibExecDir "verdict-writer.mjs")
 # cli-dispatch-run resolves its per-backend worktree runners next to itself and invokes the
 # .sh variant via bash even on Windows — ship them (ds/cx are the Windows-native backends) or
-# those backends fail with "backend runner not found". The .ps1 twins ride along for parity.
-foreach ($wr in @("ds-worktree-run.sh", "cx-worktree-run.sh", "ds-worktree-run.ps1", "cx-worktree-run.ps1")) {
+# those backends fail with "backend runner not found".
+#
+# The `.ps1` twins were REMOVED in 4.6.0 (issue #125): nothing selected them. cli-dispatch-run.ps1
+# hardcodes the `.sh` name and refuses to start without bash, so shipping a PowerShell copy only
+# created a second version of the guard logic that no code path could exercise — and 4.2.0 had
+# already had to fix three cases of exactly that kind of silent drift. Repo tasks on Windows go
+# through bash (WSL or Git Bash), which cli-dispatch-run.ps1 requires anyway.
+foreach ($wr in @("ds-worktree-run.sh", "cx-worktree-run.sh")) {
   Copy-Item -Force (Join-Path $ScriptDir $wr) (Join-Path $BinDir $wr)
+}
+# Sweep the copies earlier versions installed. An upgrade only overwrites what it ships, so
+# without this a machine that ran an older install.ps1 keeps a runner on PATH that no code path
+# selects and that no longer receives fixes — the worst of both: present enough to invoke by
+# hand, stale enough to behave differently from the .sh it used to mirror.
+foreach ($stale in @("ds-worktree-run.ps1", "cx-worktree-run.ps1")) {
+  $stalePath = Join-Path $BinDir $stale
+  if (Test-Path $stalePath) {
+    Remove-Item -Force $stalePath -ErrorAction SilentlyContinue
+    Write-Host "Removed obsolete $stale (removed in 4.6.0; repo tasks run the .sh under bash)"
+  }
 }
 Write-Host "Installed cli-dispatch-run -> $BinDir\cli-dispatch-run.ps1 (+ .cmd shim, ds/cx worktree runners; engine -> $LibExecDir\verdict-writer.mjs)"
 

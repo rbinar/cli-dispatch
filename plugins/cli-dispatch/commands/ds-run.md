@@ -14,16 +14,16 @@ read only the small `status.json`, never the raw transcript.
 
 **If it's a real repo task** (file changes needed) — use an isolated worktree:
 1. Write the task to a brief file (e.g. `/tmp/ds-brief.txt`).
-2. Run it (as a background task) — depending on the OS:
-   - **macOS / Linux / WSL**:
-     ```bash
-     "${CLAUDE_PLUGIN_ROOT}/scripts/ds-worktree-run.sh" <repo-path> <branch-name> /tmp/ds-brief.txt
-     ```
-   - **Native Windows**:
-     ```powershell
-     powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/ds-worktree-run.ps1" <repo-path> <branch-name> <brief-file>
-     ```
+2. Run it (as a background task) — **macOS / Linux / WSL / Git Bash**:
+   ```bash
+   "${CLAUDE_PLUGIN_ROOT}/scripts/ds-worktree-run.sh" <repo-path> <branch-name> /tmp/ds-brief.txt
+   ```
    (The script uses `claude-ds-stream` internally; the session directory is printed on stderr.)
+
+   > Windows: repo tasks need bash (WSL or Git Bash). The PowerShell twin of this runner was
+   > removed in 4.6.0 (issue #125) — nothing selected it, `cli-dispatch-run.ps1` requires bash
+   > for worktree runs anyway, and a second uncalled copy of the guard logic could only drift.
+   > Pure generation (below) and every other Windows path are unaffected.
 3. **Monitor (cost-conscious):** capture the session id, occasionally check `status.json` via
    `/cli-dispatch:watch <id>` (`state: running→done`). Do NOT tight-loop tail.
 4. When done, **review** the diff in the worktree (`git -C <worktree> diff`), verify independently (tsc/build/test).

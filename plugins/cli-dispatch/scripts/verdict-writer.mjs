@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { readFileSync, renameSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { NON_TERMINAL_STATES, TERMINAL_STATES, normalizeBackend } from './parse-utils.mjs'
@@ -179,8 +179,45 @@ export function buildVerdict({ statusJson, metaJson, changedFilesJson, verifyRes
   return { verdict, exitCode }
 }
 
+// Issue #128: `worktreeRemoved` was structurally always false. buildVerdict() cannot know the
+// answer — the verdict is written BEFORE --cleanup-if-clean gets to act (it is the escalation
+// artifact, so it has to exist even if cleanup dies), and the field's own contract
+// (.specs/dev/sdd/deterministic-runner.md:217) says it must be true once cleanup did remove the
+// worktree. The only truthful place to set it is here, afterwards.
+//
+// Fail-soft by contract, and that is the whole design: at this point the worker's work is done,
+// the verify verdict is on disk and the worktree really is gone. A bookkeeping write that does
+// not land must never turn that into a failed run — so every error path returns false instead
+// of throwing, and the CLI wrapper exits 0 either way. It writes exactly one boolean.
+export function markWorktreeRemoved(verdictPath) {
+  let parsed
+  try {
+    parsed = JSON.parse(readFileSync(verdictPath, 'utf8'))
+  } catch {
+    return false
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false
+  // The error shape cli-dispatch-run writes when build-verdict throws ({schemaVersion, error,
+  // sessionId, exitCode}) carries no state and no worktree fields. Adding a lone
+  // `worktreeRemoved` there would dress a crash record up as a verdict that was never built.
+  if (parsed.error !== undefined && parsed.state === undefined) return false
+  if (parsed.worktreeRemoved === true) return true
+
+  parsed.worktreeRemoved = true
+  try {
+    // Temp + rename, not truncate-in-place: the dashboard caches this file on (mtime, size)
+    // and reads it while runs finish, so it must never observe a half-written verdict.
+    const tmpPath = `${verdictPath}.tmp`
+    writeFileSync(tmpPath, `${JSON.stringify(parsed)}\n`)
+    renameSync(tmpPath, verdictPath)
+  } catch {
+    return false
+  }
+  return true
+}
+
 function printUsage() {
-  process.stderr.write('usage: verdict-writer.mjs <run-verify|build-verdict>\n')
+  process.stderr.write('usage: verdict-writer.mjs <run-verify|build-verdict|mark-worktree-removed>\n')
 }
 
 function parseBoolean(value) {
@@ -237,6 +274,22 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 
       process.stdout.write(`${JSON.stringify(result.verdict)}\n`)
       process.exit(result.exitCode)
+    }
+
+    if (command === 'mark-worktree-removed') {
+      const [verdictPath] = process.argv.slice(3)
+
+      if (!verdictPath) {
+        printUsage()
+        process.exit(1)
+      }
+
+      if (!markWorktreeRemoved(verdictPath)) {
+        process.stderr.write(`verdict-writer: could not record worktreeRemoved in ${verdictPath}\n`)
+      }
+      // Always 0 — see markWorktreeRemoved's fail-soft contract. The caller has already
+      // finished a run; its exit code belongs to the run, not to this write.
+      process.exit(0)
     }
 
     printUsage()
