@@ -1223,3 +1223,172 @@ test('GET /api/clean (no worktrees param) still returns the stale-session listin
     rmSync(homeDir, { recursive: true, force: true })
   }
 })
+
+// ---- GET /api/backend-auth (4.4.0) ----
+//
+// The ⚙ view used to answer "is this backend authenticated?" with "is there a key in one file?",
+// which is the wrong question for the three backends that normally sign in through their CLI.
+// These tests pin the two properties that make the answer trustworthy: nothing secret leaves the
+// server, and a probe that cannot run says so instead of claiming "not logged in".
+
+// A fake CLI directory placed FIRST on PATH, so the probes hit our stubs instead of the real
+// binaries. That is what makes these tests deterministic on any machine.
+function stubCliDir(scripts) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'dash-stubcli-'))
+  for (const [name, body] of Object.entries(scripts)) {
+    const f = path.join(dir, name)
+    writeFileSync(f, body, { mode: 0o755 })
+  }
+  return dir
+}
+
+async function withAuthServer(stubs, fn) {
+  const binDir = stubCliDir(stubs)
+  const sessionsDir = mkdtempSync(path.join(tmpdir(), 'dash-authsess-'))
+  const homeDir = mkdtempSync(path.join(tmpdir(), 'dash-home-'))
+  const port = 18800 + Math.floor(Math.random() * 1000)
+  const child = startServerIsolated({
+    sessionsDir, homeDir, port,
+    // binDir FIRST so the stubs shadow the real CLIs, plus /usr/bin:/bin so the stubs themselves
+    // can still use coreutils (a stub that needs `sleep` would otherwise exit 127 instantly and
+    // silently test the wrong branch). The real codex/opencode/gh live in ~/.local/bin, nvm and
+    // Homebrew, none of which are on this PATH — so the isolation still holds.
+    // Alternate credential vars are cleared so altCreds is deterministic.
+    env: { PATH: binDir + ':/usr/bin:/bin', GH_TOKEN: '', GITHUB_TOKEN: '', OPENAI_API_KEY: '', ANTIGRAVITY_API_KEY: '' },
+  })
+  try {
+    const actualPort = await waitForServerReady(child)
+    await fn(actualPort, { sessionsDir })
+  } finally {
+    await stopServer(child)
+    rmSync(binDir, { recursive: true, force: true })
+    rmSync(sessionsDir, { recursive: true, force: true })
+    rmSync(homeDir, { recursive: true, force: true })
+  }
+}
+
+const SH = '#!/bin/sh\n'
+
+test('GET /api/backend-auth reports logged-in state and the method, per backend', async () => {
+  await withAuthServer({
+    codex: SH + 'echo "Logged in using ChatGPT"\n',
+    gh: SH + 'echo "gho_exampletokenvalue123456"\n',
+    opencode: SH + 'echo "2 credentials"\n',
+  }, async (port) => {
+    const res = await httpRequest({ port, method: 'GET', path: '/api/backend-auth' })
+    assert.equal(res.status, 200)
+    const b = res.body.backends
+    assert.equal(b.cx.state, 'logged-in')
+    assert.equal(b.cx.method, 'ChatGPT', 'the method matters — ChatGPT and an API key bill differently')
+    assert.equal(b.cp.state, 'logged-in')
+    assert.equal(b.cp.method, 'gh')
+    assert.equal(b.oc.state, 'logged-in')
+    // The two backends with no probe must say so rather than guess.
+    assert.equal(b.ds.state, 'key-only')
+    assert.equal(b.ag.state, 'no-probe')
+  })
+})
+
+// THE test. `gh auth token` prints the token itself — it is the cheapest probe available (no
+// network, unlike `gh auth status`) but its output must never escape the server.
+test('GET /api/backend-auth never leaks token material or account identity', async () => {
+  await withAuthServer({
+    codex: SH + 'echo "Logged in using ChatGPT (account: someone@example.com)"\n',
+    gh: SH + 'echo "gho_SUPERSECRETTOKENVALUE00000"\n',
+    opencode: SH + 'echo "1 credentials for sk-or-v1-secretkeymaterial"\n',
+  }, async (port) => {
+    const res = await httpRequest({ port, method: 'GET', path: '/api/backend-auth' })
+    assert.equal(res.status, 200)
+    assert.ok(!/gho_/.test(res.raw), 'a GitHub token must never appear in the payload')
+    assert.ok(!/SUPERSECRET/.test(res.raw), 'token material must never appear in the payload')
+    assert.ok(!/sk-or-v1/.test(res.raw), 'an OpenRouter key must never appear in the payload')
+    assert.ok(!/example\.com/.test(res.raw), 'an account identity must never appear in the payload')
+    // ...while still reporting the useful part.
+    assert.equal(res.body.backends.cp.state, 'logged-in')
+    assert.equal(res.body.backends.cx.method, 'ChatGPT')
+  })
+})
+
+test('GET /api/backend-auth reports logged-out only when the probe actually said so', async () => {
+  await withAuthServer({
+    codex: SH + 'echo "Not logged in"\nexit 1\n',
+    gh: SH + 'exit 1\n',
+    opencode: SH + 'echo "0 credentials"\n',
+  }, async (port) => {
+    const res = await httpRequest({ port, method: 'GET', path: '/api/backend-auth' })
+    const b = res.body.backends
+    assert.equal(b.cx.state, 'logged-out')
+    assert.equal(b.cp.state, 'logged-out')
+    // opencode exits 0 even with nothing stored, so this can only come from reading the count.
+    assert.equal(b.oc.state, 'logged-out')
+  })
+})
+
+// "Could not check" and "not logged in" are different claims, and only one of them is safe to
+// assert. A hanging or missing CLI must never be rendered as a red cross.
+test('GET /api/backend-auth reports unknown, not logged-out, when a probe cannot run', async () => {
+  await withAuthServer({
+    // Sleeps well past the 3s probe timeout.
+    codex: SH + 'sleep 30\n',
+    // gh absent from the stub dir entirely.
+    opencode: SH + 'echo "something we do not recognise"\n',
+  }, async (port) => {
+    const res = await httpRequest({ port, method: 'GET', path: '/api/backend-auth' })
+    const b = res.body.backends
+    assert.equal(b.cx.state, 'unknown', 'a timed-out probe must not claim logged-out')
+    assert.match(b.cx.note, /timed out/)
+    assert.equal(b.cp.state, 'cli-missing', 'a missing CLI is not a logged-out user')
+    assert.equal(b.oc.state, 'unknown', 'unparseable output must not be guessed either way')
+  })
+})
+
+test('GET /api/backend-auth carries session evidence for the probe-less backends', async () => {
+  const stubs = { codex: SH + 'echo "Logged in using ChatGPT"\n', gh: SH + 'echo tok\n', opencode: SH + 'echo "0 credentials"\n' }
+  const binDir = stubCliDir(stubs)
+  const sessionsDir = mkdtempSync(path.join(tmpdir(), 'dash-authev-'))
+  const homeDir = mkdtempSync(path.join(tmpdir(), 'dash-home-'))
+  const port = 18800 + Math.floor(Math.random() * 1000)
+  // Antigravity has no auth probe at all, so a recent successful run is the only cheap evidence
+  // that its sign-in is live — and it is already on disk.
+  const good = path.join(sessionsDir, 'ag-ok')
+  mkdirSync(good, { recursive: true })
+  writeFileSync(path.join(good, 'status.json'), JSON.stringify({
+    backend: 'antigravity', state: 'done', lastActivityAt: '2026-07-24T19:26:18.671Z',
+  }))
+  const failed = path.join(sessionsDir, 'ag-authfail')
+  mkdirSync(failed, { recursive: true })
+  writeFileSync(path.join(failed, 'status.json'), JSON.stringify({
+    backend: 'antigravity', state: 'error', errorKind: 'auth', lastActivityAt: '2026-07-23T10:00:00.000Z',
+  }))
+
+  const child = startServerIsolated({ sessionsDir, homeDir, port, env: { PATH: binDir } })
+  try {
+    const actualPort = await waitForServerReady(child)
+    const res = await httpRequest({ port: actualPort, method: 'GET', path: '/api/backend-auth' })
+    const ev = res.body.evidence.ag
+    assert.ok(ev, 'evidence must be reported under the SHORT backend name')
+    assert.equal(ev.lastSuccessAt, '2026-07-24T19:26:18.671Z')
+    assert.equal(ev.authErrors, 1)
+  } finally {
+    await stopServer(child)
+    rmSync(binDir, { recursive: true, force: true })
+    rmSync(sessionsDir, { recursive: true, force: true })
+    rmSync(homeDir, { recursive: true, force: true })
+  }
+})
+
+test('GET /api/backend-auth caches, so opening the view repeatedly does not respawn probes', async () => {
+  // A probe that appends on every call: if the cache works, it runs exactly once.
+  const marker = path.join(mkdtempSync(path.join(tmpdir(), 'dash-authcnt-')), 'calls')
+  await withAuthServer({
+    codex: SH + 'echo x >> ' + marker + '\necho "Logged in using ChatGPT"\n',
+    gh: SH + 'echo tok\n',
+    opencode: SH + 'echo "0 credentials"\n',
+  }, async (port) => {
+    await httpRequest({ port, method: 'GET', path: '/api/backend-auth' })
+    await httpRequest({ port, method: 'GET', path: '/api/backend-auth' })
+    await httpRequest({ port, method: 'GET', path: '/api/backend-auth' })
+    const calls = readFileSync(marker, 'utf8').trim().split('\n').length
+    assert.equal(calls, 1, 'the codex probe should have run once, ran ' + calls + ' times')
+  })
+})

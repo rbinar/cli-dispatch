@@ -928,6 +928,51 @@ async function saveConfig(key, isSecret) {
     errSpan.textContent = e.message
   }
 }
+// ---- backend auth line (⚙ config view) ----
+//
+// The key badge above answers "is there a key in the config file?". That is the WRONG question for
+// three of the five backends: setup.md and the generated config's own comments say Antigravity,
+// Codex and Copilot normally have no key there at all, because they authenticate through a CLI
+// login. So the view used to report "not set" for backends that demonstrably work.
+//
+// This line answers the real question by combining both sources, and it never claims more than it
+// knows: a probe that could not run reads "could not check", not a red cross.
+const AUTH_HINT_CMD = {ag:'run agy once to sign in',cx:'run codex login',cp:'run gh auth login',oc:'set OPENROUTER_API_KEY or run opencode auth login'}
+function authLineHtml(backend, auth, keySet){
+  if(!auth) return ''
+  const a=(auth.backends||{})[backend]
+  if(!a) return ''
+  const alt=(auth.altCreds||{})[backend]||[]
+  const ev=(auth.evidence||{})[backend]
+  const bits=[]
+  // Order matters: a key in the config takes precedence over a CLI login for every backend that
+  // reads one, so it is stated first when present.
+  if(keySet) bits.push('<span class="ok">✓ key in config</span>')
+  if(alt.length) bits.push('<span class="ok">✓ ' + esc(alt.join(', ')) + '</span>')
+  if(a.state==='logged-in') bits.push('<span class="ok">✓ logged in' + (a.method?' (' + esc(a.method) + ')':'') + '</span>')
+  else if(a.state==='logged-out'&&!keySet&&!alt.length) bits.push('<span class="err">✗ not logged in</span>')
+  else if(a.state==='cli-missing') bits.push('<span class="muted">CLI not installed</span>')
+  else if(a.state==='unknown') bits.push('<span class="warnt">could not check</span>')
+  else if(a.state==='key-only'&&!keySet) bits.push('<span class="err">✗ no key</span>')
+  // 'no-probe' / 'key-only' carry their explanation in the parenthetical below, so the fallback
+  // must not repeat it (that printed the note twice).
+  const explained=(a.state==='no-probe'||a.state==='key-only')
+  if(!bits.length) bits.push('<span class="muted">' + esc(explained?'no live check available':(a.note||'unknown')) + '</span>')
+  let extra=''
+  // Only nudge when there is actually nothing working.
+  const nothing=!keySet&&!alt.length&&a.state!=='logged-in'
+  if(nothing&&AUTH_HINT_CMD[backend]) extra=' <span class="small muted">— ' + esc(AUTH_HINT_CMD[backend]) + '</span>'
+  // For the two backends with no probe, the session history is the only evidence available. It is
+  // labelled as evidence, never as a live check.
+  let evLine=''
+  if((a.state==='no-probe'||a.state==='key-only')&&ev&&ev.lastSuccessAt){
+    evLine='<div class="small muted">last run succeeded ' + esc(fmtDT(ev.lastSuccessAt))
+      + (ev.authErrors?' · ' + ev.authErrors + ' auth error' + (ev.authErrors===1?'':'s'):'') + '</div>'
+  }
+  const note=explained&&a.note?' <span class="small muted">(' + esc(a.note) + ')</span>':''
+  return '<div class="cfg-row"><div class="cfg-label">auth' + bits.join(' · ') + note + extra + '</div>' + evLine + '</div>'
+}
+
 async function renderConfigEditor() {
   const v = document.getElementById('view')
   const key = 'config'
@@ -936,19 +981,24 @@ async function renderConfigEditor() {
     // AG/CX/CP datalists are static (sourced from live CLI output or repo docs — see comments below).
     // OC_MODEL/OC_MODELS datalists are populated from a live fetch to /api/models/opencode.
     var modelFields = {AG_MODEL:1,AG_MODELS:1,CX_MODEL:1,CX_MODELS:1,CP_MODEL:1,CP_MODELS:1,OC_MODEL:1,OC_MODELS:1}
-    const cfg = await j('/api/config')
+    // Two fetches in parallel: /api/backend-auth spawns child processes, so it is a separate route
+    // on its own cache clock rather than extra cost inside /api/config.
+    const cfgPair = await Promise.all([j('/api/config'), j('/api/backend-auth').catch(()=>null)])
+    const cfg = cfgPair[0]
+    const auth = cfgPair[1]
     const groups = [
-      { name: 'DeepSeek', keys: ['DEEPSEEK_API_KEY', 'DS_MODEL', 'DS_FLASH_MODEL'] },
-      { name: 'Antigravity', keys: ['GEMINI_API_KEY', 'AG_MODEL', 'AG_MODELS'] },
-      { name: 'Codex', keys: ['CODEX_API_KEY', 'CX_MODEL', 'CX_MODELS'] },
-      { name: 'OpenCode', keys: ['OPENROUTER_API_KEY', 'OC_MODEL', 'OC_MODELS'] },
-      { name: 'Copilot', keys: ['COPILOT_GITHUB_TOKEN', 'CP_MODEL', 'CP_MODELS'] }
+      { name: 'DeepSeek', backend: 'ds', secretKey: 'DEEPSEEK_API_KEY', keys: ['DEEPSEEK_API_KEY', 'DS_MODEL', 'DS_FLASH_MODEL'] },
+      { name: 'Antigravity', backend: 'ag', secretKey: 'GEMINI_API_KEY', keys: ['GEMINI_API_KEY', 'AG_MODEL', 'AG_MODELS'] },
+      { name: 'Codex', backend: 'cx', secretKey: 'CODEX_API_KEY', keys: ['CODEX_API_KEY', 'CX_MODEL', 'CX_MODELS'] },
+      { name: 'OpenCode', backend: 'oc', secretKey: 'OPENROUTER_API_KEY', keys: ['OPENROUTER_API_KEY', 'OC_MODEL', 'OC_MODELS'] },
+      { name: 'Copilot', backend: 'cp', secretKey: 'COPILOT_GITHUB_TOKEN', keys: ['COPILOT_GITHUB_TOKEN', 'CP_MODEL', 'CP_MODELS'] }
     ]
     let html = '<div style="max-width:800px">'
     for (const g of groups) {
       html += '<div class="panel">'
       html += '<div style="padding:8px 12px;border-bottom:1px solid var(--bd);font-weight:bold;color:var(--accent)">' + esc(g.name) + ' Backend</div>'
       html += '<div class="sabody" style="padding:12px">'
+      html += authLineHtml(g.backend, auth, !!(cfg[g.secretKey] && cfg[g.secretKey].set))
       for (const k of g.keys) {
         const item = cfg[k]
         if (!item) continue

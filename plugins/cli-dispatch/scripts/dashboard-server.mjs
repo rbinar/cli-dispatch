@@ -24,7 +24,7 @@ import os from 'node:os'
 import crypto from 'node:crypto'
 import https from 'node:https'
 import { fileURLToPath } from 'node:url'
-import { spawnSync, execSync, execFileSync } from 'node:child_process'
+import { spawnSync, execSync, execFileSync, execFile } from 'node:child_process'
 // NOTE: pty-host.mjs / takeover-cmd.mjs are deliberately NOT imported statically here.
 // They are only needed for the opt-in human-takeover write path and install.sh does not
 // ship them in every configuration — a static top-level import would ERR_MODULE_NOT_FOUND
@@ -35,7 +35,7 @@ import {
   FLOW_CAP, readHead, readTail, lines, clip, contentText,
   mapFlow, collectProcTree, readVerdict, readChangedFiles
 } from './dashboard-utils.mjs'
-import { readJsonFile, markTakeoverActive, touchTakeoverHeartbeat, clearTakeoverState, NON_TERMINAL_STATES } from './parse-utils.mjs'
+import { readJsonFile, markTakeoverActive, touchTakeoverHeartbeat, clearTakeoverState, NON_TERMINAL_STATES, normalizeBackend } from './parse-utils.mjs'
 
 // Directory this file lives in, regardless of whether it's run in-repo or from its
 // installed location (install.sh copies it + its sibling .mjs modules together) — used to
@@ -1211,6 +1211,150 @@ const CONFIG_KEYS = {
   CP_MODELS: { secret: false }
 }
 
+// ---- backend auth state ----
+//
+// Why this exists: the ⚙ config view derives "● set" / "○ not set" from ONE key in ONE file, but
+// three of the five backends normally carry no key there at all — setup.md, install.sh's generated
+// config comments and README.md all say so explicitly ("Codex and Antigravity normally use their
+// own OAuth sign-in — no key in the config at all"). So the view reported "not set" for backends
+// that demonstrably work, and doctor.md answered the same question with an unverified guess phrased
+// as a pass ("using Google sign-in"). README.md already advertises per-backend "CLI auth ✓/✗",
+// which until now only `gh` actually delivered.
+//
+// Hard rules for everything below:
+//  - Probes are non-interactive and can never prompt: no shell, fixed argv, stdin closed.
+//  - Raw probe output NEVER leaves this module. It is parsed into an enum + a short method string
+//    here; the client receives no account names, no emails, and no token material.
+//  - A probe that times out or errors yields 'unknown', NEVER 'logged-out'. "Could not check" and
+//    "not logged in" are different claims, and only one of them is safe to assert.
+const AUTH_PROBE_TIMEOUT_MS = 3000
+const AUTH_CACHE_TTL_MS = 60 * 1000
+const ANSI_RE = new RegExp(String.fromCharCode(27) + "\\[[0-9;]*[A-Za-z]", "g")
+let authProbeCache = null   // { at: number, value: object }
+
+// Alternate credential env vars each wrapper honours but CONFIG_KEYS cannot see. Reported as a
+// present/absent boolean only — never the value.
+const ALT_CRED_VARS = {
+  ag: ['ANTIGRAVITY_API_KEY'],
+  cx: ['OPENAI_API_KEY'],
+  cp: ['GH_TOKEN', 'GITHUB_TOKEN'],
+}
+
+function runProbe(cmd, args) {
+  return new Promise((resolve) => {
+    execFile(cmd, args, {
+      timeout: AUTH_PROBE_TIMEOUT_MS,
+      killSignal: 'SIGKILL',
+      encoding: 'utf8',
+      // 'ignore' on stdin is what guarantees a probe can never sit waiting for a login prompt.
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, NO_COLOR: '1' },
+    }, (err, stdout, stderr) => {
+      resolve({
+        ok: !err,
+        timedOut: !!(err && (err.killed || err.signal === 'SIGKILL')),
+        missing: !!(err && err.code === 'ENOENT'),
+        // opencode colours its output even with NO_COLOR set.
+        out: String((stdout || '') + (stderr || '')).replace(ANSI_RE, ''),
+      })
+    })
+  })
+}
+
+function authResult(state, method, note) {
+  return { state, method: method || '', note: note || '' }
+}
+
+// codex: `codex login status` is a local read of ~/.codex/auth.json (~140ms) and reports the
+// METHOD, which matters — a ChatGPT subscription and an API key bill differently.
+async function probeCodexAuth() {
+  const r = await runProbe('codex', ['login', 'status'])
+  if (r.missing) return authResult('cli-missing')
+  if (r.timedOut) return authResult('unknown', '', 'probe timed out')
+  const out = r.out.toLowerCase()
+  // Negation FIRST: "not logged in" contains "logged in", so the positive test must not run first.
+  if (out.includes('not logged in')) return authResult('logged-out', '', 'codex login')
+  if (out.includes('logged in')) {
+    if (out.includes('chatgpt')) return authResult('logged-in', 'ChatGPT')
+    if (out.includes('api key')) return authResult('logged-in', 'API key')
+    return authResult('logged-in')
+  }
+  if (!r.ok) return authResult('logged-out', '', 'codex login')
+  // Exit 0 with wording we do not recognise: do not guess in either direction.
+  return authResult('unknown', '', 'unrecognised codex output')
+}
+
+// copilot: `gh auth token` is the repo's own definition of "logged in" (README, and
+// stream-utils.sh's maybe_export_gh_token) and reads the keyring with NO network round-trip —
+// unlike `gh auth status`, which validates against the API and would stall a config view offline.
+// This command DOES print the token: it is length-checked and discarded here, and is never stored,
+// logged, or included in any response.
+async function probeCopilotAuth() {
+  const r = await runProbe('gh', ['auth', 'token'])
+  if (r.missing) return authResult('cli-missing', '', 'gh not installed')
+  if (r.timedOut) return authResult('unknown', '', 'probe timed out')
+  if (r.ok && r.out.trim().length > 0) return authResult('logged-in', 'gh')
+  return authResult('logged-out', '', 'gh auth login')
+}
+
+// opencode: `opencode auth list` prints a count and no secrets — but it exits 0 even with zero
+// credentials, so the exit code says nothing and the text has to be read.
+async function probeOpenCodeAuth() {
+  const r = await runProbe('opencode', ['auth', 'list'])
+  if (r.missing) return authResult('cli-missing')
+  if (r.timedOut) return authResult('unknown', '', 'probe timed out')
+  const m = r.out.match(/(\d+)\s+credential/i)
+  if (!m) return authResult('unknown', '', 'unrecognised opencode output')
+  return Number(m[1]) > 0
+    ? authResult('logged-in', 'opencode auth')
+    : authResult('logged-out', '', 'OPENROUTER_API_KEY or opencode auth login')
+}
+
+// Antigravity has no auth subcommand at all, and the repo's only existing check spawns a real
+// `agy -p "ping"` with a 35s cap (ag-stream) — far too expensive for a config view. DeepSeek has
+// no login concept: claude-ds hard-fails without the key. For both, the honest answer is that no
+// probe exists — and the evidence below, which the session dirs already carry, fills the gap for
+// all five backends at the cost of a stat and a small read per dir.
+function backendEvidence() {
+  const out = {}
+  if (!isDir(WORKERS_ROOT)) return out
+  let entries = []
+  try { entries = fs.readdirSync(WORKERS_ROOT) } catch { return out }
+  for (const d of entries) {
+    const st = readJSON(path.join(WORKERS_ROOT, d, 'status.json'))
+    if (!st) continue
+    const b = normalizeBackend(st.backend)
+    if (!b) continue
+    const row = out[b] || (out[b] = { lastSuccessAt: '', authErrors: 0 })
+    if (st.errorKind === 'auth') row.authErrors++
+    const at = st.lastActivityAt || ''
+    if (st.state === 'done' && at > row.lastSuccessAt) row.lastSuccessAt = at
+  }
+  return out
+}
+
+async function backendAuthState() {
+  if (authProbeCache && Date.now() - authProbeCache.at < AUTH_CACHE_TTL_MS) return authProbeCache.value
+  // Parallel: run serially these cost ~1.1s, a visible stall on opening the view.
+  const [cx, cp, oc] = await Promise.all([probeCodexAuth(), probeCopilotAuth(), probeOpenCodeAuth()])
+  const value = {
+    checkedAt: new Date().toISOString(),
+    backends: {
+      ds: authResult('key-only', '', 'API key only — no CLI login'),
+      ag: authResult('no-probe', '', 'agy has no auth subcommand'),
+      cx,
+      oc,
+      cp,
+    },
+    // Present/absent only, never a value.
+    altCreds: Object.fromEntries(Object.entries(ALT_CRED_VARS).map(([b, vars]) =>
+      [b, vars.filter(v => !!process.env[v])])),
+    evidence: backendEvidence(),
+  }
+  authProbeCache = { at: Date.now(), value }
+  return value
+}
+
 function resolveConfigPath() {
   const envOverride = process.env.CLI_DISPATCH_CONFIG || process.env.CLAUDE_DS_CONFIG
   if (envOverride) return envOverride
@@ -1309,6 +1453,13 @@ const server = http.createServer(async (req, res) => {
         }
       }
       return send(res, 200, { removed, failed, count: items.length })
+    }
+
+    // Deliberately its own route rather than folded into /api/config: it spawns child processes,
+    // so it must not add cost to a route that may be fetched for other reasons, and it caches on a
+    // different clock.
+    if (p === '/api/backend-auth' && req.method === 'GET') {
+      return send(res, 200, await backendAuthState())
     }
 
     if (p === '/api/config' && req.method === 'GET') {

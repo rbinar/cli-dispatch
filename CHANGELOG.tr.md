@@ -7,6 +7,63 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.4.0] — 2026-07-26
+
+⚙ Configuration görünümü "bu backend kimlik doğrulamış mı?" sorusunu "`~/.config/cli-dispatch/config`
+içinde ona ait bir key var mı?" diye yanıtlıyordu — beş backend'in üçü için bu yanlış soru.
+`setup.md`, `install.sh`'in ürettiği config'e yazdığı yorumlar ve `README.md`, Antigravity, Codex ve
+Copilot'un normalde kendi CLI'siyle giriş yaptığını ve **config'de hiç key olmadığını** söylüyor.
+Dolayısıyla görünüm, kanıtlanabilir şekilde çalışan backend'ler için `○ not set` diyordu ve
+`doctor.md` aynı soruyu doğrulanmamış bir tahminle, geçmiş gibi ("using Google sign-in")
+yanıtlıyordu. `README.md` ise backend başına "CLI auth ✓/✗" vaat ediyor, ama bunu yalnız `gh`
+gerçekten veriyordu.
+
+### Eklendi
+
+- **⚙ Configuration görünümünde backend başına auth durumu.** Her backend grubu artık iki kimlik
+  kaynağını birleştiren ve bildiğinden fazlasını asla iddia etmeyen bir `auth` satırıyla başlıyor:
+  `✓ key in config` / `✓ logged in (ChatGPT)` / `✓ logged in (gh)` / `✗ not logged in` + düzeltecek
+  komut / `could not check` / `CLI not installed`. Yeni `GET /api/backend-auth` — alt süreç
+  başlattığı ve farklı bir saatte cache'lendiği için `/api/config`'e ek yük yerine kendi route'u
+  (60 sn TTL; soğuk ~590 ms, sıcak ~1 ms).
+- **`/cli-dispatch:doctor`'daki tahminler gerçek probe'larla değişti** — login'i olan dört backend
+  için: `codex login status` (`~/.codex/auth.json`'ın yerel okuması, ve *yöntemi* de bildiriyor —
+  ChatGPT aboneliği ile API key farklı faturalanır), Copilot için `gh auth token` (repo'nun kendi
+  "logged in" tanımı; `gh auth status`'ün aksine keyring'i **ağ turu olmadan** okur, yani çevrimdışı
+  görünümü kilitlemez) ve OpenCode için `opencode auth list`.
+- **Probe olmayan yerde session geçmişi kanıt olarak.** `agy`'de auth subcommand'ı hiç yok ve
+  repo'daki tek mevcut Antigravity kontrolü 35 saniye üst sınırlı gerçek bir `agy -p "ping"`
+  başlatıyor — config görünümü için çok yavaş. Antigravity ve DeepSeek için görünüm bunu açıkça
+  söylüyor ve session dizinlerinin zaten taşıdığı en güçlü ucuz kanıtı ekliyor: backend başına son
+  başarılı koşu ve `errorKind: 'auth'` hata sayısı.
+- **Görünümün göremediği dört kimlik env değişkeni** artık bildiriliyor (yalnız varlık, asla değer):
+  `ANTIGRAVITY_API_KEY`, `OPENAI_API_KEY`, `GH_TOKEN`, `GITHUB_TOKEN`. Her biri bir wrapper
+  tarafından onurlandırılıyor ama `CONFIG_KEYS`'te yok; bu yüzden bunlardan biriyle kimlik
+  doğrulamış bir kullanıcı yine "not set" görünüyordu.
+
+### Güvenlik
+
+- **Hiçbir probe çıktısı sunucudan çıkmıyor.** Her sonuç `dashboard-server.mjs` içinde bir enum ve
+  kısa bir yöntem metnine çevriliyor; client'a hesap adı, e-posta veya token materyali gitmiyor. Bu
+  en çok Copilot'ta önemli: `gh auth token` *token'ı basıyor*, o yüzden uzunluk kontrolünden geçirilip
+  atılıyor — asla saklanmıyor, loglanmıyor, yanıta konmuyor. Bir test, tüm probe'lar bunları basacak
+  şekilde ayarlandığında bile yanıtta `gho_`/`sk-or-v1`/hesap kimliği olmadığını doğruluyor.
+- **Probe'lar prompt gösteremez.** Sabit argv (shell yok), `stdin` kapalı, 3 saniye timeout, süre
+  dolunca `SIGKILL` — böylece bir login prompt'u dashboard isteğinin arkasında bekleyemez.
+- **Koşamayan probe `unknown` bildiriyor, asla `logged-out`.** "Kontrol edemedim" ile "giriş yok"
+  farklı iddialar ve yalnız biri güvenle söylenebilir; timeout, eksik CLI ve tanınmayan çıktı kendi
+  durumlarını alıyor. Testlerle sabitlendi.
+
+### Düzeltildi
+
+- **`doctor.md` artık doğrulamadığı bir başarıyı bildirmiyor.** Antigravity, Codex ve Copilot
+  bölümleri, yalnızca key yok diye güven verici giriş metni basıyordu. Codex ve Copilot artık gerçek
+  probe yapıyor; Antigravity key'i dürüstçe bildirip koşu geçmişine düşüyor; OpenCode'un eksik key'i
+  artık otomatik ölümcül sayılmıyor, çünkü `opencode auth login` var.
+- **Kendi testinin yakaladığı `codex login status` parse hatası:** `"Not logged in"` küçük harfe
+  çevrilince hâlâ `"logged in"` içeriyor, dolayısıyla naif pozitif eşleşme girişi olmayan kullanıcıyı
+  girişli bildiriyordu. Olumsuzlama artık önce test ediliyor.
+
 ## [4.3.0] — 2026-07-25
 
 Dashboard'u 4.0.0'ın gönderdiği mimariye hizalar. Dashboard'a 3.43.x'ten beri anlamlı bir dokunuş
