@@ -42,6 +42,18 @@ true (#128), and the `.ps1` worktree runners no code path selected (#125).
   backslashes, `;`, `&&`, newlines and the empty string through real bash, and by asserting the
   four values still arrive as exactly four argv entries.
 
+### Changed
+
+- **Workers list: the start time moved to the right edge of the row's metadata line.** It used to
+  lead that line, which pushed the three tokens you actually scan down the rail — repo, live tool,
+  token usage — right by a variable amount, because a locale timestamp is not fixed-width. Pinned
+  right it forms its own column, and the left group gets the whole remaining width to ellipsis
+  into (so a 260px rail truncates the repo name, never the time).
+  - The line was extracted out of `loadList`'s inline row template into `workerMetaLineHtml` so
+    the layout is testable at all: a grep for a CSS class is not an assertion about order. Three
+    tests cover it — DOM order with `.when` last, no dangling ` · ` when tokens are absent, and
+    escaping of a hostile `cwd`/`lastTool` — and the order assertion is mutation-verified.
+
 ### Removed
 
 - **`ds-worktree-run.ps1` and `cx-worktree-run.ps1` (#125).** Nothing selected them:
@@ -62,7 +74,7 @@ true (#128), and the `.ps1` worktree runners no code path selected (#125).
 
 ### Tests
 
-- 305 → 316. `markWorktreeRemoved` (field flip with everything else byte-identical, idempotence,
+- 305 → 319. `markWorktreeRemoved` (field flip with everything else byte-identical, idempotence,
   error-shape refusal, fail-soft on unreadable/unparseable/non-object input, CLI exit codes);
   three runner-level scenarios driving the real cleanup path (removed → recorded, kept →
   still false, missing verdict → run unaffected); and the first pwsh-driven test in the repo,

@@ -173,7 +173,7 @@ const EXPORTS = [
   'esc', 'escAttr', 'md', 'mdInline', 'workerBucket',
   'fmtUsage', 'fmtTok', 'shortProj', 'shortSessionProj',
   'WORKER_BUCKETS', 'WORKER_DOT', 'WORKER_BADGE_CLS',
-  'verifyBadgeHtml', 'verifyPhrase', 'changeSize', 'runLineHtml',
+  'verifyBadgeHtml', 'verifyPhrase', 'changeSize', 'runLineHtml', 'workerMetaLineHtml',
   'usageTokenStr', 'matchesWorkerFilter',
   'verdictStripHtml', 'verifyPanelHtml', 'verifyTailHtml',
   'changedFilesPanelHtml', 'runEnvPanelHtml', 'authPanelHtml', 'runnerExitSentence',
@@ -655,4 +655,58 @@ test('32. md() is never applied to verdict-derived text', () => {
   assert.match(verifyTailHtml(flow, {}), /\*\*bold\*\*/, 'the tail must stay literal')
   assert.ok(!verifyTailHtml(flow, {}).includes('<strong>'), 'no markdown transform on tool output')
   assert.match(changedFilesPanelHtml(flow, {}, 'x'), /\*\*star\*\*\.py/, 'a filename must stay literal')
+})
+
+// ---- worker row: the start time sits at the right edge of the metadata line ---------------
+
+test('workerMetaLineHtml: the timestamp is last in the DOM and carries the right-pinning class', () => {
+  const { workerMetaLineHtml } = api()
+  const html = workerMetaLineHtml(
+    { cwd: '/tmp/blinkfin/api', started: '2026-07-26T22:20:19.000Z', lastTool: 'Edit' },
+    true,
+    '71.2k in / 12.0k out',
+  )
+
+  // Order is the point of the change: left tokens, then the time.
+  const whenAt = html.indexOf('class="when"')
+  assert.notEqual(whenAt, -1, 'the time needs the .when class — that is what pins it right')
+  assert.ok(html.indexOf('blinkfin/api') < whenAt, 'repo token must precede the time')
+  assert.ok(html.indexOf('71.2k in') < whenAt, 'usage must precede the time')
+  // .when is the LAST element, so nothing can be appended after it and still read as right-aligned.
+  assert.match(html.slice(whenAt), /^class="when">[^<]*<\/span><\/div>$/)
+
+  // The left group is a single ellipsis-able box: the rail truncates the repo name, never the time.
+  assert.match(html, /<span class="lt">/)
+  assert.ok(html.indexOf('<span class="lt">') < whenAt)
+})
+
+test('workerMetaLineHtml: absent tokens leave no dangling separators', () => {
+  const { workerMetaLineHtml } = api()
+
+  // No cwd, not live, no usage — the left box is empty but the time still renders.
+  const bare = workerMetaLineHtml({ started: '2026-07-26T22:20:19.000Z' }, false, '')
+  assert.match(bare, /<span class="lt"><\/span>/, 'empty left group, not a stray separator')
+  assert.doesNotMatch(bare, /·/, 'no separator without two tokens to separate')
+  assert.match(bare, /class="when">.+<\/span>/)
+
+  // lastTool is suppressed on a finished row even when present (3.40.2: fossils do not ship).
+  const dead = workerMetaLineHtml({ cwd: '/tmp/x/y', started: '', lastTool: 'Bash' }, false, '')
+  assert.doesNotMatch(dead, /Bash/, 'lastTool must not survive on a non-live row')
+
+  // A missing start time must not print the literal "Invalid Date".
+  assert.doesNotMatch(dead, /Invalid Date/)
+})
+
+test('workerMetaLineHtml: hostile cwd and lastTool are escaped', () => {
+  const { workerMetaLineHtml } = api()
+  const html = workerMetaLineHtml(
+    { cwd: '/tmp/"><script>alert(1)</script>/x', started: '2026-07-26T22:20:19.000Z', lastTool: '<img src=x onerror=alert(1)>' },
+    true,
+    '1 in',
+  )
+  assert.doesNotMatch(html, /<script/)
+  assert.doesNotMatch(html, /<img/)
+  for (const tag of html.match(/<\/?[a-zA-Z][^>]*>/g) || []) {
+    assert.match(tag, /^<\/?(div|span)(\s[^>]*)?>$/, `unexpected tag rendered: ${tag}`)
+  }
 })

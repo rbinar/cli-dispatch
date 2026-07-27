@@ -42,6 +42,18 @@ alanı (#128) ve hiçbir kod yolunun seçmediği `.ps1` worktree runner'ları (#
   bölü, `;`, `&&`, satır sonu ve boş string gerçek bash üzerinden round-trip edildi ve dört
   değerin tam olarak dört argv girdisi olarak vardığı iddia edildi.
 
+### Değişti
+
+- **Workers listesinde başlangıç zamanı satırın metadata satırının sağ ucuna taşındı.** Eskiden o
+  satırı açıyordu ve rail'de aslında taradığın üç token'ı — repo, canlı araç, token kullanımı —
+  değişken bir miktarda sağa itiyordu; çünkü yerel zaman damgası sabit genişlikte değil. Sağa
+  sabitlendiğinde kendi kolonunu oluşturuyor ve sol grup kalan tüm genişliği ellipsis için
+  kullanıyor (yani 260px'lik rail repo adını kırpıyor, zamanı asla).
+  - Satır, `loadList`'in gömülü satır şablonundan `workerMetaLineHtml`'e çıkarıldı ki düzen
+    gerçekten test edilebilsin: bir CSS class'ını grep'lemek sıra hakkında bir iddia değildir. Üç
+    test kapsıyor — `.when`'in sonda olduğu DOM sırası, token yokken artık ` · ` kalmaması ve
+    düşmanca `cwd`/`lastTool`'un kaçırılması — ve sıra iddiası mutasyonla doğrulandı.
+
 ### Kaldırıldı
 
 - **`ds-worktree-run.ps1` ve `cx-worktree-run.ps1` (#125).** Hiçbir şey onları seçmiyordu:
@@ -62,7 +74,7 @@ alanı (#128) ve hiçbir kod yolunun seçmediği `.ps1` worktree runner'ları (#
 
 ### Testler
 
-- 305 → 316. `markWorktreeRemoved` (alan çevrilirken diğer her şeyin bayt-bayt aynı kalması,
+- 305 → 319. `markWorktreeRemoved` (alan çevrilirken diğer her şeyin bayt-bayt aynı kalması,
   idempotence, hata-şeklini reddetme, okunamaz/parse edilemez/nesne-olmayan girdide fail-soft, CLI
   çıkış kodları); gerçek cleanup yolunu süren üç runner-seviyesi senaryo (kaldırıldı → kaydedildi,
   korundu → hâlâ false, verdict yok → koşu etkilenmiyor); ve repodaki ilk pwsh-güdümlü test —
