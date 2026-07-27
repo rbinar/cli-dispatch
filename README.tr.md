@@ -358,8 +358,8 @@ Native Windows'ta (WSL kullanmıyorsan) PowerShell varyantları devreye girer. *
   - **Codex**: `cx-stream.ps1` + `cx-agent.ps1` + `.cmd` shim'leri ve parser'ı (`cx-stream-parse.mjs`) kurar. Auth: `codex login` (ya da config'te `CODEX_API_KEY`). Gerçek `-s read-only` sandbox dahil.
   - Dashboard her zaman kurulur; config `~/.config/cli-dispatch/config`'e yazılır.
   - `install.ps1`'e `-InstallMissing` ekleyerek eksik bir worker CLI'ını otomatik kurmayı denetebilirsin (npm, ya da bir vendor fallback) ve `Get-Command` ile yeniden kontrol eder; başarısızlıkta mevcut uyarıya düşer — opt-in, varsayılan kapalı; auth asla otomatikleştirilmez.
-- Repo görevleri: `ds-worktree-run.ps1` / `cx-worktree-run.ps1` — `node_modules` için symlink yerine **junction** (`New-Item -ItemType Junction`; admin/developer-mode gerektirmez) kullanır.
-- WSL ya da Git Bash varsa Unix `.sh` scriptleri de çalışır.
+- Repo görevleri (worktree koşuları) **bash** gerektirir — WSL ya da Git Bash. `cli-dispatch-run.ps1` `.sh` worktree runner'ını onun üzerinden çağırır ve bash yoksa hiç başlamaz. PowerShell ikizleri (`ds-worktree-run.ps1` / `cx-worktree-run.ps1`) 4.6.0'da kaldırıldı: hiçbir kod yolu onları seçmiyordu, dolayısıyla yalnızca aynadıkları bash orijinallerinden sessizce sapabilirlerdi.
+- Geri kalan her şey — generation, sessions, watch, kill, gain, dashboard — native PowerShell'dir ve bash gerektirmez.
 
 Gereksinim: PowerShell 5.1+ veya pwsh 7+; DeepSeek için `claude`, Codex için `codex` PATH'te.
 

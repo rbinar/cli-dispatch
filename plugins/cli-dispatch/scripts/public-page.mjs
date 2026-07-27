@@ -73,6 +73,11 @@ a.agentlink{color:var(--accent);cursor:pointer}
 .item .l1 .c{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .vrow{display:flex;gap:6px;align-items:flex-start}.vrow>pre{flex:1;min-width:0;margin:4px 0}
 .item .ell{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Worker row, metadata line: left tokens take the space that is left, the start time sits at the
+   right edge. nowrap on .when so a 260px rail truncates the repo name, never the timestamp. */
+.item .l4{display:flex;align-items:baseline;gap:6px}
+.item .l4 .lt{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .l4 .when{margin-left:auto;white-space:nowrap}
 .pathline{word-break:break-all}
 .warnt{color:var(--warning)}
 #takeover{display:none;margin-bottom:10px}
@@ -444,6 +449,28 @@ function matchesWorkerFilter(w,flt){
   return workerBucket(w)===flt
 }
 
+// The metadata line of a worker row: scan tokens on the left, start time pinned to the RIGHT edge.
+// The time used to LEAD this line, which pushed the three tokens actually scanned down the rail
+// (repo, live tool, token usage) right by a variable amount — a locale timestamp is not
+// fixed-width, so nothing lined up. Pinned right it forms its own column and the left group gets
+// the whole remaining width to ellipsis into.
+//
+// Extracted from loadList's inline row template so the layout is testable at all: everything else
+// in that template is asserted through a real function, and a grep for a CSS class is not an
+// assertion about order.
+function workerMetaLineHtml(w,live,usageBits){
+  const parts=[]
+  const origin=shortProj(w.cwd)
+  if(origin) parts.push(esc(origin))
+  // lastTool only while the row is live — a fossil once the worker is dead (3.40.2).
+  if(live&&w.lastTool) parts.push(esc(w.lastTool))
+  // usageBits arrives pre-escaped: it is assembled from usageTokenStr/fmtUsage, both of which
+  // esc() their own inputs.
+  if(usageBits) parts.push(usageBits)
+  return '<div class="small muted l4"><span class="lt">'+parts.join(' · ')+'</span>'
+    +'<span class="when">'+esc(fmtDT(w.started))+'</span></div>'
+}
+
 function runLineHtml(w){
   // An auth failure is not a task failure: the worker never started, so there is no run to report.
   if(w.errorKind==='auth'){
@@ -507,9 +534,11 @@ async function loadList(){
       const badgeCls=isAuth?'badge warn':(WORKER_BADGE_CLS[bucket]||'badge')
       const u=fmtUsage(w.usage)
       const tokStr=usageTokenStr(w)
-      let usageLine=''
+      // No leading separator: this is now one token among several joined below, not a suffix
+      // pasted onto a line that always began with a timestamp.
+      let usageBits=''
       if(tokStr||(u&&u.costStr)){
-        usageLine=' · '+(tokStr?esc(tokStr):'')+(tokStr&&u&&u.costStr?' · ':'')+((u&&u.costStr)?esc(u.costStr):'')
+        usageBits=(tokStr?esc(tokStr):'')+(tokStr&&u&&u.costStr?' · ':'')+((u&&u.costStr)?esc(u.costStr):'')
       }
       // Dropped from the row in 4.3.0, to buy the space the outcome line needs:
       //  - "from <parent CC session>": babysitter-era provenance. The deterministic runner has no
@@ -521,7 +550,6 @@ async function loadList(){
       //  - the literal "default" for a missing model: absence already means default.
       //  - lastTool on a finished row: a fossil once the worker is dead, so it is kept only while
       //    the row is live (3.40.2's "only what changes moment to moment", applied to rows).
-      const origin=shortProj(w.cwd)
       const runLine=runLineHtml(w)
       const h='<div class="item'+(sel===w.id?' sel':'')+'">'
         +'<div class="l1"><span class="dot '+dot+'"></span>'+esc(w.backend)
@@ -532,7 +560,7 @@ async function loadList(){
         +'</div>'
         +(runLine?'<div class="small muted ell">'+runLine+'</div>':'')
         +'<div class="small muted ell">'+esc(w.prompt||w.id.slice(0,8))+'</div>'
-        +'<div class="small muted">'+esc(fmtDT(w.started))+(origin?' · '+esc(origin):'')+(live&&w.lastTool?' · '+esc(w.lastTool):'')+usageLine+'</div>'
+        +workerMetaLineHtml(w,live,usageBits)
         +'</div>'
       const it=E(h); it.onclick=()=>openWorker(w); frag.appendChild(it); sig.push(h)
     })

@@ -1,10 +1,13 @@
-import { execSync } from 'node:child_process'
+import { execSync, spawnSync } from 'node:child_process'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
-import { buildVerdict, runVerify } from '../verdict-writer.mjs'
+import { buildVerdict, markWorktreeRemoved, runVerify } from '../verdict-writer.mjs'
+
+const WRITER_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'verdict-writer.mjs')
 
 function makeRepo() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cli-dispatch-verdict-'))
@@ -227,4 +230,116 @@ test('buildVerdict: accepts long backend names and falls back to status.backend'
   }), /unknown backend/)
 
   cleanup(longName.sessionRoot, longName.worktree, noMeta.sessionRoot, noMeta.worktree)
+})
+
+// ---- markWorktreeRemoved (issue #128) ---------------------------------------------------
+//
+// The field was structurally always false: buildVerdict() cannot know the answer, because the
+// verdict is written before --cleanup-if-clean gets to act. These lock the after-the-fact write
+// AND its fail-soft contract — a bookkeeping write must never be able to fail a finished run.
+
+function writeVerdictFile(contents) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cli-dispatch-mark-'))
+  const file = path.join(dir, 'verdict.json')
+  fs.writeFileSync(file, typeof contents === 'string' ? contents : JSON.stringify(contents))
+  return { dir, file }
+}
+
+test('markWorktreeRemoved: flips the field and preserves every other one', () => {
+  const original = {
+    schemaVersion: 1,
+    sessionId: 'session-id',
+    backend: 'ds',
+    state: 'done',
+    exitCode: 0,
+    stranded: false,
+    worktreeRemoved: false,
+    verify: { commands: ['true'], exitCode: 0, failedAt: null, tail: 'line1\nline2' },
+  }
+  const { dir, file } = writeVerdictFile(original)
+
+  assert.equal(markWorktreeRemoved(file), true)
+
+  const after = JSON.parse(fs.readFileSync(file, 'utf8'))
+  assert.equal(after.worktreeRemoved, true)
+  // Everything else byte-identical: this writer owns ONE boolean.
+  assert.deepEqual({ ...after, worktreeRemoved: false }, original)
+  // Embedded newlines in the verify tail survive the round-trip.
+  assert.equal(after.verify.tail, 'line1\nline2')
+
+  cleanup(dir)
+})
+
+test('markWorktreeRemoved: idempotent, and leaves no .tmp file behind', () => {
+  const { dir, file } = writeVerdictFile({ schemaVersion: 1, state: 'done', worktreeRemoved: true })
+
+  assert.equal(markWorktreeRemoved(file), true)
+  assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).worktreeRemoved, true)
+  assert.equal(markWorktreeRemoved(file), true)
+  assert.deepEqual(fs.readdirSync(dir), ['verdict.json'])
+
+  cleanup(dir)
+})
+
+test('markWorktreeRemoved: refuses the build-verdict error shape', () => {
+  // cli-dispatch-run writes {schemaVersion, error, sessionId, exitCode} when build-verdict
+  // throws. Adding worktreeRemoved there would dress a crash record up as a real verdict —
+  // and that exitCode is a node exit status, not the 0-5 runner contract.
+  const errShape = { schemaVersion: 1, error: 'build-verdict failed (exit 5) — see stderr', sessionId: 's', exitCode: 5 }
+  const { dir, file } = writeVerdictFile(errShape)
+
+  assert.equal(markWorktreeRemoved(file), false)
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), errShape)
+  assert.equal('worktreeRemoved' in JSON.parse(fs.readFileSync(file, 'utf8')), false)
+
+  cleanup(dir)
+})
+
+test('markWorktreeRemoved: fail-soft on unreadable, unparseable and non-object input', () => {
+  // Never throws: the run is already over and the worktree really is gone.
+  const missing = fs.mkdtempSync(path.join(os.tmpdir(), 'cli-dispatch-mark-'))
+  assert.equal(markWorktreeRemoved(path.join(missing, 'nope.json')), false)
+  cleanup(missing)
+
+  const truncated = writeVerdictFile('{"schemaVersion":1,"state":"do')
+  assert.equal(markWorktreeRemoved(truncated.file), false)
+  cleanup(truncated.dir)
+
+  const arrayShape = writeVerdictFile([{ state: 'done' }])
+  assert.equal(markWorktreeRemoved(arrayShape.file), false)
+  cleanup(arrayShape.dir)
+
+  const nullShape = writeVerdictFile('null')
+  assert.equal(markWorktreeRemoved(nullShape.file), false)
+  cleanup(nullShape.dir)
+})
+
+test('markWorktreeRemoved: an error verdict that DID reach a state is still updated', () => {
+  // `error` is also a legitimate status.state, so the error-shape guard must key on the
+  // ABSENCE of state, not on the presence of an error field.
+  const { dir, file } = writeVerdictFile({ schemaVersion: 1, state: 'error', exitCode: 2, worktreeRemoved: false })
+
+  assert.equal(markWorktreeRemoved(file), true)
+  assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).worktreeRemoved, true)
+
+  cleanup(dir)
+})
+
+test('mark-worktree-removed CLI: exits 0 whether or not the write lands', () => {
+  const ok = writeVerdictFile({ schemaVersion: 1, state: 'done', worktreeRemoved: false })
+  const good = spawnSync(process.execPath, [WRITER_PATH, 'mark-worktree-removed', ok.file], { encoding: 'utf8' })
+  assert.equal(good.status, 0)
+  assert.equal(JSON.parse(fs.readFileSync(ok.file, 'utf8')).worktreeRemoved, true)
+  cleanup(ok.dir)
+
+  const gone = fs.mkdtempSync(path.join(os.tmpdir(), 'cli-dispatch-mark-'))
+  const bad = spawnSync(process.execPath, [WRITER_PATH, 'mark-worktree-removed', path.join(gone, 'nope.json')], { encoding: 'utf8' })
+  assert.equal(bad.status, 0, 'a failed bookkeeping write must not fail the run')
+  assert.match(bad.stderr, /could not record worktreeRemoved/)
+  cleanup(gone)
+
+  // No path at all is a usage error, not a fail-soft case.
+  const noArgs = spawnSync(process.execPath, [WRITER_PATH, 'mark-worktree-removed'], { encoding: 'utf8' })
+  assert.equal(noArgs.status, 1)
+  assert.match(noArgs.stderr, /mark-worktree-removed/)
 })

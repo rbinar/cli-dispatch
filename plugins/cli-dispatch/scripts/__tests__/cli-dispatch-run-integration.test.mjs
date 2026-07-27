@@ -20,6 +20,7 @@ import { fileURLToPath } from 'url'
 
 const SELF_DIR = path.dirname(fileURLToPath(import.meta.url))
 const RUNNER_PATH = path.join(SELF_DIR, '..', 'cli-dispatch-run')
+const WRITER_PATH = path.join(SELF_DIR, '..', 'verdict-writer.mjs')
 
 const mkdtemp = (prefix) => fs.mkdtempSync(path.join(os.tmpdir(), prefix))
 const rmrf = (p) => { try { fs.rmSync(p, { recursive: true, force: true }) } catch { /* ignore */ } }
@@ -60,12 +61,15 @@ function seedSessionArtifacts(sessionRoot, worktreePath) {
   fs.writeFileSync(path.join(sessionRoot, 'changed-files.json'), JSON.stringify({ files: [] }))
 }
 
-function runCleanupMode({ worktree, exitCode, cleanupIfClean }) {
+function runCleanupMode({ worktree, exitCode, cleanupIfClean, sessionDir }) {
   const stubBin = mkdtemp('cli-dispatch-run-stubbin-')
   const stubOut = mkdtemp('cli-dispatch-run-stubouts-')
   writeStubBins(stubBin, ['claude', 'cx-stream'])
 
+  // The optional third value drives the worktreeRemoved bookkeeping (issue #128) as well as
+  // the removal; without it the runner takes exactly the path the other scenarios exercise.
   const args = ['--_test-cleanup', worktree, String(exitCode)]
+  if (sessionDir) args.push(sessionDir)
   if (cleanupIfClean) args.push('--cleanup-if-clean')
 
   const result = spawnSync('bash', [RUNNER_PATH, ...args], {
@@ -73,6 +77,11 @@ function runCleanupMode({ worktree, exitCode, cleanupIfClean }) {
     env: {
       ...process.env,
       PATH: `${stubBin}${path.delimiter}${process.env.PATH}`,
+      // Pin the engine to THIS checkout. The runner's own search order prefers
+      // ~/.local/share/cli-dispatch/verdict-writer.mjs — the last-installed copy — so without
+      // this the test silently grades the installed version instead of the one being changed.
+      // (It found this bug: a repo-fresh subcommand against a stale installed engine.)
+      CLI_DISPATCH_VERDICT_WRITER: WRITER_PATH,
     },
   })
 
@@ -155,8 +164,91 @@ function scenarioNoFlagAlwaysKeepsWorktree() {
   }
 }
 
+// ---- issue #128: worktreeRemoved is recorded AFTER the removal ---------------------------
+//
+// verdict.json is written before cleanup can act (it is the escalation artifact and must exist
+// even if cleanup dies), so the runner has to come back and record the removal. Before this fix
+// the field was structurally always false and the SDD's own contract (:217) was unmeetable.
+
+function writeVerdict(sessionDir, extra = {}) {
+  const verdict = {
+    schemaVersion: 1,
+    sessionId: 'session-id',
+    backend: 'ds',
+    state: 'done',
+    exitCode: 0,
+    stranded: false,
+    worktreeRemoved: false,
+    ...extra,
+  }
+  fs.writeFileSync(path.join(sessionDir, 'verdict.json'), `${JSON.stringify(verdict)}\n`)
+  return verdict
+}
+
+function readVerdict(sessionDir) {
+  return JSON.parse(fs.readFileSync(path.join(sessionDir, 'verdict.json'), 'utf8'))
+}
+
+function scenarioRemovalRecordsWorktreeRemoved() {
+  const repo = mkGitRepo({ dirty: false })
+  const sessionDir = mkdtemp('cli-dispatch-run-session-')
+  seedSessionArtifacts(sessionDir, repo)
+  writeVerdict(sessionDir)
+
+  try {
+    runCleanupMode({ worktree: repo, exitCode: 0, cleanupIfClean: true, sessionDir })
+    assert.equal(fs.existsSync(repo), false, 'clean worktree should be removed')
+    assert.equal(readVerdict(sessionDir).worktreeRemoved, true, 'removal must be recorded in verdict.json')
+    // The bookkeeping write touches one field and nothing else.
+    assert.equal(readVerdict(sessionDir).exitCode, 0)
+    assert.equal(readVerdict(sessionDir).state, 'done')
+  } finally {
+    rmrf(sessionDir)
+    rmrf(repo)
+  }
+}
+
+function scenarioKeptWorktreeLeavesFieldFalse() {
+  // The mirror assertion, and the one that matters most: a KEPT worktree must never be
+  // reported as removed. Dirty worktrees are exactly the stranded-changes population.
+  const repo = mkGitRepo({ dirty: true })
+  const sessionDir = mkdtemp('cli-dispatch-run-session-')
+  seedSessionArtifacts(sessionDir, repo)
+  writeVerdict(sessionDir)
+
+  try {
+    runCleanupMode({ worktree: repo, exitCode: 0, cleanupIfClean: true, sessionDir })
+    assert.equal(fs.existsSync(repo), true, 'dirty worktree should be kept')
+    assert.equal(readVerdict(sessionDir).worktreeRemoved, false, 'a kept worktree must stay worktreeRemoved:false')
+  } finally {
+    rmrf(sessionDir)
+    rmrf(repo)
+  }
+}
+
+function scenarioMissingVerdictDoesNotFailTheRun() {
+  // Cleanup can legitimately run with no verdict on disk (a killed run). The bookkeeping step
+  // is not allowed to turn that into a failure — runCleanupMode asserts exit 0 itself.
+  const repo = mkGitRepo({ dirty: false })
+  const sessionDir = mkdtemp('cli-dispatch-run-session-')
+  seedSessionArtifacts(sessionDir, repo)
+
+  try {
+    const out = runCleanupMode({ worktree: repo, exitCode: 0, cleanupIfClean: true, sessionDir })
+    assert.equal(fs.existsSync(repo), false, 'clean worktree should still be removed')
+    assert.equal(fs.existsSync(path.join(sessionDir, 'verdict.json')), false, 'no verdict should be invented')
+    assert.ok(out.includes('removed clean worktree'), 'output should still report the removal')
+  } finally {
+    rmrf(sessionDir)
+    rmrf(repo)
+  }
+}
+
 // One node:test per scenario, so a failure names the case that broke.
 test('a) a pre-existing dirty repo with exitCode 0 keeps the worktree', scenarioRegressedDirtyWithExitZeroKeepsWorktree)
 test('b) a clean worktree with exitCode 0 and --cleanup-if-clean is removed', scenarioCleanWithExitZeroAndFlagRemovesWorktree)
 test('c) a clean worktree with exitCode 1 keeps the worktree', scenarioCleanExitOneKeepsWorktree)
 test('d) without --cleanup-if-clean the worktree is always kept', scenarioNoFlagAlwaysKeepsWorktree)
+test('e) a removed worktree is recorded as worktreeRemoved:true in verdict.json (#128)', scenarioRemovalRecordsWorktreeRemoved)
+test('f) a kept worktree stays worktreeRemoved:false (#128)', scenarioKeptWorktreeLeavesFieldFalse)
+test('g) missing verdict.json does not fail the cleanup path (#128)', scenarioMissingVerdictDoesNotFailTheRun)

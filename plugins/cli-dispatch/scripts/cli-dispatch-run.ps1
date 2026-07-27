@@ -204,7 +204,10 @@ function Test-WorktreeClean {
 }
 
 function Invoke-CleanupWorktree {
-  param([string]$Worktree, [int]$VerdictExitCode)
+  # SessionDir is passed explicitly rather than read from the enclosing scope: PowerShell's
+  # dynamic scoping would make that work by accident, and a bookkeeping write aimed at a
+  # scope-leaked path is not a thing to leave to accident.
+  param([string]$Worktree, [int]$VerdictExitCode, [string]$SessionDir)
 
   if (-not $Worktree) {
     Write-Host 'cli-dispatch-run: no worktree path found; kept path unknown'
@@ -281,6 +284,38 @@ function Invoke-CleanupWorktree {
     Write-Host "cli-dispatch-run: manual cleanup: git -C `"$Worktree`" worktree remove `"$Worktree`" --force"
   } else {
     Write-Host "cli-dispatch-run: removed clean worktree at $Worktree"
+    Set-WorktreeRemovedInVerdict -SessionDir $SessionDir
+  }
+}
+
+function ConvertTo-BashSingleQuoted {
+  # Wrap a value for `bash -lc` so bash sees it as ONE literal argument, whatever it contains.
+  # Single quotes protect everything except a single quote itself, which is escaped the only way
+  # sh allows: close the string, emit an escaped quote, reopen it ('\'').
+  # An empty value must still produce '' — an omitted argument would shift every later one.
+  param([string]$Value)
+  "'" + ("$Value" -replace "'", "'\''") + "'"
+}
+
+function Set-WorktreeRemovedInVerdict {
+  param([string]$SessionDir)
+
+  # Issue #128: verdict.json is written BEFORE this cleanup runs (it is the escalation artifact
+  # and must exist even if cleanup dies), so `worktreeRemoved` can only be recorded here, after
+  # the removal actually happened. Called from the ONE branch that proved the directory is gone.
+  #
+  # Never fatal, mirroring the bash twin: the run is over, the verify verdict is on disk and the
+  # worktree really is gone. A failed bookkeeping write must not change the run's exit code.
+  if (-not $SessionDir) { return }
+  $verdictPath = Join-Path $SessionDir 'verdict.json'
+  if (-not (Test-Path $verdictPath)) { return }
+  try {
+    & $NodeBin $VerdictWriter mark-worktree-removed $verdictPath | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+      Write-Host 'cli-dispatch-run: could not record worktreeRemoved in verdict.json'
+    }
+  } catch {
+    Write-Host 'cli-dispatch-run: could not record worktreeRemoved in verdict.json'
   }
 }
 
@@ -380,7 +415,12 @@ try {
     $script:TempFiles.Add($stderrFile)
 
     Set-TempEnv -Vars $baseVars
-    & bash -lc "'$runner' '$Cwd' '$Branch' '$PromptFile'" 2> $stderrFile | Out-Null
+    # Every argument is quoted through ConvertTo-BashSingleQuoted, not interpolated between bare
+    # quotes (issue #125): a path containing an apostrophe — `C:\Users\O'Brien\repo` is an
+    # ordinary Windows path — used to terminate the quoting early, so bash saw the rest of the
+    # path as shell syntax. That is a broken run at best and an injection at worst.
+    $bashCmd = @($runner, $Cwd, $Branch, $PromptFile | ForEach-Object { ConvertTo-BashSingleQuoted $_ }) -join ' '
+    & bash -lc $bashCmd 2> $stderrFile | Out-Null
     $runRc = $LASTEXITCODE
     Clear-TempEnv -Vars $baseVars
 
@@ -486,7 +526,7 @@ try {
   }
   Set-Content -Path (Join-Path $SessionDir 'verdict.json') -Value $verdictOut
 
-  Invoke-CleanupWorktree -Worktree $WorktreePath -VerdictExitCode $verdictExit
+  Invoke-CleanupWorktree -Worktree $WorktreePath -VerdictExitCode $verdictExit -SessionDir $SessionDir
 
   exit $verdictExit
 } finally {

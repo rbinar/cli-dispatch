@@ -94,7 +94,50 @@ cleanup_worktree_if_requested() {
     echo "cli-dispatch-run: manual cleanup: git -C \"$worktree_path\" worktree remove \"$worktree_path\" --force"
   else
     echo "cli-dispatch-run: removed clean worktree at $worktree_path"
+    record_worktree_removed
   fi
+}
+
+# Extracted from the main flow (it used to be inline just before read_json_field) so the
+# --_test-cleanup path can reach it too: recording worktreeRemoved needs node. Idempotent —
+# calling it twice re-resolves the same two values. Kept BELOW the argument validation in the
+# normal flow so a plain `cli-dispatch-run` with bad args still prints usage rather than
+# complaining about node.
+resolve_node_and_verdict_writer() {
+  NODE_BIN="${CLI_DISPATCH_NODE:-}"
+  if [ -z "$NODE_BIN" ]; then
+    NODE_BIN="$HOME/.local/share/cli-dispatch/node"
+    if [ ! -x "$NODE_BIN" ]; then
+      NODE_BIN="node"
+    fi
+  fi
+  if ! command -v "$NODE_BIN" >/dev/null 2>&1; then
+    echo "cli-dispatch-run: node not found in PATH" >&2
+    exit 1
+  fi
+
+  VERDICT_WRITER="${CLI_DISPATCH_VERDICT_WRITER:-}"
+  if [ -z "$VERDICT_WRITER" ]; then
+    for cand in "$HOME/.local/share/cli-dispatch/verdict-writer.mjs" "$HOME/.local/share/claude-ds/verdict-writer.mjs" "$SCRIPT_DIR/verdict-writer.mjs"; do
+      [ -f "$cand" ] && { VERDICT_WRITER="$cand"; break; }
+    done
+  fi
+  [ -n "$VERDICT_WRITER" ] && [ -f "$VERDICT_WRITER" ] || { echo "cli-dispatch-run: verdict-writer.mjs not found" >&2; exit 1; }
+}
+
+record_worktree_removed() {
+  # Issue #128: verdict.json is written BEFORE this cleanup runs (it is the escalation artifact
+  # and must exist even if cleanup dies), so `worktreeRemoved` can only be recorded here, after
+  # the removal actually happened. Called from the ONE branch that proved the directory is gone.
+  #
+  # Never fatal: the run is over, the verify verdict is on disk and the worktree really is gone.
+  # A failed bookkeeping write must not change the run's exit code.
+  [ -n "${SESSION_DIR:-}" ] || return 0
+  [ -f "$SESSION_DIR/verdict.json" ] || return 0
+  [ -n "${NODE_BIN:-}" ] && [ -n "${VERDICT_WRITER:-}" ] || return 0
+  "$NODE_BIN" "$VERDICT_WRITER" mark-worktree-removed "$SESSION_DIR/verdict.json" ||
+    echo "cli-dispatch-run: could not record worktreeRemoved in verdict.json" >&2
+  return 0
 }
 
 trap cleanup_tmp EXIT INT TERM
@@ -113,6 +156,7 @@ VERIFY=()
 TEST_MODE=0
 TEST_WORKTREE=""
 TEST_EXIT_CODE=0
+TEST_SESSION_DIR=""
 CLEANUP_IF_CLEAN=0
 IN_PLACE_RUN=0
 TEMP_FILES=()
@@ -141,13 +185,27 @@ while [ "$#" -gt 0 ]; do
       TEST_MODE=1
       TEST_WORKTREE="$2"
       TEST_EXIT_CODE="$3"
-      shift 3;;
+      shift 3
+      # Optional THIRD value: a session dir, so a test can drive the worktreeRemoved
+      # bookkeeping (issue #128) as well as the removal itself. Guarded on "not another
+      # flag" so the existing two-value call sites keep working untouched.
+      if [ "$#" -gt 0 ] && [ "${1#--}" = "$1" ]; then
+        TEST_SESSION_DIR="$1"
+        shift
+      fi
+      ;;
     -h|--help) usage; exit 0;;
     *) echo "cli-dispatch-run: unknown arg: $1" >&2; usage; exit 5;;
   esac
 done
 
 if [ "$TEST_MODE" -eq 1 ]; then
+  # Only when the test asked for the bookkeeping half: SESSION_DIR is what
+  # record_worktree_removed keys on, and resolving node is pointless without it.
+  if [ -n "$TEST_SESSION_DIR" ]; then
+    SESSION_DIR="$TEST_SESSION_DIR"
+    resolve_node_and_verdict_writer
+  fi
   cleanup_worktree_if_requested "$TEST_WORKTREE" "$TEST_EXIT_CODE"
   exit 0
 fi
@@ -186,25 +244,7 @@ ROOT="${CLI_DISPATCH_SESSIONS_DIR:-${CLAUDE_DS_SESSIONS_DIR:-}}"
 [ -n "$ROOT" ] || { _c="${XDG_CACHE_HOME:-$HOME/.cache}"; ROOT="$_c/cli-dispatch/sessions"; [ -d "$ROOT" ] || [ ! -d "$_c/claude-ds/sessions" ] || ROOT="$_c/claude-ds/sessions"; }
 SESSIONS_ROOT="$ROOT"
 
-NODE_BIN="${CLI_DISPATCH_NODE:-}"
-if [ -z "$NODE_BIN" ]; then
-  NODE_BIN="$HOME/.local/share/cli-dispatch/node"
-  if [ ! -x "$NODE_BIN" ]; then
-    NODE_BIN="node"
-  fi
-fi
-if ! command -v "$NODE_BIN" >/dev/null 2>&1; then
-  echo "cli-dispatch-run: node not found in PATH" >&2
-  exit 1
-fi
-
-VERDICT_WRITER="${CLI_DISPATCH_VERDICT_WRITER:-}"
-if [ -z "$VERDICT_WRITER" ]; then
-  for cand in "$HOME/.local/share/cli-dispatch/verdict-writer.mjs" "$HOME/.local/share/claude-ds/verdict-writer.mjs" "$SCRIPT_DIR/verdict-writer.mjs"; do
-    [ -f "$cand" ] && { VERDICT_WRITER="$cand"; break; }
-  done
-fi
-[ -n "$VERDICT_WRITER" ] && [ -f "$VERDICT_WRITER" ] || { echo "cli-dispatch-run: verdict-writer.mjs not found" >&2; exit 1; }
+resolve_node_and_verdict_writer
 
 read_json_field() {
   local file="$1"

@@ -7,6 +7,93 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.6.0] — 2026-07-26
+
+4.5.0 sonrası açık kalan iki maddeyi kapatır: hiçbir zaman true olamayan `worktreeRemoved`
+alanı (#128) ve hiçbir kod yolunun seçmediği `.ps1` worktree runner'ları (#125).
+
+### Düzeltildi
+
+- **`verdict.json`'daki `worktreeRemoved` yapısal olarak her zaman false'tu (#128).** SDD
+  (`.specs/dev/sdd/deterministic-runner.md:217`) `--cleanup-if-clean` worktree'yi kaldırdığında
+  true olmasını şart koşuyor, ama `buildVerdict()` cevabı bilemez: verdict cleanup'tan *önce*
+  yazılır, çünkü escalation artefaktıdır ve cleanup ölse bile var olmak zorundadır. Alanı dürüst
+  biçimde ayarlayabilecek tek yer sonrasıdır; runner artık geri dönüp kaldırmayı kaydediyor — ve
+  bunu yalnızca dizinin gittiğini kanıtlamış tek daldan yapıyor. Yeni
+  `verdict-writer.mjs mark-worktree-removed` alt komutu, PowerShell ikizinde de aynısı
+  (`Set-WorktreeRemovedInVerdict`).
+  - **Sözleşme gereği fail-soft:** o noktada iş bitmiş, verify verdict'i diskte ve worktree
+    gerçekten gitmiştir; dolayısıyla düşmeyen bir muhasebe yazımı bitmiş bir koşuyu asla
+    başarısıza çevirmemeli. Tüm hata yolları false döner, CLI her hâlükârda 0 ile çıkar.
+  - **Tek bir boolean** yazar. `build-verdict` çöktüğünde `cli-dispatch-run`'ın ürettiği
+    `{schemaVersion, error, sessionId, exitCode}` şekli dokunulmadan bırakılır — oraya tek başına
+    bir `worktreeRemoved` eklemek, hiç kurulmamış bir verdict'i varmış gibi giydirmek olurdu.
+    Guard `error` alanının varlığına değil, `state`'in **yokluğuna** bakar; çünkü `error` aynı
+    zamanda meşru bir `status.state` değeridir.
+  - Yazımlar temp + rename ile yapılır: dashboard bu dosyayı `(mtime, size)` ile cache'liyor ve
+    koşular biterken okuyor, dolayısıyla yarı yazılmış bir verdict'i asla görmemeli.
+  - Dashboard bilinçli olarak bu kayıtlı bayrak yerine **canlı** `worktreeExists` kontrolünü
+    kullanmaya devam ediyor. Canlı cevap, koşu sonunda kaydedilmiş bir iddiadan iyidir.
+- **`cli-dispatch-run.ps1` kesme işareti içeren yollarda kırılıyordu (#125).** `bash -lc` çağrısı
+  dört değeri çıplak tek tırnaklar arasında interpolate ediyordu; `C:\Users\O'Brien\repo` —
+  sıradan bir Windows yolu — tırnağı erken kapatıp geri kalanı bash'e sözdizimi olarak veriyordu:
+  en iyi hâlde bozuk koşu, en kötü hâlde injection. Artık her değer
+  `ConvertTo-BashSingleQuoted`'dan geçiyor. Doğrulama: kesme işareti, boşluk, `$`, backtick, ters
+  bölü, `;`, `&&`, satır sonu ve boş string gerçek bash üzerinden round-trip edildi ve dört
+  değerin tam olarak dört argv girdisi olarak vardığı iddia edildi.
+
+### Değişti
+
+- **Workers listesinde başlangıç zamanı satırın metadata satırının sağ ucuna taşındı.** Eskiden o
+  satırı açıyordu ve rail'de aslında taradığın üç token'ı — repo, canlı araç, token kullanımı —
+  değişken bir miktarda sağa itiyordu; çünkü yerel zaman damgası sabit genişlikte değil. Sağa
+  sabitlendiğinde kendi kolonunu oluşturuyor ve sol grup kalan tüm genişliği ellipsis için
+  kullanıyor (yani 260px'lik rail repo adını kırpıyor, zamanı asla).
+  - Satır, `loadList`'in gömülü satır şablonundan `workerMetaLineHtml`'e çıkarıldı ki düzen
+    gerçekten test edilebilsin: bir CSS class'ını grep'lemek sıra hakkında bir iddia değildir. Üç
+    test kapsıyor — `.when`'in sonda olduğu DOM sırası, token yokken artık ` · ` kalmaması ve
+    düşmanca `cwd`/`lastTool`'un kaçırılması — ve sıra iddiası mutasyonla doğrulandı.
+
+### Kaldırıldı
+
+- **`ds-worktree-run.ps1` ve `cx-worktree-run.ps1` (#125).** Hiçbir şey onları seçmiyordu:
+  `cli-dispatch-run.ps1` `.sh` runner adını sabit yazıyor ve bash yoksa 5 ile çıkıyor. Gönderilen
+  şey, hiçbir kod yolunun çalıştıramadığı ikinci bir leak-guard kopyasıydı — ve 4.2.0 tam bu tür
+  sessiz `.ps1`/`.sh` sapmasının üç vakasını düzeltmek zorunda kalmıştı. `install.ps1` artık
+  onları kurmuyor.
+  - **Bu yalnız bir temizlik değil, gerçek bir Windows davranış değişikliğidir:** Windows'ta repo
+    görevleri (worktree koşuları) artık bash gerektiriyor — WSL ya da Git Bash — ki
+    `cli-dispatch-run.ps1` bunu zaten gerektiriyordu. `commands/ds-run.md` `.ps1`'i native Windows
+    yolu olarak dokümante ediyordu; o blok kaldırıldı. Generation, sessions, watch, kill, gain ve
+    dashboard native PowerShell kalıyor ve bash gerektirmiyor.
+  - `install.ps1` ayrıca önceki sürümlerin `~/.local/bin`'e kurduğu kopyayı **siliyor**. Yükseltme
+    yalnızca gönderdiği dosyaların üzerine yazdığı için, bu süpürme olmadan makinede hiçbir şeyin
+    seçmediği ve artık düzeltme almayan bir runner PATH'te kalırdı.
+  - `CLAUDE.md` artık `*-worktree-run.sh`'ı cross-platform pairing kuralının dışında kayda
+    geçiriyor; böylece sonraki okuyucu onları geri ekleyip "parity'yi restore" etmiyor.
+
+### Testler
+
+- 305 → 319. `markWorktreeRemoved` (alan çevrilirken diğer her şeyin bayt-bayt aynı kalması,
+  idempotence, hata-şeklini reddetme, okunamaz/parse edilemez/nesne-olmayan girdide fail-soft, CLI
+  çıkış kodları); gerçek cleanup yolunu süren üç runner-seviyesi senaryo (kaldırıldı → kaydedildi,
+  korundu → hâlâ false, verdict yok → koşu etkilenmiyor); ve repodaki ilk pwsh-güdümlü test —
+  `ConvertTo-BashSingleQuoted`'ı gönderilen script'ten **birebir** çıkarıyor ki sapmış bir kopyaya
+  karşı geçemesin, ve pwsh ya da bash yoksa skip ediyor.
+- İki yeni suite de mutasyonla doğrulandı: `record_worktree_removed` çağrısını düşürmek tam olarak
+  onu iddia eden tek senaryoyu, quoting yardımcısını çıplak interpolasyona geri çevirmek de
+  round-trip testini düşürüyor.
+- Integration testi artık `CLI_DISPATCH_VERDICT_WRITER`'ı bu checkout'a pinliyor.
+  `~/.local/share/cli-dispatch/verdict-writer.mjs`'i — en son *kurulan* engine'i — çözüyordu, yani
+  değiştirilen kod yerine kurulu kodu notluyordu. O hata burada gerçek bir test başarısızlığı
+  olarak ortaya çıktı.
+
+### Notlar
+
+- `#125`'in kalan iki maddesi bu sürümden önce çözülmüştü; yeniden yapılmadı, doğrulandı:
+  `--base-ref` iki runner'dan da kaldırılmış, `policy-injection.md`'deki fail-closed çelişkisi
+  düzeltilmiş ve `policy-inject.test.mjs` test 2b onu sabitliyor.
+
 ## [4.5.0] — 2026-07-26
 
 4.2.1'den beri açık kalan dört denetim issue'sunu kapatır (#122 AU4, #123, #124, #125'in karar

@@ -38,7 +38,8 @@ Prerequisite: `cx-agent` / `cx-stream` installed (`/cli-dispatch:setup`, Codex b
    `node_modules`, runs `cx-stream` in it, and prints the cleanup command:
    ```bash
    "${CLAUDE_PLUGIN_ROOT}/scripts/cx-worktree-run.sh" <repo-path> cx-run-<branch-name> <brief-file>
-   # Windows: powershell -File "${CLAUDE_PLUGIN_ROOT}/scripts/cx-worktree-run.ps1" <repo> <branch> <brief>
+   # Windows: run this under bash (WSL or Git Bash). The PowerShell twin was removed in 4.6.0
+   # (issue #125) — nothing selected it and cli-dispatch-run.ps1 requires bash for worktree runs.
    ```
 3. **Monitor (cost-conscious):** capture the thread-id from stderr, then check progress via
    `/cli-dispatch:watch <thread-id>` (`state: running→done`). Do NOT tight-loop tail.

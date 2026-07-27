@@ -7,6 +7,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.6.0] — 2026-07-26
+
+Closes the two items left open after 4.5.0: the `worktreeRemoved` field that could never be
+true (#128), and the `.ps1` worktree runners no code path selected (#125).
+
+### Fixed
+
+- **`worktreeRemoved` in `verdict.json` was structurally always false (#128).** The SDD
+  (`.specs/dev/sdd/deterministic-runner.md:217`) requires it to be true once
+  `--cleanup-if-clean` removed the worktree, but `buildVerdict()` cannot know the answer: the
+  verdict is written *before* cleanup runs, because it is the escalation artifact and has to
+  exist even if cleanup dies. The only truthful place to set it is afterwards, so the runner now
+  comes back and records the removal — from the one branch that has proved the directory is
+  gone. New `verdict-writer.mjs mark-worktree-removed` subcommand, mirrored in the PowerShell
+  twin (`Set-WorktreeRemovedInVerdict`).
+  - **Fail-soft by contract:** at that point the work is done, the verify verdict is on disk and
+    the worktree really is gone, so a bookkeeping write that does not land must never turn a
+    finished run into a failed one. Every error path returns false; the CLI exits 0 regardless.
+  - It writes **one boolean**. The `{schemaVersion, error, sessionId, exitCode}` shape
+    `cli-dispatch-run` produces when `build-verdict` throws is left untouched — adding a lone
+    `worktreeRemoved` there would dress a crash record up as a verdict that was never built.
+    The guard keys on the *absence of* `state`, not on the presence of `error`, because `error`
+    is also a legitimate `status.state`.
+  - Writes go through temp + rename: the dashboard caches this file on `(mtime, size)` and reads
+    it while runs finish, so it must never observe a half-written verdict.
+  - The dashboard deliberately keeps using its **live** `worktreeExists` check rather than this
+    recorded flag. A live answer beats a claim recorded at run end, and that is unchanged.
+- **`cli-dispatch-run.ps1` broke on paths containing an apostrophe (#125).** The `bash -lc`
+  launch line interpolated four values between bare single quotes, so `C:\Users\O'Brien\repo`
+  — an ordinary Windows path — closed the quoting early and handed the remainder to bash as
+  syntax: a broken run at best, an injection at worst. Every value now goes through
+  `ConvertTo-BashSingleQuoted`. Verified by round-tripping apostrophes, spaces, `$`, backticks,
+  backslashes, `;`, `&&`, newlines and the empty string through real bash, and by asserting the
+  four values still arrive as exactly four argv entries.
+
+### Changed
+
+- **Workers list: the start time moved to the right edge of the row's metadata line.** It used to
+  lead that line, which pushed the three tokens you actually scan down the rail — repo, live tool,
+  token usage — right by a variable amount, because a locale timestamp is not fixed-width. Pinned
+  right it forms its own column, and the left group gets the whole remaining width to ellipsis
+  into (so a 260px rail truncates the repo name, never the time).
+  - The line was extracted out of `loadList`'s inline row template into `workerMetaLineHtml` so
+    the layout is testable at all: a grep for a CSS class is not an assertion about order. Three
+    tests cover it — DOM order with `.when` last, no dangling ` · ` when tokens are absent, and
+    escaping of a hostile `cwd`/`lastTool` — and the order assertion is mutation-verified.
+
+### Removed
+
+- **`ds-worktree-run.ps1` and `cx-worktree-run.ps1` (#125).** Nothing selected them:
+  `cli-dispatch-run.ps1` hardcodes the `.sh` runner name and exits 5 without bash. What shipped
+  was a second copy of the leak-guard logic that no code path could exercise — and 4.2.0 had
+  already had to fix three cases of exactly that kind of silent `.ps1`/`.sh` drift. They are no
+  longer installed by `install.ps1`.
+  - **This is a real Windows behaviour change, not only a cleanup:** repo tasks (worktree runs)
+    on Windows now require bash — WSL or Git Bash — which `cli-dispatch-run.ps1` already
+    required anyway. `commands/ds-run.md` documented the `.ps1` as the native-Windows path, and
+    that block is gone. Generation, sessions, watch, kill, gain and the dashboard stay native
+    PowerShell and need no bash.
+  - `install.ps1` also **removes** any copy an earlier version installed into `~/.local/bin`. An
+    upgrade only overwrites what it ships, so without that sweep a machine keeps a runner on PATH
+    that nothing selects and that no longer receives fixes.
+  - `CLAUDE.md` now records `*-worktree-run.sh` as being outside the cross-platform pairing
+    rule, so the next reader does not "restore parity" by re-adding them.
+
+### Tests
+
+- 305 → 319. `markWorktreeRemoved` (field flip with everything else byte-identical, idempotence,
+  error-shape refusal, fail-soft on unreadable/unparseable/non-object input, CLI exit codes);
+  three runner-level scenarios driving the real cleanup path (removed → recorded, kept →
+  still false, missing verdict → run unaffected); and the first pwsh-driven test in the repo,
+  which extracts `ConvertTo-BashSingleQuoted` **verbatim** from the shipped script so it cannot
+  pass against a drifted copy, and skips where pwsh or bash is absent.
+- Both new suites were mutation-verified: dropping the `record_worktree_removed` call fails
+  exactly the one scenario that asserts it, and reverting the quoting helper to bare
+  interpolation fails the round-trip test.
+- The integration test now pins `CLI_DISPATCH_VERDICT_WRITER` to this checkout. It was resolving
+  `~/.local/share/cli-dispatch/verdict-writer.mjs` — the last-*installed* engine — so it graded
+  installed code instead of the code being changed. That bug surfaced as a genuine failure here.
+
+### Notes
+
+- The two remaining `#125` items were already resolved before this release and are verified, not
+  re-done: `--base-ref` is gone from both runners, and the `policy-injection.md` fail-closed
+  contradiction is corrected with `policy-inject.test.mjs` test 2b pinning it.
+
 ## [4.5.0] — 2026-07-26
 
 Closes the four audit issues left open since 4.2.1 (#122 AU4, #123, #124, #125's decision-free half)
