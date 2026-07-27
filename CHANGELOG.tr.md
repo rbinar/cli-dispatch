@@ -7,6 +7,47 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.7.0] — 2026-07-26
+
+Dashboard'un router'ını ayrıştırır — 4.3.0'da bilinçle kapsam dışı bırakılan tek yapısal madde ve
+#125'in son açık parçası.
+
+### Değişti
+
+- **`dashboard-server.mjs`'in router'ı artık 288 satırlık `if`-zinciri değil, bir route tablosu.**
+  Her istek tüm yol string'lerini sırayla yeniden test ediyordu (`/api/clean` üç kez,
+  `/api/config` iki kez) ve iki handler — config yazıcı ile OpenRouter model çekimi, toplam ~120
+  satır — dispatcher'ın ortasında gömülü duruyordu. Her handler artık tek tip
+  `(req, res, params, url)` imzasıyla adlandırılmış bir fonksiyon; tablo
+  `{method, path | pattern, handler}` bildiriyor.
+  - Route kapsamı değişmedi ve eski zincire karşı satır satır karşılaştırıldı: 11 tam yol, 7
+    pattern route, 3 vendor asset. Vendor satırları **`VENDOR_FILES`'tan üretiliyor**; böylece o
+    allowlist hangi statik dosyaların var olduğunun tek kaynağı olarak kalıyor.
+  - Tablo eski zincirin sırasında tutuldu. Sıra doğruluğu etkilemiyor — hiçbir iki satır aynı
+    `(method, path)` çiftini paylaşmıyor — ama tabloyu getiren diff'i incelenebilir tutuyor.
+  - Handler'ın `params`'ı HAM regex yakalamalarıdır. Decode ve `okId()` doğrulaması zaten
+    bulundukları yerde, handler'ların içinde kalıyor; dispatcher'a containment kontrolleri
+    koşmadan önce bir yol parçasını "yardımcı olmak için" decode etme şansı verilmedi.
+
+- **Artık her route'un method guard'ı var ve yanlış verb `Allow` başlığıyla `405` dönüyor.** Bu
+  gerçek bir davranış değişikliği: `POST /api/sessions` eskiden GET handler'ını çalıştırıp 200
+  dönüyordu, çünkü eski zincir yalnız yola bakıyordu. Yalnızca üç route'a guard verilmişti.
+  - `405 {"error":"method not allowed","allow":"GET"}` — başka bir verb altında var olan bir yol
+    404 değildir ve `Allow` başlığı, çağıranın hangi verb'i kullanacağını öğrenmesinin tek
+    yoludur. Bilinmeyen yollar mevcut `404 {"error":"no route"}` şeklini birebir koruyor.
+  - **`HEAD`, `GET` handler'ı tarafından karşılanıyor.** Eskiden yalnızca zincir method'a hiç
+    bakmadığı için çalışıyordu; guard eklemek aksi hâlde `curl -I`'yı 405 yapardı. Node, HEAD
+    yanıtlarında gövdeyi kendisi bastırıyor.
+
+### Testler
+
+- 319 → 322 ve mevcut bir iddia güncellendi: diff route'unun POST reddi `404`'e (eski
+  fall-through) sabitlenmişti, artık `405` + `Allow: GET`.
+- Yeni kapsam: yalnız-GET, yalnız-POST ve GET+POST yollarında 405 + `Allow`; bilinmeyen yol için
+  404 şekli (ve `Allow` taşımadığı); tablodaki her satırın kendi verb'ine yanıt vermesi; pattern
+  route'larda bozuk id'lerin hâlâ fail-closed olması; ve HEAD'in boş gövdeyle başlık dönmesi.
+- Mutasyonla doğrulandı: HEAD desteğini düşürmek 1 testi, 405 dalını kaldırmak 2 testi düşürüyor.
+
 ## [4.6.0] — 2026-07-26
 
 4.5.0 sonrası açık kalan iki maddeyi kapatır: hiçbir zaman true olamayan `worktreeRemoved`

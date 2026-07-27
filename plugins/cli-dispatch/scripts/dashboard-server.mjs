@@ -1430,294 +1430,369 @@ function readBody(req) {
   })
 }
 
-const server = http.createServer(async (req, res) => {
-  const u = new URL(req.url, 'http://127.0.0.1')
-  const p = u.pathname
+// ==== HTTP routes =============================================================
+// Until 4.7.0 everything below lived as one 288-line if-chain inside createServer: each
+// request re-tested every path string in order (/api/clean three times, /api/config twice),
+// and two handlers — the config writer and the OpenRouter model fetch — were ~120 lines of
+// logic sitting in the middle of the dispatcher. The shape also made the METHOD guard
+// optional, and most read routes simply never got one.
+//
+// Each handler is now a named function and the dispatcher is a table. Handlers receive
+// (req, res, params, url): `params` are the RAW regex captures, still undecoded, because the
+// existing handlers decode and validate them themselves and that is where the okId() checks
+// live.
+
+function serveIndex(req, res) {
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+  res.end(PAGE)
+}
+
+function serveFavicon(req, res) {
+  res.writeHead(204)
+  res.end()
+}
+
+// One GET handler for /api/clean, branching on the query. Two table rows for the same
+// method+path could never both be reachable — the first would always win.
+function serveCleanGet(req, res, params, u) {
+  if (u.searchParams.get('worktrees') === '1') {
+    const items = findLeftoverWorktrees()
+    return send(res, 200, {
+      roots: worktreeScanRoots(),
+      count: items.length,
+      dirty: items.filter(i => i.dirty === true).length,
+      items,
+    })
+  }
+  let staleSecs = parseInt(u.searchParams.get('staleSecs'), 10)
+  if (!Number.isFinite(staleSecs) || staleSecs <= 0) staleSecs = 600
+  const items = findStaleSessions(staleSecs)
+  return send(res, 200, { root: WORKERS_ROOT, staleSecs, count: items.length, items })
+}
+
+async function serveCleanPost(req, res) {
+  // Same gate POST /api/config uses. Without it any page the user had open could delete
+  // session dirs cross-origin: readBody ignores Content-Type, so text/plain (CORS-simple, no
+  // preflight) with a JSON body reached this handler, and staleSecs:1 matches every running
+  // worker quiet for a second — taking its transcript, prompt and recovery diff with it.
+  if (!checkTakeoverAuth(req, res, { requireCustomHeader: true })) return
+  let staleSecs = 600
   try {
-    if (p === '/' || p === '/index.html') {
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(PAGE); return
+    const body = await readBody(req)
+    if (body && typeof body.staleSecs === 'number' && Number.isFinite(body.staleSecs) && body.staleSecs > 0) {
+      staleSecs = body.staleSecs
     }
-    if (p === '/favicon.ico') { res.writeHead(204); res.end(); return }
-    if (Object.prototype.hasOwnProperty.call(VENDOR_FILES, p)) return serveVendorAsset(p, res)
-    if (p === '/api/stream') return sse(req, res, u.searchParams.get('watch') || 'sessions')
-    if (p === '/api/sessions') return send(res, 200, listSessions())
-    // parentSession moved to the detail route in 4.3.0: the worker row no longer renders
-    // "from <project>", and resolving it cost a 2MB readTail per Claude Code transcript on the
-    // SSE-refreshed list path.
-    if (p === '/api/workers') return send(res, 200, listWorkers(true))
-    if (p === '/api/workers/aggregate') return send(res, 200, workerUsageAggregate())
-
-    if (p === '/api/clean' && req.method === 'GET' && u.searchParams.get('worktrees') === '1') {
-      const items = findLeftoverWorktrees()
-      return send(res, 200, {
-        roots: worktreeScanRoots(),
-        count: items.length,
-        dirty: items.filter(i => i.dirty === true).length,
-        items,
-      })
+  } catch (e) {
+    return send(res, 400, { error: 'invalid JSON body' })
+  }
+  const items = findStaleSessions(staleSecs)
+  let removed = 0
+  const failed = []
+  for (const item of items) {
+    try {
+      fs.rmSync(path.join(WORKERS_ROOT, item.id), { recursive: true, force: true })
+      removed++
+    } catch (e) {
+      failed.push({ id: item.id, error: e.message })
     }
+  }
+  return send(res, 200, { removed, failed, count: items.length })
+}
 
-    if (p === '/api/clean' && req.method === 'GET') {
-      let staleSecs = parseInt(u.searchParams.get('staleSecs'), 10)
-      if (!Number.isFinite(staleSecs) || staleSecs <= 0) staleSecs = 600
-      const items = findStaleSessions(staleSecs)
-      return send(res, 200, { root: WORKERS_ROOT, staleSecs, count: items.length, items })
+function serveConfigGet(req, res) {
+  const configPath = resolveConfigPath()
+  const result = {}
+  for (const k of Object.keys(CONFIG_KEYS)) {
+    if (CONFIG_KEYS[k].secret) {
+      result[k] = { secret: true, set: false }
+    } else {
+      result[k] = { secret: false, value: "" }
     }
-
-    if (p === '/api/clean' && req.method === 'POST') {
-      // Same gate POST /api/config uses. Without it any page the user had open could delete
-      // session dirs cross-origin: readBody ignores Content-Type, so text/plain (CORS-simple, no
-      // preflight) with a JSON body reached this handler, and staleSecs:1 matches every running
-      // worker quiet for a second — taking its transcript, prompt and recovery diff with it.
-      if (!checkTakeoverAuth(req, res, { requireCustomHeader: true })) return
-      let staleSecs = 600
-      try {
-        const body = await readBody(req)
-        if (body && typeof body.staleSecs === 'number' && Number.isFinite(body.staleSecs) && body.staleSecs > 0) {
-          staleSecs = body.staleSecs
-        }
-      } catch (e) {
-        return send(res, 400, { error: 'invalid JSON body' })
-      }
-      const items = findStaleSessions(staleSecs)
-      let removed = 0
-      const failed = []
-      for (const item of items) {
-        try {
-          fs.rmSync(path.join(WORKERS_ROOT, item.id), { recursive: true, force: true })
-          removed++
-        } catch (e) {
-          failed.push({ id: item.id, error: e.message })
-        }
-      }
-      return send(res, 200, { removed, failed, count: items.length })
-    }
-
-    // Deliberately its own route rather than folded into /api/config: it spawns child processes,
-    // so it must not add cost to a route that may be fetched for other reasons, and it caches on a
-    // different clock.
-    if (p === '/api/backend-auth' && req.method === 'GET') {
-      return send(res, 200, await backendAuthState())
-    }
-
-    if (p === '/api/config' && req.method === 'GET') {
-      const configPath = resolveConfigPath()
-      const result = {}
-      for (const k of Object.keys(CONFIG_KEYS)) {
-        if (CONFIG_KEYS[k].secret) {
-          result[k] = { secret: true, set: false }
-        } else {
-          result[k] = { secret: false, value: "" }
-        }
-      }
-      if (fs.existsSync(configPath)) {
-        try {
-          const content = fs.readFileSync(configPath, 'utf8')
-          const lines = content.split(/\r?\n/)
-          for (const line of lines) {
-            const trimmed = line.trim()
-            if (trimmed.startsWith('#') || trimmed === '') continue
-            const match = line.match(/^\s*([A-Za-z0-9_]+)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|([^#\s]*))\s*$/)
-            if (match) {
-              const key = match[1]
-              if (Object.prototype.hasOwnProperty.call(CONFIG_KEYS, key)) {
-                let val = match[2] !== undefined ? match[2] : (match[3] !== undefined ? match[3] : match[4])
-                val = val.replace(/\\"/g, '"')
-                if (CONFIG_KEYS[key].secret) {
-                  const isSet = (val !== '')
-                  result[key].set = isSet
-                  if (isSet && val.length >= 12) {
-                    result[key].masked = val.slice(0, 6) + '...' + val.slice(-4)
-                  }
-                } else {
-                  result[key].value = val
-                }
+  }
+  if (fs.existsSync(configPath)) {
+    try {
+      const content = fs.readFileSync(configPath, 'utf8')
+      const lines = content.split(/\r?\n/)
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (trimmed.startsWith('#') || trimmed === '') continue
+        const match = line.match(/^\s*([A-Za-z0-9_]+)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|([^#\s]*))\s*$/)
+        if (match) {
+          const key = match[1]
+          if (Object.prototype.hasOwnProperty.call(CONFIG_KEYS, key)) {
+            let val = match[2] !== undefined ? match[2] : (match[3] !== undefined ? match[3] : match[4])
+            val = val.replace(/\\"/g, '"')
+            if (CONFIG_KEYS[key].secret) {
+              const isSet = (val !== '')
+              result[key].set = isSet
+              if (isSet && val.length >= 12) {
+                result[key].masked = val.slice(0, 6) + '...' + val.slice(-4)
               }
+            } else {
+              result[key].value = val
             }
           }
-        } catch (e) {
-          // ignore
         }
       }
-      return send(res, 200, result)
+    } catch (e) {
+      // ignore
+    }
+  }
+  return send(res, 200, result)
+}
+
+async function serveConfigPost(req, res) {
+  if (!checkTakeoverAuth(req, res, { requireCustomHeader: true })) return
+  let body
+  try {
+    body = await readBody(req)
+  } catch (e) {
+    return send(res, 400, { error: 'invalid JSON body' })
+  }
+  const { key, value } = body
+  if (typeof key !== 'string' || !Object.prototype.hasOwnProperty.call(CONFIG_KEYS, key)) {
+    return send(res, 400, { error: 'invalid config key' })
+  }
+  if (typeof value !== 'string') {
+    return send(res, 400, { error: 'value must be a string' })
+  }
+  if (value.includes('\n') || value.includes('\r')) {
+    return send(res, 400, { error: 'value cannot contain newlines' })
+  }
+
+  const escapedValue = value.replace(/"/g, '\\"')
+  const configPath = resolveConfigPath()
+  try {
+    const dir = path.dirname(configPath)
+    fs.mkdirSync(dir, { recursive: true })
+
+    const exists = fs.existsSync(configPath)
+    let lines = []
+    let existingMode = 0o600
+
+    if (exists) {
+      const stat = fs.statSync(configPath)
+      existingMode = stat.mode & 0o777
+      const content = fs.readFileSync(configPath, 'utf8')
+      lines = content.split(/\r?\n/)
     }
 
-    if (p === '/api/models/opencode' && req.method === 'GET') {
-      try {
-        const ids = await new Promise((resolve, reject) => {
-          const r = https.get('https://openrouter.ai/api/v1/models', { timeout: 5000 }, (pres) => {
-            let data = ''
-            pres.on('data', chunk => { data += chunk })
-            pres.on('end', () => {
-              try {
-                const json = JSON.parse(data)
-                // Return only the model id strings — never leak the full response
-                resolve((json.data || []).map(m => m.id).filter(Boolean))
-              } catch (e) { reject(e) }
-            })
-          })
-          r.on('error', reject)
-          r.on('timeout', () => { r.destroy(); reject(new Error('timeout')) })
-        })
-        return send(res, 200, ids)
-      } catch (e) {
-        console.error('opencode models fetch error:', e.message)
-        return send(res, 200, [])
+    const keyPrefix = key + '='
+    let foundIndex = -1
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].startsWith(keyPrefix)) {
+        foundIndex = i
+        break
       }
     }
 
-    if (p === '/api/config' && req.method === 'POST') {
-      if (!checkTakeoverAuth(req, res, { requireCustomHeader: true })) return
-      let body
-      try {
-        body = await readBody(req)
-      } catch (e) {
-        return send(res, 400, { error: 'invalid JSON body' })
-      }
-      const { key, value } = body
-      if (typeof key !== 'string' || !Object.prototype.hasOwnProperty.call(CONFIG_KEYS, key)) {
-        return send(res, 400, { error: 'invalid config key' })
-      }
-      if (typeof value !== 'string') {
-        return send(res, 400, { error: 'value must be a string' })
-      }
-      if (value.includes('\n') || value.includes('\r')) {
-        return send(res, 400, { error: 'value cannot contain newlines' })
-      }
+    const newLine = `${key}="${escapedValue}"`
 
-      const escapedValue = value.replace(/"/g, '\\"')
-      const configPath = resolveConfigPath()
-      try {
-        const dir = path.dirname(configPath)
-        fs.mkdirSync(dir, { recursive: true })
-
-        const exists = fs.existsSync(configPath)
-        let lines = []
-        let existingMode = 0o600
-        
-        if (exists) {
-          const stat = fs.statSync(configPath)
-          existingMode = stat.mode & 0o777
-          const content = fs.readFileSync(configPath, 'utf8')
-          lines = content.split(/\r?\n/)
-        }
-
-        const keyPrefix = key + '='
-        let foundIndex = -1
-        for (let i = 0; i < lines.length; i++) {
-          if (lines[i].startsWith(keyPrefix)) {
-            foundIndex = i
+    if (foundIndex !== -1) {
+      lines[foundIndex] = newLine
+    } else {
+      if (!exists) {
+        lines = [`# cli-dispatch config`, newLine, '']
+      } else {
+        let lastNonBlankIdx = -1
+        for (let i = lines.length - 1; i >= 0; i--) {
+          if (lines[i].trim() !== '') {
+            lastNonBlankIdx = i
             break
           }
         }
-
-        const newLine = `${key}="${escapedValue}"`
-
-        if (foundIndex !== -1) {
-          lines[foundIndex] = newLine
+        if (lastNonBlankIdx === -1) {
+          lines = [`# cli-dispatch config`, newLine, '']
         } else {
-          if (!exists) {
-            lines = [`# cli-dispatch config`, newLine, '']
-          } else {
-            let lastNonBlankIdx = -1
-            for (let i = lines.length - 1; i >= 0; i--) {
-              if (lines[i].trim() !== '') {
-                lastNonBlankIdx = i
-                break
-              }
-            }
-            if (lastNonBlankIdx === -1) {
-              lines = [`# cli-dispatch config`, newLine, '']
-            } else {
-              const trailingBlankCount = lines.length - 1 - lastNonBlankIdx
-              const beforeLines = lines.slice(0, lastNonBlankIdx + 1)
-              const prepends = Math.max(0, 2 - trailingBlankCount)
-              for (let j = 0; j < prepends; j++) {
-                beforeLines.push('')
-              }
-              beforeLines.push(newLine)
-              beforeLines.push('')
-              lines = beforeLines
-            }
+          const trailingBlankCount = lines.length - 1 - lastNonBlankIdx
+          const beforeLines = lines.slice(0, lastNonBlankIdx + 1)
+          const prepends = Math.max(0, 2 - trailingBlankCount)
+          for (let j = 0; j < prepends; j++) {
+            beforeLines.push('')
           }
+          beforeLines.push(newLine)
+          beforeLines.push('')
+          lines = beforeLines
         }
-
-        const finalContent = lines.join('\n')
-        
-        const tempPath = configPath + '.tmp.' + crypto.randomBytes(8).toString('hex')
-        try {
-          fs.writeFileSync(tempPath, finalContent, { mode: existingMode })
-          fs.renameSync(tempPath, configPath)
-        } catch (writeErr) {
-          try {
-            if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath)
-          } catch {}
-          throw writeErr
-        }
-
-        return send(res, 200, { ok: true })
-      } catch (e) {
-        return send(res, 400, { error: 'Failed to write config: ' + String(e.message || e) })
       }
     }
 
-    let m
-    if ((m = p.match(/^\/api\/session\/([^/]+)\/flow$/))) {
-      const id = decodeURIComponent(m[1]); if (!okId(id)) return send(res, 400, { error: 'bad id' })
-      const sess = findSession(id); if (!sess) return send(res, 404, { error: 'not found' })
-      const f = mapFlow(sess.file); f.linkedWorkers = linkedWorkers(sess.file); return send(res, 200, f)
-    }
-    if ((m = p.match(/^\/api\/session\/([^/]+)\/subagents$/))) {
-      const id = decodeURIComponent(m[1]); if (!okId(id)) return send(res, 400, { error: 'bad id' })
-      const sess = findSession(id); if (!sess) return send(res, 404, { error: 'not found' })
-      return send(res, 200, listSubagents(sess))
-    }
-    if ((m = p.match(/^\/api\/subagent\/([^/]+)\/([^/]+)\/flow$/))) {
-      const sid = decodeURIComponent(m[1]), aid = decodeURIComponent(m[2])
-      if (!okId(sid) || !okId(aid)) return send(res, 400, { error: 'bad id' })
-      const sess = findSession(sid); if (!sess) return send(res, 404, { error: 'not found' })
-      const jl = path.join(subagentDir(sess), 'agent-' + aid + '.jsonl')
-      const rp = path.resolve(jl)
-      if (!rp.startsWith(path.resolve(subagentDir(sess)) + path.sep)) return send(res, 400, { error: 'bad path' })
-      const f = mapFlow(jl); f.linkedWorkers = linkedWorkers(jl); return send(res, 200, f)
-    }
-    if ((m = p.match(/^\/api\/worker\/([^/]+)\/flow$/))) {
-      const id = decodeURIComponent(m[1]); if (!okId(id)) return send(res, 400, { error: 'bad id' })
-      const dir = path.resolve(path.join(WORKERS_ROOT, id))
-      if (!dir.startsWith(path.resolve(WORKERS_ROOT) + path.sep) || !isDir(dir)) return send(res, 404, { error: 'not found' })
-      return send(res, 200, workerFlow(id))
+    const finalContent = lines.join('\n')
+
+    const tempPath = configPath + '.tmp.' + crypto.randomBytes(8).toString('hex')
+    try {
+      fs.writeFileSync(tempPath, finalContent, { mode: existingMode })
+      fs.renameSync(tempPath, configPath)
+    } catch (writeErr) {
+      try {
+        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath)
+      } catch {}
+      throw writeErr
     }
 
-    // Serves the run's diff as plain text. Same okId + containment guards as /flow above; the
-    // method guard is new-route-only policy (retrofitting the older read routes is #125's job).
-    // nosniff matters: the body is worker-authored code and filenames, and the browser must never
-    // be talked into treating it as HTML.
-    if ((m = p.match(/^\/api\/worker\/([^/]+)\/diff$/)) && req.method === 'GET') {
-      const id = decodeURIComponent(m[1]); if (!okId(id)) return send(res, 400, { error: 'bad id' })
-      const dir = path.resolve(path.join(WORKERS_ROOT, id))
-      if (!dir.startsWith(path.resolve(WORKERS_ROOT) + path.sep) || !isDir(dir)) return send(res, 404, { error: 'not found' })
-      const found = findDiffFile(dir)
-      if (!found) return send(res, 404, { error: 'no diff' })
-      // readHead, not readTail: a patch is only meaningful from the top.
-      const body = readHead(found.file, DIFF_MAX_BYTES)
-      res.writeHead(200, {
-        'Content-Type': 'text/plain; charset=utf-8',
-        'X-Content-Type-Options': 'nosniff',
-        'Cache-Control': 'no-store',
-        'X-CLI-Dispatch-Diff-Source': found.name,
-        'X-CLI-Dispatch-Diff-Bytes': String(found.size),
-        'X-CLI-Dispatch-Diff-Truncated': found.size > DIFF_MAX_BYTES ? '1' : '0',
+    return send(res, 200, { ok: true })
+  } catch (e) {
+    return send(res, 400, { error: 'Failed to write config: ' + String(e.message || e) })
+  }
+}
+
+async function serveOpencodeModels(req, res) {
+  try {
+    const ids = await new Promise((resolve, reject) => {
+      const r = https.get('https://openrouter.ai/api/v1/models', { timeout: 5000 }, (pres) => {
+        let data = ''
+        pres.on('data', chunk => { data += chunk })
+        pres.on('end', () => {
+          try {
+            const json = JSON.parse(data)
+            // Return only the model id strings — never leak the full response
+            resolve((json.data || []).map(m => m.id).filter(Boolean))
+          } catch (e) { reject(e) }
+        })
       })
-      return res.end(body)
+      r.on('error', reject)
+      r.on('timeout', () => { r.destroy(); reject(new Error('timeout')) })
+    })
+    return send(res, 200, ids)
+  } catch (e) {
+    console.error('opencode models fetch error:', e.message)
+    return send(res, 200, [])
+  }
+}
+
+function serveSessionFlow(req, res, params) {
+  const id = decodeURIComponent(params[0]); if (!okId(id)) return send(res, 400, { error: 'bad id' })
+  const sess = findSession(id); if (!sess) return send(res, 404, { error: 'not found' })
+  const f = mapFlow(sess.file); f.linkedWorkers = linkedWorkers(sess.file); return send(res, 200, f)
+}
+
+function serveSessionSubagents(req, res, params) {
+  const id = decodeURIComponent(params[0]); if (!okId(id)) return send(res, 400, { error: 'bad id' })
+  const sess = findSession(id); if (!sess) return send(res, 404, { error: 'not found' })
+  return send(res, 200, listSubagents(sess))
+}
+
+function serveSubagentFlow(req, res, params) {
+  const sid = decodeURIComponent(params[0]), aid = decodeURIComponent(params[1])
+  if (!okId(sid) || !okId(aid)) return send(res, 400, { error: 'bad id' })
+  const sess = findSession(sid); if (!sess) return send(res, 404, { error: 'not found' })
+  const jl = path.join(subagentDir(sess), 'agent-' + aid + '.jsonl')
+  const rp = path.resolve(jl)
+  if (!rp.startsWith(path.resolve(subagentDir(sess)) + path.sep)) return send(res, 400, { error: 'bad path' })
+  const f = mapFlow(jl); f.linkedWorkers = linkedWorkers(jl); return send(res, 200, f)
+}
+
+function serveWorkerFlow(req, res, params) {
+  const id = decodeURIComponent(params[0]); if (!okId(id)) return send(res, 400, { error: 'bad id' })
+  const dir = path.resolve(path.join(WORKERS_ROOT, id))
+  if (!dir.startsWith(path.resolve(WORKERS_ROOT) + path.sep) || !isDir(dir)) return send(res, 404, { error: 'not found' })
+  return send(res, 200, workerFlow(id))
+}
+
+// Serves the run's diff as plain text. Same okId + containment guards as /flow above.
+// nosniff matters: the body is worker-authored code and filenames, and the browser must never
+// be talked into treating it as HTML.
+function serveWorkerDiff(req, res, params) {
+  const id = decodeURIComponent(params[0]); if (!okId(id)) return send(res, 400, { error: 'bad id' })
+  const dir = path.resolve(path.join(WORKERS_ROOT, id))
+  if (!dir.startsWith(path.resolve(WORKERS_ROOT) + path.sep) || !isDir(dir)) return send(res, 404, { error: 'not found' })
+  const found = findDiffFile(dir)
+  if (!found) return send(res, 404, { error: 'no diff' })
+  // readHead, not readTail: a patch is only meaningful from the top.
+  const body = readHead(found.file, DIFF_MAX_BYTES)
+  res.writeHead(200, {
+    'Content-Type': 'text/plain; charset=utf-8',
+    'X-Content-Type-Options': 'nosniff',
+    'Cache-Control': 'no-store',
+    'X-CLI-Dispatch-Diff-Source': found.name,
+    'X-CLI-Dispatch-Diff-Bytes': String(found.size),
+    'X-CLI-Dispatch-Diff-Truncated': found.size > DIFF_MAX_BYTES ? '1' : '0',
+  })
+  return res.end(body)
+}
+
+// The table. Order is irrelevant to correctness — no two rows share a (method, path) — but it
+// is kept in the old if-chain's order so the diff that introduced it stays reviewable.
+const ROUTES = [
+  { method: 'GET', path: '/', handler: serveIndex },
+  { method: 'GET', path: '/index.html', handler: serveIndex },
+  { method: 'GET', path: '/favicon.ico', handler: serveFavicon },
+  // Generated from the vendor allowlist itself, so the map stays the single source of truth
+  // for which static files exist (see VENDOR_FILES: the path is looked up, never used to
+  // build a filesystem path).
+  ...Object.keys(VENDOR_FILES).map(vp => ({
+    method: 'GET',
+    path: vp,
+    handler: (req, res) => serveVendorAsset(vp, res),
+  })),
+  { method: 'GET', path: '/api/stream', handler: (req, res, params, u) => sse(req, res, u.searchParams.get('watch') || 'sessions') },
+  { method: 'GET', path: '/api/sessions', handler: (req, res) => send(res, 200, listSessions()) },
+  // parentSession moved to the detail route in 4.3.0: the worker row no longer renders
+  // "from <project>", and resolving it cost a 2MB readTail per Claude Code transcript on the
+  // SSE-refreshed list path.
+  { method: 'GET', path: '/api/workers', handler: (req, res) => send(res, 200, listWorkers(true)) },
+  { method: 'GET', path: '/api/workers/aggregate', handler: (req, res) => send(res, 200, workerUsageAggregate()) },
+  { method: 'GET', path: '/api/clean', handler: serveCleanGet },
+  { method: 'POST', path: '/api/clean', handler: serveCleanPost },
+  // Deliberately its own route rather than folded into /api/config: it spawns child processes,
+  // so it must not add cost to a route that may be fetched for other reasons, and it caches on a
+  // different clock.
+  { method: 'GET', path: '/api/backend-auth', handler: async (req, res) => send(res, 200, await backendAuthState()) },
+  { method: 'GET', path: '/api/config', handler: serveConfigGet },
+  { method: 'POST', path: '/api/config', handler: serveConfigPost },
+  { method: 'GET', path: '/api/models/opencode', handler: serveOpencodeModels },
+  { method: 'GET', pattern: /^\/api\/session\/([^/]+)\/flow$/, handler: serveSessionFlow },
+  { method: 'GET', pattern: /^\/api\/session\/([^/]+)\/subagents$/, handler: serveSessionSubagents },
+  { method: 'GET', pattern: /^\/api\/subagent\/([^/]+)\/([^/]+)\/flow$/, handler: serveSubagentFlow },
+  { method: 'GET', pattern: /^\/api\/worker\/([^/]+)\/flow$/, handler: serveWorkerFlow },
+  { method: 'GET', pattern: /^\/api\/worker\/([^/]+)\/diff$/, handler: serveWorkerDiff },
+  // ---- human-takeover write endpoints (opt-in; see .specs/dev/sdd/human-takeover.md) ----
+  { method: 'POST', pattern: /^\/api\/worker\/([^/]+)\/takeover$/, handler: (req, res, params) => handleTakeover(req, res, params[0]) },
+  { method: 'POST', pattern: /^\/api\/worker\/([^/]+)\/handback$/, handler: (req, res, params) => handleHandback(req, res, params[0]) },
+]
+
+// HEAD is served by the GET handler. Node suppresses the body for HEAD responses on its own,
+// so this costs nothing and keeps `curl -I` working — it used to work only because the old
+// if-chain never looked at the method at all.
+const methodMatches = (routeMethod, reqMethod) =>
+  routeMethod === reqMethod || (routeMethod === 'GET' && reqMethod === 'HEAD')
+
+async function dispatch(req, res, u) {
+  const p = u.pathname
+  // Collected while scanning: a path that exists under a DIFFERENT verb is a 405, not a 404,
+  // and the Allow header is the only way the caller learns which verb to use.
+  const allowed = new Set()
+
+  for (const route of ROUTES) {
+    let params
+    if (route.path !== undefined) {
+      if (route.path !== p) continue
+      params = []
+    } else {
+      const m = p.match(route.pattern)
+      if (!m) continue
+      params = m.slice(1)
     }
-    // ---- human-takeover write endpoints (opt-in; see .specs/dev/sdd/human-takeover.md) ----
-    if ((m = p.match(/^\/api\/worker\/([^/]+)\/takeover$/)) && req.method === 'POST') {
-      return await handleTakeover(req, res, m[1])
-    }
-    if ((m = p.match(/^\/api\/worker\/([^/]+)\/handback$/)) && req.method === 'POST') {
-      return handleHandback(req, res, m[1])
-    }
-    send(res, 404, { error: 'no route' })
+    if (!methodMatches(route.method, req.method)) { allowed.add(route.method); continue }
+    return await route.handler(req, res, params, u)
+  }
+
+  if (allowed.size > 0) {
+    const allow = [...allowed].sort().join(', ')
+    res.writeHead(405, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+      Allow: allow,
+    })
+    return res.end(JSON.stringify({ error: 'method not allowed', allow }))
+  }
+  return send(res, 404, { error: 'no route' })
+}
+
+const server = http.createServer(async (req, res) => {
+  const u = new URL(req.url, 'http://127.0.0.1')
+  try {
+    await dispatch(req, res, u)
   } catch (e) {
     send(res, 500, { error: String(e && e.message || e) })
   }
