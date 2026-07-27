@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.7.0] — 2026-07-26
+
+Splits the dashboard's router — the one structural item deliberately left out of 4.3.0 and the
+last open piece of #125.
+
+### Changed
+
+- **`dashboard-server.mjs`'s router is a route table instead of a 288-line `if`-chain.** Every
+  request used to re-test every path string in order (`/api/clean` three times, `/api/config`
+  twice), and two handlers — the config writer and the OpenRouter model fetch, ~120 lines
+  together — sat inline in the middle of the dispatcher. Each handler is now a named function
+  with a uniform `(req, res, params, url)` signature, and the table declares
+  `{method, path | pattern, handler}`.
+  - Route coverage is unchanged and was diffed row by row against the old chain: 11 exact paths,
+    7 pattern routes, 3 vendor assets. The vendor rows are **generated from `VENDOR_FILES`**, so
+    that allowlist stays the single source of truth for which static files exist.
+  - The table is kept in the old chain's order. Order does not affect correctness — no two rows
+    share a `(method, path)` — but it keeps the introducing diff reviewable.
+  - Handler `params` are the RAW regex captures. Decoding and `okId()` validation stay inside
+    the handlers, where they already were; the dispatcher was not given a chance to "helpfully"
+    decode a path segment before the containment checks run.
+
+- **Every route now has a method guard, and a wrong verb answers `405` with an `Allow` header.**
+  This is a real behaviour change: `POST /api/sessions` used to run the GET handler and return
+  200, because the old chain matched on path alone. Only three routes had ever been given a
+  guard.
+  - `405 {"error":"method not allowed","allow":"GET"}` — a path that exists under a different
+    verb is not a 404, and the `Allow` header is the only way a caller learns which verb to use.
+    Unknown paths keep the pre-existing `404 {"error":"no route"}` shape exactly.
+  - **`HEAD` is served by the `GET` handler.** It worked before only because the old chain never
+    looked at the method at all, so adding guards would otherwise have made `curl -I` a 405.
+    Node suppresses the body for HEAD responses on its own.
+
+### Tests
+
+- 319 → 322, and one existing assertion updated: the diff route's POST rejection was pinned at
+  `404` (the old fall-through) and is now `405` + `Allow: GET`.
+- New coverage: 405 + `Allow` across GET-only, POST-only and GET+POST paths; the 404 shape for an
+  unknown path (and that it carries no `Allow`); every table row answering its own verb; bad ids
+  still failing closed on the pattern routes; and HEAD returning headers with an empty body.
+- Mutation-verified: dropping HEAD support fails 1 test, removing the 405 branch fails 2.
+
 ## [4.6.0] — 2026-07-26
 
 Closes the two items left open after 4.5.0: the `worktreeRemoved` field that could never be

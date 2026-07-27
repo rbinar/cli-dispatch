@@ -958,8 +958,12 @@ test('GET /api/worker/:id/diff 404s with no patch, 400s on a bad id, and rejects
     assert.equal(none.body.error, 'no diff')
     const traversal = await httpRequest({ port: actualPort, method: 'GET', path: '/api/worker/..%2F..%2Fetc/diff' })
     assert.ok(traversal.status === 400 || traversal.status === 404, 'traversal must not be served')
+    // 405 since 4.7.0, not 404: the router now knows the path exists and only the verb is
+    // wrong, and says which verb is allowed. Before the route table, a method mismatch simply
+    // failed to match and fell through to the catch-all 404.
     const posted = await httpRequest({ port: actualPort, method: 'POST', path: '/api/worker/det-1/diff' })
-    assert.equal(posted.status, 404, 'the method guard must reject POST')
+    assert.equal(posted.status, 405, 'the method guard must reject POST')
+    assert.equal(posted.headers.allow, 'GET')
   } finally {
     await stopServer(child)
     rmSync(sessionsDir, { recursive: true, force: true })
@@ -1495,6 +1499,101 @@ test('GET /api/workers/aggregate isolates the deterministic-run subset', async (
     assert.equal(ds.runInputTokens, 100)
     assert.equal(ds.runOutputTokens, 10)
     assert.equal(ds.inputTokens, 200, 'the overall total still counts both')
+  } finally {
+    await stopServer(child)
+    rmSync(sessionsDir, { recursive: true, force: true })
+    rmSync(homeDir, { recursive: true, force: true })
+  }
+})
+
+// ---- the route table (4.7.0) ---------------------------------------------------------------
+//
+// The router was a 288-line if-chain inside createServer. These tests pin what the table is
+// supposed to buy: a method mismatch is a 405 that names the allowed verb, an unknown path is
+// still the old 404 shape, and read routes that never had a method guard now have one.
+
+test('router: a wrong verb on an existing path is 405 with an Allow header, not 404', async () => {
+  const { sessionsDir, homeDir } = seedWorkerFixture()
+  const port = 18800 + Math.floor(Math.random() * 1000)
+  const child = startServerIsolated({ sessionsDir, homeDir, port })
+  try {
+    const actualPort = await waitForServerReady(child)
+
+    // Read routes that accepted ANY verb before the table: a POST used to run the GET handler
+    // and return 200. This is the behaviour change the refactor ships.
+    for (const p of ['/api/sessions', '/api/workers', '/api/workers/aggregate', '/api/config']) {
+      const res = await httpRequest({ port: actualPort, method: 'DELETE', path: p })
+      assert.equal(res.status, 405, `${p} must reject DELETE`)
+      assert.equal(res.headers.allow, p === '/api/config' ? 'GET, POST' : 'GET', `${p} Allow header`)
+      assert.equal(res.body.error, 'method not allowed')
+    }
+
+    // A path with both verbs advertises both, whichever one you got wrong.
+    const cleanPut = await httpRequest({ port: actualPort, method: 'PUT', path: '/api/clean' })
+    assert.equal(cleanPut.status, 405)
+    assert.equal(cleanPut.headers.allow, 'GET, POST')
+
+    // POST-only routes advertise POST.
+    const takeoverGet = await httpRequest({ port: actualPort, method: 'GET', path: '/api/worker/det-1/takeover' })
+    assert.equal(takeoverGet.status, 405)
+    assert.equal(takeoverGet.headers.allow, 'POST')
+
+    // An unknown path keeps the pre-existing 404 shape — no route to name, nothing to allow.
+    const missing = await httpRequest({ port: actualPort, method: 'GET', path: '/api/nope' })
+    assert.equal(missing.status, 404)
+    assert.equal(missing.body.error, 'no route')
+    assert.equal(missing.headers.allow, undefined)
+  } finally {
+    await stopServer(child)
+    rmSync(sessionsDir, { recursive: true, force: true })
+    rmSync(homeDir, { recursive: true, force: true })
+  }
+})
+
+test('router: every documented route still answers its own verb', async () => {
+  // The regression net for the extraction itself: each row of the table reached, once.
+  const { sessionsDir, homeDir } = seedWorkerFixture()
+  const port = 18800 + Math.floor(Math.random() * 1000)
+  const child = startServerIsolated({ sessionsDir, homeDir, port })
+  try {
+    const actualPort = await waitForServerReady(child)
+    const cases = [
+      ['/', 200],
+      ['/index.html', 200],
+      ['/favicon.ico', 204],
+      ['/api/sessions', 200],
+      ['/api/workers', 200],
+      ['/api/workers/aggregate', 200],
+      ['/api/clean', 200],
+      ['/api/config', 200],
+      ['/api/worker/det-1/flow', 200],
+    ]
+    for (const [p, expected] of cases) {
+      const res = await httpRequest({ port: actualPort, method: 'GET', path: p })
+      assert.equal(res.status, expected, `GET ${p}`)
+    }
+    // Bad ids still fail closed on the param routes.
+    const badId = await httpRequest({ port: actualPort, method: 'GET', path: '/api/worker/..%2F..%2Fetc/flow' })
+    assert.ok(badId.status === 400 || badId.status === 404, 'a bad id must not be served')
+  } finally {
+    await stopServer(child)
+    rmSync(sessionsDir, { recursive: true, force: true })
+    rmSync(homeDir, { recursive: true, force: true })
+  }
+})
+
+test('router: HEAD is served by the GET route and returns headers with no body', async () => {
+  // Node suppresses the body for HEAD itself; the point here is that HEAD must not become a
+  // 405 casualty of adding method guards — `curl -I` worked before and has to keep working.
+  const { sessionsDir, homeDir } = seedWorkerFixture()
+  const port = 18800 + Math.floor(Math.random() * 1000)
+  const child = startServerIsolated({ sessionsDir, homeDir, port })
+  try {
+    const actualPort = await waitForServerReady(child)
+    const res = await httpRequest({ port: actualPort, method: 'HEAD', path: '/' })
+    assert.equal(res.status, 200)
+    assert.match(String(res.headers['content-type']), /^text\/html/)
+    assert.equal(res.raw, '', 'HEAD must carry no body')
   } finally {
     await stopServer(child)
     rmSync(sessionsDir, { recursive: true, force: true })
