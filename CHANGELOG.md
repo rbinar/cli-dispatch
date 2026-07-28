@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.7.2] — 2026-07-29
+
+Promotes the report's most decision-relevant number out of a footnote.
+
+### Added
+
+- **`gain` prints an "Anthropic subagents vs workers" block**, right after the deterministic-runs
+  line. The figure it leads with already existed — as the last line of a section labelled
+  "historical", worded as an exclusion note (`other (non-runner) subagents: N agents, output X —
+  excluded from ratio`). That number answers the question the whole report exists to answer: how
+  much work went to an Anthropic model instead of a worker. On this machine it reads 36.1M output
+  tokens against the workers' 108k.
+  - The block reuses the exact values the footnote prints rather than recomputing them, and the
+    footnote stays where it was. Everything else in the report is byte-identical — verified by
+    diffing full output before and after.
+  - Computing it earlier meant hoisting the subagent-transcript scan above the first `console.log`.
+  - `ratio: n/a (workers reported no usage)` when worker output is zero, instead of dividing by it.
+- **A retention caveat on that ratio.** The two sides are pruned differently: worker output comes
+  from session dirs, which `cli-dispatch-clean` deletes, while the Anthropic side reads
+  `~/.claude/projects`, which nothing here prunes. Sweeping 105 old sessions moved the ratio from
+  ~28× to ~332× without any change in behaviour. Unlabelled, that reads as a trend; it is an
+  artifact, and the line now says so.
+
 ## [4.7.1] — 2026-07-28
 
 Fixes #133: `agy models` changed its output format, which made `ag-stream` warn about models
