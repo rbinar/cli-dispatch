@@ -7,6 +7,74 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.7.1] — 2026-07-28
+
+#133'ü düzeltir: `agy models` çıktı formatını değiştirdi; bu, `ag-stream`'in sorunsuz çalışan
+modeller için uyarı basmasına ve `--effort`'un sessizce sabit bir model ailesine çivilenmesine yol
+açtı.
+
+### Düzeltildi
+
+- **`ag-stream` artık geçerli bir model için "not listed by `agy models`" uyarısı basmıyor.** agy
+  1.1.8'den itibaren bu komut kebab-case slug yazıyor (`gemini-3.6-flash-high`); önceden display
+  name yazıyordu (`Gemini 3.6 Flash (High)`). `agy --model` **her ikisini de** hâlâ kabul ediyor —
+  değişen yalnız listeleme — ama doğrulama listeye karşı tam eşleşmeli bir `grep -qxF` idi; bu
+  yüzden bu deponun dokümante ettiği formatta yazılmış her config, agy'nin default'a düştüğünü
+  iddia eden bir uyarı basmaya başladı. Düşmemişti: session transcript'i istenen modelin
+  koştuğunu doğruluyor. Yanlış alarm önemliydi, çünkü uyarının kendisi doğru — agy bir yazım
+  hatasında gerçekten sessizce default'a düşüyor, ve insanların görmezden gelmeyi öğrendiği bir
+  alarm, hiç alarm olmamasından kötüdür.
+- **`--model` verilmeden kullanılan `--effort` artık sabit fallback'e düşmüyor.** Eski kod modeli
+  `agy models | grep -m1 "($SUF)$"` ile seçiyordu. Slug'larda ` (High)` soneki yok, dolayısıyla bu
+  eşleşme hiç tutmuyor ve yalnız-effort koşan her çalıştırma, agy ne sunuyor olursa olsun sessizce
+  `Gemini 3.5 Flash (<effort>)` kullanıyordu. Bu, hangi modelin koştuğunu değiştiriyordu — hem de
+  bunu söylemeden.
+- Karşılaştırma artık küçük harfe indirip alfanümerik olmayan her karakteri atan bir anahtar
+  üzerinden yapılıyor, çünkü slug dönüşümü **mekanik değil**: agy `gemini-3.5-flash-high`'da
+  noktayı koruyor ama Claude'unkini `claude-opus-4-6-thinking`'de tireye çeviriyor. Dört shell
+  yardımcısı bunu taşıyor — `model_key`, `model_listed`, `apply_effort_suffix`,
+  `pick_model_for_effort` — ve iki yönde de çalışıyorlar: display-name'li bir config agy
+  yükseltmesinden sağ çıkıyor, slug'lı bir config ise display name listeleyen eski bir agy'de de
+  doğrulanıyor. Gerçek bir yazım hatası hâlâ uyarı alıyor.
+- `apply_effort_suffix` çağıranın formatını koruyor: `--model gemini-3.6-flash --effort low`
+  → `gemini-3.6-flash-low`, `--model "Gemini 3.6 Flash" --effort low` → `"Gemini 3.6 Flash (Low)"`.
+- Kullanılamaz bir `agy` (kurulu değil, giriş yapılmamış, boş liste) artık modeli bilinmeyen
+  ilan etmek yerine uyarıyı bastırıyor — bu, tam da kurulumu henüz bitirmemiş kişiye yönelen
+  ikinci bir yanlış pozitifti.
+- **Worktree taraması testlerde izole edilebilir hâle geldi (`CLI_DISPATCH_WT_SCAN_ROOTS`).** `GET
+  /api/clean?worktrees=1` testi `TMPDIR`'ı fixture'a çeviriyordu, ama `/tmp` koşulsuz taranıyor;
+  bu yüzden geliştiricinin makinesindeki gerçek bir artık worktree — ki başarılı bir delegasyon
+  **tasarım gereği** böyle bir şey bırakır, runner asla commit etmediği için — fixture'larla
+  birlikte sayılıp testi düşürüyordu. Yeni env değişkeni iki varsayılan kökün ikisini de
+  değiştiriyor. Üretim davranışı aynı; testler dışında kimse bunu set etmiyor.
+
+### Değişti
+
+- Dokümanlar ve config editörü artık display-name'i tek geçerli format saymak yerine iki formatı
+  da sunuyor: `install.sh` config iskeletinin yorumları, dashboard config editöründeki iki
+  `AG_MODEL`/`AG_MODELS` `<datalist>`i (canlı `agy models` çıktısından tazelendi — artık listenin
+  başında olmayan bir model kuşağını listeliyorlardı), `commands/ag-run.md` ve
+  `skills/ds-delegate/SKILL.md`'deki backend tablosu. `commands/ag-run.md` açık açık *"not a loose
+  slug like `gemini-3.5-flash`"* diyordu; bu artık gerçeğin tam tersi.
+- Dokunulmayan ve bunun bilinçli olduğu doğrulanan: `ag-transcript-parse.mjs` ve testleri hâlâ
+  **display name** kazıyor, çünkü `agy models` nasıl yazarsa yazsın agy transcript'ine bunu
+  yazıyor (taze bir session'da kontrol edildi). `README.md` / `README.tr.md` yalnızca *"liste:
+  `agy models`"* diyor, o da doğru kalıyor.
+
+### Testler
+
+- Yeni `__tests__/ag-model-format.test.mjs` (15 test) dört yardımcıyı sevk edilen `ag-stream`'den
+  çıkarıp gerçek bash altında, `agy` stub'lanmış hâlde koşturuyor; böylece iddialar kopyayı değil
+  script'in kendisini not veriyor — `ps1-bash-quoting.test.mjs`'in getirdiği teknik. İki listeleme
+  formatını iki yönde de, gerçek-pozitif yazım hatasını, boş-liste durumunu kapsıyor ve eski
+  `grep -m1 "($SUF)$"` deseninin gittiğini sabitliyor. Mutasyonla doğrulandı: `model_key`'i
+  zayıflatmak 3'ünü, boş-liste guard'ını düşürmek 1'ini kırıyor.
+- Bir guard testi `ag-stream`'in herhangi bir yerinde bash 4 case expansion'ını (`${var,,}` /
+  `${var^^}`) reddediyor. macOS hâlâ `/bin/bash` 3.2 gönderiyor ve bu depodaki başka hiçbir script
+  bunları kullanmıyor; yardımcılar doğrudan 3.2 altında yeniden koşturularak doğrulandı.
+- Yeni bir dashboard testi `CLI_DISPATCH_WT_SCAN_ROOTS`'un varsayılan kökleri eklemek yerine
+  **değiştirdiğini** sabitliyor; böylece izolasyon sessizce geri gidemiyor.
+
 ## [4.7.0] — 2026-07-26
 
 Dashboard'un router'ını ayrıştırır — 4.3.0'da bilinçle kapsam dışı bırakılan tek yapısal madde ve
