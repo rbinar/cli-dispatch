@@ -1114,9 +1114,12 @@ async function renderConfigEditor() {
     html += ' <button class="tkbtn" id="wtBtn" onclick="openWorktreePanel()" style="font-size:11px;padding:2px 8px">Leftover worktrees</button>'
     html += '</div></div>'
     // Static <datalist> model-ID suggestions for AG/CX/CP backends.
-    // AG_MODEL/AG_MODELS options sourced from verified live output of "agy models" on this machine.
-    html += '<datalist id="dl_AG_MODEL"><option value="Gemini 3.5 Flash (Medium)"><option value="Gemini 3.5 Flash (High)"><option value="Gemini 3.5 Flash (Low)"><option value="Gemini 3.1 Pro (Low)"><option value="Gemini 3.1 Pro (High)"><option value="Claude Sonnet 4.6 (Thinking)"><option value="Claude Opus 4.6 (Thinking)"><option value="GPT-OSS 120B (Medium)"></datalist>'
-    html += '<datalist id="dl_AG_MODELS"><option value="Gemini 3.5 Flash (Medium)"><option value="Gemini 3.5 Flash (High)"><option value="Gemini 3.5 Flash (Low)"><option value="Gemini 3.1 Pro (Low)"><option value="Gemini 3.1 Pro (High)"><option value="Claude Sonnet 4.6 (Thinking)"><option value="Claude Opus 4.6 (Thinking)"><option value="GPT-OSS 120B (Medium)"></datalist>'
+    // AG_MODEL/AG_MODELS options sourced from verified live output of "agy models" on this
+    // machine (re-verified 2026-07-28 on agy 1.1.8, which prints slugs; earlier builds printed
+    // display names like "Gemini 3.5 Flash (High)"). agy accepts both, and ag-stream compares
+    // them ignoring case and punctuation, so a config holding either format stays valid.
+    html += '<datalist id="dl_AG_MODEL"><option value="gemini-3.6-flash-high"><option value="gemini-3.6-flash-medium"><option value="gemini-3.6-flash-low"><option value="gemini-3.5-flash-high"><option value="gemini-3.5-flash-medium"><option value="gemini-3.5-flash-low"><option value="gemini-3.1-pro-high"><option value="gemini-3.1-pro-low"><option value="claude-sonnet-4-6"><option value="claude-opus-4-6-thinking"><option value="gpt-oss-120b-medium"></datalist>'
+    html += '<datalist id="dl_AG_MODELS"><option value="gemini-3.6-flash-high"><option value="gemini-3.6-flash-medium"><option value="gemini-3.6-flash-low"><option value="gemini-3.5-flash-high"><option value="gemini-3.5-flash-medium"><option value="gemini-3.5-flash-low"><option value="gemini-3.1-pro-high"><option value="gemini-3.1-pro-low"><option value="claude-sonnet-4-6"><option value="claude-opus-4-6-thinking"><option value="gpt-oss-120b-medium"></datalist>'
     // CX_MODEL/CX_MODELS options sourced from verified live ~/.codex/models_cache.json on this machine (re-verified 2026-07-11).
     html += '<datalist id="dl_CX_MODEL"><option value="gpt-5.6-sol"><option value="gpt-5.6-terra"><option value="gpt-5.6-luna"><option value="gpt-5.5"><option value="gpt-5.4"><option value="gpt-5.4-mini"><option value="gpt-5.3-codex-spark"><option value="codex-auto-review"></datalist>'
     html += '<datalist id="dl_CX_MODELS"><option value="gpt-5.6-sol"><option value="gpt-5.6-terra"><option value="gpt-5.6-luna"><option value="gpt-5.5"><option value="gpt-5.4"><option value="gpt-5.4-mini"><option value="gpt-5.3-codex-spark"><option value="codex-auto-review"></datalist>'

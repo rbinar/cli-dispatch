@@ -125,33 +125,110 @@ AG_HOME="$HOME/.gemini/antigravity-cli"
 LC="$AG_HOME/cache/last_conversations.json"
 BRAIN="$AG_HOME/brain"
 
-# --effort low|medium|high: agy exposes reasoning effort only through the model display
-# name's suffix ("Gemini 3.5 Flash (High)"), so compose the name here. With --model, the
-# existing parenthesized suffix (if any) is replaced; without it, pick the first model
-# `agy models` lists at that effort (falling back to the known default family). The
-# composed name then goes through the same unknown-model validation below.
+model_key() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -cd '0-9a-z'
+}
+
+model_listed() {
+  local model="$1"
+  local want
+  local models
+  local line
+
+  want="$(model_key "$model")"
+  if ! models="$(agy models 2>/dev/null)"; then
+    return 0
+  fi
+  [ -n "$models" ] || return 0
+
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    if [ "$(model_key "$line")" = "$want" ]; then
+      return 0
+    fi
+  done <<< "$models"
+  return 1
+}
+
+apply_effort_suffix() {
+  local name="$1"
+  local suffix="$2"
+  local base
+  local lower
+  local suffix_lower
+
+  if [[ "$name" != *" "* ]]; then
+    base="$name"
+    # tr, not bash 4's lowercase parameter expansion — macOS still ships /bin/bash 3.2.
+    lower="$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]')"
+    case "$lower" in
+      *-low|*-medium|*-high|*-thinking) base="${base%-*}";;
+    esac
+    suffix_lower="$(printf '%s' "$suffix" | tr '[:upper:]' '[:lower:]')"
+    printf '%s-%s\n' "$base" "$suffix_lower"
+  else
+    if [[ "$name" =~ ^(.*)\([A-Za-z]+\)$ ]]; then
+      base="${BASH_REMATCH[1]}"
+      while [[ "$base" == *[[:space:]] ]]; do
+        base="${base%?}"
+      done
+    else
+      base="$name"
+    fi
+    printf '%s (%s)\n' "$base" "$suffix"
+  fi
+}
+
+pick_model_for_effort() {
+  local suffix="$1"
+  local suffix_lower
+  local models
+  local line
+  local lower
+
+  suffix_lower="$(printf '%s' "$suffix" | tr '[:upper:]' '[:lower:]')"
+  if ! models="$(agy models 2>/dev/null)"; then
+    printf 'Gemini 3.5 Flash (%s)\n' "$suffix"
+    return 0
+  fi
+  [ -n "$models" ] || { printf 'Gemini 3.5 Flash (%s)\n' "$suffix"; return 0; }
+
+  while IFS= read -r line; do
+    lower="$(printf '%s' "$line" | tr '[:upper:]' '[:lower:]')"
+    if [[ "$lower" == *-"$suffix_lower" || "$lower" == *"($suffix_lower)" ]]; then
+      printf '%s\n' "$line"
+      return 0
+    fi
+  done <<< "$models"
+
+  printf 'Gemini 3.5 Flash (%s)\n' "$suffix"
+}
+
+# --effort low|medium|high: agy accepts both display names and slugs, but
+# `agy models` prints slugs as of 1.1.8. With --model, preserve the caller's
+# format while replacing any existing effort suffix; without it, pick the first
+# listed model at that effort (falling back to the known default family).
 if [ -n "$EFFORT" ]; then
   case "$(printf '%s' "$EFFORT" | tr '[:upper:]' '[:lower:]')" in
     low) SUF="Low";; medium) SUF="Medium";; high) SUF="High";;
     *) echo "ag-stream: --effort must be low|medium|high (got \"$EFFORT\")." >&2; exit 2;;
   esac
   if [ -n "$MODEL" ]; then
-    MODEL="$(printf '%s' "$MODEL" | sed -E 's/ *\([A-Za-z]+\)$//') ($SUF)"
+    MODEL="$(apply_effort_suffix "$MODEL" "$SUF")"
   else
-    MODEL="$(agy models 2>/dev/null | grep -m1 "($SUF)\$" || true)"
-    [ -n "$MODEL" ] || MODEL="Gemini 3.5 Flash ($SUF)"
+    MODEL="$(pick_model_for_effort "$SUF")"
   fi
 fi
 
 # Validate --model against `agy models`. agy SILENTLY falls back to its default for an
 # unknown model (no error), so a typo would quietly run the wrong model — warn instead.
-# Model ids are exact display-name strings incl. the reasoning suffix, e.g.
-# "Gemini 3.1 Pro (High)", "Claude Opus 4.6 (Thinking)", "GPT-OSS 120B (Medium)".
+# agy accepts either a display name or a slug; `agy models` prints slugs as of 1.1.8.
+# The warning fires only when the model matches nothing in either format.
 if [ -n "$MODEL" ]; then
-  if ! agy models 2>/dev/null | grep -qxF "$MODEL"; then
+  if ! model_listed "$MODEL"; then
     echo "ag-stream: warning — model \"$MODEL\" is not listed by \`agy models\`; agy will" >&2
-    echo "  silently use its default. Run \`agy models\` for exact names (they include the" >&2
-    echo "  reasoning suffix, e.g. \"Gemini 3.1 Pro (High)\", \"Claude Opus 4.6 (Thinking)\")." >&2
+    echo "  silently use its default. Run \`agy models\` for listed slugs; display names with" >&2
+    echo "  reasoning suffixes are also accepted by agy." >&2
   fi
 fi
 

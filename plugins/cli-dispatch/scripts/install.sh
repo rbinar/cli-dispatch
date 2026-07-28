@@ -84,12 +84,15 @@ BLOCK
 # Auth is normally via Google sign-in (run `agy` once interactively); no key needed.
 # For headless/CI, set a key here instead.
 GEMINI_API_KEY=""
-# Default model for the agy worker. Blank = agy's own default (Gemini 3.5 Flash (High)).
-# The value is the EXACT display name from `agy models` (incl. the reasoning suffix). agy
-# proxies multiple families — examples:
-#   "Gemini 3.1 Pro (High)"  "Gemini 3.5 Flash (High)"
-#   "Claude Opus 4.6 (Thinking)"  "Claude Sonnet 4.6 (Thinking)"  "GPT-OSS 120B (Medium)"
-# Override per-call with `ag-agent --model "<name>"`. Run `agy models` for the live list.
+# Default model for the agy worker. Blank = agy's own default.
+# agy accepts EITHER the slug `agy models` prints or the display name it shows in the UI —
+# both name the same model, and both carry the reasoning effort. agy proxies multiple
+# families — examples:
+#   "gemini-3.6-flash-high"       or  "Gemini 3.6 Flash (High)"
+#   "claude-opus-4-6-thinking"    or  "Claude Opus 4.6 (Thinking)"
+#   "gpt-oss-120b-medium"         or  "GPT-OSS 120B (Medium)"
+# Override per-call with `ag-agent --model "<name>"`. Run `agy models` for the live list
+# (it prints slugs as of agy 1.1.8; older builds printed display names).
 AG_MODEL=""
 # Optional comma-separated candidate model list — when set, the delegating agent
 # picks the best fit from this list (same reasoning as an orchestrator-provided inline
