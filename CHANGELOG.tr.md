@@ -7,6 +7,29 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.7.2] — 2026-07-29
+
+Raporun karar açısından en önemli sayısını dipnottan çıkarır.
+
+### Eklendi
+
+- **`gain` artık "Anthropic subagents vs workers" bloğu basıyor**, deterministik koşum satırının
+  hemen ardından. Baştaki rakam zaten hesaplanıyordu — ama "historical" etiketli bir bölümün son
+  satırında, dışlama notu olarak (`other (non-runner) subagents: N agents, output X — excluded from
+  ratio`). O sayı, raporun var oluş sebebi olan soruyu yanıtlıyor: iş ne kadar worker'a değil bir
+  Anthropic modeline gitti. Bu makinede 36,1M output token'a karşılık worker'ların 108k'sı.
+  - Blok, dipnotun bastığı değerleri yeniden hesaplamıyor, birebir onları kullanıyor; dipnot da
+    yerinde kalıyor. Raporun geri kalanı bayt bayt aynı — öncesi ve sonrası tam çıktı
+    karşılaştırmasıyla doğrulandı.
+  - Erken hesaplayabilmek için subagent transcript taramasının ilk `console.log`'un üstüne
+    taşınması gerekti.
+  - Worker output'u sıfırsa bölme yerine `ratio: n/a (workers reported no usage)`.
+- **Bu orana retention uyarısı.** İki taraf farklı buduanıyor: worker output'u session dizinlerinden
+  geliyor ve onları `cli-dispatch-clean` siliyor; Anthropic tarafı ise `~/.claude/projects`'i
+  okuyor ve orayı buradaki hiçbir şey budamıyor. 105 eski session süpürülünce oran, davranışta
+  hiçbir değişiklik olmadan ~28×'ten ~332×'e çıktı. Etiketsiz bırakılırsa bu bir eğilim gibi
+  okunuyor; oysa bir yan etki, ve satır artık bunu söylüyor.
+
 ## [4.7.1] — 2026-07-28
 
 #133'ü düzeltir: `agy models` çıktı formatını değiştirdi; bu, `ag-stream`'in sorunsuz çalışan

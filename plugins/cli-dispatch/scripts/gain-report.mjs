@@ -224,72 +224,11 @@ async function runMain(){
     }
   }
 
-  console.log(`root: ${ROOT}`)
-  console.log(`oldest: ${oldest||'?'}  newest: ${newest||'?'}`)
-  console.log('')
-  console.log('backend       sessions       input      output    no data')
-  console.log('------------ -------- ------------ ------------ ----------')
-  for(const [backend,row] of [...byBackend.entries()].sort((a,b)=>a[0].localeCompare(b[0]))){
-    console.log(`${backend.padEnd(12)} ${String(row.sessions).padStart(8)} ${fmt(row.input).padStart(12)} ${fmt(row.output).padStart(12)} ${String(row.noData).padStart(10)}`)
-  }
-  console.log('')
-  console.log(`sessions with no usage data: ${totalNoData}`)
-  console.log('')
-  if(runs.total>0){
-    // Reported separately from the babysitting section below because the two measure different
-    // architectures: a deterministic run has no LLM supervising it at all.
-    const vbits=[`✓ ${runs.verifyPass}`,`✗ ${runs.verifyFail}`]
-    if(runs.verifyHarness>0) vbits.push(`⚠ ${runs.verifyHarness} (check never ran)`)
-    vbits.push(`none ${runs.verifyNone}`)
-    console.log(`deterministic runs (verdict.json present): ${runs.total}  |  verify ${vbits.join(' · ')}`)
-    console.log(`  worker tokens on those runs: ${fmt(runs.input)} in / ${fmt(runs.output)} out  ·  Anthropic babysitter tokens: 0 (the runner is plain shell)`)
-    console.log('')
-  }
-  if(trivialCount>0) console.log(`trivial delegations (diff < 50 lines): ${trivialCount} — cheaper done inline; batch or inline next time`)
+  // --- Worker totals + Anthropic subagent scan (hoisted for vs-workers comparison) ---
+  let totalWorkerOutput=0, totalWorkerInput=0
+  for(const [,row] of byBackend){ totalWorkerOutput+=row.output; totalWorkerInput+=row.input }
+  const totalWorkerSessions=[...byBackend.values()].reduce((sum,r)=>sum+r.sessions,0)
 
-  // Cluster trivial sessions by (cwd,backend), chaining consecutive startedAt values under a
-  // 15-minute window.
-  const RETRY_WINDOW_MS=15*60*1000
-  const trivialGroups=new Map()
-  for(const s of trivialSessions){
-    if(!s.cwd) continue
-    const key=s.cwd+' '+s.backend
-    if(!trivialGroups.has(key)) trivialGroups.set(key,[])
-    trivialGroups.get(key).push(s)
-  }
-  const trivialClusters=[]
-  for(const [,list] of trivialGroups){
-    list.sort((a,b)=>(a.startedAt||'').localeCompare(b.startedAt||''))
-    let current=[], prevTime=null
-    for(const s of list){
-      const t=Date.parse(s.startedAt)
-      const valid=Number.isFinite(t)
-      if(current.length>0 && valid && prevTime!=null && (t-prevTime)<=RETRY_WINDOW_MS){
-        current.push(s)
-      } else {
-        if(current.length>=2) trivialClusters.push(current)
-        current=[s]
-      }
-      prevTime=valid?t:null
-    }
-    if(current.length>=2) trivialClusters.push(current)
-  }
-  const trivialClusterRecords=trivialClusters.map(c=>({
-    cwd:c[0].cwd, backend:c[0].backend,
-    sessionIds:c.map(s=>s.sessionId),
-    count:c.length,
-    firstStartedAt:c[0].startedAt,
-    lastStartedAt:c[c.length-1].startedAt
-  }))
-  if(trivialClusterRecords.length>0){
-    console.log('possible retry-as-new-delegation clusters (same cwd+backend, <15min apart):')
-    for(const c of trivialClusterRecords){
-      const hhmmss=t=>(t||'').slice(11,19)||'?'
-      console.log(`  ${c.cwd} (${c.backend}): ${c.sessionIds.join(', ')}  (${c.count} sessions, ${hhmmss(c.firstStartedAt)} → ${hhmmss(c.lastStartedAt)})`)
-    }
-  }
-
-  // --- Anthropic babysitting (subagent transcripts) ---
   const projectsDir=path.join(os.homedir(),'.claude','projects')
   const agentFiles=[]
   try{
@@ -333,6 +272,86 @@ async function runMain(){
       am.output+=data.output
       am.cacheW+=data.cacheW
       am.cacheR+=data.cacheR
+    }
+  }
+
+  console.log(`root: ${ROOT}`)
+  console.log(`oldest: ${oldest||'?'}  newest: ${newest||'?'}`)
+  console.log('')
+  console.log('backend       sessions       input      output    no data')
+  console.log('------------ -------- ------------ ------------ ----------')
+  for(const [backend,row] of [...byBackend.entries()].sort((a,b)=>a[0].localeCompare(b[0]))){
+    console.log(`${backend.padEnd(12)} ${String(row.sessions).padStart(8)} ${fmt(row.input).padStart(12)} ${fmt(row.output).padStart(12)} ${String(row.noData).padStart(10)}`)
+  }
+  console.log('')
+  console.log(`sessions with no usage data: ${totalNoData}`)
+  console.log('')
+  if(runs.total>0){
+    // Reported separately from the babysitting section below because the two measure different
+    // architectures: a deterministic run has no LLM supervising it at all.
+    const vbits=[`✓ ${runs.verifyPass}`,`✗ ${runs.verifyFail}`]
+    if(runs.verifyHarness>0) vbits.push(`⚠ ${runs.verifyHarness} (check never ran)`)
+    vbits.push(`none ${runs.verifyNone}`)
+    console.log(`deterministic runs (verdict.json present): ${runs.total}  |  verify ${vbits.join(' · ')}`)
+    console.log(`  worker tokens on those runs: ${fmt(runs.input)} in / ${fmt(runs.output)} out  ·  Anthropic babysitter tokens: 0 (the runner is plain shell)`)
+    console.log('')
+  }
+  console.log('Anthropic subagents vs workers (all projects on this machine)')
+  console.log(`  Anthropic subagents: ${otherAgents} runs, ${fmt(otherOutput)} output tokens`)
+  console.log(`  cli-dispatch workers: ${totalWorkerSessions} sessions, ${fmt(totalWorkerOutput)} output tokens`)
+  if(totalWorkerOutput>0){
+    const ratioVal=(otherOutput/totalWorkerOutput).toFixed(1)
+    console.log(`  ratio: Anthropic subagent output ≈ ${ratioVal}× worker output`)
+  } else {
+    console.log(`  ratio: n/a (workers reported no usage)`)
+  }
+  // The two sides have different retention: worker output comes from session dirs, which
+  // cli-dispatch-clean prunes, while the Anthropic side reads ~/.claude/projects, which nothing
+  // here prunes. After a sweep the ratio therefore climbs on its own. Say so, or the number
+  // reads as a trend when it is an artifact.
+  console.log(`  note: workers counted from retained sessions only — a cli-dispatch-clean sweep inflates this ratio`)
+  console.log('')
+  if(trivialCount>0) console.log(`trivial delegations (diff < 50 lines): ${trivialCount} — cheaper done inline; batch or inline next time`)
+
+  // Cluster trivial sessions by (cwd,backend), chaining consecutive startedAt values under a
+  // 15-minute window.
+  const RETRY_WINDOW_MS=15*60*1000
+  const trivialGroups=new Map()
+  for(const s of trivialSessions){
+    if(!s.cwd) continue
+    const key=s.cwd+' '+s.backend
+    if(!trivialGroups.has(key)) trivialGroups.set(key,[])
+    trivialGroups.get(key).push(s)
+  }
+  const trivialClusters=[]
+  for(const [,list] of trivialGroups){
+    list.sort((a,b)=>(a.startedAt||'').localeCompare(b.startedAt||''))
+    let current=[], prevTime=null
+    for(const s of list){
+      const t=Date.parse(s.startedAt)
+      const valid=Number.isFinite(t)
+      if(current.length>0 && valid && prevTime!=null && (t-prevTime)<=RETRY_WINDOW_MS){
+        current.push(s)
+      } else {
+        if(current.length>=2) trivialClusters.push(current)
+        current=[s]
+      }
+      prevTime=valid?t:null
+    }
+    if(current.length>=2) trivialClusters.push(current)
+  }
+  const trivialClusterRecords=trivialClusters.map(c=>({
+    cwd:c[0].cwd, backend:c[0].backend,
+    sessionIds:c.map(s=>s.sessionId),
+    count:c.length,
+    firstStartedAt:c[0].startedAt,
+    lastStartedAt:c[c.length-1].startedAt
+  }))
+  if(trivialClusterRecords.length>0){
+    console.log('possible retry-as-new-delegation clusters (same cwd+backend, <15min apart):')
+    for(const c of trivialClusterRecords){
+      const hhmmss=t=>(t||'').slice(11,19)||'?'
+      console.log(`  ${c.cwd} (${c.backend}): ${c.sessionIds.join(', ')}  (${c.count} sessions, ${hhmmss(c.firstStartedAt)} → ${hhmmss(c.lastStartedAt)})`)
     }
   }
 
