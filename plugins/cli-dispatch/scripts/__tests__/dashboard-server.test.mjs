@@ -1158,8 +1158,9 @@ test('GET /api/clean?worktrees=1 lists leftover worktrees and flags the dirty on
   git(['worktree', 'add', '-q', '-b', 'wt-dirty', dirtyWt], repo)
   writeFileSync(path.join(dirtyWt, 'a.txt'), 'changed by the worker\n')
 
-  // TMPDIR is one of the scanned roots, so pointing it at the fixture isolates the scan.
-  const child = startServerIsolated({ sessionsDir, homeDir, port, env: { TMPDIR: tmpRoot } })
+  // Pin the scan to the fixture. TMPDIR alone does NOT isolate it: /tmp is always scanned,
+  // so a real leftover worktree on this machine would be counted alongside the fixtures.
+  const child = startServerIsolated({ sessionsDir, homeDir, port, env: { CLI_DISPATCH_WT_SCAN_ROOTS: tmpRoot } })
   try {
     const actualPort = await waitForServerReady(child)
     const res = await httpRequest({ port: actualPort, method: 'GET', path: '/api/clean?worktrees=1' })
@@ -1202,7 +1203,7 @@ test('GET /api/clean?worktrees=1 reports "unknown" rather than "clean" for a non
   // a delete; it has to read as "could not tell".
   mkdirSync(path.join(tmpRoot, 'ds-wt-bogus'), { recursive: true })
 
-  const child = startServerIsolated({ sessionsDir, homeDir, port, env: { TMPDIR: tmpRoot } })
+  const child = startServerIsolated({ sessionsDir, homeDir, port, env: { CLI_DISPATCH_WT_SCAN_ROOTS: tmpRoot } })
   try {
     const actualPort = await waitForServerReady(child)
     const res = await httpRequest({ port: actualPort, method: 'GET', path: '/api/clean?worktrees=1' })
@@ -1215,6 +1216,36 @@ test('GET /api/clean?worktrees=1 reports "unknown" rather than "clean" for a non
     rmSync(tmpRoot, { recursive: true, force: true })
     rmSync(sessionsDir, { recursive: true, force: true })
     rmSync(homeDir, { recursive: true, force: true })
+  }
+})
+
+test('the worktree scan honours CLI_DISPATCH_WT_SCAN_ROOTS and ignores dirs outside it', async () => {
+  // Locks the isolation itself: without the override, /tmp is scanned unconditionally and any
+  // real leftover worktree on the machine leaks into every count assertion above.
+  const scanned = mkdtempSync(path.join(tmpdir(), 'dash-wtin-'))
+  const unscanned = mkdtempSync(path.join(tmpdir(), 'dash-wtout-'))
+  const sessionsDir = mkdtempSync(path.join(tmpdir(), 'dash-wtsess-'))
+  const homeDir = mkdtempSync(path.join(tmpdir(), 'dash-home-'))
+  const port = 18800 + Math.floor(Math.random() * 1000)
+  mkdirSync(path.join(scanned, 'ds-wt-inside'), { recursive: true })
+  mkdirSync(path.join(unscanned, 'ds-wt-outside'), { recursive: true })
+
+  const child = startServerIsolated({
+    sessionsDir,
+    homeDir,
+    port,
+    env: { CLI_DISPATCH_WT_SCAN_ROOTS: scanned, TMPDIR: unscanned },
+  })
+  try {
+    const actualPort = await waitForServerReady(child)
+    const res = await httpRequest({ port: actualPort, method: 'GET', path: '/api/clean?worktrees=1' })
+    assert.equal(res.status, 200)
+    const paths = res.body.items.map(i => i.path)
+    assert.ok(paths.some(p => p.endsWith('ds-wt-inside')), 'a worktree under the override root must be listed')
+    assert.ok(!paths.some(p => p.endsWith('ds-wt-outside')), 'the override must replace TMPDIR, not add to it')
+  } finally {
+    await stopServer(child)
+    for (const dir of [scanned, unscanned, sessionsDir, homeDir]) rmSync(dir, { recursive: true, force: true })
   }
 })
 

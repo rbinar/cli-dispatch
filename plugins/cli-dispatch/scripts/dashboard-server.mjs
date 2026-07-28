@@ -432,6 +432,13 @@ const WT_PATTERN = /-wt-/
 const WT_SCAN_CAP = 200
 
 function worktreeScanRoots() {
+  // Test hook: a colon-separated list REPLACES both defaults. Pointing TMPDIR at a fixture is
+  // not isolation — /tmp is scanned unconditionally, so a real leftover worktree on the
+  // developer's machine (which a delegated run leaves behind by design) lands in the results
+  // and breaks any count assertion. Production never sets this; /tmp plus TMPDIR is where the
+  // worktree runners actually put their trees.
+  const override = process.env.CLI_DISPATCH_WT_SCAN_ROOTS
+  if (override) return override.split(':').filter(Boolean)
   const roots = ['/tmp']
   const t = process.env.TMPDIR
   if (t && t.replace(/\/+$/, '') !== '/tmp') roots.push(t)

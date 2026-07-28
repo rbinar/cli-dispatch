@@ -53,26 +53,30 @@ ag-agent -q "$ARGUMENTS"        # stdout = final answer only; progress in status
 
 **Model selection:**
 ```bash
-ag-agent --model "Gemini 3.5 Flash (High)" -q "$ARGUMENTS"
+ag-agent --model "gemini-3.6-flash-high" -q "$ARGUMENTS"    # or "Gemini 3.6 Flash (High)"
 ```
-Pass the **exact** display-name string `agy models` prints, including the reasoning suffix
-(e.g. `"Gemini 3.5 Flash (High)"`) — not a loose slug like `gemini-3.5-flash`. List live
-models with:
+agy accepts **either** the slug `agy models` prints or the equivalent display name — both
+name the same model, and both must carry the reasoning effort (`-high` / `(High)`). List
+live models with:
 ```bash
 agy models
 ```
+`agy models` prints slugs as of agy 1.1.8 and display names before that; `ag-stream`
+compares the two by ignoring case and punctuation, so a config written in either format
+keeps working across an agy upgrade.
+
 An unrecognized name doesn't hard-error: `ag-stream` only prints a stderr WARNING and agy
-silently falls back to its own default, so an inexact name quietly runs the wrong model —
-exact-match matters. Omit `--model` to use agy's own default (or the `AG_MODEL` config value).
+silently falls back to its own default, so a typo quietly runs the wrong model. Omit
+`--model` to use agy's own default (or the `AG_MODEL` config value).
 
 **Reasoning effort:**
 ```bash
 ag-agent --effort low "$ARGUMENTS"
 ```
-`--effort low|medium|high` composes the model display-name suffix for you (e.g.
-`--model "Gemini 3.5 Flash" --effort low` → effective model `"Gemini 3.5 Flash (Low)"`).
-If `--model` is omitted, `ag-stream` picks the first `agy models` entry matching that
-effort suffix.
+`--effort low|medium|high` attaches the effort to the model name for you, in whichever
+format you passed (`--model "Gemini 3.5 Flash" --effort low` → `"Gemini 3.5 Flash (Low)"`;
+`--model gemini-3.6-flash --effort low` → `gemini-3.6-flash-low`). If `--model` is omitted,
+`ag-stream` picks the first `agy models` entry at that effort, in either listing format.
 
 **Follow-up / fix** (continue the same agy conversation):
 ```bash

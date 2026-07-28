@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.7.1] — 2026-07-28
+
+Fixes #133: `agy models` changed its output format, which made `ag-stream` warn about models
+that were working fine and quietly pinned `--effort` to a hardcoded model family.
+
+### Fixed
+
+- **`ag-stream` no longer warns that a valid model is "not listed by `agy models`".** As of agy
+  1.1.8 that command prints kebab-case slugs (`gemini-3.6-flash-high`); it used to print display
+  names (`Gemini 3.6 Flash (High)`). `agy --model` still accepts **both** — only the listing
+  changed — but validation was an exact-match `grep -qxF` against the listing, so every config
+  written in the format this repo documented started printing a warning claiming agy had fallen
+  back to its default. It had not: a session transcript confirms the requested model ran. The
+  false alarm mattered because the warning is otherwise correct — agy really does fall back
+  silently on a typo, so an alert people learn to ignore is worse than no alert.
+- **`--effort` without `--model` stopped taking the hardcoded fallback.** The old code picked a
+  model with `agy models | grep -m1 "($SUF)$"`. Slugs have no ` (High)` suffix, so that match
+  never succeeded and every effort-only run silently used `Gemini 3.5 Flash (<effort>)`,
+  regardless of what agy actually offered. This one changed which model ran, without saying so.
+- Comparison is now done on a key that lowercases and drops every non-alphanumeric character,
+  because the slug transform is **not** mechanical: agy keeps the dot in `gemini-3.5-flash-high`
+  but turns Claude's into a dash in `claude-opus-4-6-thinking`. Four shell helpers carry it —
+  `model_key`, `model_listed`, `apply_effort_suffix`, `pick_model_for_effort` — and they work in
+  both directions, so a display-name config survives an agy upgrade and a slug config still
+  validates against an older agy that lists display names. A genuine typo still warns.
+- `apply_effort_suffix` preserves the caller's format: `--model gemini-3.6-flash --effort low`
+  gives `gemini-3.6-flash-low`, while `--model "Gemini 3.6 Flash" --effort low` gives
+  `"Gemini 3.6 Flash (Low)"`.
+- An unusable `agy` (not installed, not signed in, empty listing) now suppresses the warning
+  instead of reporting the model as unknown — that was a second false positive, aimed at exactly
+  the person who has not finished setup yet.
+- **The worktree scan is isolatable in tests (`CLI_DISPATCH_WT_SCAN_ROOTS`).** `GET
+  /api/clean?worktrees=1`'s test pointed `TMPDIR` at a fixture, but `/tmp` is scanned
+  unconditionally, so a real leftover worktree on the developer's machine — which a successful
+  delegated run leaves behind **by design**, since the runner never commits — was counted with
+  the fixtures and failed the test. The new env var replaces both default roots. Production
+  behaviour is unchanged; nothing sets it outside the tests.
+
+### Changed
+
+- Docs and the config editor now present both model formats instead of asserting display-name
+  only: the `install.sh` config skeleton comments, both `AG_MODEL`/`AG_MODELS` `<datalist>`s in
+  the dashboard config editor (refreshed from live `agy models` output — they were listing a
+  model generation that no longer leads the list), `commands/ag-run.md`, and the backend table in
+  `skills/ds-delegate/SKILL.md`. `commands/ag-run.md` said in so many words *"not a loose slug
+  like `gemini-3.5-flash`"*, which is now the opposite of the truth.
+- Not touched, and verified so deliberately: `ag-transcript-parse.mjs` and its tests still scrape
+  the **display name**, because that is what agy writes into its transcript regardless of how
+  `agy models` prints (checked against a fresh session). `README.md` / `README.tr.md` only say
+  *"list: `agy models`"*, which stays correct.
+
+### Tests
+
+- New `__tests__/ag-model-format.test.mjs` (15 tests) extracts the four helpers from the shipped
+  `ag-stream` and runs them under real bash with a stubbed `agy`, so the assertions grade the
+  script rather than a copy of it — the technique `ps1-bash-quoting.test.mjs` introduced. It
+  covers both listing formats in both directions, the true-positive typo case, the empty-listing
+  case, and pins that the old `grep -m1 "($SUF)$"` pattern is gone. Mutation-checked: weakening
+  `model_key` fails 3 of them, dropping the empty-listing guard fails 1.
+- A guard test rejects bash 4 case expansions (`${var,,}` / `${var^^}`) anywhere in `ag-stream`.
+  macOS still ships `/bin/bash` 3.2 and no other script in this repo uses them; the helpers were
+  re-run under 3.2 directly to confirm.
+- A new dashboard test pins that `CLI_DISPATCH_WT_SCAN_ROOTS` **replaces** the default roots
+  rather than adding to them, so the isolation cannot silently regress.
+
 ## [4.7.0] — 2026-07-26
 
 Splits the dashboard's router — the one structural item deliberately left out of 4.3.0 and the
