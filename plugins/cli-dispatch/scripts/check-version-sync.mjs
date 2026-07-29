@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // check-version-sync.mjs — verify duplicated release version metadata stays aligned.
 
-import { readFileSync } from 'node:fs'
+import { readFileSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -142,7 +142,10 @@ function runVersionSyncCli(paths = {}) {
   return result
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+const entryPath = process.argv[1]
+let entryRealPath = entryPath
+try { entryRealPath = realpathSync(entryPath) } catch {}
+if (entryPath && import.meta.url === pathToFileURL(entryRealPath).href) {
   const result = runVersionSyncCli()
   process.exit(result.ok ? 0 : 1)
 }

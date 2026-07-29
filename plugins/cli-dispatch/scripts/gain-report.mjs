@@ -401,6 +401,10 @@ async function runMain(){
   }
 }
 
-if(process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href){
+const entryPath=process.argv[1]
+let entryRealPath=entryPath
+// Node resolves symlinks in import.meta.url, so resolve argv[1] too before comparing.
+try{ entryRealPath=fs.realpathSync(entryPath) }catch{}
+if(entryPath && import.meta.url === pathToFileURL(entryRealPath).href){
   runMain()
 }

@@ -7,6 +7,40 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.7.3] — 2026-07-29
+
+Symlink'li yoldan çağrıldığında dört script'i sessizce hiçbir şey yapmaz hâle getiren guard'ı
+düzeltir.
+
+### Düzeltildi
+
+- **`gain-report.mjs`, `verdict-writer.mjs`, `check-version-sync.mjs` ve `policy-inject.mjs` ana
+  fonksiyonlarını yalnızca `process.argv[1]` içinde symlink yoksa çalıştırıyordu.** Entry-point
+  guard'ı, Node'un zaten çözmüş olduğu `import.meta.url`'i ham çağrı yoluyla karşılaştırıyordu.
+  İkisi farklı olduğunda script hiçbir şey basmadan, hiçbir şey yapmadan 0 ile çıkıyor: hata yok,
+  uyarı yok, çıktı yok.
+  - macOS'ta bu varsayılan olarak erişilebilir bir durum, çünkü `/tmp` → `/private/tmp` symlink'i:
+    `node /tmp/wt/…/gain-report.mjs` hiçbir şey basmıyordu,
+    `node /private/tmp/wt/…/gain-report.mjs` raporu basıyordu.
+  - Asıl zarar verebileceği yer `verdict-writer.mjs`. `cli-dispatch-run` worktree'lerini `/tmp`
+    altında açıyor ve `CLI_DISPATCH_VERDICT_WRITER` içlerinden birine işaret edebiliyor — orada
+    sessiz no-op demek, `build-verdict`'in hiç verdict yazmaması ve `mark-worktree-removed`'ın
+    hiçbir şey kaydetmemesi, üstelik tüm exit kodları hâlâ başarı raporlarken.
+  - Her guard artık karşılaştırmadan önce `process.argv[1]`'i `realpathSync` ile çözüyor; hata
+    fırlatırsa ham yola düşüyor, böylece var olmayan bir yol guard'ın kendisini çökertemiyor.
+- **cx-stream kill testindeki sabit uyku, status yazıcısıyla yarışıyordu.** 200ms throttle'lı bir
+  yazım için 400ms uyuyordu; bu yalnız suite hafifken tutuyordu. Process başlatan bir test dosyası
+  daha eklenince kill ilk flush'tan önce düşüyor ve test, tek başına geçerken tam suite'te
+  kalıyordu. Artık iddialarının ihtiyaç duyduğu dosyayı 10sn tavanla yokluyor.
+
+### Testler
+
+- Yeni `__tests__/entrypoint-guard.test.mjs` (5 test): repo kökünü geçici bir dizine symlink'leyip
+  dört script'i o yoldan çalıştırıyor ve her birinin gerçekten çıktı ürettiğini doğruluyor — artı
+  ham `import.meta.url === pathToFileURL(process.argv[1]).href` karşılaştırmasının kalmadığını
+  kaynak düzeyinde kontrol ediyor. Mutasyonla doğrulandı: tek dosyada eski guard'ı geri koymak
+  5 testin 2'sini düşürüyor.
+
 ## [4.7.2] — 2026-07-29
 
 Raporun karar açısından en önemli sayısını dipnottan çıkarır.
