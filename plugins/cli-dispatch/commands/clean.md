@@ -30,7 +30,8 @@ stale window ⇒ dead. **Default is a dry-run** (lists only); pass `--remove` to
 - `--older-than DAYS` — ALSO prune finished (`done`/`error`) session dirs whose
   `meta.startedAt` is older than DAYS. Omit to leave all finished sessions alone.
 - `--preserve-verdicts` — archive `verdict.json` and `verdict-diff.patch` into
-  `<sessions-root>/verdict-archive/` before removal.
+  `<sessions-root>/verdict-archive/` before removal (default; accepted for compatibility).
+- `--no-preserve-verdicts` — remove session dirs without archiving verdict files.
 - `--worktree-days N` — idle window (dir mtime) before a `*-wt-*` worktree artifact counts as
   stale (default `3` days).
 - `--skip-worktrees` — disable the worktree-artifact sweep entirely (session cleanup only).
@@ -49,7 +50,7 @@ administrative entry.
 
 ```bash
 ARGS="$*"   # pass through the command args (e.g. --remove --older-than 7)
-REMOVE=0; STALE_SECS=600; OLDER_DAYS=0; PRESERVE_VERDICTS=0; WT_DAYS=3; SKIP_WORKTREES=0; QUIET=0
+REMOVE=0; STALE_SECS=600; OLDER_DAYS=0; PRESERVE_VERDICTS=1; WT_DAYS=3; SKIP_WORKTREES=0; QUIET=0
 set -- $ARGS
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -57,6 +58,7 @@ while [ "$#" -gt 0 ]; do
     --stale-secs) STALE_SECS="$2"; shift 2;;
     --older-than) OLDER_DAYS="$2"; shift 2;;
     --preserve-verdicts) PRESERVE_VERDICTS=1; shift;;
+    --no-preserve-verdicts) PRESERVE_VERDICTS=0; shift;;
     --worktree-days) WT_DAYS="$2"; shift 2;;
     --skip-worktrees) SKIP_WORKTREES=1; shift;;
     --quiet) QUIET=1; shift;;
@@ -195,10 +197,17 @@ if(remove){
     }
     try{ rm(x.d); n++ }catch(e){ console.log(`  FAILED ${x.d}: ${e.message}`) }
   }
-  console.log(`\nremoved ${n}/${targets.length} dir(s). kept ${kept} live/recent. archived verdicts for ${archived} session(s).`)
+  const archiveSummary = preserveVerdicts ? `archived verdicts for ${archived} session(s).` : 'verdict archiving disabled.'
+  console.log(`\nremoved ${n}/${targets.length} dir(s). kept ${kept} live/recent. ${archiveSummary}`)
 }else{
   console.log(`\nDRY-RUN — nothing deleted. Re-run with --remove to delete the ${targets.length} dir(s) above.`)
-  if (patchCandidates) console.log(`note: ${patchCandidates} candidate(s) carry a verdict-diff.patch (possible unapplied recovery diff) — use --preserve-verdicts to archive them on removal.`)
+  if (patchCandidates) {
+    if (preserveVerdicts) {
+      console.log(`note: ${patchCandidates} candidate(s) carry a verdict-diff.patch (possible unapplied recovery diff) — they will be archived on removal; pass --no-preserve-verdicts to skip archiving.`)
+    } else {
+      console.log(`note: ${patchCandidates} candidate(s) carry a verdict-diff.patch (possible unapplied recovery diff) — verdict archiving is disabled by --no-preserve-verdicts.`)
+    }
+  }
 }
 EOF
 ```
@@ -206,7 +215,7 @@ EOF
 **Native Windows** (PowerShell equivalent):
 
 ```powershell
-param([switch]$Remove, [switch]$PreserveVerdicts, [int]$StaleSecs = 600, [int]$OlderThan = 0, [int]$WorktreeDays = 3, [switch]$SkipWorktrees, [switch]$Quiet)
+param([switch]$Remove, [switch]$PreserveVerdicts, [switch]$NoPreserveVerdicts, [int]$StaleSecs = 600, [int]$OlderThan = 0, [int]$WorktreeDays = 3, [switch]$SkipWorktrees, [switch]$Quiet)
 
 # ---- worktree artifact sweep -------------------------------------------------------------
 # Real-repo-changing runs are isolated in a git worktree named <backend>-wt-* under
@@ -310,11 +319,12 @@ $targets = $stale + $old
 if (-not $targets) { 'nothing to clean.'; return }
 if ($Remove) {
   $archiveRoot = Join-Path $root 'verdict-archive'
+  $preserveVerdictsEnabled = -not $NoPreserveVerdicts
   $archived = 0
   foreach ($x in $targets) {
     $sessionDir = Join-Path $root $x.d
     $didArchive = $false
-    if ($PreserveVerdicts -and ($x.verdictPatch -or $x.verdictJson)) {
+    if ($preserveVerdictsEnabled -and ($x.verdictPatch -or $x.verdictJson)) {
       try {
         New-Item -ItemType Directory -Path $archiveRoot -Force | Out-Null
         if ($x.verdictPatch) { Copy-Item -LiteralPath (Join-Path $sessionDir 'verdict-diff.patch') -Destination (Join-Path $archiveRoot "$($x.d).patch") -Force; $didArchive = $true }
@@ -324,10 +334,17 @@ if ($Remove) {
     if ($didArchive) { $archived += 1 }
     Remove-Item -Recurse -Force $sessionDir
   }
-  "removed $($targets.Count) dir(s). kept $kept. archived verdicts for $archived session(s)."
+  $archiveSummary = if ($preserveVerdictsEnabled) { "archived verdicts for $archived session(s)." } else { "verdict archiving disabled." }
+  "removed $($targets.Count) dir(s). kept $kept. $archiveSummary"
 } else {
   "DRY-RUN — re-run with -Remove to delete the $($targets.Count) dir(s) above."
-  if ($patchCandidates) { "note: $patchCandidates candidate(s) carry a verdict-diff.patch (possible unapplied recovery diff) — use -PreserveVerdicts to archive them on removal." }
+  if ($patchCandidates) {
+    if ($NoPreserveVerdicts) {
+      "note: $patchCandidates candidate(s) carry a verdict-diff.patch (possible unapplied recovery diff) — verdict archiving is disabled by -NoPreserveVerdicts."
+    } else {
+      "note: $patchCandidates candidate(s) carry a verdict-diff.patch (possible unapplied recovery diff) — they will be archived on removal; pass -NoPreserveVerdicts to skip archiving."
+    }
+  }
 }
 ```
 

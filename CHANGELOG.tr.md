@@ -7,6 +7,42 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.8.0] — 2026-07-29
+
+Güvenli temizlik davranışını varsayılan yapar ve statusline fragment'ine ilk testini kazandırır.
+
+### Değişti
+
+- **`cli-dispatch-clean` artık verdict'leri varsayılan olarak arşivliyor; vazgeçmek için
+  `--no-preserve-verdicts`.** Arşivleme `--preserve-verdicts` bayrağının arkasındaydı, yani bir
+  bayrağı unutunca elinize geçen davranış yıkıcı olandı. Worktree'si çoktan silinmiş bir session
+  için `verdict-diff.patch`, worker'ın değişikliklerinin **tek** hayatta kalan kaydıdır — ve runner
+  asla commit etmediği için bu, uç durum değil normal son durumdur.
+  - Bu makinede ölçüldü: 105 eski session dizinini süpüren bir temizlik, 7'si patch taşıyordu ve
+    hepsini yok edecekti. Arşivin tamamı 128 KB; eski varsayılan için hiçbir zaman maliyet argümanı
+    yoktu.
+  - `--preserve-verdicts` hâlâ parse ediliyor ve hâlâ çalışıyor — artık varsayılanı etkinleştirmek
+    yerine ona ad veriyor. Hiçbir cron kaydı ya da script kırılmıyor.
+- **Özet satırı, hiç yapılmamış bir arşiv denemesini ima etmeyi bıraktı.** Arşivleme kapalıyken
+  `archived verdicts for 0 session(s)` basıyordu; bu "baktık ve bulamadık" diye okunuyordu. Artık
+  arşivlemenin devre dışı olduğunu söylüyor. Dry-run notu da, zaten varsayılan olan bir bayrağı
+  geçmeni söylemek yerine opt-out'u gösteriyor.
+- `/cli-dispatch:clean` slash komutu temizleyici mantığın kendi kopyasını gömüyor; aynı değişikliği
+  o da aldı — aksi hâlde komut ile kurulu binary, bir temizliğin neyi yok ettiği konusunda
+  anlaşamazdı. İki README de güncellendi.
+
+### Testler
+
+- **`cli-dispatch-statusline.sh` için ilk test** (`__tests__/statusline-fragment.test.mjs`, 14
+  test). Her statusline yenilemesinde çalışıyor ve hiç kapsamı yoktu. Sabitlenenler: pasifken boş
+  çıktı (birleştirici wrapper bir işarete değil, boşluğa bakıyor), politika enjeksiyonu açıkken
+  `[CD]`, `▶N` sayımı, terminal state'lerin sayılmaması ve — ince olanı — `status.json` mtime'ı
+  90sn'den eski olan bir `state: "running"` session'ın sayılmaması; çünkü çökmüş bir worker o
+  state'i süpürülene dek koruyor ve aksi hâlde sonsuza dek hayalet bir sayaç asılı kalırdı.
+  Bağımsız olarak mutasyonla sınandı: staleness penceresini genişletmek 14 testin 3'ünü düşürüyor.
+- Dört yeni temizleyici testi: varsayılan arşivleme, opt-out, `--preserve-verdicts` geriye dönük
+  uyumluluğu ve özet satırının ifadesi.
+
 ## [4.7.4] — 2026-07-29
 
 Bir koşumun hiç verdict üretmeden başarı raporlamasının son yolunu kapatır.

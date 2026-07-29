@@ -52,6 +52,7 @@ test('dry-run marks stale candidate with verdict patch and prints preserve hint'
 
   assert.ok(out.includes('⚠ has verdict patch'))
   assert.ok(out.includes('note: 1 candidate(s) carry a verdict-diff.patch'))
+  assert.ok(out.includes('they will be archived on removal; pass --no-preserve-verdicts to skip archiving'))
   cleanup(root)
 })
 
@@ -67,7 +68,38 @@ test('dry-run does not mark stale candidate without verdict patch', () => {
   cleanup(root)
 })
 
-test('remove + preserve-verdicts archives verdict files and deletes session', () => {
+test('remove archives verdict files by default and deletes session', () => {
+  const root = tmpRoot()
+  const id = 'stale-default-archive'
+  const patch = samplePatch
+  const verdict = JSON.stringify({ sessionId: id, state: 'done' })
+  const dir = makeStaleSession(root, { id, withPatch: true, withVerdictJson: true })
+  const out = runClean(root, ['--remove', '--stale-secs', '1'])
+
+  assert.equal(out.includes('archived verdicts for 1 session(s).'), true)
+  assert.equal(fs.existsSync(dir), false)
+  const archivedPatch = path.join(root, 'verdict-archive', `${id}.patch`)
+  const archivedJson = path.join(root, 'verdict-archive', `${id}.json`)
+  assert.equal(fs.readFileSync(archivedPatch, 'utf8'), patch)
+  assert.equal(fs.readFileSync(archivedJson, 'utf8'), verdict)
+  cleanup(root)
+})
+
+test('remove + no-preserve-verdicts deletes session without creating archive', () => {
+  const root = tmpRoot()
+  const id = 'stale-no-preserve'
+  const dir = makeStaleSession(root, { id, withPatch: true, withVerdictJson: true })
+  const out = runClean(root, ['--remove', '--no-preserve-verdicts', '--stale-secs', '1'])
+
+  const archiveDir = path.join(root, 'verdict-archive')
+  assert.equal(fs.existsSync(dir), false)
+  assert.equal(fs.existsSync(archiveDir), false)
+  assert.ok(out.includes('verdict archiving disabled.'))
+  assert.equal(out.includes('archived verdicts for 0 session(s).'), false)
+  cleanup(root)
+})
+
+test('remove + preserve-verdicts still archives verdict files and deletes session', () => {
   const root = tmpRoot()
   const id = 'stale-with-archive'
   const patch = samplePatch
@@ -84,16 +116,15 @@ test('remove + preserve-verdicts archives verdict files and deletes session', ()
   cleanup(root)
 })
 
-test('remove without preserve-verdicts deletes session without creating archive', () => {
+test('dry-run with no-preserve-verdicts reports archiving disabled instead of preserve hint', () => {
   const root = tmpRoot()
-  const id = 'stale-no-preserve'
-  const dir = makeStaleSession(root, { id, withPatch: true, withVerdictJson: true })
+  const id = 'stale-no-preserve-dry-run'
+  makeStaleSession(root, { id, withPatch: true, withVerdictJson: true })
 
-  runClean(root, ['--remove', '--stale-secs', '1'])
+  const out = runClean(root, ['--no-preserve-verdicts', '--stale-secs', '1'])
 
-  const archiveDir = path.join(root, 'verdict-archive')
-  assert.equal(fs.existsSync(dir), false)
-  assert.equal(fs.existsSync(archiveDir), false)
+  assert.ok(out.includes('verdict archiving is disabled by --no-preserve-verdicts'))
+  assert.equal(out.includes('they will be archived on removal'), false)
   cleanup(root)
 })
 
