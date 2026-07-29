@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.8.0] — 2026-07-29
+
+Makes the safe cleanup behaviour the default one, and gives the statusline fragment its first test.
+
+### Changed
+
+- **`cli-dispatch-clean` now archives verdicts by default; `--no-preserve-verdicts` opts out.**
+  Archiving used to sit behind `--preserve-verdicts`, so the destructive behaviour was what you
+  got by forgetting a flag. For a session whose worktree is already gone, `verdict-diff.patch` is
+  the *only* surviving record of the worker's changes — and the runner never commits, so that is
+  the normal end state, not an edge case.
+  - Measured on this machine: a sweep of 105 old session dirs, 7 of them carrying a patch, would
+    have destroyed all 7. The complete archive is 128 KB; there was never a cost argument for the
+    old default.
+  - `--preserve-verdicts` still parses and still works — it now names the default rather than
+    enabling it. Nothing in a cron entry or script breaks.
+- **The summary line stops implying an archive attempt that never happened.** With archiving off
+  it used to print `archived verdicts for 0 session(s)`, which reads as "we looked and found
+  none". It now says archiving was disabled. The dry-run note likewise points at the opt-out
+  instead of telling you to pass a flag that is already the default.
+- The `/cli-dispatch:clean` slash command inlines its own copy of the cleaner logic, so it carries
+  the identical change — otherwise the command and the installed binary would disagree about what
+  a sweep destroys. Both READMEs updated.
+
+### Tests
+
+- **First test for `cli-dispatch-statusline.sh`** (`__tests__/statusline-fragment.test.mjs`, 14
+  tests). It runs on every statusline refresh and had no coverage at all. Pinned: empty output
+  when inactive (the combining wrapper depends on emptiness, not on a marker), `[CD]` when policy
+  injection is enabled, `▶N` counting, terminal states excluded, and — the subtle one — that a
+  `state: "running"` session whose `status.json` mtime is older than 90s is NOT counted, because a
+  crashed worker keeps that state until a sweep and would otherwise pin a phantom counter forever.
+  Mutation-checked independently: widening the staleness window fails 3 of the 14.
+- Four new cleaner tests cover archive-by-default, the opt-out, `--preserve-verdicts` backward
+  compatibility, and the summary wording.
+
 ## [4.7.4] — 2026-07-29
 
 Closes the last way a run could report success without ever producing a verdict.
