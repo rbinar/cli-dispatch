@@ -9,7 +9,7 @@
 // LLM babysitter subagents, removed in 4.0.0 — issue #114). The field is ignored for
 // back-compat; no value from it is ever interpolated into the context.
 
-import { readFileSync } from 'node:fs'
+import { readFileSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { pathToFileURL } from 'node:url'
@@ -72,4 +72,7 @@ function main() {
   process.exit(0)
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main()
+const entryPath = process.argv[1]
+let entryRealPath = entryPath
+try { entryRealPath = realpathSync(entryPath) } catch {}
+if (entryPath && import.meta.url === pathToFileURL(entryRealPath).href) main()

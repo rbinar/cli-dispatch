@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process'
-import { readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { NON_TERMINAL_STATES, TERMINAL_STATES, normalizeBackend } from './parse-utils.mjs'
@@ -226,7 +226,10 @@ function parseBoolean(value) {
   return value === '1' || value === 'true' || value === true
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+const entryPath = process.argv[1]
+let entryRealPath = entryPath
+try { entryRealPath = realpathSync(entryPath) } catch {}
+if (entryPath && import.meta.url === pathToFileURL(entryRealPath).href) {
   const command = process.argv[2]
 
   try {
