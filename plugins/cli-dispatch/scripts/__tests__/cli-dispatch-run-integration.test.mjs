@@ -244,6 +244,68 @@ function scenarioMissingVerdictDoesNotFailTheRun() {
   }
 }
 
+// ---- empty-verdict fail-closed: build-verdict that produces no output must NOT exit 0 ----
+//
+// When build-verdict prints nothing (regardless of its exit status), the runner must report
+// exit code 5 ("setup error") rather than trusting the helper's exit code. A helper that
+// exits 0 with no output must never read as "the run passed."
+
+function writeStubVerdictWriter(dirPath, buildVerdictBehavior) {
+  // buildVerdictBehavior: { output?: string, exitCode?: number }
+  const p = path.join(dirPath, 'stub-verdict-writer.mjs')
+  const output = buildVerdictBehavior.output !== undefined ? JSON.stringify(buildVerdictBehavior.output) : 'null'
+  const exitCode = buildVerdictBehavior.exitCode ?? 0
+  fs.writeFileSync(p, `#!/usr/bin/env node
+const sub = process.argv[2]
+if (sub === 'build-verdict') {
+${buildVerdictBehavior.output !== undefined ? `  process.stdout.write(${output})` : '  // print nothing'}
+  process.exit(${exitCode})
+}
+// Behave sanely for other subcommands (run-verify, mark-worktree-removed)
+console.log(JSON.stringify({state:'done'}))
+`)
+  fs.chmodSync(p, 0o755)
+  return p
+}
+
+function scenarioEmptyBuildVerdictExitsFiveNotZero() {
+  console.log('\n=== Scenario H: empty build-verdict output + exit 0 must exit 5 ===')
+  const repo = mkGitRepo({ dirty: false })
+  const sessionDir = mkdtemp('cli-dispatch-run-session-')
+  seedSessionArtifacts(sessionDir, repo)
+
+  const stubWriterDir = mkdtemp('cli-dispatch-run-stubwriter-')
+  const stubWriterPath = writeStubVerdictWriter(stubWriterDir, { exitCode: 0 })
+
+  try {
+    const result = spawnSync('bash', [RUNNER_PATH, '--_test-verdict-build', sessionDir], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        CLI_DISPATCH_VERDICT_WRITER: stubWriterPath,
+      },
+    })
+
+    const output = `${result.stdout || ''}${result.stderr || ''}`
+    assert.equal(result.status, 5, `empty build-verdict output should exit 5, not ${result.status}; output: ${output}`)
+
+    const verdictPath = path.join(sessionDir, 'verdict.json')
+    assert.equal(fs.existsSync(verdictPath), true, 'verdict.json should exist even when build-verdict fails')
+    const verdict = JSON.parse(fs.readFileSync(verdictPath, 'utf8'))
+    assert.ok(verdict.error, 'verdict should carry error field')
+    assert.equal(verdict.exitCode, 5, `verdict.exitCode should be 5, not ${verdict.exitCode}`)
+    assert.equal(verdict.schemaVersion, 1, 'verdict should still carry schemaVersion')
+    assert.ok(verdict.sessionId, 'verdict should still carry sessionId')
+    assert.ok(result.stderr.includes('verdict could not be built'), 'stderr should report verdict build failure')
+
+    console.log('  [H] PASS')
+  } finally {
+    rmrf(sessionDir)
+    rmrf(repo)
+    rmrf(stubWriterDir)
+  }
+}
+
 // One node:test per scenario, so a failure names the case that broke.
 test('a) a pre-existing dirty repo with exitCode 0 keeps the worktree', scenarioRegressedDirtyWithExitZeroKeepsWorktree)
 test('b) a clean worktree with exitCode 0 and --cleanup-if-clean is removed', scenarioCleanWithExitZeroAndFlagRemovesWorktree)
@@ -252,3 +314,4 @@ test('d) without --cleanup-if-clean the worktree is always kept', scenarioNoFlag
 test('e) a removed worktree is recorded as worktreeRemoved:true in verdict.json (#128)', scenarioRemovalRecordsWorktreeRemoved)
 test('f) a kept worktree stays worktreeRemoved:false (#128)', scenarioKeptWorktreeLeavesFieldFalse)
 test('g) missing verdict.json does not fail the cleanup path (#128)', scenarioMissingVerdictDoesNotFailTheRun)
+test('h) empty build-verdict output exits 5 (setup error) not 0', scenarioEmptyBuildVerdictExitsFiveNotZero)

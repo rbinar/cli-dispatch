@@ -7,6 +7,37 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.7.4] — 2026-07-29
+
+Bir koşumun hiç verdict üretmeden başarı raporlamasının son yolunu kapatır.
+
+### Düzeltildi
+
+- **Hiçbir şey basmayan ama 0 ile çıkan bir `build-verdict`, tüm koşumu 0 ile çıkartıyordu.**
+  Boş-çıktı dalı zaten vardı — hata şekilli bir `verdict.json` yazıyor ki downstream `JSON.parse`
+  tüketicileri çökmesin — ama sonra yardımcının exit kodana güveniyordu. Yani hiç verdict'i olmayan
+  bir koşum (ne `state`, ne `verify`, ne `changedFiles`) başarı raporluyordu.
+  - Bu bileşim 4.7.3'e kadar erişilebilirdi: `verdict-writer.mjs`'in entry-point guard'ı yolunda
+    symlink varsa sessizce no-op yapıyordu ve runner worktree'lerini macOS'ta symlink olan `/tmp`
+    altına koyuyor. Guard düzeldi, ama runner bir yardımcının asla böyle davranmayacağına
+    bel bağlayamaz.
+  - Artık hem boş-çıktı verdict'inin `exitCode` alanı hem runner'ın kendi çıkışı **5** —
+    contract'ın setup-error kodu — ve stderr'e tek satır tanı basılıyor. `build-verdict` çıktı
+    ürettiğinde hiçbir şey değişmiyor: aynı exit kodu, aynı dosya, aynı temizlik.
+  - `cli-dispatch-run.ps1`'de birebir düzeltildi; ikizde de aynı delik vardı.
+- `cli-dispatch-run`'ın verdict-build kuyruğu artık bir `build_and_write_verdict` fonksiyonu; hem
+  normal yol hem test hook'u aynı fonksiyonu çağırıyor, böylece ikisi ayrışamıyor.
+
+### Testler
+
+- Yeni entegrasyon senaryosu h): `CLI_DISPATCH_VERDICT_WRITER`'ı hiçbir şey basmayıp 0 ile çıkan
+  bir stub'a pinliyor, sonra runner'ın 5 ile çıktığını, `verdict.json`'ın parse olduğunu, `error`
+  taşıdığını ve `exitCode`'unun 0 değil 5 olduğunu doğruluyor. Mutasyonla sınandı: eski
+  `exit "$BUILD_EXIT"` geri konunca test düşüyor.
+- Bunu gerçek bir worker CLI'ı başlatmadan erişilebilir kılan `--_test-verdict-build <session-dir>`
+  hook'u, mevcut `--_test-cleanup`'ın yanında erken-çıkışlı bir blok; üretim yolu koşulsuz kalıyor —
+  normal akışı değiştirebilen bir hook, test ettiği bug'dan kötüdür.
+
 ## [4.7.3] — 2026-07-29
 
 Symlink'li yoldan çağrıldığında dört script'i sessizce hiçbir şey yapmaz hâle getiren guard'ı

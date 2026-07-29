@@ -140,6 +140,35 @@ record_worktree_removed() {
   return 0
 }
 
+
+build_and_write_verdict() {
+  set +e
+  if [ -n "$VERIFY_RESULTS_PATH" ]; then
+    VERDICT_JSON="$($NODE_BIN "$VERDICT_WRITER" build-verdict "$SESSION_DIR" "$STATUS_PATH" "$META_PATH" "$CHANGED_PATH" "$TIMEOUT_EXPIRED" "$VERIFY_RESULTS_PATH")"
+    BUILD_EXIT=$?
+  else
+    VERDICT_JSON="$($NODE_BIN "$VERDICT_WRITER" build-verdict "$SESSION_DIR" "$STATUS_PATH" "$META_PATH" "$CHANGED_PATH" "$TIMEOUT_EXPIRED")"
+    BUILD_EXIT=$?
+  fi
+  set -e
+
+  # build-verdict produced no output → verdict could not be built. This is a setup error
+  # regardless of what exit status the helper reported (it may exit 0 having printed nothing,
+  # e.g. when its own guard silently no-ops). The error shape exitCode here is the contract
+  # value (5 = setup error), not a node exit status — unlike the normal path below where
+  # BUILD_EXIT carries the worker result. Still write valid JSON so downstream JSON.parse
+  # consumers do not crash.
+  if [ -z "$VERDICT_JSON" ]; then
+    VERDICT_JSON="{\"schemaVersion\":1,\"error\":\"build-verdict failed (exit $BUILD_EXIT) — see stderr\",\"sessionId\":\"$SESSION_ID\",\"exitCode\":5}"
+    printf '%s\n' "$VERDICT_JSON" > "$SESSION_DIR/verdict.json"
+    printf '%s\n' "cli-dispatch-run: verdict could not be built — reporting exit code 5" >&2
+    cleanup_worktree_if_requested "$WORKTREE_PATH" 5
+    exit 5
+  fi
+  printf '%s\n' "$VERDICT_JSON" > "$SESSION_DIR/verdict.json"
+  cleanup_worktree_if_requested "$WORKTREE_PATH" "$BUILD_EXIT"
+  exit "$BUILD_EXIT"
+}
 trap cleanup_tmp EXIT INT TERM
 
 BACKEND=""
@@ -194,6 +223,17 @@ while [ "$#" -gt 0 ]; do
         shift
       fi
       ;;
+    --_test-verdict-build)
+      # Internal test hook: jump directly to verdict-build with a pre-seeded
+      # session dir. Takes one value (the session dir path).
+      if [ "$#" -lt 2 ]; then
+        echo "cli-dispatch-run: --_test-verdict-build requires <session-dir>." >&2
+        exit 5
+      fi
+      TEST_VERDICT_BUILD=1
+      TEST_SESSION_DIR_FOR_VERDICT="$2"
+      shift 2
+      ;;
     -h|--help) usage; exit 0;;
     *) echo "cli-dispatch-run: unknown arg: $1" >&2; usage; exit 5;;
   esac
@@ -208,6 +248,26 @@ if [ "$TEST_MODE" -eq 1 ]; then
   fi
   cleanup_worktree_if_requested "$TEST_WORKTREE" "$TEST_EXIT_CODE"
   exit 0
+fi
+
+
+# Test hook: seed session variables from a pre-seeded dir and call the shared
+# verdict-build function. Mirrors the --_test-cleanup pattern: early exit before
+# the normal flow begins, leaving the production path unconditional.
+if [ "${TEST_VERDICT_BUILD:-0}" -eq 1 ]; then
+  SESSION_DIR="$TEST_SESSION_DIR_FOR_VERDICT"
+  SESSION_ID="$(basename "$SESSION_DIR")"
+  resolve_node_and_verdict_writer
+  STATUS_PATH="$SESSION_DIR/status.json"
+  META_PATH="$SESSION_DIR/meta.json"
+  CHANGED_PATH="$SESSION_DIR/changed-files.json"
+  STATE="$("$NODE_BIN" -e 'try{process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).state||"")}catch{}' "$STATUS_PATH")"
+  WORKTREE_PATH="$("$NODE_BIN" -e 'try{process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).cwd||"")}catch{}' "$META_PATH")"
+  TIMEOUT_EXPIRED=0
+  VERIFY_RESULTS_PATH=""
+  CLEANUP_IF_CLEAN=0
+  build_and_write_verdict
+  # build_and_write_verdict always exits; this line is unreachable.
 fi
 
 if [ -z "$BACKEND" ] || [ -z "$CWD" ]; then
@@ -478,21 +538,4 @@ if [ "${#VERIFY[@]}" -gt 0 ] && [ "$STATE" != "human-controlled" ]; then
   fi
 fi
 
-set +e
-if [ -n "$VERIFY_RESULTS_PATH" ]; then
-  VERDICT_JSON="$($NODE_BIN "$VERDICT_WRITER" build-verdict "$SESSION_DIR" "$STATUS_PATH" "$META_PATH" "$CHANGED_PATH" "$TIMEOUT_EXPIRED" "$VERIFY_RESULTS_PATH")"
-  BUILD_EXIT=$?
-else
-  VERDICT_JSON="$($NODE_BIN "$VERDICT_WRITER" build-verdict "$SESSION_DIR" "$STATUS_PATH" "$META_PATH" "$CHANGED_PATH" "$TIMEOUT_EXPIRED")"
-  BUILD_EXIT=$?
-fi
-set -e
-
-# build-verdict failed (threw before printing) → don't write an empty/invalid file that
-# would crash downstream JSON.parse consumers; record the failure as valid JSON instead.
-if [ -z "$VERDICT_JSON" ]; then
-  VERDICT_JSON="{\"schemaVersion\":1,\"error\":\"build-verdict failed (exit $BUILD_EXIT) — see stderr\",\"sessionId\":\"$SESSION_ID\",\"exitCode\":$BUILD_EXIT}"
-fi
-printf '%s\n' "$VERDICT_JSON" > "$SESSION_DIR/verdict.json"
-cleanup_worktree_if_requested "$WORKTREE_PATH" "$BUILD_EXIT"
-exit "$BUILD_EXIT"
+build_and_write_verdict
