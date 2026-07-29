@@ -222,9 +222,18 @@ test('cx-stream-parse: usagePartial=true after turn.completed, stays true if pro
     type: 'turn.completed',
     usage: { input_tokens: 500, output_tokens: 75 }
   }) + '\n')
-  // Wait longer than the status writer's throttle window (200ms) so the
-  // throttled write actually flushes to disk before we kill the process.
-  await new Promise((resolve) => setTimeout(resolve, 400))
+  // Wait for the throttled write (200ms window) to actually reach disk before killing. A fixed
+  // sleep used to stand in for this and raced the writer under load: adding one more spawning
+  // test file to the suite was enough to make 400ms too short, and the kill then landed before
+  // the first flush. Poll for the artifact the assertions below need instead of guessing at it.
+  const deadline = Date.now() + 10000
+  while (Date.now() < deadline) {
+    try {
+      const seen = JSON.parse(readFileSync(path.join(testDir, 'status.json'), 'utf8'))
+      if (seen.usage) break
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
   proc.kill('SIGKILL')
   await new Promise((resolve) => proc.on('close', resolve))
 

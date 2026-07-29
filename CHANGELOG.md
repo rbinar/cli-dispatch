@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.7.3] — 2026-07-29
+
+Fixes a guard that made four scripts do nothing, silently, when invoked through a symlinked path.
+
+### Fixed
+
+- **`gain-report.mjs`, `verdict-writer.mjs`, `check-version-sync.mjs` and `policy-inject.mjs`
+  ran their main function only when `process.argv[1]` happened to contain no symlinks.** The
+  entry-point guard compared `import.meta.url` — which Node has already resolved — against the
+  raw invocation path. When they differ the script exits 0 having printed nothing and done
+  nothing: no error, no warning, no output.
+  - macOS makes this reachable by default, because `/tmp` is a symlink to `/private/tmp`:
+    `node /tmp/wt/…/gain-report.mjs` printed nothing while
+    `node /private/tmp/wt/…/gain-report.mjs` printed the report.
+  - `verdict-writer.mjs` is where it could have done damage. `cli-dispatch-run` creates its
+    worktrees under `/tmp`, and `CLI_DISPATCH_VERDICT_WRITER` may point into one — a silent
+    no-op there means `build-verdict` writes no verdict and `mark-worktree-removed` records
+    nothing, while every exit code still reports success.
+  - Each guard now resolves `process.argv[1]` with `realpathSync` before comparing, falling back
+    to the raw path if that throws, so a non-existent path can never make the guard itself crash.
+- **A fixed sleep in the cx-stream kill test was racing the status writer.** It slept 400ms for a
+  200ms-throttled write, which held only while the suite was light; adding one more spawning test
+  file made the kill land before the first flush and the test failed in the full suite while
+  passing alone. It now polls for the artifact its assertions need, with a 10s ceiling.
+
+### Tests
+
+- New `__tests__/entrypoint-guard.test.mjs` (5 tests): symlinks the repo root into a temp dir and
+  runs each of the four scripts through that path, asserting each actually produces its output —
+  plus a source-level check that the raw `import.meta.url === pathToFileURL(process.argv[1]).href`
+  comparison is gone. Mutation-checked: restoring the old guard in one file fails 2 of the 5.
+
 ## [4.7.2] — 2026-07-29
 
 Promotes the report's most decision-relevant number out of a footnote.
