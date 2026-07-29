@@ -6,7 +6,8 @@
 // touches dirs under the sessions root.
 //
 //   node cli-dispatch-clean.mjs [--remove] [--stale-secs N] [--older-than DAYS]
-//                                [--preserve-verdicts] [--takeover-stale-mins N]
+//                                [--preserve-verdicts|--no-preserve-verdicts]
+//                                [--takeover-stale-mins N]
 //                                [--quiet]
 //
 // Default is a DRY-RUN (lists only). --remove deletes. --older-than also prunes finished
@@ -27,12 +28,13 @@ import os from 'node:os'
 import { readJsonFile, clearTakeoverState, TERMINAL_STATES } from './parse-utils.mjs'
 
 const argv = process.argv.slice(2)
-let remove = false, staleSecs = 600, olderDays = 0, quiet = false, preserveVerdicts = false, takeoverStaleMins = 10
+let remove = false, staleSecs = 600, olderDays = 0, quiet = false, preserveVerdicts = true, takeoverStaleMins = 10
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i]
   if (a === '--remove') remove = true
   else if (a === '--quiet') quiet = true
   else if (a === '--preserve-verdicts') preserveVerdicts = true
+  else if (a === '--no-preserve-verdicts') preserveVerdicts = false
   else if (a === '--stale-secs') staleSecs = parseInt(argv[++i], 10)
   else if (a === '--older-than') olderDays = parseInt(argv[++i], 10)
   else if (a === '--takeover-stale-mins') takeoverStaleMins = parseInt(argv[++i], 10)
@@ -180,8 +182,17 @@ if (remove) {
       log(`  reaped ${x.d}${killed ? ` (killed pty ${killed})` : ''}`)
     } catch (e) { log(`  FAILED reap ${x.d}: ${e.message}`) }
   }
-  log(`removed ${n}/${targets.length} dir(s), reaped ${reaped}/${reapCandidates.length} human-controlled session(s). kept ${kept} live/recent. archived verdicts for ${archived} session(s).`)
+  const archiveSummary = preserveVerdicts
+    ? `archived verdicts for ${archived} session(s).`
+    : 'verdict archiving disabled.'
+  log(`removed ${n}/${targets.length} dir(s), reaped ${reaped}/${reapCandidates.length} human-controlled session(s). kept ${kept} live/recent. ${archiveSummary}`)
 } else {
   log(`DRY-RUN — nothing deleted/rewritten. Re-run with --remove to delete the ${targets.length} dir(s) and reap the ${reapCandidates.length} human-controlled session(s) above.`)
-  if (patchCandidates) log(`note: ${patchCandidates} candidate(s) carry a verdict-diff.patch (possible unapplied recovery diff) — use --preserve-verdicts to archive them on removal.`)
+  if (patchCandidates) {
+    if (preserveVerdicts) {
+      log(`note: ${patchCandidates} candidate(s) carry a verdict-diff.patch (possible unapplied recovery diff) — they will be archived on removal; pass --no-preserve-verdicts to skip archiving.`)
+    } else {
+      log(`note: ${patchCandidates} candidate(s) carry a verdict-diff.patch (possible unapplied recovery diff) — verdict archiving is disabled by --no-preserve-verdicts.`)
+    }
+  }
 }
