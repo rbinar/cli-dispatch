@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.7.4] — 2026-07-29
+
+Closes the last way a run could report success without ever producing a verdict.
+
+### Fixed
+
+- **A `build-verdict` that printed nothing but exited 0 made the whole run exit 0.** The
+  empty-output branch already existed — it writes an error-shaped `verdict.json` so downstream
+  `JSON.parse` consumers don't crash — but it then trusted the helper's exit status. So a run with
+  no verdict at all (no `state`, no `verify`, no `changedFiles`) reported success.
+  - That combination was reachable until 4.7.3: `verdict-writer.mjs`'s entry-point guard silently
+    no-opped when its path contained a symlink, and the runner puts its worktrees under `/tmp`,
+    which is one on macOS. The guard is fixed, but the runner must not depend on a helper never
+    failing that way.
+  - Both the empty-output verdict's own `exitCode` field and the runner's exit status are now
+    **5** — the contract's setup-error code — with a one-line diagnostic on stderr. When
+    `build-verdict` does produce output, nothing changes: same exit status, same file, same
+    cleanup.
+  - Fixed in `cli-dispatch-run.ps1` identically; the twin had the same hole.
+- The verdict-build tail of `cli-dispatch-run` is now a `build_and_write_verdict` function, called
+  by the normal path and by the test hook alike, so the two cannot drift.
+
+### Tests
+
+- New integration scenario h): pins `CLI_DISPATCH_VERDICT_WRITER` to a stub that prints nothing
+  and exits 0, then asserts the runner exits 5, `verdict.json` parses, carries `error`, and its
+  `exitCode` is 5 rather than 0. Mutation-checked: restoring the old `exit "$BUILD_EXIT"` fails it.
+- A `--_test-verdict-build <session-dir>` hook makes that reachable without launching a real
+  worker CLI. It is an early-exit block next to the existing `--_test-cleanup` one, so the
+  production path stays unconditional — a hook that can alter the normal flow is worse than the
+  bug it tests for.
+
 ## [4.7.3] — 2026-07-29
 
 Fixes a guard that made four scripts do nothing, silently, when invoked through a symlinked path.

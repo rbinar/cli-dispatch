@@ -518,11 +518,18 @@ try {
     $verdictOut = & $NodeBin $VerdictWriter build-verdict $SessionDir $StatusPath $MetaPath $ChangedPath $timeoutExpired
     $verdictExit = $LASTEXITCODE
   }
-  # build-verdict failed (threw before printing) → don't write an empty/invalid file that
-  # would crash downstream JSON.parse consumers; record the failure as valid JSON instead
-  # (mirrors the bash twin).
+  # build-verdict produced no output → verdict could not be built. This is a setup error
+  # regardless of what exit status the helper reported (it may exit 0 having printed nothing,
+  # e.g. when its own guard silently no-ops). The error shape's exitCode here is the contract
+  # value (5 = setup error), not a node exit status — unlike the normal path below where
+  # $verdictExit carries the worker's result. Still write valid JSON so downstream JSON.parse
+  # consumers don't crash. (Mirrors the bash twin.)
   if ([string]::IsNullOrWhiteSpace($verdictOut)) {
-    $verdictOut = "{`"schemaVersion`":1,`"error`":`"build-verdict failed (exit $verdictExit) — see stderr`",`"sessionId`":`"$SessionId`",`"exitCode`":$verdictExit}"
+    $verdictOut = "{`"schemaVersion`":1,`"error`":`"build-verdict failed (exit $verdictExit) — see stderr`",`"sessionId`":`"$SessionId`",`"exitCode`":5}"
+    Set-Content -Path (Join-Path $SessionDir 'verdict.json') -Value $verdictOut
+    Write-Host "cli-dispatch-run: verdict could not be built — reporting exit code 5"
+    Invoke-CleanupWorktree -Worktree $WorktreePath -VerdictExitCode 5 -SessionDir $SessionDir
+    exit 5
   }
   Set-Content -Path (Join-Path $SessionDir 'verdict.json') -Value $verdictOut
 
