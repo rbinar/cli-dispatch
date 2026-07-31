@@ -3,7 +3,7 @@ description: Check the cli-dispatch installation status (DeepSeek + Antigravity 
 allowed-tools: Bash
 ---
 
-!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/cli-dispatch-status.sh"`
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/cli-dispatch-status.sh" "${CLAUDE_PLUGIN_ROOT}"`
 
 The status report above already ran — do NOT run it again.
 
@@ -19,5 +19,5 @@ run the PowerShell twin instead (it covers DeepSeek and Codex; the Antigravity,
 OpenCode and Copilot backends are Unix-only):
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File "$env:CLAUDE_PLUGIN_ROOT/scripts/cli-dispatch-status.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:CLAUDE_PLUGIN_ROOT/scripts/cli-dispatch-status.ps1" -PluginRoot "$env:CLAUDE_PLUGIN_ROOT"
 ```

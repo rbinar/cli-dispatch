@@ -6,11 +6,17 @@
 # to the plugin (same arrangement as cli-dispatch-statusline.sh).
 #
 # Read-only. Never prints a key VALUE, only whether one is set.
+#
+# $1 = plugin root. Claude Code interpolates ${CLAUDE_PLUGIN_ROOT} into the `!`
+# command string but does NOT export it into the subprocess, so reading the env
+# var alone left the staleness check permanently dead (4.9.0 regression).
+
+_PLUGIN_ROOT="${1:-${CLAUDE_PLUGIN_ROOT:-}}"
 
 echo "== DeepSeek backend (claude-ds) =="
 # Version staleness check: warn if installed copies don't match the current plugin.
 _PLUGIN_JSON=""
-[ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && _PLUGIN_JSON="$CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json"
+[ -n "$_PLUGIN_ROOT" ] && _PLUGIN_JSON="$_PLUGIN_ROOT/.claude-plugin/plugin.json"
 _INSTALLED_VER_FILE="$HOME/.config/cli-dispatch/.installed-version"
 if [ -f "$_INSTALLED_VER_FILE" ] && [ -f "$_PLUGIN_JSON" ]; then
   _INSTALLED_VER="$(cat "$_INSTALLED_VER_FILE" 2>/dev/null)"

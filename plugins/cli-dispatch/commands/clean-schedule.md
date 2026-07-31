@@ -4,97 +4,46 @@ allowed-tools: Bash
 argument-hint: "[install|status|uninstall] [--time HH:MM] [--older-than DAYS]"
 ---
 
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/cli-dispatch-clean-schedule.sh" status`
+
+The block above is the **current schedule state only** — it was pre-executed as a
+read-only `status` probe. It did NOT install or remove anything, whatever
+`$ARGUMENTS` says.
+
 # cli-dispatch clean-schedule
 
-Register a **daily, OS-level** auto-clean that runs `cli-dispatch-clean --remove` in the
-background — so stale worker dirs (a `running` session whose process died before finalize)
-are pruned automatically, even when Claude Code isn't open. Uses **launchd** (macOS),
-**cron** (Linux/WSL), or **Scheduled Tasks** (Windows). No cloud agent, no tokens.
+Registers a **daily, OS-level** auto-clean that runs `cli-dispatch-clean --remove`
+in the background, so stale worker dirs (a `running` session whose process died
+before finalize) are pruned even when Claude Code isn't open. launchd on macOS,
+cron on Linux/WSL. No cloud agent, no tokens. It only ever removes **stale** dirs
+(idle > 600 s while `running`); a live worker is never touched. The job logs to
+`~/.cache/cli-dispatch/clean.log`.
 
-Args (`$ARGUMENTS`): action `install` (default) | `status` | `uninstall`; `--time HH:MM`
-(default `03:00`); `--older-than DAYS` (also prune old finished sessions; default off → stale
-only). It only ever removes **stale** dirs (idle > 600 s while `running`); a live worker is
-never touched. The job logs to `~/.cache/cli-dispatch/clean.log`.
+## What to do now
 
-Prereq: `cli-dispatch-clean` installed on PATH (it is, via `/cli-dispatch:setup`). Pick the
-block for the current OS.
+Read the action out of `$ARGUMENTS`: `install` (the command's default when no
+action is given) | `status` | `uninstall`, plus optional `--time HH:MM` (default
+`03:00`) and `--older-than DAYS` (also prune old finished sessions; default off →
+stale only).
 
-## macOS (launchd)
+- **Action is `status`** — you already have the answer above. Report it and stop.
+- **Action is `install` or `uninstall`** — this mutates the OS scheduler, so run
+  it as a deliberate step, forwarding the user's arguments verbatim:
 
-```bash
-ACTION="install"; TIME="03:00"; OLDER=""
-set -- $ARGUMENTS
-while [ "$#" -gt 0 ]; do case "$1" in
-  install|status|uninstall) ACTION="$1"; shift;;
-  --time) TIME="$2"; shift 2;;
-  --older-than) OLDER="$2"; shift 2;;
-  *) shift;; esac; done
-LABEL="com.cli-dispatch.clean"
-PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
-BIN="$(command -v cli-dispatch-clean || echo "$HOME/.local/bin/cli-dispatch-clean")"
-HH="${TIME%%:*}"; MM="${TIME##*:}"; HH="${HH#0}"; MM="${MM#0}"; HH="${HH:-0}"; MM="${MM:-0}"
-LOG="$HOME/.cache/cli-dispatch/clean.log"; mkdir -p "$(dirname "$LOG")"
-OLDER_ARG=""; [ -n "$OLDER" ] && OLDER_ARG="<string>--older-than</string><string>$OLDER</string>"
-case "$ACTION" in
-  status)
-    if [ -f "$PLIST" ]; then echo "scheduled (launchd): $PLIST"; launchctl list | grep -F "$LABEL" || echo "(loaded state unknown)"; echo "--- last log ---"; tail -n 8 "$LOG" 2>/dev/null || echo "(no log yet)"
-    else echo "not scheduled."; fi;;
-  uninstall)
-    launchctl unload "$PLIST" 2>/dev/null || true; rm -f "$PLIST"; echo "removed schedule ($LABEL).";;
-  install)
-    # launchd runs jobs with a minimal PATH (no shell rc sourced) — a node installed via nvm/
-    # Homebrew/volta/asdf is invisible there even though it resolves fine interactively, which
-    # made the scheduled clean silently fail every run for anyone not on system node. Bake the
-    # resolved node dir into the job's own PATH; cli-dispatch-clean also probes common install
-    # locations at runtime as a second line of defense.
-    NODE_DIR="$(dirname "$(command -v node 2>/dev/null || echo /usr/bin/node)")"
-    JOB_PATH="$NODE_DIR:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-    cat > "$PLIST" <<PL
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-  <key>Label</key><string>$LABEL</string>
-  <key>ProgramArguments</key><array><string>$BIN</string><string>--remove</string><string>--quiet</string>$OLDER_ARG</array>
-  <key>EnvironmentVariables</key><dict><key>PATH</key><string>$JOB_PATH</string></dict>
-  <key>StartCalendarInterval</key><dict><key>Hour</key><integer>$HH</integer><key>Minute</key><integer>$MM</integer></dict>
-  <key>StandardOutPath</key><string>$LOG</string>
-  <key>StandardErrorPath</key><string>$LOG</string>
-</dict></plist>
-PL
-    launchctl unload "$PLIST" 2>/dev/null || true; launchctl load "$PLIST"
-    echo "scheduled daily at $TIME (launchd: $PLIST). Log: $LOG";;
-esac
-```
+  ```bash
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/cli-dispatch-clean-schedule.sh" $ARGUMENTS
+  ```
 
-## Linux / WSL (cron)
+  If `$ARGUMENTS` carries no action word, pass `install` explicitly — the script's
+  own default is `status` precisely so that a bare run can never write a plist or
+  rewrite a crontab.
 
-```bash
-ACTION="install"; TIME="03:00"; OLDER=""
-set -- $ARGUMENTS
-while [ "$#" -gt 0 ]; do case "$1" in
-  install|status|uninstall) ACTION="$1"; shift;;
-  --time) TIME="$2"; shift 2;;
-  --older-than) OLDER="$2"; shift 2;;
-  *) shift;; esac; done
-BIN="$(command -v cli-dispatch-clean || echo "$HOME/.local/bin/cli-dispatch-clean")"
-HH="${TIME%%:*}"; MM="${TIME##*:}"; HH="${HH#0}"; MM="${MM#0}"; HH="${HH:-0}"; MM="${MM:-0}"
-LOG="$HOME/.cache/cli-dispatch/clean.log"; mkdir -p "$(dirname "$LOG")"
-TAG="# cli-dispatch-clean"
-OLDER_ARG=""; [ -n "$OLDER" ] && OLDER_ARG=" --older-than $OLDER"
-LINE="$MM $HH * * * $BIN --remove --quiet$OLDER_ARG >> $LOG 2>&1 $TAG"
-EXIST="$(crontab -l 2>/dev/null || true)"
-case "$ACTION" in
-  status)
-    printf '%s\n' "$EXIST" | grep -F "$TAG" && { echo "--- last log ---"; tail -n 8 "$LOG" 2>/dev/null; } || echo "not scheduled.";;
-  uninstall)
-    printf '%s\n' "$EXIST" | grep -vF "$TAG" | crontab - ; echo "removed schedule.";;
-  install)
-    { printf '%s\n' "$EXIST" | grep -vF "$TAG"; echo "$LINE"; } | crontab -
-    echo "scheduled daily at $TIME (cron). Log: $LOG";;
-esac
-```
+Prereq: `cli-dispatch-clean` on PATH (it is, via `/cli-dispatch:setup`). After an
+install, confirm with the same command + `status`. To stop it: `... uninstall`.
 
-## Windows (Scheduled Tasks)
+## Native Windows only (Scheduled Tasks)
+
+The bash script covers macOS and Linux/WSL. On native Windows use this instead:
 
 ```powershell
 $parts = "$env:ARGUMENTS".Trim() -split '\s+'
@@ -116,5 +65,3 @@ switch ($action) {
   }
 }
 ```
-
-After install, confirm with the same command + `status`. To stop it: `... uninstall`.
