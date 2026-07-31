@@ -7,6 +7,54 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.9.0] — 2026-07-31
+
+`/cli-dispatch:status`'ün shell'ini modele yeniden yazdırmayı bırakır. Salt-okunur
+komutların tamamının izleyebileceği bir desen için pilot.
+
+### Değişti
+
+- **`/cli-dispatch:status` artık shell'ini komut markdown'ına gömmek yerine ayıklanmış bir
+  script'i ön-çalıştırıyor.** 100 satırlık bash bloğu `scripts/cli-dispatch-status.sh`'e
+  taşındı; `commands/status.md` onu bir `` !`…` `` ön-çalıştırma satırıyla çağırıyor ve
+  yalnızca sonucun nasıl sunulacağını anlatıyor.
+  - Eski biçim her çağrıda iki kez ödetiyordu: shell context'e *input* olarak giriyordu
+    (7615 baytlık komut markdown'ı), ardından model onu Bash tool çağrısı olarak kelimesi
+    kelimesine yeniden yazıyordu — aynı 7 KB için bu kez pahalı olan *output* tokenlarından
+    ikinci ödeme. Ön-çalıştırma script'i model daha hiçbir şey görmeden koşturuyor; shell
+    hiç yeniden yazılmıyor ve tool-call karar turu da ortadan kalkıyor.
+  - `status.md`: **7615 → 940 bayt (%-88)**. Çıktının gömülü bloğunkiyle birebir aynı
+    olduğu doğrulandı, iki yönlü mutasyon kontrolü yapıldı.
+  - Script plugin cache'inden (`${CLAUDE_PLUGIN_ROOT}/scripts/`) koşuyor, `~/.local/bin`'e
+    **kurulmuyor** — `cli-dispatch-statusline.sh`'in zaten kullandığı düzen. Bu aynı zamanda
+    `/plugin update`'in komutları tazeleyip kurulu wrapper'lara hiç dokunmaması yüzünden
+    oluşan kurulum bayatlığı tuzağını da atlıyor.
+  - Bilinçli olarak Node'a çevrilmedi, bash kaldı: `status`, görevlerinden biri
+    `node: MISSING` demek olan komut; çalışmak için Node'a ihtiyaç duymamalı.
+  - Native Windows için `cli-dispatch-status.ps1` yanında geliyor (önceki PowerShell
+    bloğuyla aynı kapsam: yalnız DeepSeek + Codex), komuttaki geri-düşüş notundan erişiliyor.
+
+### Düzeltildi
+
+- **Tam test suite'i artık yük altında sonsuza kadar asılmıyor.** `cp-stream-parse.test.mjs`'in
+  reconcile yardımcısı, parser'ın throttle'lı `status.json` yazımı için sabit 350 ms bekleyip
+  üzerine yazıyordu. O yazım henüz inmemişse `writeFileSync` **bir timer callback'i içinde**
+  `ENOENT` fırlatıyordu — ki bu, kapsayan promise'i reject edemez — dolayısıyla bir sonraki
+  satırdaki `proc.stdin.end()` hiç çalışmıyor ve parser stdin'i sonsuza kadar bekliyordu.
+  Canlı gözlem: `node --test` bloke haldeyken bir `cp-stream-parse.mjs` çocuğu 10+ dakika
+  %0 CPU'da duruyordu. Yardımcı artık uyumak yerine `status.json`'ı poll ediyor (10 sn
+  deadline) ve stdin'i `finally` içinde kapatıyor; böylece yazım hatası asılma yerine
+  gürültülü bir başarısızlık üretiyor. 4.7.3'te düzeltilen `cx-stream-parse` zamanlama
+  yarışıyla aynı sınıf; 27. test dosyasını eklemek eşzamanlılığı bunu devirecek kadar artırdı.
+  Daha önce makine yüküne atfedilmişti — gerçek bir kusurmuş.
+
+### Eklendi
+
+- **`__tests__/status-command.test.mjs`** (6 test) — markdown/script çiftini koruyor:
+  ön-çalıştırma satırı script'i göstermeli, her iki platform ikizi de var olmalı, bash
+  bloğu markdown'a geri sızmamalı, markdown 2500 baytın altında kalmalı, script `bash -n`'i
+  geçmeli, ve hiçbir backend'in API anahtar DEĞERİ yazdırılmamalı (yalnız set/MISSING).
+
 ## [4.8.0] — 2026-07-29
 
 Güvenli temizlik davranışını varsayılan yapar ve statusline fragment'ine ilk testini kazandırır.

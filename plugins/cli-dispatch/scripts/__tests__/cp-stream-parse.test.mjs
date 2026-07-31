@@ -226,7 +226,7 @@ test('cp-stream-parse: deltaContent stream interrupted before the final message 
 // reconcile would on a kill), THEN close stdin so the parser's finalize runs.
 // ---------------------------------------------------------------------------
 
-function runParserWithReconcile(events, reconcileStatus, { settleMs = 350 } = {}) {
+function runParserWithReconcile(events, reconcileStatus, { settleTimeoutMs = 10000 } = {}) {
   return new Promise((resolve, reject) => {
     if (existsSync(testDir)) rmSync(testDir, { recursive: true, force: true })
     const proc = spawn('node', [parserScript], {
@@ -240,14 +240,34 @@ function runParserWithReconcile(events, reconcileStatus, { settleMs = 350 } = {}
     proc.on('close', code => resolve({ code, stdout, stderr }))
 
     for (const ev of events) proc.stdin.write(JSON.stringify(ev) + '\n')
-    // Let the parser process events and let any throttled status write settle to 'running'.
-    setTimeout(() => {
-      const statusPath = path.join(testDir, 'status.json')
-      let cur = {}
-      try { cur = JSON.parse(readFileSync(statusPath, 'utf8')) } catch { /* first write pending */ }
-      writeFileSync(statusPath, JSON.stringify({ ...cur, ...reconcileStatus }, null, 2) + '\n')
-      proc.stdin.end() // stdin EOF → parser finalize runs the reconcile-race guard
-    }, settleMs)
+
+    // Wait for the parser's own throttled 'running' write to land before
+    // overwriting it. This used to be a fixed 350ms sleep, which hung the whole
+    // suite under load: if status.json did not exist yet, writeFileSync threw
+    // ENOENT inside the timer callback, so stdin.end() below never ran and the
+    // parser waited on stdin forever (the throw could not reject this promise
+    // either). Poll for the file instead, and end stdin no matter what.
+    const statusPath = path.join(testDir, 'status.json')
+    const deadline = Date.now() + settleTimeoutMs
+    const settle = () => {
+      if (!existsSync(statusPath) && Date.now() < deadline) {
+        setTimeout(settle, 25)
+        return
+      }
+      let failure = null
+      try {
+        let cur = {}
+        try { cur = JSON.parse(readFileSync(statusPath, 'utf8')) } catch { /* first write pending */ }
+        writeFileSync(statusPath, JSON.stringify({ ...cur, ...reconcileStatus }, null, 2) + '\n')
+      } catch (err) {
+        failure = err
+      } finally {
+        proc.stdin.end() // stdin EOF → parser finalize runs the reconcile-race guard
+      }
+      // Fail loudly rather than hanging: the parser is already unblocked above.
+      if (failure) reject(failure)
+    }
+    settle()
   })
 }
 
