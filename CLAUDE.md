@@ -16,13 +16,27 @@ definitions**: the five `agents/*-runner.md` babysitters were deleted in 4.0.0 (
 Everything the plugin installs lives under `plugins/cli-dispatch/`:
 - `commands/*.md` — slash commands (`/cli-dispatch:*`). Each is markdown with a fenced
   bash (and sometimes PowerShell) block that Claude Code executes directly — there is no
-  compiled command layer.
+  compiled command layer. **Read-only commands should instead pre-execute an extracted
+  script** via a leading `` !`bash "${CLAUDE_PLUGIN_ROOT}/scripts/<name>.sh"` `` line:
+  embedded shell is paid twice (once as the markdown's input tokens, again as output when
+  the model re-emits it verbatim as a Bash tool call), while a `!` line runs before the
+  model sees anything and injects only the output. `status`, `doctor`, `balance` and
+  `clean-schedule` are converted; the rest are not yet. Two traps: `${CLAUDE_PLUGIN_ROOT}`
+  is interpolated into the `!` command string but **not** exported into the subprocess, so
+  a script that needs it must take it as an argument (this silently killed `status`'s
+  staleness check in 4.9.0); and a mutating command must never pre-execute its mutation —
+  `clean-schedule` pre-executes a read-only `status` probe and leaves `install`/`uninstall`
+  to a deliberate follow-up call.
 - `scripts/` — the actual installed CLIs. Per-backend: `ds-agent`, `ag-agent`, `cx-agent`,
   `oc-agent`, `cp-agent` + their `*-stream` siblings and `*-worktree-run.sh` runners.
   Backend-agnostic: `cli-dispatch-run` (the deterministic runner — the delegation path),
   `cli-dispatch-wait`, `cli-dispatch-clean`, `cli-dispatch-gain`, `cli-dispatch-dashboard`,
   and `cli-dispatch-statusline.sh` (the `[CD]` statusline fragment — bash-only by design,
-  glob-loaded from the plugin cache rather than installed to `~/.local/bin`). Bash/PowerShell
+  glob-loaded from the plugin cache rather than installed to `~/.local/bin`). The
+  pre-execution scripts (`cli-dispatch-status.sh` + its `.ps1` twin, `cli-dispatch-doctor.sh`,
+  `cli-dispatch-balance.sh`, `cli-dispatch-clean-schedule.sh`) likewise run from the plugin
+  cache and are **not** installed, so they can never go stale relative to the plugin — do
+  not add them to `install.sh`. Bash/PowerShell
   wrappers around Node engines (`*-stream-parse.mjs` parsers, `verdict-writer.mjs`,
   `gain-report.mjs`, `dashboard-server.mjs`, `cli-dispatch-clean.mjs`).
   `install.sh`/`install.ps1` copy these into `~/.local/bin` (wrappers) and

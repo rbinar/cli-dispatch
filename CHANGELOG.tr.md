@@ -7,6 +7,51 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.10.0] — 2026-08-01
+
+4.9.0'ın ön-çalıştırma desenini kalan en büyük üç salt-okunur komuda yayar ve 4.9.0'ın
+kendi ön-çalıştırmasının sessizce veri kaybetmesine yol açan regresyonu düzeltir.
+
+### Düzeltildi
+
+- **`${CLAUDE_PLUGIN_ROOT}` bir `!` ön-çalıştırma satırına interpolate edilir ama
+  alt-sürece ortam değişkeni olarak GEÇMEZ.** `cli-dispatch-status.sh` onu ortam
+  değişkeni olarak okuyordu; bu yüzden sürüm bayatlık kontrolü 4.9.0 boyunca hiç
+  çalışmadı — kurulu wrapper'lar birkaç sürüm gerideyken rapor sağlıklı görünüyordu.
+  Artık hem `status` hem `doctor` plugin kökünü argüman olarak (`$1`) alıyor, ortam
+  değişkenine ise geri düşüyor. `cli-dispatch-status.ps1`'e eşleşen bir `-PluginRoot`
+  parametresi eklendi.
+
+### Değişti
+
+- **`/cli-dispatch:doctor`, `/cli-dispatch:balance` ve `/cli-dispatch:clean-schedule`
+  artık çıkarılmış bir script'i ön-çalıştırıyor** — modelin Bash tool çağrısı olarak
+  birebir yeniden yazmak zorunda kaldığı gömülü shell yerine. Üçünün komut markdown'ı
+  toplamda 21.372 bayttan 4.979 bayta iniyor (-%77): `doctor` 9135 → 707, `balance`
+  6410 → 1280, `clean-schedule` 5827 → 2992. Yeni `cli-dispatch-doctor.sh`,
+  `cli-dispatch-balance.sh` ve `cli-dispatch-clean-schedule.sh` plugin cache'inden
+  çalışır, `~/.local/bin`'e kurulmaz — `cli-dispatch-status.sh` ile aynı düzen, böylece
+  plugin'e göre asla bayatlayamazlar.
+- **`clean-schedule` yalnızca salt-okunur bir `status` probu ön-çalıştırır.** Dönüştürülen
+  komutlar arasında sistem durumunu değiştiren (launchd plist'i, crontab) tek komut odur
+  ve ön-çalıştırma model hiçbir şey görmeden çalıştığı için onay alma imkânı yoktur.
+  `install`/`uninstall` bilinçli bir adım olarak kalır ve `$ARGUMENTS`'ı aynı script'e
+  iletir. Script'in kendi varsayılan eylemi de aynı nedenle `status`'tür — çıplak bir
+  çalıştırma asla plist yazamaz ya da crontab'ı yeniden yazamaz. Komutun belgelenmiş
+  varsayılanı hâlâ `install`; markdown onu açıkça geçirir. Script ayrıca launchd/cron
+  seçimini modele blok seçtirmek yerine `uname` ile yapar; native Windows Scheduled Tasks
+  yolu markdown içinde kalır.
+
+### Eklendi
+
+- `__tests__/preexec-commands.test.mjs` — dönüştürülen dört komutun tamamını kapsayan
+  tablo tabanlı koruma (23 test): `!` satırı var ve var olan bir script'i gösteriyor,
+  shell markdown'a geri sızmamış, her markdown boyut tavanının altında, her script
+  `bash -n` geçiyor, hiçbir API anahtarı DEĞERİ basılmıyor, plugin kökü argüman olarak
+  taşınıyor ve `clean-schedule`'ın ön-çalıştırması ne `install` ne `$ARGUMENTS` içeren
+  bir `status` probu. `__tests__/status-command.test.mjs`'in yerini alır; onun
+  status'e özgü doğrulamalarını da kapsar.
+
 ## [4.9.0] — 2026-07-31
 
 `/cli-dispatch:status`'ün shell'ini modele yeniden yazdırmayı bırakır. Salt-okunur

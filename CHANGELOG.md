@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.10.0] — 2026-08-01
+
+Spreads 4.9.0's pre-execution pattern to the three largest remaining read-only commands,
+and fixes a regression that made 4.9.0's own pre-execution quietly lose data.
+
+### Fixed
+
+- **`${CLAUDE_PLUGIN_ROOT}` is interpolated into a `!` pre-execution line but is NOT
+  exported into the subprocess.** `cli-dispatch-status.sh` read it as an environment
+  variable, so its version-staleness check silently never fired for the whole of 4.9.0 —
+  the report looked healthy while the installed wrappers were several versions behind.
+  Both `status` and `doctor` now receive the plugin root as an argument (`$1`), falling
+  back to the env var. `cli-dispatch-status.ps1` gained a matching `-PluginRoot` parameter.
+
+### Changed
+
+- **`/cli-dispatch:doctor`, `/cli-dispatch:balance` and `/cli-dispatch:clean-schedule` now
+  pre-execute an extracted script** instead of embedding shell the model has to re-emit
+  verbatim as a Bash tool call. Combined, their command markdown drops from 21,372 to
+  4,979 bytes (-77%): `doctor` 9135 → 707, `balance` 6410 → 1280, `clean-schedule`
+  5827 → 2992. The new `cli-dispatch-doctor.sh`, `cli-dispatch-balance.sh` and
+  `cli-dispatch-clean-schedule.sh` run from the plugin cache and are **not** installed to
+  `~/.local/bin` — same arrangement as `cli-dispatch-status.sh`, so they can never go
+  stale relative to the plugin.
+- **`clean-schedule` pre-executes a read-only `status` probe only.** It is the one
+  converted command that mutates system state (a launchd plist, a crontab), and
+  pre-execution runs before the model sees anything, so it has no opportunity to confirm.
+  `install`/`uninstall` stay a deliberate step that forwards `$ARGUMENTS` to the same
+  script. The script's own default action is `status` for the same reason — a bare run
+  can never write a plist or rewrite a crontab. The command's documented default is still
+  `install`; the markdown passes it explicitly. The script also picks launchd vs cron from
+  `uname` instead of asking the model to choose the right block; the native-Windows
+  Scheduled Tasks path stays inline in the markdown.
+
+### Added
+
+- `__tests__/preexec-commands.test.mjs` — table-driven guard over all four converted
+  commands (23 tests): the `!` line exists and points at a script that exists, the shell
+  has not leaked back into the markdown, each markdown stays under its size ceiling, each
+  script passes `bash -n`, no API key VALUE is ever echoed, the plugin root travels as an
+  argument, and `clean-schedule`'s pre-execution is a `status` probe that carries neither
+  `install` nor `$ARGUMENTS`. Replaces `__tests__/status-command.test.mjs`, whose
+  status-only assertions it subsumes.
+
 ## [4.9.0] — 2026-07-31
 
 Stops making the model re-type `/cli-dispatch:status`'s shell. Pilot for a pattern the

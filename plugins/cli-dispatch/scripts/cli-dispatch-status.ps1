@@ -5,9 +5,14 @@
 # Copilot backends are Unix-only, so they are not probed here.
 #
 # Read-only. Never prints a key VALUE, only whether one is set.
+#
+# Takes the plugin root as an optional first argument, mirroring the bash twin's
+# $1 — the env var alone is not reliable (see cli-dispatch-status.sh's header).
+
+param([string]$PluginRoot = $env:CLAUDE_PLUGIN_ROOT)
 
 # Version staleness check
-$pluginJson = if ($env:CLAUDE_PLUGIN_ROOT) { Join-Path $env:CLAUDE_PLUGIN_ROOT '.claude-plugin/plugin.json' } else { '' }
+$pluginJson = if ($PluginRoot) { Join-Path $PluginRoot '.claude-plugin/plugin.json' } else { '' }
 $installedVerFile = Join-Path $HOME '.config/cli-dispatch/.installed-version'
 if ($pluginJson -and (Test-Path $installedVerFile) -and (Test-Path $pluginJson)) {
   try {
