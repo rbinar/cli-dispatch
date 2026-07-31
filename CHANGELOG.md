@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.9.0] — 2026-07-31
+
+Stops making the model re-type `/cli-dispatch:status`'s shell. Pilot for a pattern the
+read-only commands can all follow.
+
+### Changed
+
+- **`/cli-dispatch:status` now pre-executes an extracted script instead of embedding its
+  shell in the command markdown.** The 100-line bash block moved to
+  `scripts/cli-dispatch-status.sh`; `commands/status.md` invokes it through a `` !`…` ``
+  pre-execution line and only says how to render the result.
+  - The old shape cost twice per invocation: the shell entered the context as *input*
+    (7615 bytes of command markdown), then the model re-emitted it verbatim as a Bash
+    tool call — paying for the same 7 KB again in *output* tokens, which are the
+    expensive ones. Pre-execution runs the script before the model sees anything, so the
+    shell is never transcribed and the tool-call decision turn disappears too.
+  - `status.md`: **7615 → 940 bytes (-88%)**. Output verified byte-identical to the
+    embedded block's, mutation-checked in both directions.
+  - The script runs from the plugin cache (`${CLAUDE_PLUGIN_ROOT}/scripts/`) and is
+    **not** installed into `~/.local/bin` — the same arrangement
+    `cli-dispatch-statusline.sh` already uses, which also sidesteps the install-staleness
+    trap where `/plugin update` refreshes commands but never the installed wrappers.
+  - Kept as bash rather than rewritten in Node on purpose: `status` is the command whose
+    job includes reporting `node: MISSING`, so it must not need Node to run.
+  - `cli-dispatch-status.ps1` ships alongside for native Windows (DeepSeek + Codex only,
+    matching the previous PowerShell block), reached via the fallback note in the command.
+
+### Fixed
+
+- **The full test suite no longer hangs indefinitely under load.** `cp-stream-parse.test.mjs`'s
+  reconcile helper waited a fixed 350ms for the parser's throttled `status.json` write, then
+  overwrote it. When that write had not landed yet, `writeFileSync` threw `ENOENT` *inside a
+  timer callback* — which could not reject the enclosing promise — so the `proc.stdin.end()`
+  on the next line never ran and the parser waited on stdin forever. Observed live: a
+  `cp-stream-parse.mjs` child sitting at 0% CPU for 10+ minutes while `node --test` blocked.
+  The helper now polls for `status.json` (10s deadline) instead of sleeping, and ends stdin in
+  a `finally` so a write failure fails loudly rather than hanging. Same class as the
+  `cx-stream-parse` timing race fixed in 4.7.3; adding a 27th test file raised concurrency
+  enough to tip this one. Previously misattributed to machine load — it was a real defect.
+
+### Added
+
+- **`__tests__/status-command.test.mjs`** (6 tests) — guards the markdown/script pair:
+  the pre-execution line must point at the script, both platform twins must exist, the
+  bash block must not creep back into the markdown, the markdown must stay under 2500
+  bytes, the script must pass `bash -n`, and no backend's API key value may ever be
+  echoed (only set/MISSING).
+
 ## [4.8.0] — 2026-07-29
 
 Makes the safe cleanup behaviour the default one, and gives the statusline fragment its first test.
