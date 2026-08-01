@@ -4,7 +4,10 @@
 // Provides throttled status.json writing, session file fd management, and small
 // formatting utilities that were duplicated across the three backends.
 
-import { writeFileSync, readFileSync, openSync, writeSync, closeSync, mkdirSync, renameSync, unlinkSync } from 'node:fs'
+import {
+  writeFileSync, readFileSync, openSync, writeSync, closeSync, mkdirSync, renameSync, unlinkSync,
+  readdirSync, statSync, copyFileSync, rmSync,
+} from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 
 // ---- atomic full-file write ----
@@ -43,6 +46,89 @@ export const NON_TERMINAL_STATES = new Set(['running', 'human-controlled'])
 
 export function isNonTerminalState(state) {
   return NON_TERMINAL_STATES.has(state)
+}
+
+// ---- passive session-root pruning ----
+//
+// Session dirs accumulate forever unless someone runs /cli-dispatch:clean or installs the
+// scheduled job, and most people do neither — a machine with no schedule was found holding
+// 41 sessions / 54 MB. This prunes at WRITE time instead: every parser calls it once, right
+// after creating its own session dir, so the floor is enforced by ordinary use with no
+// scheduler and no user action.
+//
+// It is deliberately NOT a replacement for cli-dispatch-clean. Clean detects stale/dead
+// sessions, reaps orphaned takeovers and offers an age-based sweep; this only caps how many
+// FINISHED sessions pile up. Rules:
+//   - a non-terminal session ('running', 'human-controlled') is NEVER removed, no matter how
+//     far down the list it sorts — a live worker must survive its own sibling's prune
+//   - the caller's own dir is never removed (keepDir)
+//   - verdict.json / verdict-diff.patch are archived first, same layout clean.mjs uses, so
+//     the only record of a deterministic run is not lost to a passive cap
+//   - best-effort throughout: pruning must never break the run that triggered it
+//
+// CLI_DISPATCH_MAX_SESSIONS overrides the cap; 0 (or a negative/NaN value) disables pruning.
+export const DEFAULT_MAX_SESSIONS = 100
+
+export function resolveMaxSessions(env = process.env) {
+  const raw = env.CLI_DISPATCH_MAX_SESSIONS
+  if (raw === undefined || raw === '') return DEFAULT_MAX_SESSIONS
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n <= 0) return 0
+  return Math.floor(n)
+}
+
+export function pruneSessionRoot(root, { max = resolveMaxSessions(), keepDir = null } = {}) {
+  const result = { scanned: 0, removed: [], archived: 0, kept: 0, skipped: null }
+  if (!max) { result.skipped = 'disabled'; return result }
+
+  let entries
+  try { entries = readdirSync(root) } catch { result.skipped = 'unreadable-root'; return result }
+
+  const keepName = keepDir ? basename(keepDir) : null
+  const candidates = []
+  for (const name of entries) {
+    if (name === 'verdict-archive' || name.startsWith('.')) continue
+    if (keepName && name === keepName) continue
+    const dir = join(root, name)
+    let st
+    try { st = statSync(dir) } catch { continue }
+    if (!st.isDirectory()) continue
+    result.scanned++
+    const status = readJsonFile(join(dir, 'status.json'))
+    const meta = readJsonFile(join(dir, 'meta.json'))
+    const state = status.state || meta.state || '?'
+    // A session with no state at all is NOT assumed finished: a parser that died before its
+    // first status write looks identical to one that never started. Leave those to
+    // cli-dispatch-clean, which has the idle-time evidence to judge them.
+    if (state === '?' || isNonTerminalState(state)) { result.kept++; continue }
+    const startedMs = Date.parse(meta.startedAt || status.startedAt || '')
+    candidates.push({ name, dir, sort: Number.isFinite(startedMs) ? startedMs : st.mtimeMs })
+  }
+
+  // Newest first; everything past the cap is surplus. The cap counts prunable (finished)
+  // sessions only — live ones are kept on top of it rather than displacing history.
+  candidates.sort((a, b) => b.sort - a.sort)
+  const surplus = candidates.slice(max)
+  if (!surplus.length) { result.kept += candidates.length; return result }
+  result.kept += candidates.length - surplus.length
+
+  const archiveRoot = join(root, 'verdict-archive')
+  for (const { name, dir } of surplus) {
+    let copied = false
+    for (const [file, ext] of [['verdict.json', 'json'], ['verdict-diff.patch', 'patch']]) {
+      const src = join(dir, file)
+      try {
+        if (!statSync(src).isFile()) continue
+        mkdirSync(archiveRoot, { recursive: true })
+        copyFileSync(src, join(archiveRoot, `${name}.${ext}`))
+        copied = true
+      } catch { /* nothing to archive, or the archive is unwritable — removal still proceeds */ }
+    }
+    if (copied) result.archived++
+    try { rmSync(dir, { recursive: true, force: true }); result.removed.push(name) }
+    catch { /* best-effort: a dir we cannot remove is left for cli-dispatch-clean */ }
+  }
+  return result
 }
 
 // ---- backend name normalization ----

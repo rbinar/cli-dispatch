@@ -134,6 +134,18 @@ Anthropic tokens. `gain`'s babysitter/worker ratio and the `cli-dispatch-wait` b
 primitive remain for accounting of legacy sessions and for any consumer that must block on
 a session reaching a terminal state.
 
+**Passive session pruning.** Every parser calls `parse-utils.mjs`'s `pruneSessionRoot()` once,
+immediately after `mkdirSync`-ing its own session dir, capping the root at the newest
+`CLI_DISPATCH_MAX_SESSIONS` (default 100) **finished** sessions. It exists because session
+dirs otherwise grow forever unless someone runs `/cli-dispatch:clean` or installs the
+scheduled job, and most people do neither. Three invariants it must never lose: a
+non-terminal session (`running`/`human-controlled`) is never removed however old it sorts, a
+session with no state at all is left to `cli-dispatch-clean` (a parser that died before its
+first status write is indistinguishable from one that never started), and verdicts are
+archived into `verdict-archive/` first. It is a floor, not a replacement for
+`cli-dispatch-clean` — it does no staleness detection and no takeover reaping. Ordering
+matters at the call site: prune AFTER creating your own dir, or you become your own target.
+
 **Session-dir root resolution** is duplicated (by design, not accidentally) across
 `watch.md`, `resume.md`, `kill.md`, `sessions.md`, `gain.md`, `cli-dispatch-clean`, and
 `cli-dispatch-wait` as the same shell snippet: `CLI_DISPATCH_SESSIONS_DIR` env override →

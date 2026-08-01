@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.14.0] — 2026-08-01
+
+### Added
+
+- **Session dirs are now capped passively, at write time.** Every parser calls
+  `parse-utils.mjs`'s new `pruneSessionRoot()` once, right after creating its own session
+  dir, trimming the root to the newest `CLI_DISPATCH_MAX_SESSIONS` (default **100**)
+  *finished* sessions. Until now the root only ever shrank if someone ran
+  `/cli-dispatch:clean` or installed the scheduled job — and a machine with neither was
+  found holding 41 sessions / 54 MB with nothing pruning it. Idea borrowed from
+  codex-plugin-cc's `MAX_JOBS`.
+
+  This deletes data, so the guarantees matter:
+  - a **non-terminal** session (`running`, `human-controlled`) is never removed, however
+    old it sorts — a live worker survives a sibling's prune
+  - a session that never wrote a state at all is **left alone**: a parser that died before
+    its first status write is indistinguishable from one that never started, and only
+    `cli-dispatch-clean` has the idle-time evidence to judge it
+  - `verdict.json` / `verdict-diff.patch` are copied into `sessions/verdict-archive/`
+    before the directory goes, so a passive cap can never destroy the only record of a
+    deterministic run
+  - the calling session's own dir is exempt, and every failure is swallowed — housekeeping
+    must not be able to break the run that triggered it
+  - `CLI_DISPATCH_MAX_SESSIONS=0` disables pruning; a negative or unparseable value is also
+    read as "off" rather than "prune everything"
+
+  This is a floor, **not** a replacement for `/cli-dispatch:clean`: the cap does no
+  staleness detection, no takeover reaping and no age-based sweep.
+
+- `__tests__/session-prune.test.mjs` — 14 tests, most of them pinning down the two
+  dangerous failure modes (deleting a live session, losing a verdict) rather than the happy
+  path. Includes a test that all five parsers actually call the prune, prune the session
+  *root* rather than their own dir, and do it *after* `mkdirSync`. Suite: 465 → 479.
+
 ## [4.13.0] — 2026-08-01
 
 Completes the pre-execution rollout over the read-only commands.
