@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.12.0] — 2026-08-01
+
+### Changed
+
+- **The five per-backend `*-status` commands now share `cli-dispatch-status.sh`.** The
+  script gained a `--backend <slug>` flag (`deepseek`/`antigravity`/`codex`/`opencode`/
+  `copilot`) that limits the report to one backend's section; with no flag it prints
+  today's full five-backend report, unchanged. `ds-status`, `ag-status`, `cx-status`,
+  `oc-status` and `cp-status` pre-execute it instead of embedding their own probes:
+  9320 → 2808 bytes (-70%). The flag is deliberately not a second positional, so the
+  existing `[pluginRoot]` argument contract is untouched. An unknown or missing slug exits
+  2 with a usage line.
+  Per-backend output is byte-identical to the five blocks it replaces, and the aggregate
+  report is byte-identical to before — verified per command. Note the per-backend text was
+  never the same as the aggregate's corresponding section (they differ in wording and in
+  how much they probe); `--backend` preserves the *per-command* text, not the aggregate's.
+
+### Added
+
+- `preexec-commands.test.mjs` gains a row per converted `*-status` command plus a test
+  asserting each passes its correct `--backend` slug. Suite: 422 → 443.
+
 ## [4.11.0] — 2026-08-01
 
 Continues the pre-execution rollout. The six `sessions` commands turned out to be copies

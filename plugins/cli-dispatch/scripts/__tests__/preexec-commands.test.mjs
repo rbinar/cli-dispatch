@@ -29,6 +29,36 @@ const COMMANDS = [
     forbidden: [/```bash/, /command -v claude-ds/],
   },
   {
+    name: 'ds-status',
+    script: 'cli-dispatch-status.sh',
+    maxBytes: 1000,
+    forbidden: [/```bash/, /command -v claude-ds/],
+  },
+  {
+    name: 'ag-status',
+    script: 'cli-dispatch-status.sh',
+    maxBytes: 1000,
+    forbidden: [/```bash/, /command -v ag-agent/],
+  },
+  {
+    name: 'cx-status',
+    script: 'cli-dispatch-status.sh',
+    maxBytes: 1000,
+    forbidden: [/```bash/, /command -v cx-agent/],
+  },
+  {
+    name: 'oc-status',
+    script: 'cli-dispatch-status.sh',
+    maxBytes: 1000,
+    forbidden: [/```bash/, /command -v oc-agent/],
+  },
+  {
+    name: 'cp-status',
+    script: 'cli-dispatch-status.sh',
+    maxBytes: 1000,
+    forbidden: [/```bash/, /command -v cp-agent/],
+  },
+  {
     name: 'doctor',
     script: 'cli-dispatch-doctor.sh',
     maxBytes: 1200, // was 9135
@@ -174,6 +204,24 @@ test('per-backend session commands pass their backend slug as an argument', () =
       preExec,
       new RegExp(`cli-dispatch-sessions\\.sh"?\\s+${backend}\\s*$`),
       `${name}.md must pass ${backend} to cli-dispatch-sessions.sh`,
+    )
+  }
+})
+
+test('per-backend status commands pass their backend slug as a flag', () => {
+  const expected = {
+    'ds-status': 'deepseek',
+    'ag-status': 'antigravity',
+    'cx-status': 'codex',
+    'oc-status': 'opencode',
+    'cp-status': 'copilot',
+  }
+  for (const [name, backend] of Object.entries(expected)) {
+    const preExec = read(path.join(commandsDir, `${name}.md`)).match(/^!`([^`]+)`/m)[1]
+    assert.match(
+      preExec,
+      new RegExp(`cli-dispatch-status\\.sh"?\\s+--backend\\s+${backend}\\s+"?\\$\\{CLAUDE_PLUGIN_ROOT\\}"?\\s*$`),
+      `${name}.md must pass --backend ${backend} to cli-dispatch-status.sh`,
     )
   }
 })
