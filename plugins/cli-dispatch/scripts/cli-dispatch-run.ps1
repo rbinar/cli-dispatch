@@ -363,6 +363,33 @@ try {
   independently, and only that run counts.
 '@
     }
+    if ($env:CLI_DISPATCH_NO_WORKER_REPORT -ne "1") {
+      # The evidence record. Machine-readable proof of what the worker actually checked —
+      # it does NOT make the proof trusted; the caller still re-runs everything. Mirrors the
+      # bash twin.
+      $briefText = $briefText + @'
+
+---
+[cli-dispatch] Before you finish, write `worker-report.json` in your working directory:
+
+{
+  "claims":      [{"claim": "...", "howVerified": "...", "command": "...", "result": "..."}],
+  "notDone":     ["..."],
+  "assumptions": ["..."]
+}
+
+- `claims` — one entry per factual assertion you are making about your own work ("the tests
+  pass", "output is unchanged", "the ps1 twin still parses"). `command` is the exact command
+  you ran to check it, `result` what it printed. If you did NOT run a command for a claim,
+  leave `command` empty — an unchecked claim is still worth recording, but it will be
+  counted and treated as unverified. Do not invent a command you did not run.
+- `notDone` — anything in the task you did not do, could not do, or deliberately scoped out.
+- `assumptions` — anything you had to decide for yourself because the task did not say.
+
+This file is a record, not a gate: the caller re-verifies every claim independently. An
+honest empty `command` is more useful than a confident one that was never executed.
+'@
+    }
     Set-Content -Path $tmpPrompt.FullName -Value $briefText -NoNewline
     $PromptFile = $tmpPrompt.FullName
   }

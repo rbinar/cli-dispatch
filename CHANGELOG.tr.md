@@ -7,6 +7,41 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.15.0] — 2026-08-02
+
+### Eklendi
+
+- **`verdict.json` artık worker'ın kanıt kaydını taşıyor.** `cli-dispatch-run`, worker'dan
+  çalışma dizinine `worker-report.json` yazmasını isteyen kalıcı bir talimat ekliyor —
+  `{claim, howVerified, command, result}` şeklinde `claims[]`, ayrıca `notDone[]` ve
+  `assumptions[]`. `verdict-writer.mjs` bunu normalize edip verdict'e `workerReport` altında
+  katlıyor. `CLI_DISPATCH_NO_WORKER_REPORT=1` ile kapatılır; çalışma-dizini
+  sözleşmesinden ayrı bir bloktur ve kendi anahtarı vardır.
+
+  **Bu bir öz-beyandır ve bilinçli olarak kanıt sayılmaz.** Var olma sebebi şu: worker'lar
+  istendiğinde zaten kanıtlıyor — üç delegasyon koşusunda da worker'a çıktı denkliğini
+  kanıtlaması söylendi, kanıtladı, ama kanıt orkestratöre yalnızca 300 karaktere kırpılmış
+  önizleme olarak ulaştı; orkestratör hepsini elle yeniden türetti. Kayıt, o kanıtı
+  makine-okunur yapar ve "her şeyi yeniden kontrol et"i "neyi yeniden kontrol edeceğim"e
+  çevirir. Hiçbir iddiayı doğru kılmaz; `--verify` hâlâ yalnızca "testler geçiyor" der,
+  "çıktı değişmedi" demez.
+
+  Bu çerçevenin şekle yansıyan sonuçları:
+  - `unevidencedClaims`, arkasında **komut olmayan** claim'leri sayar; böylece bir iddia asla
+    bir ölçüm gibi okunmaz. Bu claim'ler silinmez, sayılır — gizlemek saymaktan kötü olurdu.
+  - rapor yoksa `null`; yazılmış ama kullanılamazsa `{valid: false, reason}`. "Worker çöp
+    yazdı" ile "worker hiçbir iddiada bulunmadı" birbirine benzememeli.
+  - claim/liste girdileri 50, alan başına 2000 karakterle sınırlı; kaçak bir rapor, her
+    tüketicinin okuduğu verdict'i şişiremez.
+
+- `__tests__/worker-report.test.mjs` (10 test) ve runner brief'i için varsayılan-açık davranışı
+  ile opt-out'u kapsayan iki test. Suite: 479 → 490.
+
+### Değişti
+
+- `.specs/dev/sdd/deterministic-runner.md`, `workerReport` bloğunu "kanıt DEĞİL, kanıt KAYDI"
+  vurgusuyla birlikte belgeliyor; şemayı sonra okuyan biri onu doğrulama sonucu sanmasın.
+
 ## [4.14.0] — 2026-08-01
 
 ### Eklendi

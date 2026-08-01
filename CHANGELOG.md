@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.15.0] — 2026-08-02
+
+### Added
+
+- **`verdict.json` now carries the worker's evidence record.** `cli-dispatch-run` appends a
+  standing instruction asking the worker to write `worker-report.json` in its working
+  directory — `claims[]` of `{claim, howVerified, command, result}`, plus `notDone[]` and
+  `assumptions[]`. `verdict-writer.mjs` normalizes it and folds it into the verdict under
+  `workerReport`. Opt out with `CLI_DISPATCH_NO_WORKER_REPORT=1`; it is a separate block
+  from the working-directory contract and has its own switch.
+
+  **This is a self-report, and it is deliberately not treated as evidence.** It exists
+  because workers already prove things when asked — across three delegated runs the worker
+  was told to prove output equivalence, did prove it, and the proof reached the orchestrator
+  only as a 300-character clipped preview, so the orchestrator re-derived all of it by hand.
+  The record makes that proof machine-readable, turning "re-check everything" into a
+  specific list of what to re-check. It does not make any claim true, and `--verify` still
+  only ever says "the tests pass" — never "the output is unchanged".
+
+  Consequences of that framing, baked into the shape:
+  - `unevidencedClaims` counts claims with **no command** behind them, so an assertion can
+    never read like a measurement. Such claims are kept, not dropped — hiding them would be
+    worse than counting them.
+  - a missing report is `null`; a written-but-unusable one is `{valid: false, reason}`.
+    "The worker wrote garbage" and "the worker claimed nothing" must not look identical.
+  - claims/lists are capped at 50 entries and 2000 chars per field, so a runaway report
+    cannot bloat the verdict every consumer reads.
+
+- `__tests__/worker-report.test.mjs` (10 tests) and two runner-brief tests covering the
+  default-on behaviour and the opt-out. Suite: 479 → 490.
+
+### Changed
+
+- `.specs/dev/sdd/deterministic-runner.md` documents the `workerReport` block, including the
+  explicit "kanıt DEĞİL, kanıt KAYDI" framing, so the next reader of the schema cannot
+  mistake it for a verification result.
+
 ## [4.14.0] — 2026-08-01
 
 ### Added
