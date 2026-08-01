@@ -3,34 +3,11 @@ description: Check the Antigravity (agy / Gemini) backend install status
 allowed-tools: Bash
 ---
 
-# Antigravity backend status
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/cli-dispatch-status.sh" --backend antigravity "${CLAUDE_PLUGIN_ROOT}"`
 
-Antigravity-only health check (read-only; do NOT print the key VALUE). For all backends at
-once use `/cli-dispatch:status`.
-
-```bash
-echo "== Antigravity backend (agy / Gemini) =="
-command -v ag-agent  >/dev/null 2>&1 && echo "ag-agent:  installed ($(command -v ag-agent))"  || echo "ag-agent:  MISSING (enable with /cli-dispatch:setup)"
-command -v ag-stream >/dev/null 2>&1 && echo "ag-stream: installed ($(command -v ag-stream))" || echo "ag-stream: MISSING (enable with /cli-dispatch:setup)"
-CFG="${CLI_DISPATCH_CONFIG:-${CLAUDE_DS_CONFIG:-}}"; [ -n "$CFG" ] || { CFG="$HOME/.config/cli-dispatch/config"; [ -f "$CFG" ] || [ ! -f "$HOME/.config/claude-ds/config" ] || CFG="$HOME/.config/claude-ds/config"; }
-if command -v agy >/dev/null 2>&1; then
-  echo "agy CLI: found ($(agy --version 2>/dev/null))"
-  if [ -f "$CFG" ]; then
-    ( . "$CFG"
-      if [ -n "${GEMINI_API_KEY:-}" ]; then echo "auth: GEMINI_API_KEY set"
-      elif [ -n "${ANTIGRAVITY_API_KEY:-}" ]; then echo "auth: ANTIGRAVITY_API_KEY set"
-      else echo "auth: via Google sign-in (run 'agy' once if not signed in)"; fi
-      [ -n "${AG_MODEL:-}" ] && echo "model: AG_MODEL=${AG_MODEL}" || echo "model: AG_MODEL not set (agy default used)"
-    )
-  else
-    echo "config: not found ($CFG) — auth via Google sign-in or GEMINI_API_KEY"
-  fi
-else
-  echo "agy CLI: MISSING (curl -fsSL https://antigravity.google/cli/install.sh | bash)"
-fi
-command -v script >/dev/null 2>&1 && echo "script (pseudo-tty): found" || echo "script (pseudo-tty): MISSING (ag backend needs it)"
-command -v node   >/dev/null 2>&1 && echo "node: found" || echo "node: MISSING (ag-stream parser needs it)"
-```
+The Antigravity status report above already ran — do NOT run it again. Present
+it as-is and keep it compact. The report never prints a key VALUE, only whether
+one is set — keep it that way. For all backends use `/cli-dispatch:status`.
 
 If everything is in place, suggest an optional smoke test (background task):
 `ag-agent -q "Reply with exactly: OK"`.

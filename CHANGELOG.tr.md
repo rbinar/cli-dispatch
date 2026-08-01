@@ -7,6 +7,28 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.12.0] — 2026-08-01
+
+### Değişti
+
+- **Backend'e özgü beş `*-status` komutu artık `cli-dispatch-status.sh`'i paylaşıyor.**
+  Script'e `--backend <slug>` bayrağı eklendi (`deepseek`/`antigravity`/`codex`/`opencode`/
+  `copilot`); raporu tek bir backend'in bölümüyle sınırlar. Bayraksız çağrıda bugünkü tam
+  beş-backend raporu değişmeden basılır. `ds-status`, `ag-status`, `cx-status`, `oc-status`
+  ve `cp-status` kendi problarını gömmek yerine bunu ön-çalıştırıyor: 9320 → 2808 bayt
+  (-%70). Bayrağın ikinci bir konumsal argüman olmaması bilinçli — mevcut `[pluginRoot]`
+  sözleşmesine dokunulmuyor. Bilinmeyen ya da eksik slug 2 koduyla ve kullanım satırıyla
+  çıkar.
+  Backend başına çıktı, yerini aldığı beş blokla byte-identical; toplu rapor da öncekiyle
+  byte-identical — komut bazında doğrulandı. Not: backend'e özgü metin, toplu raporun ilgili
+  bölümüyle hiçbir zaman aynı değildi (ifade ve prob derinliği farklı); `--backend`
+  toplu raporunkini değil, *komuta özgü* metni korur.
+
+### Eklendi
+
+- `preexec-commands.test.mjs`'e dönüştürülen her `*-status` komutu için satır ve her birinin
+  doğru `--backend` slug'ını geçirdiğini doğrulayan bir test eklendi. Suite: 422 → 443.
+
 ## [4.11.0] — 2026-08-01
 
 Ön-çalıştırma yayılımına devam eder. Altı `sessions` komutunun birbirinin kopyası olduğu

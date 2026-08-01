@@ -3,33 +3,11 @@ description: Check the Codex (OpenAI Codex CLI) backend install status
 allowed-tools: Bash
 ---
 
-# Codex backend status
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/cli-dispatch-status.sh" --backend codex "${CLAUDE_PLUGIN_ROOT}"`
 
-Codex-only health check (read-only; do NOT print the key VALUE). For all backends at once
-use `/cli-dispatch:status`.
-
-```bash
-echo "== Codex backend (cx / OpenAI) =="
-command -v cx-agent  >/dev/null 2>&1 && echo "cx-agent:  installed ($(command -v cx-agent))"  || echo "cx-agent:  MISSING (enable with /cli-dispatch:setup)"
-command -v cx-stream >/dev/null 2>&1 && echo "cx-stream: installed ($(command -v cx-stream))" || echo "cx-stream: MISSING (enable with /cli-dispatch:setup)"
-CFG="${CLI_DISPATCH_CONFIG:-${CLAUDE_DS_CONFIG:-}}"; [ -n "$CFG" ] || { CFG="$HOME/.config/cli-dispatch/config"; [ -f "$CFG" ] || [ ! -f "$HOME/.config/claude-ds/config" ] || CFG="$HOME/.config/claude-ds/config"; }
-if command -v codex >/dev/null 2>&1; then
-  echo "codex CLI: found ($(codex --version 2>/dev/null || echo 'version unknown'))"
-  if [ -f "$CFG" ]; then
-    ( . "$CFG"
-      if [ -n "${CODEX_API_KEY:-}" ]; then echo "auth: CODEX_API_KEY set"
-      elif [ -n "${OPENAI_API_KEY:-}" ]; then echo "auth: OPENAI_API_KEY set (CODEX_API_KEY takes precedence if both are set)"
-      else echo "auth: via codex login (ChatGPT/OAuth) — run 'codex login' once if not signed in"; fi
-      [ -n "${CX_MODEL:-}" ] && echo "model: CX_MODEL=${CX_MODEL}" || echo "model: CX_MODEL not set (codex default used)"
-    )
-  else
-    echo "config: not found ($CFG) — auth via CODEX_API_KEY or 'codex login'"
-  fi
-else
-  echo "codex CLI: MISSING (npm i -g @openai/codex  or  brew install --cask codex)"
-fi
-command -v node >/dev/null 2>&1 && echo "node: found" || echo "node: MISSING (cx-stream parser needs it)"
-```
+The Codex status report above already ran — do NOT run it again. Present it
+as-is and keep it compact. The report never prints a key VALUE, only whether
+one is set — keep it that way. For all backends use `/cli-dispatch:status`.
 
 If everything is in place, suggest an optional smoke test (background task):
 `cx-agent --read-only -q "Reply with exactly: OK"`.
