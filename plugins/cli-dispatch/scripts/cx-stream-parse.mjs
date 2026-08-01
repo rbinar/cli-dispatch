@@ -21,7 +21,7 @@
 
 import { readFileSync, existsSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
-import { writeMetaFile, createStatusWriter, openSessionFiles, clip, readJsonFile, TERMINAL_STATES } from './parse-utils.mjs'
+import { writeMetaFile, createStatusWriter, openSessionFiles, clip, readJsonFile, TERMINAL_STATES, pruneSessionRoot } from './parse-utils.mjs'
 
 const dir = process.env.CX_SESSION_DIR
 if (!dir) {
@@ -29,6 +29,12 @@ if (!dir) {
   process.exit(2)
 }
 mkdirSync(dir, { recursive: true })
+
+// Passive cap on finished session dirs (see parse-utils.mjs's pruneSessionRoot). Runs once
+// per session, right after this dir exists so it is never its own prune target. Live
+// sessions are never touched, verdicts are archived first, and any failure is swallowed —
+// a housekeeping cap must not be able to break the run that triggered it.
+try { pruneSessionRoot(path.dirname(dir), { keepDir: dir }) } catch { /* never fatal */ }
 
 const isResume = process.env.CX_RESUME === '1'
 const transcriptFile = path.join(dir, 'transcript.jsonl')

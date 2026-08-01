@@ -7,6 +7,40 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.14.0] — 2026-08-01
+
+### Eklendi
+
+- **Oturum dizinleri artık yazma anında, pasif olarak sınırlanıyor.** Her parser,
+  `parse-utils.mjs`'e eklenen `pruneSessionRoot()`'u kendi oturum dizinini oluşturduktan
+  hemen sonra bir kez çağırıyor ve kökü en yeni `CLI_DISPATCH_MAX_SESSIONS` (varsayılan
+  **100**) *bitmiş* oturuma indiriyor. Şimdiye kadar kök yalnızca biri `/cli-dispatch:clean`
+  çalıştırırsa ya da zamanlanmış işi kurarsa küçülüyordu — ikisi de yapılmamış bir makinede
+  41 oturum / 54 MB birikmiş ve hiçbir şey budamıyordu. Fikir codex-plugin-cc'nin
+  `MAX_JOBS`'undan alındı.
+
+  Bu veri siliyor, o yüzden garantiler önemli:
+  - **terminal olmayan** bir oturum (`running`, `human-controlled`) ne kadar eski sıralanırsa
+    sıralansın asla silinmez — canlı bir worker kardeşinin budamasından sağ çıkar
+  - hiç state yazmamış bir oturuma **dokunulmaz**: ilk status yazımından önce ölen bir parser,
+    hiç başlamamış olandan ayırt edilemez ve onu yargılayacak boşta-kalma verisi yalnız
+    `cli-dispatch-clean`'de vardır
+  - `verdict.json` / `verdict-diff.patch`, dizin gitmeden önce
+    `sessions/verdict-archive/` altına kopyalanır; pasif bir sınır, deterministik bir
+    koşunun tek kaydını asla yok edemez
+  - çağıran oturumun kendi dizini muaftır ve her hata yutulur — temizlik işi, onu tetikleyen
+    koşuyu bozamamalı
+  - `CLI_DISPATCH_MAX_SESSIONS=0` budamayı kapatır; negatif ya da ayrıştırılamayan bir değer
+    de "her şeyi buda" değil "kapalı" olarak okunur
+
+  Bu bir taban, `/cli-dispatch:clean`'in **yerine geçmez**: sınır bayatlık tespiti,
+  takeover reap'i ve yaşa dayalı süpürme yapmaz.
+
+- `__tests__/session-prune.test.mjs` — 14 test; çoğu mutlu yolu değil, iki tehlikeli hata
+  modunu (canlı oturumu silmek, verdict kaybetmek) çiviliyor. Beş parser'ın da budamayı
+  gerçekten çağırdığını, kendi dizinini değil oturum *kökünü* budadığını ve bunu
+  `mkdirSync`'ten *sonra* yaptığını doğrulayan bir test de içeriyor. Suite: 465 → 479.
+
 ## [4.13.0] — 2026-08-01
 
 Salt-okunur komutlarda ön-çalıştırma yayılımını tamamlar.
