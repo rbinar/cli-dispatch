@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.13.0] — 2026-08-01
+
+Completes the pre-execution rollout over the read-only commands.
+
+### Changed
+
+- **The five per-backend `*-balance` commands now share `cli-dispatch-balance.sh`.** Same
+  shape as 4.12.0's `*-status` collapse: a `--backend <slug>` flag limits the report to one
+  backend's section, no flag prints the full five-section report unchanged. 15,401 → 3,977
+  bytes (-74%). Unknown or missing slug exits 2 with a usage line.
+  As with `*-status`, the per-backend text and *exit status* were never the aggregate's:
+  `ds-balance` exits 1 when the config or key is missing where the aggregate prints
+  `key: not set (skip)` and carries on, and `cx-balance` prints a snapshot line the
+  aggregate omits. `--backend` preserves the per-command behaviour, verified by comparing
+  both output and exit code against each old block.
+  `ds-balance.md` keeps its native-Windows PowerShell block.
+
+### Added
+
+- `preexec-commands.test.mjs` gains a row per converted `*-balance` command, a test
+  asserting each passes its correct `--backend` slug, and a test that `ds-balance.md` still
+  carries a fenced PowerShell block but no fenced bash block. The shared forbidden-pattern
+  loop gained an opt-in `stripFencedPowerShell` flag, used only by `ds-balance` — whose
+  legitimate PowerShell block contains the very endpoint the bash extraction forbids.
+  Suite: 443 → 465.
+
+### Notes
+
+- While verifying equivalence, the Antigravity section turned out to be **nondeterministic
+  upstream**: the local language server returns `clientModelConfigs` in a different order on
+  consecutive calls, so two runs of the *same* code produce differently-ordered model lists.
+  This is pre-existing and unrelated to the refactor (confirmed by diffing the old block
+  against itself); equivalence was therefore established on the sorted output. Worth knowing
+  before anyone diffs a `balance` report and concludes something changed.
+
 ## [4.12.0] — 2026-08-01
 
 ### Changed
