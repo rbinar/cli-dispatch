@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.11.0] — 2026-08-01
+
+Continues the pre-execution rollout. The six `sessions` commands turned out to be copies
+of one another, so they collapse into a single parameterized script rather than six.
+
+### Changed
+
+- **The whole `sessions` family now pre-executes one script.** `sessions`, `ds-sessions`,
+  `ag-sessions`, `cx-sessions`, `oc-sessions` and `cp-sessions` embedded the same node
+  program six times over, differing only in a backend slug, the presence of the `backend`
+  column, and two messages. They now all call `cli-dispatch-sessions.sh [backend]`: no
+  argument gives the aggregate view, a backend slug gives the filtered one. Command
+  markdown drops from 13,480 to 3,684 bytes (-73%), and the duplication is gone with it.
+  An unknown backend argument exits 2 with a usage line. Output is byte-identical to the
+  six blocks it replaces, verified per command.
+- **`/cli-dispatch:help` pre-executes `cli-dispatch-help.sh`.** 3501 → 376 bytes (-89%);
+  the file was almost entirely the reference box, which the model had been re-typing in
+  full on every invocation.
+
+### Fixed
+
+- **The worktree leak post-check blamed the worker for the orchestrator's own edits.** The
+  guard snapshots the guarded repo before the run and fails on any NEW entry afterwards —
+  but a snapshot cannot attribute authorship, so editing the main repo while a run is in
+  flight is indistinguishable from a worker resolving a path out of its worktree. The old
+  message asserted the worker leaked, and the resulting exit 1 killed the run *before*
+  `--verify` ever executed, discarding a perfectly good worker result over the caller's own
+  edits. The failure now names both possible causes, states that the worker's output is
+  intact in the worktree, and points at the new `CLI_DISPATCH_ALLOW_CONCURRENT_EDITS=1`
+  opt-out, which downgrades the case to a warning so `--verify` still runs. Applied to all
+  five `*-worktree-run.sh` runners, which carried a byte-identical copy of the block.
+
+### Added
+
+- `preexec-commands.test.mjs` gains rows for all seven newly converted commands plus a
+  test asserting each per-backend `*-sessions` command passes its correct backend slug.
+- `worktree-in-place.test.mjs` gains two tests per backend (ten total) covering the
+  concurrent-edit opt-out and the reworded failure. Suite: 383 → 422.
+
 ## [4.10.0] — 2026-08-01
 
 Spreads 4.9.0's pre-execution pattern to the three largest remaining read-only commands,

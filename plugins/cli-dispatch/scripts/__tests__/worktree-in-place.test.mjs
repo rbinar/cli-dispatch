@@ -412,6 +412,37 @@ for (const [backend, script] of ALL_RUNNERS) {
     assert.equal(r.status, 0, `${backend}: pre-existing dirt must not fail the run`)
   })
 
+  // The snapshot cannot tell WHO wrote the new entry. An orchestrator editing the main repo
+  // while a worktree run is in flight looks identical to a worker leak, and the resulting
+  // exit 1 kills the run before --verify ever gets to run — throwing away a good worker
+  // result over the caller's own edits. The opt-out downgrades that case to a warning.
+  test(`[${backend}] concurrent caller edits can be downgraded to a warning`, () => {
+    const repo = mkRepo()
+    const r = runRunner(script, {
+      repo,
+      env: { STUB_WRITE_TO: repo, CLI_DISPATCH_ALLOW_CONCURRENT_EDITS: '1' },
+    })
+    assert.ok(
+      r.output.includes('post-check WARNING'),
+      `${backend}: the opt-out must report a warning\n${r.output}`,
+    )
+    assert.ok(
+      !r.output.includes('post-check FAIL'),
+      `${backend}: the opt-out must not also report a failure\n${r.output}`,
+    )
+    assert.equal(r.status, 0, `${backend}: the opt-out must let the run continue`)
+  })
+
+  // Without the opt-out the failure must still name BOTH possible causes — blaming the
+  // worker outright sent a real investigation down the wrong path.
+  test(`[${backend}] the leak failure names the concurrent-write possibility too`, () => {
+    const repo = mkRepo()
+    const r = runRunner(script, { repo, env: { STUB_WRITE_TO: repo } })
+    assert.match(r.output, /while the run was in flight/, `${backend}:\n${r.output}`)
+    assert.match(r.output, /CLI_DISPATCH_ALLOW_CONCURRENT_EDITS=1/, `${backend}:\n${r.output}`)
+    assert.match(r.output, /output is UNAFFECTED and still in the worktree/, `${backend}:\n${r.output}`)
+  })
+
   test(`#124 [${backend}] --post-check mode works standalone`, () => {
     const repo = mkRepo()
     const clean = spawnSync('bash', [path.join(SCRIPTS_DIR, script), '--post-check', repo],

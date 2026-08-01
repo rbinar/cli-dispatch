@@ -176,10 +176,24 @@ if [ -z "$NEW_DIRT" ]; then
   echo ">>> post-check OK: no new changes in $GUARD_REPO"
   exit 0
 fi
+# The snapshot cannot attribute authorship — it only knows the entry is NEW. A worker that
+# resolved a path out of its worktree looks exactly like an orchestrator, an editor, or a
+# second agent writing to the repo while the run was in flight. When the caller knows the
+# concurrent writes are theirs, downgrade to a warning so --verify still gets to run: a
+# good run should not be thrown away over edits the caller made themselves.
+if [ -n "${CLI_DISPATCH_ALLOW_CONCURRENT_EDITS:-}" ]; then
+  echo ">>> post-check WARNING: NEW changes in $GUARD_REPO, allowed by CLI_DISPATCH_ALLOW_CONCURRENT_EDITS" >&2
+  printf '%s\n' "$NEW_DIRT" >&2
+  exit 0
+fi
 TS="$(date +%s)"
 PATCH_FILE="${TMPDIR:-/tmp}/cli-dispatch-leaked-changes-${TS}.patch"
 git -C "$GUARD_REPO" diff > "$PATCH_FILE" 2>/dev/null || true
-echo ">>> post-check FAIL: worker leaked NEW changes outside the worktree into $GUARD_REPO" >&2
+echo ">>> post-check FAIL: NEW changes appeared in $GUARD_REPO, outside the worktree" >&2
+echo ">>>   Either the worker resolved a path outside the tree it was given, or something" >&2
+echo ">>>   else wrote to the repo while the run was in flight (you, an editor, an agent)." >&2
+echo ">>>   If those changes are yours, re-run with CLI_DISPATCH_ALLOW_CONCURRENT_EDITS=1" >&2
 echo ">>> patch saved: $PATCH_FILE" >&2
+echo ">>> the worker's own output is UNAFFECTED and still in the worktree: $WT" >&2
 printf '%s\n' "$NEW_DIRT" >&2
 exit 1
