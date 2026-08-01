@@ -7,6 +7,47 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.11.0] — 2026-08-01
+
+Ön-çalıştırma yayılımına devam eder. Altı `sessions` komutunun birbirinin kopyası olduğu
+ortaya çıktı; bu yüzden altı ayrı script yerine tek bir parametreli script'te birleşiyorlar.
+
+### Değişti
+
+- **`sessions` ailesinin tamamı artık tek bir script'i ön-çalıştırıyor.** `sessions`,
+  `ds-sessions`, `ag-sessions`, `cx-sessions`, `oc-sessions` ve `cp-sessions` aynı node
+  programını altı kez gömüyordu; aralarındaki tek fark bir backend adı, `backend`
+  sütununun olup olmaması ve iki mesajdı. Hepsi artık `cli-dispatch-sessions.sh [backend]`
+  çağırıyor: argümansız toplu görünüm, backend adıyla filtreli görünüm. Komut markdown'ı
+  13.480 bayttan 3.684 bayta iniyor (-%73) ve tekrar da onunla birlikte gidiyor. Bilinmeyen
+  bir backend argümanı 2 koduyla ve kullanım satırıyla çıkar. Çıktı, yerini aldığı altı
+  bloğun her biriyle byte-identical — komut bazında doğrulandı.
+- **`/cli-dispatch:help` artık `cli-dispatch-help.sh`'i ön-çalıştırıyor.** 3501 → 376 bayt
+  (-%89); dosya neredeyse tamamen referans kutusundan ibaretti ve model her çağrıda onu
+  baştan sona yeniden yazıyordu.
+
+### Düzeltildi
+
+- **Worktree leak post-check'i, orkestratörün kendi düzenlemelerini worker'a yıkıyordu.**
+  Guard, korunan repoyu koşudan önce fotoğraflar ve sonrasındaki her YENİ girdide hata
+  verir — ama bir fotoğraf yazarlık bilgisi taşımaz; koşu uçarken ana repoyu düzenlemek,
+  worker'ın worktree dışına bir yol çözmesiyle birebir aynı görünür. Eski mesaj doğrudan
+  "worker sızdırdı" diyordu ve sonuçtaki exit 1, `--verify` daha çalışmadan koşuyu
+  öldürüyordu — yani çağıranın kendi düzenlemeleri yüzünden gayet iyi bir worker sonucu
+  çöpe gidiyordu. Hata mesajı artık her iki olası nedeni de söylüyor, worker'ın çıktısının
+  worktree'de sağlam durduğunu belirtiyor ve yeni `CLI_DISPATCH_ALLOW_CONCURRENT_EDITS=1`
+  opt-out'unu gösteriyor; bu değişkenle durum uyarıya iniyor ve `--verify` yine çalışıyor.
+  Bloğun birebir aynı kopyasını taşıyan beş `*-worktree-run.sh` runner'ının hepsine
+  uygulandı.
+
+### Eklendi
+
+- `preexec-commands.test.mjs`'e yeni dönüştürülen yedi komut için satırlar, ayrıca her
+  backend'e özgü `*-sessions` komutunun doğru backend adını geçirdiğini doğrulayan bir
+  test eklendi.
+- `worktree-in-place.test.mjs`'e backend başına iki test (toplam on) eklendi: eşzamanlı
+  düzenleme opt-out'u ve yeniden yazılan hata mesajı. Suite: 383 → 422.
+
 ## [4.10.0] — 2026-08-01
 
 4.9.0'ın ön-çalıştırma desenini kalan en büyük üç salt-okunur komuda yayar ve 4.9.0'ın

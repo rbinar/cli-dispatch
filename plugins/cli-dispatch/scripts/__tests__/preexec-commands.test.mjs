@@ -41,6 +41,48 @@ const COMMANDS = [
     forbidden: [/```bash/, /api\.deepseek\.com/, /openrouter\.ai\/api/],
   },
   {
+    name: 'sessions',
+    script: 'cli-dispatch-sessions.sh',
+    maxBytes: 1200,
+    forbidden: [/```bash/, /CLI_DISPATCH_BACKEND_FILTER/],
+  },
+  {
+    name: 'ds-sessions',
+    script: 'cli-dispatch-sessions.sh',
+    maxBytes: 1200,
+    forbidden: [/```bash/, /CLI_DISPATCH_BACKEND_FILTER/],
+  },
+  {
+    name: 'ag-sessions',
+    script: 'cli-dispatch-sessions.sh',
+    maxBytes: 1200,
+    forbidden: [/```bash/, /CLI_DISPATCH_BACKEND_FILTER/],
+  },
+  {
+    name: 'cx-sessions',
+    script: 'cli-dispatch-sessions.sh',
+    maxBytes: 1200,
+    forbidden: [/```bash/, /CLI_DISPATCH_BACKEND_FILTER/],
+  },
+  {
+    name: 'oc-sessions',
+    script: 'cli-dispatch-sessions.sh',
+    maxBytes: 1200,
+    forbidden: [/```bash/, /CLI_DISPATCH_BACKEND_FILTER/],
+  },
+  {
+    name: 'cp-sessions',
+    script: 'cli-dispatch-sessions.sh',
+    maxBytes: 1200,
+    forbidden: [/```bash/, /CLI_DISPATCH_BACKEND_FILTER/],
+  },
+  {
+    name: 'help',
+    script: 'cli-dispatch-help.sh',
+    maxBytes: 600, // was 3501 — almost all of it was the reference box itself
+    forbidden: [/```bash/, /cat <<'HELP'/, /┌─ cli-dispatch/],
+  },
+  {
     name: 'clean-schedule',
     script: 'cli-dispatch-clean-schedule.sh',
     // Keeps a ```bash forwarding line (install/uninstall are deliberate, not
@@ -114,6 +156,24 @@ test('status + doctor pass the plugin root as an argument, not via env', () => {
       read(path.join(scriptsDir, script)),
       /\$\{1:-\$\{CLAUDE_PLUGIN_ROOT:-\}\}/,
       `${script} must fall back to $1 for the plugin root`,
+    )
+  }
+})
+
+test('per-backend session commands pass their backend slug as an argument', () => {
+  const expected = {
+    'ds-sessions': 'deepseek',
+    'ag-sessions': 'antigravity',
+    'cx-sessions': 'codex',
+    'oc-sessions': 'opencode',
+    'cp-sessions': 'copilot',
+  }
+  for (const [name, backend] of Object.entries(expected)) {
+    const preExec = read(path.join(commandsDir, `${name}.md`)).match(/^!`([^`]+)`/m)[1]
+    assert.match(
+      preExec,
+      new RegExp(`cli-dispatch-sessions\\.sh"?\\s+${backend}\\s*$`),
+      `${name}.md must pass ${backend} to cli-dispatch-sessions.sh`,
     )
   }
 })
