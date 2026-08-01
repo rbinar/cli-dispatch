@@ -363,11 +363,42 @@ test('#109 — CLI_DISPATCH_NO_CWD_CONTRACT=1 opts out', () => {
       PATH: `${bin}${path.delimiter}${process.env.PATH}`,
       CLI_DISPATCH_SESSIONS_DIR: mkdtemp('cd-inplace-sessions-'),
       CLI_DISPATCH_NO_CWD_CONTRACT: '1',
+      // The evidence record (4.15.0) is a SEPARATE standing block with its own opt-out. This
+      // test is about the cwd contract only, so silence the other one explicitly rather than
+      // letting the two opt-outs quietly become one.
+      CLI_DISPATCH_NO_WORKER_REPORT: '1',
     },
   })
   trashWorkerCwd(out)
   const brief = fs.readFileSync(path.join(out, 'brief.txt'), 'utf8')
   assert.equal(brief.trim(), 'do the thing')
+})
+
+test('the evidence record is appended by default and has its own opt-out', () => {
+  const run = (extraEnv) => {
+    const { main } = mkRepoWithLinkedWorktree()
+    const { bin, out } = mkStubStream(['claude-ds-stream'])
+    spawnSync('bash', [RUNNER_PATH, '--backend', 'ds', '--cwd', main, '--prompt', 'do the thing'], {
+      encoding: 'utf8',
+      timeout: 60_000,
+      env: {
+        ...process.env, ...GIT_ENV,
+        PATH: `${bin}${path.delimiter}${process.env.PATH}`,
+        CLI_DISPATCH_SESSIONS_DIR: mkdtemp('cd-inplace-sessions-'),
+        ...extraEnv,
+      },
+    })
+    trashWorkerCwd(out)
+    return fs.readFileSync(path.join(out, 'brief.txt'), 'utf8')
+  }
+  const withRecord = run({})
+  assert.match(withRecord, /worker-report\.json/, 'the record must be requested by default')
+  assert.match(withRecord, /record, not a gate/, 'the brief must say the record is not trusted')
+
+  const without = run({ CLI_DISPATCH_NO_WORKER_REPORT: '1' })
+  assert.doesNotMatch(without, /worker-report\.json/)
+  // Opting out of the record must not silently drop the cwd contract with it.
+  assert.match(without, /Working-directory contract/)
 })
 
 // ---------------------------------------------------------------------------- #124

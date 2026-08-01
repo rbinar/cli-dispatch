@@ -397,6 +397,34 @@ else
   independently, and only that run counts.
 CWD_CONTRACT
   fi
+  if [ "${CLI_DISPATCH_NO_WORKER_REPORT:-0}" != "1" ]; then
+    # The evidence record. Workers already prove things when asked; the proof used to reach
+    # the caller only as a 300-char clipped preview, so the caller re-derived all of it by
+    # hand. This makes the proof machine-readable — it does NOT make it trusted. The caller
+    # still re-runs everything; the record just tells it exactly what to re-run.
+    cat >> "$PROMPT_FILE_TMP" <<'WORKER_REPORT'
+
+---
+[cli-dispatch] Before you finish, write `worker-report.json` in your working directory:
+
+{
+  "claims":      [{"claim": "...", "howVerified": "...", "command": "...", "result": "..."}],
+  "notDone":     ["..."],
+  "assumptions": ["..."]
+}
+
+- `claims` — one entry per factual assertion you are making about your own work ("the tests
+  pass", "output is unchanged", "the ps1 twin still parses"). `command` is the exact command
+  you ran to check it, `result` what it printed. If you did NOT run a command for a claim,
+  leave `command` empty — an unchecked claim is still worth recording, but it will be
+  counted and treated as unverified. Do not invent a command you did not run.
+- `notDone` — anything in the task you did not do, could not do, or deliberately scoped out.
+- `assumptions` — anything you had to decide for yourself because the task did not say.
+
+This file is a record, not a gate: the caller re-verifies every claim independently. An
+honest empty `command` is more useful than a confident one that was never executed.
+WORKER_REPORT
+  fi
   PROMPT_FILE="$PROMPT_FILE_TMP"
   BRANCH="${BRANCH:-${BACKEND}-run-$(date +%s)-$$}"
   WORKTREE_STDERR="$(mktemp)"

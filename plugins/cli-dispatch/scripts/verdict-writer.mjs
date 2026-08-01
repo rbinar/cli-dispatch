@@ -117,6 +117,72 @@ function mapExitCode({ state, verify, timeoutExpired }) {
   throw new Error(`invalid state "${state}" — session has not reached a terminal state`)
 }
 
+// ---- worker evidence record ----
+//
+// What this is FOR, and what it is not for.
+//
+// verdict.json already answers "did it pass" deterministically. What it never carried is
+// WHICH claims the worker checked and how. Across three delegated runs the worker was asked
+// to prove output equivalence, did prove it, and the proof reached the orchestrator only as
+// a 300-character clipped preview — so the orchestrator re-derived all of it by hand.
+//
+// This is a SELF-REPORT. It is not evidence that anything is true, and it must never be read
+// as a reason to skip verification: the same three runs are precisely why self-report is not
+// trusted here. Its only job is to turn "re-check everything" into a specific, cheap list of
+// what to re-check. Treat every claim as unverified until the orchestrator runs it.
+//
+// The worker writes worker-report.json into its session dir. A malformed or absent report is
+// recorded as such rather than dropped — silence and "the worker claimed nothing" must not
+// look identical.
+export const WORKER_REPORT_FILE = 'worker-report.json'
+const MAX_REPORT_ITEMS = 50
+const MAX_FIELD_CHARS = 2000
+
+const cleanString = (v) => (typeof v === 'string' ? v.trim().slice(0, MAX_FIELD_CHARS) : '')
+const cleanList = (v) => (Array.isArray(v) ? v.map(cleanString).filter(Boolean).slice(0, MAX_REPORT_ITEMS) : [])
+
+export function normalizeWorkerReport(raw) {
+  if (raw === null || raw === undefined) return null
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    return { valid: false, reason: 'not-an-object', claims: [], notDone: [], assumptions: [] }
+  }
+  const claims = (Array.isArray(raw.claims) ? raw.claims : [])
+    .filter((c) => c && typeof c === 'object' && !Array.isArray(c))
+    .map((c) => ({
+      claim: cleanString(c.claim),
+      howVerified: cleanString(c.howVerified),
+      command: cleanString(c.command),
+      result: cleanString(c.result),
+    }))
+    .filter((c) => c.claim)
+    .slice(0, MAX_REPORT_ITEMS)
+
+  const report = {
+    valid: true,
+    claims,
+    notDone: cleanList(raw.notDone),
+    assumptions: cleanList(raw.assumptions),
+  }
+  // A claim with no command behind it is an assertion, not evidence. Surfacing the count
+  // keeps the distinction visible at a glance instead of buried in the array.
+  report.unevidencedClaims = claims.filter((c) => !c.command).length
+  if (!claims.length && !report.notDone.length && !report.assumptions.length) {
+    return { valid: false, reason: 'empty', claims: [], notDone: [], assumptions: [], unevidencedClaims: 0 }
+  }
+  return report
+}
+
+export function readWorkerReport(sessionDir) {
+  const file = path.join(sessionDir, WORKER_REPORT_FILE)
+  let text
+  try { text = readFileSync(file, 'utf8') } catch { return null }
+  let parsed
+  try { parsed = JSON.parse(text) } catch {
+    return { valid: false, reason: 'invalid-json', claims: [], notDone: [], assumptions: [], unevidencedClaims: 0 }
+  }
+  return normalizeWorkerReport(parsed)
+}
+
 export function buildVerdict({ statusJson, metaJson, changedFilesJson, verifyResults, worktreeInfo = {} }) {
   const status = statusJson || {}
   const meta = metaJson || {}
@@ -170,6 +236,9 @@ export function buildVerdict({ statusJson, metaJson, changedFilesJson, verifyRes
     changedFiles: files,
     diffPatchPath: path.join(sessionDir, 'verdict-diff.patch'),
     verify,
+    // Self-report, not evidence — see normalizeWorkerReport's header. null when the worker
+    // wrote nothing; {valid:false, reason} when it wrote something unusable.
+    workerReport: readWorkerReport(worktree) ?? readWorkerReport(sessionDir),
     stranded: Boolean(hasStrandedChanges(worktree)),
     worktreeRemoved: false,
     startedAt: meta.startedAt,

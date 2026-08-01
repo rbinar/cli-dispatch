@@ -134,6 +134,17 @@ Anthropic tokens. `gain`'s babysitter/worker ratio and the `cli-dispatch-wait` b
 primitive remain for accounting of legacy sessions and for any consumer that must block on
 a session reaching a terminal state.
 
+**The worker evidence record.** `cli-dispatch-run` appends a standing instruction (opt out with
+`CLI_DISPATCH_NO_WORKER_REPORT=1`) asking the worker to write `worker-report.json` —
+`claims[]` with `{claim, howVerified, command, result}`, plus `notDone[]` and `assumptions[]`.
+`verdict-writer.mjs` normalizes and folds it into `verdict.json` under `workerReport`. Read it
+as a **self-report, never as evidence**: it exists because workers already prove things when
+asked and the proof used to reach the orchestrator only as a 300-char clipped preview, so the
+orchestrator re-derived everything by hand. Its job is to turn "re-check everything" into a
+specific list of what to re-check — `unevidencedClaims` counts the claims with no command
+behind them precisely so an assertion never reads like a measurement. `--verify` says "the
+tests pass"; it never says "the output is unchanged", and neither does this file.
+
 **Passive session pruning.** Every parser calls `parse-utils.mjs`'s `pruneSessionRoot()` once,
 immediately after `mkdirSync`-ing its own session dir, capping the root at the newest
 `CLI_DISPATCH_MAX_SESSIONS` (default 100) **finished** sessions. It exists because session
