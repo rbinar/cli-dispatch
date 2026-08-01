@@ -7,6 +7,41 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.13.0] — 2026-08-01
+
+Salt-okunur komutlarda ön-çalıştırma yayılımını tamamlar.
+
+### Değişti
+
+- **Backend'e özgü beş `*-balance` komutu artık `cli-dispatch-balance.sh`'i paylaşıyor.**
+  4.12.0'daki `*-status` birleştirmesiyle aynı şekil: `--backend <slug>` bayrağı raporu tek
+  backend'in bölümüyle sınırlar, bayraksız çağrı tam beş bölümlü raporu değişmeden basar.
+  15.401 → 3.977 bayt (-%74). Bilinmeyen ya da eksik slug 2 koduyla çıkar.
+  `*-status`'te olduğu gibi, backend'e özgü metin ve *çıkış kodu* toplu raporunkiyle aynı
+  değildi: `ds-balance` config ya da anahtar yoksa 1 ile çıkarken toplu rapor
+  `key: not set (skip)` yazıp devam ediyor; `cx-balance` toplu raporun basmadığı bir
+  snapshot satırı basıyor. `--backend` komuta özgü davranışı korur — her eski bloğa karşı
+  hem çıktı hem çıkış kodu karşılaştırılarak doğrulandı.
+  `ds-balance.md` native Windows PowerShell bloğunu koruyor.
+
+### Eklendi
+
+- `preexec-commands.test.mjs`'e dönüştürülen her `*-balance` komutu için satır, her birinin
+  doğru `--backend` slug'ını geçirdiğini doğrulayan bir test ve `ds-balance.md`'nin hâlâ
+  fenced PowerShell bloğu taşıdığını ama fenced bash bloğu taşımadığını doğrulayan bir test
+  eklendi. Ortak yasaklı-desen döngüsüne opt-in `stripFencedPowerShell` bayrağı geldi;
+  yalnızca `ds-balance` kullanıyor — meşru PowerShell bloğu, bash çıkarımının yasakladığı
+  endpoint'i içerdiği için. Suite: 443 → 465.
+
+### Notlar
+
+- Denklik doğrulanırken Antigravity bölümünün **upstream'de belirlenimsiz** olduğu ortaya
+  çıktı: yerel language server `clientModelConfigs`'i ardışık çağrılarda farklı sırada
+  döndürüyor, yani *aynı* kodun iki koşusu farklı sıralı model listesi üretiyor. Bu durum
+  refactor'dan önce de vardı ve onunla ilgisiz (eski blok kendisiyle diff'lenerek
+  doğrulandı); denklik bu yüzden sıralanmış çıktı üzerinden kuruldu. Bir `balance` raporunu
+  diff'leyip "bir şey değişmiş" sonucuna varmadan önce bilinmesi gereken bir ayrıntı.
+
 ## [4.12.0] — 2026-08-01
 
 ### Değişti

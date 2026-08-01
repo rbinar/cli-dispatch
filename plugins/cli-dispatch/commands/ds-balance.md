@@ -3,22 +3,11 @@ description: Show the DeepSeek account balance
 allowed-tools: Bash
 ---
 
-# claude-ds balance
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/cli-dispatch-balance.sh" --backend deepseek`
 
-Call the DeepSeek balance API with the `DEEPSEEK_API_KEY` from the config and show the result.
-**Do not print the key VALUE** — only present the balance info.
-
-```bash
-CFG="${CLI_DISPATCH_CONFIG:-${CLAUDE_DS_CONFIG:-}}"; [ -n "$CFG" ] || { CFG="$HOME/.config/cli-dispatch/config"; [ -f "$CFG" ] || [ ! -f "$HOME/.config/claude-ds/config" ] || CFG="$HOME/.config/claude-ds/config"; }
-if [ ! -f "$CFG" ]; then echo "config: MISSING ($CFG) — run /cli-dispatch:setup"; exit 1; fi
-# shellcheck disable=SC1090
-. "$CFG"
-if [ -z "${DEEPSEEK_API_KEY:-}" ]; then echo "key: MISSING — add it to the config (/cli-dispatch:setup)"; exit 1; fi
-curl -sS --max-time 20 https://api.deepseek.com/user/balance \
-  -H "Authorization: Bearer $DEEPSEEK_API_KEY" \
-  -H "Accept: application/json"
-echo
-```
+The DeepSeek balance report above already ran — do NOT run it again. Summarize
+`is_available` and `total_balance` per currency. If the API returned an error
+JSON, relay that error. Never print a key VALUE.
 
 **Native Windows** (PowerShell equivalent):
 
@@ -31,13 +20,6 @@ Invoke-RestMethod -Uri 'https://api.deepseek.com/user/balance' `
   -Headers @{ Authorization = "Bearer $key"; Accept = 'application/json' } | ConvertTo-Json -Depth 5
 ```
 
-The returned JSON contains these fields:
-
-- `is_available` — whether the balance is sufficient for API calls (true/false)
-- `balance_infos[]` — per currency:
-  - `currency` — `CNY` or `USD`
-  - `total_balance` — total usable balance (granted + topped up)
-  - `granted_balance` — unexpired granted balance
-  - `topped_up_balance` — topped-up balance
-
-Summarize the output for the user in a readable form (e.g. `is_available` and `total_balance` per currency). If an HTTP error is returned (e.g. 401 = invalid key), relay the error message from the JSON.
+Fields: `is_available` says whether API calls have sufficient balance;
+`balance_infos[]` contains `currency`, `total_balance` (granted + topped up),
+`granted_balance`, and `topped_up_balance`.

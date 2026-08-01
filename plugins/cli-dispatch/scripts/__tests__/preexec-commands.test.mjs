@@ -17,6 +17,7 @@ const scriptsDir = path.resolve(here, '..')
 const commandsDir = path.resolve(scriptsDir, '..', 'commands')
 
 const read = (p) => readFileSync(p, 'utf8')
+const withoutFencedPowerShell = (s) => s.replace(/^```powershell[\s\S]*?^```/gmi, '')
 
 const COMMANDS = [
   {
@@ -69,6 +70,37 @@ const COMMANDS = [
     script: 'cli-dispatch-balance.sh',
     maxBytes: 2000, // was 6410
     forbidden: [/```bash/, /api\.deepseek\.com/, /openrouter\.ai\/api/],
+  },
+  {
+    name: 'ds-balance',
+    script: 'cli-dispatch-balance.sh',
+    maxBytes: 1400,
+    stripFencedPowerShell: true,
+    forbidden: [/api\.deepseek\.com/],
+  },
+  {
+    name: 'ag-balance',
+    script: 'cli-dispatch-balance.sh',
+    maxBytes: 1400,
+    forbidden: [/```bash/, /language_server/],
+  },
+  {
+    name: 'cx-balance',
+    script: 'cli-dispatch-balance.sh',
+    maxBytes: 1400,
+    forbidden: [/```bash/, /\.codex/],
+  },
+  {
+    name: 'oc-balance',
+    script: 'cli-dispatch-balance.sh',
+    maxBytes: 1400,
+    forbidden: [/```bash/, /openrouter\.ai\/api/],
+  },
+  {
+    name: 'cp-balance',
+    script: 'cli-dispatch-balance.sh',
+    maxBytes: 1400,
+    forbidden: [/```bash/, /echo "== GitHub Copilot =="/],
   },
   {
     name: 'sessions',
@@ -144,8 +176,9 @@ for (const cmd of COMMANDS) {
   test(`${cmd.name}.md no longer embeds the extracted shell`, () => {
     // The whole point of the extraction: the model must never pay to re-emit
     // this. A single stray probe means the shell leaked back into the markdown.
+    const shellMarkdown = cmd.stripFencedPowerShell ? withoutFencedPowerShell(markdown) : markdown
     for (const pattern of cmd.forbidden) {
-      assert.doesNotMatch(markdown, pattern, `${pattern} is back in ${cmd.name}.md`)
+      assert.doesNotMatch(shellMarkdown, pattern, `${pattern} is back in ${cmd.name}.md`)
     }
   })
 
@@ -224,6 +257,30 @@ test('per-backend status commands pass their backend slug as a flag', () => {
       `${name}.md must pass --backend ${backend} to cli-dispatch-status.sh`,
     )
   }
+})
+
+test('per-backend balance commands pass their backend slug as a flag', () => {
+  const expected = {
+    'ds-balance': 'deepseek',
+    'ag-balance': 'antigravity',
+    'cx-balance': 'codex',
+    'oc-balance': 'opencode',
+    'cp-balance': 'copilot',
+  }
+  for (const [name, backend] of Object.entries(expected)) {
+    const preExec = read(path.join(commandsDir, `${name}.md`)).match(/^!`([^`]+)`/m)[1]
+    assert.match(
+      preExec,
+      new RegExp(`cli-dispatch-balance\\.sh"?\\s+--backend\\s+${backend}\\s*$`),
+      `${name}.md must pass --backend ${backend} to cli-dispatch-balance.sh`,
+    )
+  }
+})
+
+test('ds-balance keeps native Windows PowerShell but no fenced bash', () => {
+  const markdown = read(path.join(commandsDir, 'ds-balance.md'))
+  assert.match(markdown, /^```powershell$/m)
+  assert.doesNotMatch(markdown, /^```bash$/m)
 })
 
 test('clean-schedule pre-executes a read-only status probe, never an install', () => {
