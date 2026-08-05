@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.16.0] — 2026-08-05
+
+### Fixed
+
+- **The statusline's staleness-boundary test was a zero-margin race, and failed intermittently
+  under full-suite load.** `session at exactly 90s is counted (≤ stale threshold)` wrote a
+  fixture whose `status.json` mtime was exactly `now - 90`, then spawned the script, which
+  computes `now - mtime` against `-le 90` using its own wall clock. Any real second elapsing
+  between the write and the spawn turned 90 into 91 and flipped the assertion. Measured
+  directly: at 0s delay the script sees 90 (counted), at 2s delay it sees 92 (not counted).
+  Reproduced as 1 failure in 3 full-suite runs; 0 in 5 after the fix.
+  `cli-dispatch-statusline.sh` now reads `now` from `CLI_DISPATCH_NOW` when set, falling back
+  to `date +%s` — so behaviour outside tests is unchanged — and both boundary tests anchor the
+  clock to the fixture's own mtime instead of the wall clock. The 91s sibling was never flaky
+  (91 drifting to 92 stays excluded) but is pinned too, which is what makes the pair an actual
+  boundary test rather than two loosely-related assertions.
+  Negative-controlled: moving the threshold to 89, and changing `-le` to `-lt`, both make the
+  90s test fail — so it still measures the boundary rather than merely passing.
+
 ## [4.15.0] — 2026-08-02
 
 ### Added

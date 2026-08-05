@@ -37,7 +37,11 @@ ENABLED=0
 STALE_AFTER=90
 RUNNING=0
 if [ -d "$ROOT" ]; then
-  NOW=$(date +%s)
+  # CLI_DISPATCH_NOW pins "now" so a test can assert the EXACT staleness boundary. Without it
+  # a boundary fixture races real elapsed time: a session written at now-90 is read a second
+  # later as 91 and drops out, so the ≤-boundary test failed intermittently under full-suite
+  # load (and only that test — the 91s sibling stays excluded either way).
+  NOW=${CLI_DISPATCH_NOW:-$(date +%s)}
   for _sf in "$ROOT"/*/status.json; do
     [ -f "$_sf" ] || continue
     grep -q '"state"[[:space:]]*:[[:space:]]*"running"' "$_sf" 2>/dev/null || continue

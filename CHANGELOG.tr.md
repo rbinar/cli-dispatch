@@ -7,6 +7,25 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.16.0] — 2026-08-05
+
+### Düzeltildi
+
+- **Statusline'ın bayatlık sınırı testi sıfır marjlı bir yarıştı ve tam suite yükünde aralıklı
+  olarak düşüyordu.** `session at exactly 90s is counted (≤ stale threshold)` testi, `status.json`
+  mtime'ı tam `şimdi - 90` olan bir fixture yazıp script'i başlatıyordu; script ise `şimdi - mtime`
+  farkını kendi duvar saatiyle hesaplayıp `-le 90` ile karşılaştırıyor. Yazma ile başlatma
+  arasında gerçek bir saniye geçmesi 90'ı 91 yapıp assertion'ı çeviriyordu. Doğrudan ölçüldü:
+  0 sn gecikmeyle script 90 görüyor (sayılıyor), 2 sn gecikmeyle 92 görüyor (sayılmıyor).
+  3 tam suite koşusunda 1 düşüş olarak yeniden üretildi; düzeltmeden sonra 5 koşuda 0.
+  `cli-dispatch-statusline.sh` artık `now` değerini set edilmişse `CLI_DISPATCH_NOW`'dan
+  okuyor, yoksa `date +%s`'e düşüyor — yani test dışındaki davranış değişmiyor — ve iki sınır
+  testi de saati duvar saati yerine fixture'ın kendi mtime'ına sabitliyor. 91 sn'lik kardeş test
+  hiç flaky değildi (91'in 92'ye kaymasi onu dışarıda tutmaya devam eder) ama o da sabitlendi;
+  çifti gevşek bağlı iki assertion olmaktan çıkarıp gerçek bir sınır testi yapan şey bu.
+  Negatif kontrol yapıldı: eşiği 89'a çekmek ve `-le`'yi `-lt` yapmak, ikisi de 90 sn testini
+  düşürüyor — yani test yalnızca geçmiyor, sınırı gerçekten ölçüyor.
+
 ## [4.15.0] — 2026-08-02
 
 ### Eklendi

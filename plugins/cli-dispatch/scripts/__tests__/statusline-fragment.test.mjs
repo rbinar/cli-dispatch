@@ -54,7 +54,7 @@ function makeSession(rootDir, id, state, mtimeAgeSec) {
 
 // ---- helpers ----
 
-function runStatusline({ sessionsDir, policyFile, stdinJson, timeoutMs = 5000 }) {
+function runStatusline({ sessionsDir, policyFile, stdinJson, now, timeoutMs = 5000 }) {
   const args = [SCRIPT_PATH]
   // Build env: omit vars we don't want set, include those we do.
   const env = { ...process.env }
@@ -62,6 +62,11 @@ function runStatusline({ sessionsDir, policyFile, stdinJson, timeoutMs = 5000 })
   else delete env.CLI_DISPATCH_SESSIONS_DIR
   if (policyFile != null) env.CLI_DISPATCH_POLICY_FILE = policyFile
   else delete env.CLI_DISPATCH_POLICY_FILE
+  // Pin the clock for boundary assertions. Real elapsed time between writing the fixture and
+  // the script reading it is enough to move a now-90s session to 91s and flip the ≤ boundary,
+  // which made the exactly-90s test fail intermittently under full-suite load.
+  if (now != null) env.CLI_DISPATCH_NOW = String(now)
+  else delete env.CLI_DISPATCH_NOW
 
   const input = stdinJson != null ? JSON.stringify(stdinJson) : undefined
 
@@ -317,10 +322,14 @@ test('session at exactly 90s is counted (≤ stale threshold)', (t) => {
   const policyFile = path.join(policyDir, 'policy.json')
   writeJson(policyFile, { enabled: false })
 
-  // The script uses `-le 90`, so exactly 90s old is still counted.
-  makeSession(sessionsDir, 'sess-boundary', 'running', 90)
+  // The script uses `-le 90`, so exactly 90s old is still counted. Anchor "now" to the
+  // fixture's OWN mtime rather than the wall clock: the age the script sees must be exactly
+  // 90, and real elapsed time between this write and the spawn below would otherwise make it
+  // 91 and silently flip the assertion (that was a real intermittent failure under load).
+  const dir90 = makeSession(sessionsDir, 'sess-boundary', 'running', 90)
+  const mtime90 = Math.floor(fs.statSync(path.join(dir90, 'status.json')).mtimeMs / 1000)
 
-  const res = runStatusline({ sessionsDir, policyFile, stdinJson: FAKE_STDIN })
+  const res = runStatusline({ sessionsDir, policyFile, stdinJson: FAKE_STDIN, now: mtime90 + 90 })
   skipIfBashUnavailable(t, res)
 
   assert.equal(res.status, 0)
@@ -334,10 +343,13 @@ test('session at 91s is NOT counted (> stale threshold)', (t) => {
   const policyFile = path.join(policyDir, 'policy.json')
   writeJson(policyFile, { enabled: false })
 
-  // 91s > 90s staleness window — must be excluded.
-  makeSession(sessionsDir, 'sess-over', 'running', 91)
+  // 91s > 90s staleness window — must be excluded. Anchored the same way as the 90s case:
+  // this direction was never flaky (91 drifting to 92 stays excluded), but pinning it is what
+  // makes the pair a real boundary test instead of two loosely-related assertions.
+  const dir91 = makeSession(sessionsDir, 'sess-over', 'running', 91)
+  const mtime91 = Math.floor(fs.statSync(path.join(dir91, 'status.json')).mtimeMs / 1000)
 
-  const res = runStatusline({ sessionsDir, policyFile, stdinJson: FAKE_STDIN })
+  const res = runStatusline({ sessionsDir, policyFile, stdinJson: FAKE_STDIN, now: mtime91 + 91 })
   skipIfBashUnavailable(t, res)
 
   assert.equal(res.status, 0)
