@@ -172,6 +172,42 @@ export function normalizeWorkerReport(raw) {
   return report
 }
 
+// Cross-check the self-report against the MEASURED diff (issue #148, case 2). A worker can
+// write and run a test inside its worktree, report "added page.test.tsx — 594 passed", and
+// never commit the file; the claim then describes a state no consumer can see. The claim text
+// and the changed-file list come from completely different places — one is the worker talking,
+// the other is `git status --short` in stream-utils.sh — so disagreement between them is
+// exactly the signal worth surfacing.
+//
+// Deliberately conservative: it only flags a path-looking token that appears in a claim and is
+// absent from the measured file list. It does NOT try to judge whether a claim is true, and a
+// silent empty result means "nothing contradicted", never "everything checked out".
+const PATH_TOKEN = /(?:[\w.@-]+\/)*[\w.@-]+\.[A-Za-z][\w]{0,7}/g
+
+export function crossCheckClaims(claims, changedFiles) {
+  if (!Array.isArray(claims) || !claims.length) return []
+  const measured = (Array.isArray(changedFiles) ? changedFiles : []).filter((f) => typeof f === 'string')
+  const missing = new Set()
+  for (const c of claims) {
+    const text = `${c.claim || ''} ${c.howVerified || ''} ${c.result || ''}`
+    for (const tok of text.match(PATH_TOKEN) || []) {
+      // A bare basename is enough to match: the worker says "page.test.tsx", the measured list
+      // carries "app/x/page.test.tsx". Suffix matching keeps that a hit, not a false alarm.
+      const hit = measured.some((f) => f === tok || f.endsWith(`/${tok}`) || tok.endsWith(`/${f}`))
+      if (!hit) missing.add(tok)
+    }
+  }
+  return [...missing].slice(0, MAX_REPORT_ITEMS)
+}
+
+// Fold the cross-check into a report that is already normalized. Left as its own function so
+// buildVerdict stays a single expression per field, and so a null/invalid report passes through
+// untouched — there is nothing to cross-check against an absent set of claims.
+export function attachCrossCheck(report, changedFiles) {
+  if (!report || report.valid !== true) return report
+  return { ...report, claimedButMissing: crossCheckClaims(report.claims, changedFiles) }
+}
+
 export function readWorkerReport(sessionDir) {
   const file = path.join(sessionDir, WORKER_REPORT_FILE)
   let text
@@ -237,8 +273,10 @@ export function buildVerdict({ statusJson, metaJson, changedFilesJson, verifyRes
     diffPatchPath: path.join(sessionDir, 'verdict-diff.patch'),
     verify,
     // Self-report, not evidence — see normalizeWorkerReport's header. null when the worker
-    // wrote nothing; {valid:false, reason} when it wrote something unusable.
-    workerReport: readWorkerReport(worktree) ?? readWorkerReport(sessionDir),
+    // wrote nothing; {valid:false, reason} when it wrote something unusable. When it is
+    // usable, `claimedButMissing` holds the file-looking tokens it named that the MEASURED
+    // diff does not contain (issue #148).
+    workerReport: attachCrossCheck(readWorkerReport(worktree) ?? readWorkerReport(sessionDir), files),
     stranded: Boolean(hasStrandedChanges(worktree)),
     worktreeRemoved: false,
     startedAt: meta.startedAt,

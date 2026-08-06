@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.17.0] — 2026-08-06
+
+### Added
+
+- **`verdict.json` cross-checks the worker's claims against the measured diff** (issue #148).
+  `workerReport` gains `claimedButMissing`: the file-looking tokens the worker named in its
+  claims that do **not** appear in the changed-file list. Those two things come from completely
+  different places — one is the worker talking, the other is `git status --short` in
+  `stream-utils.sh` — so a disagreement between them is signal on its own.
+
+  The case that motivated it: a worker wrote and ran a test inside its worktree, reported
+  *"added `page.test.tsx` — 594 passed"*, and never committed the file. The claim described a
+  state no consumer could see, and nothing flagged it. Now it lands in `claimedButMissing`.
+
+  Deliberately conservative: it flags only a named path absent from the measured list. It does
+  **not** judge whether a claim is true, and an empty result means "nothing contradicted",
+  never "everything checked out". A bare basename still matches a measured full path by suffix,
+  so `page.test.tsx` against `app/x/page.test.tsx` is a hit rather than a false alarm.
+
+### Notes
+
+- Issue #148's other four suggestions do not apply to the current architecture, and it is worth
+  recording why rather than leaving them open. The report was filed against **3.30.1** with the
+  `ds-runner`/`cx-runner` LLM babysitter subagents, which were **retired in 4.0.0** (#114):
+  - *"verified ✓" badge should be narrowed* — that string exists nowhere in this repo; it was
+    the babysitter's own prose.
+  - *report should be generated from the pushed branch* — the runner does not push, commit, or
+    open PRs (zero `git push`/`git commit` occurrences in `cli-dispatch-run`); the orchestrator
+    does that. `changedFiles`/`diffstat` are already measured by git, not self-reported.
+  - *uncommitted changes should make the report RED* — `stranded: true` is the EXPECTED success
+    state now, since the runner deliberately never commits. Failing on it would fail every good
+    run.
+  - *branch from `origin/<default>` explicitly* — already the case:
+    `git worktree add -b "$BRANCH" "$WT" "$BASE_REF"`, not off the current `HEAD`.
+
 ## [4.16.0] — 2026-08-05
 
 ### Fixed
