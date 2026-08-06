@@ -7,6 +7,42 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.17.0] — 2026-08-06
+
+### Eklendi
+
+- **`verdict.json` artık worker'ın iddialarını ölçülen diff'e karşı çapraz kontrol ediyor**
+  (issue #148). `workerReport`'a `claimedButMissing` eklendi: worker'ın iddialarında adını
+  geçirdiği ama değişen-dosya listesinde **bulunmayan** dosya-görünümlü tokenlar. Bu ikisi
+  bambaşka yerlerden gelir — biri worker'ın kendi anlatısı, öteki `stream-utils.sh` içindeki
+  `git status --short` — dolayısıyla aralarındaki uyuşmazlık tek başına bir sinyaldir.
+
+  Bunu doğuran vaka: bir worker, worktree'sinin içinde test yazıp koştu, *"`page.test.tsx`
+  eklendi — 594 passed"* diye raporladı ve dosyayı hiç commit etmedi. İddia, hiçbir tüketicinin
+  göremeyeceği bir durumu tarif ediyordu ve bunu işaretleyen bir şey yoktu. Artık
+  `claimedButMissing`'e düşüyor.
+
+  Bilinçli olarak muhafazakâr: yalnızca ölçülen listede olmayan bir dosya adını işaretler. Bir
+  iddianın **doğru olup olmadığına karar vermez** ve boş sonuç "hiçbir şey çelişmedi" demektir,
+  "her şey doğrulandı" demek DEĞİLDİR. Çıplak bir dosya adı, ölçülen tam yolla sonek eşlemesiyle
+  eşleşir; yani `page.test.tsx` ile `app/x/page.test.tsx` yanlış alarm değil, isabettir.
+
+### Notlar
+
+- Issue #148'in diğer dört önerisi mevcut mimariye uymuyor; bunları açık bırakmak yerine
+  nedenini kaydetmek daha doğru. Rapor **3.30.1** sürümüne, `ds-runner`/`cx-runner` LLM
+  babysitter subagent'ları kullanılarak yazılmış; onlar **4.0.0'da kaldırıldı** (#114):
+  - *"verified ✓" rozeti daraltılsın* — o metin bu repoda hiçbir yerde yok; babysitter'ın kendi
+    ifadesiydi.
+  - *rapor push edilen daldan üretilsin* — runner push etmiyor, commit etmiyor, PR açmıyor
+    (`cli-dispatch-run` içinde sıfır `git push`/`git commit`); onu orkestratör yapıyor.
+    `changedFiles`/`diffstat` zaten git ile ölçülüyor, beyan değil.
+  - *commit edilmemiş değişiklik raporu KIRMIZI yapsın* — `stranded: true` artık BEKLENEN başarı
+    durumu, çünkü runner kasten hiç commit etmiyor. Bunda fail vermek her iyi koşuyu fail
+    gösterirdi.
+  - *dal açıkça `origin/<default>`'dan kesilsin* — zaten öyle:
+    `git worktree add -b "$BRANCH" "$WT" "$BASE_REF"`, mevcut `HEAD`'in üstüne değil.
+
 ## [4.16.0] — 2026-08-05
 
 ### Düzeltildi

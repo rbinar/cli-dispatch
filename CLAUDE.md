@@ -144,6 +144,11 @@ orchestrator re-derived everything by hand. Its job is to turn "re-check everyth
 specific list of what to re-check — `unevidencedClaims` counts the claims with no command
 behind them precisely so an assertion never reads like a measurement. `--verify` says "the
 tests pass"; it never says "the output is unchanged", and neither does this file.
+`claimedButMissing` (4.17.0, issue #148) is the one place the self-report gets checked
+automatically: file-looking tokens the worker named that the MEASURED `changedFiles` does not
+contain. It catches the specific failure of a worker writing and running a test inside its
+worktree, reporting it, and never committing it — but it only detects *contradiction*, so an
+empty list means "nothing disagreed", never "the claims were verified".
 
 **Passive session pruning.** Every parser calls `parse-utils.mjs`'s `pruneSessionRoot()` once,
 immediately after `mkdirSync`-ing its own session dir, capping the root at the newest
@@ -172,6 +177,16 @@ and is covered by its own test. **Every change that ships gets a version bump an
 changelog entry in both `CHANGELOG.md` (English, canonical) and `CHANGELOG.tr.md`
 (Turkish translation, kept in lockstep)** — `README.md`/`README.tr.md` are the only
 docs where Turkish is primary; changelogs are English-first, bilingual.
+
+**Shipping a version has a fourth step that is easy to miss: the GitHub Release.** Pushing a
+tag does NOT create one — `gh release create vX.Y.Z --title "vX.Y.Z — <short description>"
+--notes-file <notes> --verify-tag` is a separate call. Skipping it is silent: `git tag -l` and
+`git ls-remote --tags` both look complete while the Releases page stays frozen at an older
+version (this went unnoticed for twelve consecutive releases, v4.7.2 through v4.16.0). The
+release body is the version's `CHANGELOG.md` section verbatim; the title follows the existing
+`vX.Y.Z — lowercase summary` convention. Audit the gap with
+`comm -23 <(git tag -l 'v*' | sort -V) <(gh release list --limit 120 --json tagName -q '.[].tagName' | sort -V)`
+— it should print nothing.
 
 **Plugin cache staleness.** Claude Code installs this plugin into a versioned cache dir
 (`~/.claude/plugins/cache/cli-dispatch/cli-dispatch/<version>/`) that does **not**

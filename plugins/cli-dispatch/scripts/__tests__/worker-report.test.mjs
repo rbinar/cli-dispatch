@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { normalizeWorkerReport, readWorkerReport, WORKER_REPORT_FILE } from '../verdict-writer.mjs'
+import { normalizeWorkerReport, readWorkerReport, WORKER_REPORT_FILE, crossCheckClaims, attachCrossCheck } from '../verdict-writer.mjs'
 
 // worker-report.json is the worker's own account of what it checked. It is a SELF-REPORT:
 // these tests pin down that it is normalized, bounded, and — above all — that an unchecked
@@ -133,3 +133,65 @@ test('both runner twins append the evidence-record instruction behind the same o
     assert.match(src, /record, not a gate/, `${f} must state that the record is not trusted`)
   }
 })
+
+// ---- cross-check against the measured diff (issue #148, case 2) ----
+//
+// A worker wrote and ran a test inside its worktree, reported "added page.test.tsx — 594
+// passed", and never committed the file. The claim described a state no consumer could see.
+// The claim text and the changed-file list come from different places — the worker vs
+// `git status --short` — so a disagreement is worth surfacing on its own.
+
+test('a claimed file absent from the measured diff is flagged', () => {
+  const out = crossCheckClaims(
+    [{ claim: 'added app/x/page.test.tsx with two scenarios', command: 'npx vitest run', result: '594 passed' }],
+    ['CHANGELOG.md', 'app/fiyat-kurallari/page.tsx'],
+  )
+  assert.deepEqual(out, ['app/x/page.test.tsx'])
+})
+
+test('a bare basename matches a measured path by suffix', () => {
+  // The worker says "page.test.tsx", the measured list carries the full path. That is a hit.
+  assert.deepEqual(
+    crossCheckClaims([{ claim: 'added page.test.tsx' }], ['app/x/page.test.tsx']),
+    [],
+  )
+})
+
+test('nothing is flagged when every named file was measured', () => {
+  assert.deepEqual(
+    crossCheckClaims(
+      [{ claim: 'edited gain-report.mjs and CHANGELOG.md' }],
+      ['plugins/cli-dispatch/scripts/gain-report.mjs', 'CHANGELOG.md'],
+    ),
+    [],
+  )
+})
+
+test('prose without a file-looking token flags nothing', () => {
+  assert.deepEqual(crossCheckClaims([{ claim: 'the suite passes and behaviour is unchanged' }], []), [])
+})
+
+test('empty or malformed inputs never throw', () => {
+  assert.deepEqual(crossCheckClaims([], ['a.js']), [])
+  assert.deepEqual(crossCheckClaims(null, null), [])
+  assert.deepEqual(crossCheckClaims([{ claim: 'x.js' }], null), ['x.js'])
+})
+
+test('attachCrossCheck leaves a null or invalid report untouched', () => {
+  assert.equal(attachCrossCheck(null, ['a.js']), null)
+  const invalid = { valid: false, reason: 'empty', claims: [] }
+  assert.deepEqual(attachCrossCheck(invalid, ['a.js']), invalid)
+})
+
+test('buildVerdict surfaces claimedButMissing from the measured file list', () => withDirAsync(async (dir) => {
+  const { buildVerdict } = await import('../verdict-writer.mjs')
+  writeReport(dir, { claims: [{ claim: 'added page.test.tsx', command: 'vitest', result: '594 passed' }] })
+  const { verdict } = buildVerdict({
+    statusJson: { state: 'done', sessionId: 's1', backend: 'codex' },
+    metaJson: { backend: 'codex', cwd: dir, startedAt: new Date(0).toISOString() },
+    changedFilesJson: { files: [{ path: 'app/page.tsx', status: 'M' }], diffstat: '' },
+    verifyResults: { commands: ['true'], exitCode: 0, failedAt: null, tail: '' },
+    worktreeInfo: { sessionDir: dir, worktree: dir },
+  })
+  assert.deepEqual(verdict.workerReport.claimedButMissing, ['page.test.tsx'])
+}))
