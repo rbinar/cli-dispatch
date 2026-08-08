@@ -182,7 +182,9 @@ docs where Turkish is primary; changelogs are English-first, bilingual.
 tag does NOT create one — `gh release create vX.Y.Z --title "vX.Y.Z — <short description>"
 --notes-file <notes> --verify-tag` is a separate call. Skipping it is silent: `git tag -l` and
 `git ls-remote --tags` both look complete while the Releases page stays frozen at an older
-version (this went unnoticed for twelve consecutive releases, v4.7.2 through v4.16.0). The
+version — it once went unnoticed for twelve consecutive releases (v4.7.2 through v4.16.0),
+though that particular backlog has since been filled in and the audit below now prints
+nothing. The
 release body is the version's `CHANGELOG.md` section verbatim; the title follows the existing
 `vX.Y.Z — lowercase summary` convention. Audit the gap with
 `comm -23 <(git tag -l 'v*' | sort -V) <(gh release list --limit 120 --json tagName -q '.[].tagName' | sort -V)`
