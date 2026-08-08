@@ -197,6 +197,17 @@ cli-dispatch@cli-dispatch` (restart required to apply), and separately, since `/
 update` only refreshes commands/skills and never touches `~/.local/bin`, re-running
 `/cli-dispatch:setup` to reinstall the wrapper binaries if a script changed.
 
+That second half is the failure mode of issue #150, and it is silent by construction: a binary
+the new version *adds* is simply not on PATH, so the documented flow dies with `command not
+found`. Three defenses now exist and each covers a different moment — `policy-inject.mjs`
+warns at SessionStart by diffing `~/.config/cli-dispatch/.installed-version` against the newest
+cache dir (ungated by `policy.json`, unlike the policy paragraph); `/cli-dispatch:run` falls
+back to the plugin's own `scripts/cli-dispatch-run`; and `resolve-plugin-root.sh` (+ `.ps1`)
+keeps `/cli-dispatch:setup` from running an old installer, because `${CLAUDE_PLUGIN_ROOT}` is
+the version the *session* loaded, not the newest one on disk. All three ship inside the plugin,
+so none of them can help a session still running a cache dir from before they existed — the
+first restart after an upgrade is where they start working.
+
 **Cross-platform pairing.** Every standalone installed binary (`cli-dispatch-clean`,
 `cli-dispatch-wait`, `cli-dispatch-dashboard`, and each backend's `*-agent`) ships both a
 bash script and a `.ps1` twin for native Windows, installed by `install.sh` and

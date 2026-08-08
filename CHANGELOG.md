@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.18.0] — 2026-08-09
+
+### Fixed
+
+- **A plugin upgrade no longer silently disables the deterministic runner** (issue #150).
+  Upgrading refreshes the versioned plugin cache dir and nothing else — it never re-runs
+  `install.sh` — so `~/.local/bin` keeps whatever the last `/cli-dispatch:setup` installed.
+  Any binary introduced by a newer version is therefore simply absent from PATH. That is how
+  `cli-dispatch-run`, `cli-dispatch-wait` and `cli-dispatch-gain` came to be missing on a box
+  running plugin 4.16.0 while the file sat right there in the cache, and `/cli-dispatch:run`
+  died with `command not found` for a reason nothing on screen explained. Three changes:
+
+  - The SessionStart hook now compares `~/.config/cli-dispatch/.installed-version` against the
+    newest version in the plugin cache and injects a one-paragraph notice when the install is
+    behind. It is deliberately **not** gated on `policy.json`: a stale install is a broken
+    install, not a preference, and someone who never wrote a policy file is the likeliest
+    person to hit it. `cli-dispatch-status.sh` and `version-check.sh` already detected this,
+    but only for people who ran a command that happened to check.
+  - `/cli-dispatch:run` falls back to the plugin's own `scripts/cli-dispatch-run` when the
+    wrapper is missing from PATH, so the documented zero-token flow still runs. Both the
+    fallback and the hard-failure path now name the *cause* (an upgrade does not reinstall
+    wrappers) alongside the fix, instead of only suggesting the per-backend commands.
+  - `/cli-dispatch:setup` resolves the plugin root at runtime through the new
+    `resolve-plugin-root.sh` (+ `.ps1` twin) rather than invoking
+    `${CLAUDE_PLUGIN_ROOT}/scripts/install.sh` directly. `CLAUDE_PLUGIN_ROOT` is whichever
+    version *the running session* loaded, which an upgrade does not change — so the old form
+    could run an installer several versions old, and printed a stale version number while
+    doing it. The reporter saw `3.30.1` in that step with 4.16.0 active and concluded that
+    3.30.1 was what they had. The resolver picks the newest of (session root, newest cache dir
+    carrying an installer) and keeps the session root on ties, on unparseable versions, and
+    when the session root has no manifest — so a local dev checkout is never swapped out.
+
+  The runner itself was never broken by any of this; it was only made unreachable, which is
+  worse, because the fallback is the LLM-babysitter path this plugin exists to avoid.
+
 ## [4.17.0] — 2026-08-06
 
 ### Added

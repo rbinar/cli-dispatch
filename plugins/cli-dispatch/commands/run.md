@@ -25,13 +25,29 @@ if [ -z "$PROMPT" ]; then
   echo "tip: prompt is required"
   exit 1
 fi
+RUNNER=(cli-dispatch-run)
 if ! command -v cli-dispatch-run >/dev/null 2>&1; then
-  echo "cli-dispatch-run not found on PATH — re-run /cli-dispatch:setup (or scripts/install.sh)."
-  echo "Fallback: use /cli-dispatch:${BACKEND}-run, or call ${BACKEND}-agent directly."
-  exit 1
+  # Issue #150: a plugin upgrade refreshes the versioned cache dir ONLY — it never re-runs
+  # install.sh, so ~/.local/bin keeps whatever the last /cli-dispatch:setup installed and any
+  # binary introduced since (cli-dispatch-run itself, originally) is absent from PATH with
+  # nothing on screen explaining why. Fall back to the plugin's own copy so the documented
+  # zero-token flow still runs, but name the cause so the install gets fixed once.
+  PLUGIN_ROOT="$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/resolve-plugin-root.sh" "${CLAUDE_PLUGIN_ROOT}" 2>/dev/null || true)"
+  if [ -n "$PLUGIN_ROOT" ] && [ -f "$PLUGIN_ROOT/scripts/cli-dispatch-run" ]; then
+    RUNNER=(bash "$PLUGIN_ROOT/scripts/cli-dispatch-run")
+    echo "cli-dispatch-run is not on PATH — using the plugin's own copy: $PLUGIN_ROOT/scripts/cli-dispatch-run"
+    echo "Cause: upgrading the plugin refreshes the plugin cache only; ~/.local/bin still has the wrappers your last setup installed."
+    echo "Fix it once with /cli-dispatch:setup — this fallback also uses whatever is in ~/.local/share, which may be stale."
+  else
+    echo "cli-dispatch-run not found on PATH, and no plugin copy is usable."
+    echo "If you just upgraded the plugin this is expected: the upgrade never re-runs install.sh."
+    echo "Fix: re-run /cli-dispatch:setup (or scripts/install.sh) to reinstall the wrappers."
+    echo "Fallback: use /cli-dispatch:${BACKEND}-run, or call ${BACKEND}-agent directly."
+    exit 1
+  fi
 fi
 RC=0
-cli-dispatch-run --backend "$BACKEND" --cwd "$PWD" --prompt "$PROMPT" "$@" || RC=$?
+"${RUNNER[@]}" --backend "$BACKEND" --cwd "$PWD" --prompt "$PROMPT" "$@" || RC=$?
 SESSIONS_ROOT="${CLI_DISPATCH_SESSIONS_DIR:-}"
 [ -z "$SESSIONS_ROOT" ] && [ -d "$HOME/.cache/cli-dispatch/sessions" ] && SESSIONS_ROOT="$HOME/.cache/cli-dispatch/sessions"
 [ -z "$SESSIONS_ROOT" ] && SESSIONS_ROOT="$HOME/.cache/claude-ds/sessions"

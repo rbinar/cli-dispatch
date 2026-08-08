@@ -7,6 +7,42 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.18.0] — 2026-08-09
+
+### Düzeltildi
+
+- **Plugin yükseltmesi artık deterministik runner'ı sessizce devre dışı bırakmıyor**
+  (issue #150). Yükseltme yalnızca sürümlü plugin cache dizinini tazeler, başka hiçbir şeyi —
+  `install.sh`'i asla yeniden koşturmaz — dolayısıyla `~/.local/bin`, son
+  `/cli-dispatch:setup`'ın kurduğu neyse onu tutar. Yeni sürümle gelen her binary bu yüzden
+  PATH'te hiç bulunmaz. `cli-dispatch-run`, `cli-dispatch-wait` ve `cli-dispatch-gain`'in
+  plugin 4.16.0 koşan bir makinede, dosya cache'te dururken kayıp olmasının sebebi budur;
+  `/cli-dispatch:run` da ekranda hiçbir şeyin açıklamadığı bir nedenle `command not found`
+  ile düştü. Üç değişiklik:
+
+  - SessionStart hook'u artık `~/.config/cli-dispatch/.installed-version` ile plugin cache'teki
+    en yeni sürümü karşılaştırıyor ve kurulum gerideyse tek paragraflık bir uyarı enjekte
+    ediyor. Bilinçli olarak `policy.json`'a **bağlı değil**: eski kurulum bir tercih değil,
+    bozuk bir kurulumdur — ve hiç policy dosyası yazmamış kişi bu duruma düşmeye en yatkın
+    kişidir. `cli-dispatch-status.sh` ve `version-check.sh` bunu zaten tespit ediyordu ama
+    yalnızca kontrolü tetikleyen bir komut koşturanlar için.
+  - `/cli-dispatch:run`, wrapper PATH'te yoksa plugin'in kendi
+    `scripts/cli-dispatch-run` kopyasına düşüyor; belgelenen sıfır-token akışı böylece
+    çalışmaya devam ediyor. Hem bu yedek yol hem de sert-hata yolu artık *sebebi* de söylüyor
+    (yükseltme wrapper'ları yeniden kurmaz), yalnızca backend-başına komutları önermek yerine.
+  - `/cli-dispatch:setup`, `${CLAUDE_PLUGIN_ROOT}/scripts/install.sh`'i doğrudan çağırmak
+    yerine plugin kökünü çalışma anında yeni `resolve-plugin-root.sh` (+ `.ps1` ikizi) ile
+    çözüyor. `CLAUDE_PLUGIN_ROOT`, *koşan oturumun* yüklediği sürümdür ve yükseltme bunu
+    değiştirmez — eski biçim bu yüzden birkaç sürüm eski bir installer'ı koşturabiliyordu ve
+    bunu yaparken eski bir sürüm numarası basıyordu. Raporlayan kişi 4.16.0 aktifken bu adımda
+    `3.30.1` gördü ve kurulu sürümün 3.30.1 olduğu sonucuna vardı. Çözücü, (oturum kökü,
+    installer taşıyan en yeni cache dizini) ikilisinin yenisini seçer; eşitlikte, ayrıştırılamayan
+    sürümlerde ve oturum kökünde manifest yokken oturum kökünde kalır — yani yerel bir dev
+    checkout'u asla değiştirmez.
+
+  Bunların hiçbiri runner'ın kendisini bozmadı; yalnızca erişilemez kıldı — ki bu daha kötüsü,
+  çünkü yedek yol tam da bu plugin'in var olma sebebi olan LLM-babysitter yoludur.
+
 ## [4.17.0] — 2026-08-06
 
 ### Eklendi
