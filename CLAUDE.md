@@ -182,7 +182,9 @@ docs where Turkish is primary; changelogs are English-first, bilingual.
 tag does NOT create one — `gh release create vX.Y.Z --title "vX.Y.Z — <short description>"
 --notes-file <notes> --verify-tag` is a separate call. Skipping it is silent: `git tag -l` and
 `git ls-remote --tags` both look complete while the Releases page stays frozen at an older
-version (this went unnoticed for twelve consecutive releases, v4.7.2 through v4.16.0). The
+version — it once went unnoticed for twelve consecutive releases (v4.7.2 through v4.16.0),
+though that particular backlog has since been filled in and the audit below now prints
+nothing. The
 release body is the version's `CHANGELOG.md` section verbatim; the title follows the existing
 `vX.Y.Z — lowercase summary` convention. Audit the gap with
 `comm -23 <(git tag -l 'v*' | sort -V) <(gh release list --limit 120 --json tagName -q '.[].tagName' | sort -V)`
@@ -196,6 +198,17 @@ commands keep executing whatever version was cached at session start. Refreshing
 cli-dispatch@cli-dispatch` (restart required to apply), and separately, since `/plugin
 update` only refreshes commands/skills and never touches `~/.local/bin`, re-running
 `/cli-dispatch:setup` to reinstall the wrapper binaries if a script changed.
+
+That second half is the failure mode of issue #150, and it is silent by construction: a binary
+the new version *adds* is simply not on PATH, so the documented flow dies with `command not
+found`. Three defenses now exist and each covers a different moment — `policy-inject.mjs`
+warns at SessionStart by diffing `~/.config/cli-dispatch/.installed-version` against the newest
+cache dir (ungated by `policy.json`, unlike the policy paragraph); `/cli-dispatch:run` falls
+back to the plugin's own `scripts/cli-dispatch-run`; and `resolve-plugin-root.sh` (+ `.ps1`)
+keeps `/cli-dispatch:setup` from running an old installer, because `${CLAUDE_PLUGIN_ROOT}` is
+the version the *session* loaded, not the newest one on disk. All three ship inside the plugin,
+so none of them can help a session still running a cache dir from before they existed — the
+first restart after an upgrade is where they start working.
 
 **Cross-platform pairing.** Every standalone installed binary (`cli-dispatch-clean`,
 `cli-dispatch-wait`, `cli-dispatch-dashboard`, and each backend's `*-agent`) ships both a

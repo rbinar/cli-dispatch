@@ -67,27 +67,38 @@ Follow these steps:
      user approved auto-install previously — never treat a prior session's answer as standing
      consent.
 
-4. **Run the installer** with the chosen backends — depending on the OS:
+4. **Run the installer** with the chosen backends — depending on the OS.
+
+   **Never paste a versioned cache path into the install command.** `${CLAUDE_PLUGIN_ROOT}`
+   is whichever version *this session* loaded, which a plugin upgrade does not change — so
+   hardcoding it can run an installer several versions old, and it makes the transcript read
+   as if that old version is what's installed (issue #150: a user saw `3.30.1` in this step
+   while 4.16.0 was active and concluded `cli-dispatch-run` did not exist). Resolve the root
+   at runtime instead; `resolve-plugin-root` picks the newest of the session's root and the
+   newest cache dir, and prints a note on stderr when they differ:
+
    - **macOS / Linux / WSL / Git Bash**:
      ```bash
-     bash "${CLAUDE_PLUGIN_ROOT}/scripts/install.sh" --backends <comma-list|all>
+     PLUGIN_ROOT="$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/resolve-plugin-root.sh" "${CLAUDE_PLUGIN_ROOT}")"
+     bash "$PLUGIN_ROOT/scripts/install.sh" --backends <comma-list|all>
      ```
      The comma-list may include `deepseek`, `antigravity`, `codex`, `opencode`, `copilot` (or `all`).
      Note: OpenCode and Copilot are Unix-only for now (macOS/Linux/WSL) — no native Windows support v1.
      **If the user approved auto-install in step 3**, append `--install-missing`:
      ```bash
-     bash "${CLAUDE_PLUGIN_ROOT}/scripts/install.sh" --backends <comma-list|all> --install-missing
+     bash "$PLUGIN_ROOT/scripts/install.sh" --backends <comma-list|all> --install-missing
      ```
    - **Native Windows (PowerShell)** — supports **DeepSeek and Codex** (both run natively).
      The Antigravity backend needs a pseudo-TTY (`script`) not present on native Windows, so
      install it under WSL instead. OpenCode and Copilot are likewise Unix-only for now —
      install them under WSL instead of natively. Pass `-Backends` (default `deepseek`; `all` = both):
      ```powershell
-     powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/install.ps1" -Backends <deepseek,codex|all>
+     $PluginRoot = & powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/resolve-plugin-root.ps1" -SessionRoot "${CLAUDE_PLUGIN_ROOT}"
+     powershell -NoProfile -ExecutionPolicy Bypass -File "$PluginRoot/scripts/install.ps1" -Backends <deepseek,codex|all>
      ```
      **If the user approved auto-install in step 3**, append `-InstallMissing`:
      ```powershell
-     powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/install.ps1" -Backends <deepseek,codex|all> -InstallMissing
+     powershell -NoProfile -ExecutionPolicy Bypass -File "$PluginRoot/scripts/install.ps1" -Backends <deepseek,codex|all> -InstallMissing
      ```
    - **If the user did not approve auto-install in step 3 (or no chosen backend's CLI was
      missing), invoke the installer exactly as shown above with no new flag** — this remains

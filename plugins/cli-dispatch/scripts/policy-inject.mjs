@@ -9,10 +9,76 @@
 // LLM babysitter subagents, removed in 4.0.0 — issue #114). The field is ignored for
 // back-compat; no value from it is ever interpolated into the context.
 
-import { readFileSync, realpathSync } from 'node:fs'
+import { readFileSync, readdirSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { pathToFileURL } from 'node:url'
+
+const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)$/
+
+// Numeric triple comparison. Returns -1 / 0 / 1, or null when either side is not a plain
+// X.Y.Z string — callers treat null as "cannot compare, stay silent". Mirrors
+// version-check.sh's cli_dispatch_semver_is_older; keep the two in sync.
+export function compareSemver(a, b) {
+  const ma = SEMVER_RE.exec(String(a || '').trim())
+  const mb = SEMVER_RE.exec(String(b || '').trim())
+  if (!ma || !mb) return null
+  for (let i = 1; i <= 3; i++) {
+    const x = Number(ma[i])
+    const y = Number(mb[i])
+    if (x !== y) return x < y ? -1 : 1
+  }
+  return 0
+}
+
+// Issue #150: a plugin upgrade refreshes ONLY the versioned cache dir — it never re-runs
+// install.sh, so ~/.local/bin keeps whatever wrappers the last setup installed. Binaries
+// introduced by the newer version (cli-dispatch-run was exactly this case) are then simply
+// absent from PATH, and the documented zero-token runner flow dies with `command not found`
+// for a reason nothing on screen explains. This notice is deliberately NOT gated on
+// policy.json: the drift is a broken install, not a preference, and someone who never wrote
+// a policy file is the most likely person to hit it.
+export function buildStalenessNotice(installedVersion, availableVersion) {
+  const cmp = compareSemver(installedVersion, availableVersion)
+  if (cmp === null || cmp >= 0) return null
+  return (
+    `[cli-dispatch] Installed CLIs in ~/.local/bin are STALE: ${String(installedVersion).trim()} installed, ` +
+    `${String(availableVersion).trim()} available. A plugin upgrade refreshes the plugin cache only — it never ` +
+    `reinstalls the wrappers, so commands added since ${String(installedVersion).trim()} (e.g. cli-dispatch-run) ` +
+    `are missing from PATH entirely. Re-run /cli-dispatch:setup to re-sync ~/.local/bin.`
+  )
+}
+
+function readInstalledVersion() {
+  const file =
+    process.env.CLI_DISPATCH_INSTALLED_VERSION_FILE ||
+    path.join(
+      process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'),
+      'cli-dispatch',
+      '.installed-version'
+    )
+  try {
+    return readFileSync(file, 'utf8').trim()
+  } catch {
+    return ''
+  }
+}
+
+function readNewestCachedVersion() {
+  const dir =
+    process.env.CLI_DISPATCH_PLUGIN_CACHE_DIR ||
+    path.join(os.homedir(), '.claude', 'plugins', 'cache', 'cli-dispatch', 'cli-dispatch')
+  let newest = ''
+  try {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory() || !SEMVER_RE.test(entry.name)) continue
+      if (!newest || compareSemver(newest, entry.name) === -1) newest = entry.name
+    }
+  } catch {
+    return ''
+  }
+  return newest
+}
 
 export function buildPolicyContext(policyJson) {
   if (!policyJson || policyJson.enabled !== true) return null
@@ -55,13 +121,15 @@ function main() {
       json = null
     }
 
+    const stale = buildStalenessNotice(readInstalledVersion(), readNewestCachedVersion())
     const ctx = buildPolicyContext(json)
-    if (ctx) {
+    const combined = [stale, ctx].filter(Boolean).join('\n\n')
+    if (combined) {
       process.stdout.write(
         JSON.stringify({
           hookSpecificOutput: {
             hookEventName: 'SessionStart',
-            additionalContext: ctx,
+            additionalContext: combined,
           },
         })
       )
