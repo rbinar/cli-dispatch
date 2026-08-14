@@ -17,6 +17,13 @@ import { buildPolicyContext, buildStalenessNotice, compareSemver } from '../poli
 
 const SELF_DIR = path.dirname(fileURLToPath(import.meta.url))
 const POLICY_INJECT_PATH = path.resolve(SELF_DIR, '..', 'policy-inject.mjs')
+const CORE_WRAPPER_BINARIES = [
+  'cli-dispatch-run',
+  'cli-dispatch-wait',
+  'cli-dispatch-clean',
+  'cli-dispatch-gain',
+  'cli-dispatch-dashboard',
+]
 
 // ============================================================================
 // buildPolicyContext — pure core
@@ -46,6 +53,14 @@ test('3. enabled:true -> routing + escalation + issue sentences, starts with the
   assert.equal(typeof ctx, 'string')
   assert.ok(ctx.startsWith('[cli-dispatch policy] '), 'must start with the fixed label')
   assert.ok(ctx.includes('/cli-dispatch:run'), 'must name the deterministic runner')
+  const retiredMechanicalWording = ['Mechanical work', 'with a machine-checkable check'].join(' ')
+  assert.ok(!ctx.includes(retiredMechanicalWording), 'must not narrow routing to mechanical work')
+  assert.ok(ctx.includes('auditability'), 'must name auditability as the routing constraint')
+  assert.ok(ctx.includes('including exploratory work'), 'must allow exploratory work with a check')
+  assert.ok(
+    ctx.includes("behavior-changing decisions stay in the orchestrator's brief"),
+    'must keep behavior-changing decisions in the orchestrator brief'
+  )
   assert.ok(ctx.includes('ZERO LLM babysitter tokens'), 'must state the zero-babysitter-token routing')
   assert.ok(ctx.includes('/cli-dispatch:resume'), 'must name the escalation follow-up path')
   assert.ok(
@@ -123,7 +138,7 @@ function writeFixture(name, obj) {
 // default, so every integration run pins both to fixture-local paths. Without the pins these
 // tests would pass or fail depending on how stale the DEVELOPER's own install happens to be.
 function runInject(policyFile, extraEnv = {}) {
-  return execFileSync('node', [POLICY_INJECT_PATH], {
+  return execFileSync(process.execPath, [POLICY_INJECT_PATH], {
     env: {
       ...process.env,
       CLI_DISPATCH_POLICY_FILE: policyFile,
@@ -133,6 +148,17 @@ function runInject(policyFile, extraEnv = {}) {
     },
     encoding: 'utf8',
   })
+}
+
+function pathWithCoreWrappers(name, presentBinaries = CORE_WRAPPER_BINARIES, extension = '') {
+  const bin = path.join(fixtureDir, name)
+  fs.mkdirSync(bin, { recursive: true })
+  for (const binary of presentBinaries) {
+    const file = path.join(bin, binary + extension)
+    fs.writeFileSync(file, '#!/bin/sh\nexit 0\n')
+    fs.chmodSync(file, 0o755)
+  }
+  return bin
 }
 
 // Writes a fixture install stamp + plugin cache dir pair and returns the env overrides that
@@ -191,10 +217,11 @@ test('11. compareSemver orders numerically and refuses non-semver input', () => 
 })
 
 test('12. buildStalenessNotice fires only when installed < available', () => {
-  const notice = buildStalenessNotice('4.16.0', '4.17.0')
+  const notice = buildStalenessNotice('4.16.0', '4.17.0', ['cli-dispatch-run'])
   assert.equal(typeof notice, 'string')
   assert.ok(notice.includes('4.16.0') && notice.includes('4.17.0'), 'must name both versions')
   assert.ok(notice.includes('cli-dispatch-run'), 'must name the command that goes missing')
+  assert.ok(notice.includes('missing from PATH'), 'must say PATH is missing the named command')
   assert.ok(notice.includes('/cli-dispatch:setup'), 'must name the fix')
 
   assert.equal(buildStalenessNotice('4.17.0', '4.17.0'), null, 'equal versions are not stale')
@@ -204,12 +231,69 @@ test('12. buildStalenessNotice fires only when installed < available', () => {
   assert.equal(buildStalenessNotice('4.16.0', ''), null, 'no cache version -> silent')
 })
 
+test('12b. buildStalenessNotice without missing binaries warns stale but invents no missing PATH claim', () => {
+  const notice = buildStalenessNotice('4.16.0', '4.17.0')
+  assert.equal(typeof notice, 'string')
+  assert.ok(notice.includes('4.16.0') && notice.includes('4.17.0'), 'must name both versions')
+  assert.ok(!notice.includes('missing from PATH'), 'must not claim a command is missing without probe data')
+  assert.ok(!notice.includes('cli-dispatch-run'), 'must not cite cli-dispatch-run as an example missing binary')
+  assert.ok(notice.includes('/cli-dispatch:setup'), 'must still name the fix')
+})
+
+test('12c. buildStalenessNotice names every probed missing binary', () => {
+  const notice = buildStalenessNotice('4.16.0', '4.17.0', [
+    'cli-dispatch-wait',
+    'cli-dispatch-dashboard',
+  ])
+  assert.ok(notice.includes('missing from PATH'), 'must explicitly identify PATH misses')
+  assert.ok(notice.includes('cli-dispatch-wait'), 'must name first missing binary')
+  assert.ok(notice.includes('cli-dispatch-dashboard'), 'must name second missing binary')
+  assert.ok(!notice.includes('cli-dispatch-run'), 'must not invent an unreported missing binary')
+})
+
 test('13. integration: stale install warns even when NO policy file exists', () => {
   const missing = path.join(fixtureDir, 'absent-policy.json')
   const out = runInject(missing, stalenessEnv('stale-nopolicy', '4.16.0', ['4.16.0', '4.17.0']))
   const ctx = JSON.parse(out).hookSpecificOutput.additionalContext
   assert.ok(ctx.includes('STALE'), 'staleness must not be gated on policy.json')
   assert.ok(!ctx.includes('[cli-dispatch policy]'), 'no policy file -> no policy paragraph')
+})
+
+test('13c. integration: stale install with all core wrappers on PATH omits the missing-binary claim', () => {
+  const missing = path.join(fixtureDir, 'absent-policy-all-wrappers.json')
+  const out = runInject(missing, {
+    ...stalenessEnv('stale-all-wrappers', '4.16.0', ['4.17.0']),
+    PATH: pathWithCoreWrappers('all-wrappers'),
+  })
+  const ctx = JSON.parse(out).hookSpecificOutput.additionalContext
+  assert.ok(ctx.includes('STALE'), 'staleness must still warn')
+  assert.ok(!ctx.includes('missing from PATH'), 'present wrappers must not be reported missing')
+  assert.ok(!ctx.includes('cli-dispatch-run'), 'present cli-dispatch-run must not be cited as missing')
+})
+
+test('13d. integration: PATH probe reports only missing backend-agnostic core wrappers', () => {
+  const missing = path.join(fixtureDir, 'absent-policy-some-wrappers.json')
+  const out = runInject(missing, {
+    ...stalenessEnv('stale-some-wrappers', '4.16.0', ['4.17.0']),
+    PATH: pathWithCoreWrappers('some-wrappers', ['cli-dispatch-run']),
+  })
+  const ctx = JSON.parse(out).hookSpecificOutput.additionalContext
+  assert.ok(ctx.includes('missing from PATH'), 'must report missing core wrappers')
+  assert.ok(ctx.includes('cli-dispatch-wait'), 'must name a missing core wrapper')
+  assert.ok(ctx.includes('cli-dispatch-dashboard'), 'must name a missing core wrapper')
+  assert.ok(!ctx.includes('ds-agent'), 'must not probe backend-specific wrappers')
+  assert.ok(!ctx.includes('cx-agent'), 'must not probe backend-specific wrappers')
+})
+
+test('13e. integration: PATH probe accepts Windows wrapper extensions', () => {
+  const missing = path.join(fixtureDir, 'absent-policy-cmd-wrappers.json')
+  const out = runInject(missing, {
+    ...stalenessEnv('stale-cmd-wrappers', '4.16.0', ['4.17.0']),
+    PATH: pathWithCoreWrappers('cmd-wrappers', CORE_WRAPPER_BINARIES, '.cmd'),
+  })
+  const ctx = JSON.parse(out).hookSpecificOutput.additionalContext
+  assert.ok(ctx.includes('STALE'), 'staleness must still warn')
+  assert.ok(!ctx.includes('missing from PATH'), 'extension wrappers must satisfy the PATH probe')
 })
 
 test('13b. integration: stale install warns even when the policy is disabled', () => {

@@ -7,6 +7,28 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.19.0] — 2026-08-15
+
+### Düzeltildi
+
+- **SessionStart eski-wrapper uyarısı artık eksik komut uydurmuyor.**
+  `policy-inject.mjs` hâlâ `~/.config/cli-dispatch/.installed-version` ile cache'teki en yeni
+  plugin sürümünü karşılaştırıyor, ama artık bir şeyin eksik olduğunu söylemeden önce
+  backend-bağımsız wrapper binary'leri için PATH'i probluyor. Tüm çekirdek wrapper'lar varsa
+  uyarı, kurulu wrapper'ların eski olduğunu söyleyip `/cli-dispatch:setup` öneriyor; fakat
+  `cli-dispatch-run`'ı yokmuş gibi anmıyor. Bir çekirdek wrapper gerçekten yoksa uyarı eksik
+  binary adlarını tek tek sayıyor ve PATH'te eksik olduklarını açıkça söylüyor. Backend'e özgü
+  wrapper'lar (`ds-agent`/`cx-agent`/`ag-agent`/`oc-agent`/`cp-agent`) bilinçli olarak
+  problanmıyor, çünkü kullanıcı yalnızca tek backend kurmuş olabilir.
+
+- **Enjekte edilen delegasyon policy'si artık global CLAUDE.md yönlendirme kuralıyla uyumlu.**
+  İlk policy cümlesi runner kullanımını artık "mekanik iş" ile daraltmıyor; bağlayıcı kısıt
+  olarak auditability'yi adlandırıyor ve makineyle denetlenebilir bir verify komutu olduğu,
+  davranış-değiştirme kararları da orkestratörün brief'inde kaldığı sürece keşif gerektiren
+  işleri de kapsıyor. `/cli-dispatch:run ... --verify` yönlendirmesi, sıfır babysitter token
+  vurgusu, önemsiz tek-dosya düzeltmelerinin inline kalması, escalation paragrafı ve issue
+  reminder davranışı değişmedi.
+
 ## [4.18.0] — 2026-08-09
 
 ### Düzeltildi

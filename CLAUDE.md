@@ -203,9 +203,10 @@ That second half is the failure mode of issue #150, and it is silent by construc
 the new version *adds* is simply not on PATH, so the documented flow dies with `command not
 found`. Three defenses now exist and each covers a different moment — `policy-inject.mjs`
 warns at SessionStart by diffing `~/.config/cli-dispatch/.installed-version` against the newest
-cache dir (ungated by `policy.json`, unlike the policy paragraph); `/cli-dispatch:run` falls
-back to the plugin's own `scripts/cli-dispatch-run`; and `resolve-plugin-root.sh` (+ `.ps1`)
-keeps `/cli-dispatch:setup` from running an old installer, because `${CLAUDE_PLUGIN_ROOT}` is
+cache dir and probing PATH for missing core wrappers (ungated by `policy.json`, unlike the
+policy paragraph); `/cli-dispatch:run` falls back to the plugin's own
+`scripts/cli-dispatch-run`; and `resolve-plugin-root.sh` (+ `.ps1`) keeps
+`/cli-dispatch:setup` from running an old installer, because `${CLAUDE_PLUGIN_ROOT}` is
 the version the *session* loaded, not the newest one on disk. All three ship inside the plugin,
 so none of them can help a session still running a cache dir from before they existed — the
 first restart after an upgrade is where they start working.
