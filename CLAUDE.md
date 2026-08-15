@@ -38,7 +38,7 @@ Everything the plugin installs lives under `plugins/cli-dispatch/`:
   cache and are **not** installed, so they can never go stale relative to the plugin — do
   not add them to `install.sh`. Bash/PowerShell
   wrappers around Node engines (`*-stream-parse.mjs` parsers, `verdict-writer.mjs`,
-  `gain-report.mjs`, `dashboard-server.mjs`, `cli-dispatch-clean.mjs`).
+  `gain-report.mjs`, `drift-report.mjs`, `dashboard-server.mjs`, `cli-dispatch-clean.mjs`).
   `install.sh`/`install.ps1` copy these into `~/.local/bin` (wrappers) and
   `~/.local/share/cli-dispatch/` (engines + shared libs).
 - `hooks/hooks.json` — the SessionStart hook registration. Wires `scripts/policy-inject.mjs`
@@ -203,12 +203,34 @@ That second half is the failure mode of issue #150, and it is silent by construc
 the new version *adds* is simply not on PATH, so the documented flow dies with `command not
 found`. Three defenses now exist and each covers a different moment — `policy-inject.mjs`
 warns at SessionStart by diffing `~/.config/cli-dispatch/.installed-version` against the newest
-cache dir (ungated by `policy.json`, unlike the policy paragraph); `/cli-dispatch:run` falls
-back to the plugin's own `scripts/cli-dispatch-run`; and `resolve-plugin-root.sh` (+ `.ps1`)
-keeps `/cli-dispatch:setup` from running an old installer, because `${CLAUDE_PLUGIN_ROOT}` is
+cache dir and probing PATH for missing core wrappers (ungated by `policy.json`, unlike the
+policy paragraph); `/cli-dispatch:run` falls back to the plugin's own
+`scripts/cli-dispatch-run`; and `resolve-plugin-root.sh` (+ `.ps1`) keeps
+`/cli-dispatch:setup` from running an old installer, because `${CLAUDE_PLUGIN_ROOT}` is
 the version the *session* loaded, not the newest one on disk. All three ship inside the plugin,
 so none of them can help a session still running a cache dir from before they existed — the
 first restart after an upgrade is where they start working.
+
+**A directory-source install runs from the working tree, not the cache dir.** Installing this
+plugin from a local path (`claude plugin marketplace add /path/to/this/repo`) still populates
+`~/.claude/plugins/cache/cli-dispatch/cli-dispatch/<version>/`, but `${CLAUDE_PLUGIN_ROOT}`
+resolves to `plugins/cli-dispatch/` **inside the repo**, so that is what every hook and `!`
+pre-execution line actually executes. A github-source install is the other way round: the cache
+dir is the executed path.
+
+This is the useful behavior for development — an edit to `policy-inject.mjs` takes effect on the
+next session with no reinstall — but it makes the cache dir a decoy. Instrumenting or patching
+the cached copy of a directory-source install measures a file nothing runs, and the silence
+reads exactly like a hook that never fired. Verify against the path the install actually points
+at: `installPath` in `~/.claude/plugins/installed_plugins.json` is the cache dir either way, so
+check `installLocation` in `known_marketplaces.json` — for a directory source it is the repo.
+
+The end-to-end chain, confirmed in a clean container against a real login: hook fires → but it
+prints nothing until `~/.config/cli-dispatch/policy.json` exists (that file is written by
+`/cli-dispatch:setup`, and `buildPolicyContext` returns null without it, by design) → once it
+does, the session quotes the `[cli-dispatch policy]` block back verbatim. A silent hook is
+therefore ambiguous on its own: it means "no policy file" at least as often as it means
+"something is broken." Check for the file before debugging the hook.
 
 **Cross-platform pairing.** Every standalone installed binary (`cli-dispatch-clean`,
 `cli-dispatch-wait`, `cli-dispatch-dashboard`, and each backend's `*-agent`) ships both a

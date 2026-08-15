@@ -9,12 +9,20 @@
 // LLM babysitter subagents, removed in 4.0.0 — issue #114). The field is ignored for
 // back-compat; no value from it is ever interpolated into the context.
 
-import { readFileSync, readdirSync, realpathSync } from 'node:fs'
+import { accessSync, constants, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { pathToFileURL } from 'node:url'
 
 const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)$/
+const CORE_WRAPPER_BINARIES = [
+  'cli-dispatch-run',
+  'cli-dispatch-wait',
+  'cli-dispatch-clean',
+  'cli-dispatch-gain',
+  'cli-dispatch-dashboard',
+]
+const PATH_PROBE_EXTENSIONS = ['', '.ps1', '.cmd', '.exe']
 
 // Numeric triple comparison. Returns -1 / 0 / 1, or null when either side is not a plain
 // X.Y.Z string — callers treat null as "cannot compare, stay silent". Mirrors
@@ -38,14 +46,19 @@ export function compareSemver(a, b) {
 // for a reason nothing on screen explains. This notice is deliberately NOT gated on
 // policy.json: the drift is a broken install, not a preference, and someone who never wrote
 // a policy file is the most likely person to hit it.
-export function buildStalenessNotice(installedVersion, availableVersion) {
+export function buildStalenessNotice(installedVersion, availableVersion, missingBinaries = []) {
   const cmp = compareSemver(installedVersion, availableVersion)
   if (cmp === null || cmp >= 0) return null
+  const missing = Array.isArray(missingBinaries)
+    ? missingBinaries.map((name) => String(name || '').trim()).filter(Boolean)
+    : []
+  const staleCause = missing.length
+    ? `reinstalls the wrappers, and these required wrapper binaries are missing from PATH: ${missing.join(', ')}.`
+    : `reinstalls the wrappers, so the wrappers in PATH may be older than the active plugin.`
   return (
     `[cli-dispatch] Installed CLIs in ~/.local/bin are STALE: ${String(installedVersion).trim()} installed, ` +
     `${String(availableVersion).trim()} available. A plugin upgrade refreshes the plugin cache only — it never ` +
-    `reinstalls the wrappers, so commands added since ${String(installedVersion).trim()} (e.g. cli-dispatch-run) ` +
-    `are missing from PATH entirely. Re-run /cli-dispatch:setup to re-sync ~/.local/bin.`
+    `${staleCause} Re-run /cli-dispatch:setup to re-sync ~/.local/bin.`
   )
 }
 
@@ -80,6 +93,38 @@ function readNewestCachedVersion() {
   return newest
 }
 
+function executableExists(file) {
+  try {
+    if (!statSync(file).isFile()) return false
+    accessSync(file, constants.F_OK | constants.X_OK)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function commandExistsOnPath(binary, pathValue) {
+  try {
+    for (const rawDir of String(pathValue || '').split(path.delimiter)) {
+      const dir = rawDir || '.'
+      for (const ext of PATH_PROBE_EXTENSIONS) {
+        if (executableExists(path.join(dir, binary + ext))) return true
+      }
+    }
+  } catch {
+    return false
+  }
+  return false
+}
+
+function findMissingCoreWrapperBinaries() {
+  try {
+    return CORE_WRAPPER_BINARIES.filter((binary) => !commandExistsOnPath(binary, process.env.PATH))
+  } catch {
+    return []
+  }
+}
+
 export function buildPolicyContext(policyJson) {
   if (!policyJson || policyJson.enabled !== true) return null
 
@@ -90,7 +135,7 @@ export function buildPolicyContext(policyJson) {
 
   const parts = []
   parts.push(
-    `Route delegations by shape, not reflex. Mechanical work with a machine-checkable check -> the deterministic runner: /cli-dispatch:run <backend> "<task>" --verify '<cmd>' spends ZERO LLM babysitter tokens. Trivial single-file surgical fixes stay inline.`
+    `Route delegations by auditability, not reflex. Work with a machine-checkable check belongs on the deterministic runner — including exploratory work, as long as behavior-changing decisions stay in the orchestrator's brief. /cli-dispatch:run <backend> "<task>" --verify '<cmd>' spends ZERO LLM babysitter tokens. Trivial single-file surgical fixes stay inline.`
   )
   parts.push(
     `No verify command, or verify failed? Escalate yourself: read the verdict + diff directly and follow up with /cli-dispatch:resume — never spawn an LLM babysitter subagent to watch a worker (the *-runner subagents were retired in 4.0.0; babysitting measured ~9x the worker's own output in Anthropic tokens).`
@@ -121,7 +166,11 @@ function main() {
       json = null
     }
 
-    const stale = buildStalenessNotice(readInstalledVersion(), readNewestCachedVersion())
+    const stale = buildStalenessNotice(
+      readInstalledVersion(),
+      readNewestCachedVersion(),
+      findMissingCoreWrapperBinaries()
+    )
     const ctx = buildPolicyContext(json)
     const combined = [stale, ctx].filter(Boolean).join('\n\n')
     if (combined) {

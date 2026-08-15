@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.20.0] — 2026-08-15
+
+### Added
+
+- **`/cli-dispatch:drift` reports delegation drift between injected policy and actual runner use.**
+  The new read-only report counts recent deterministic runner sessions, raw worker sessions,
+  policy-injected Claude Code transcripts, Anthropic `Agent` spawns, inline `Edit`/`Write`
+  tool use, and Bash invocations of `cli-dispatch-run` or `/cli-dispatch:run`. It keeps
+  transcript scanning cheap by filtering JSONL files by mtime before reading them and by
+  counting with text scans rather than JSON parsing, making the "policy arrived but behaviour
+  did not change" failure mode visible without dumping transcript contents.
+
+## [4.19.0] — 2026-08-15
+
+### Fixed
+
+- **The SessionStart stale-wrapper notice no longer invents missing commands.**
+  `policy-inject.mjs` still compares `~/.config/cli-dispatch/.installed-version` against the
+  newest cached plugin version, but it now probes PATH for the backend-agnostic wrapper
+  binaries before saying anything is missing. If all core wrappers are present, the notice
+  says the installed wrappers are stale and recommends `/cli-dispatch:setup` without naming
+  `cli-dispatch-run` as absent. If any core wrapper is truly absent, the notice lists the
+  missing binary names explicitly and says they are missing from PATH. Backend-specific
+  wrappers (`ds-agent`/`cx-agent`/`ag-agent`/`oc-agent`/`cp-agent`) are deliberately not probed,
+  because a user may have installed only one backend.
+
+- **The injected delegation policy now matches the global CLAUDE.md routing rule.**
+  The first policy sentence no longer narrows runner use to "mechanical work"; it names
+  auditability as the binding constraint and allows exploratory work when there is a
+  machine-checkable verify command and behavior-changing decisions remain in the
+  orchestrator's brief. The `/cli-dispatch:run ... --verify` guidance, zero-babysitter-token
+  emphasis, trivial-inline exception, escalation paragraph, and issue reminder behavior are
+  unchanged.
+
 ## [4.18.0] — 2026-08-09
 
 ### Fixed
