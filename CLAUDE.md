@@ -211,6 +211,27 @@ the version the *session* loaded, not the newest one on disk. All three ship ins
 so none of them can help a session still running a cache dir from before they existed — the
 first restart after an upgrade is where they start working.
 
+**A directory-source marketplace installs this plugin with its hooks inert.** The obvious way
+to test an uncommitted change — `claude plugin marketplace add /path/to/this/repo` — produces
+an install that reports `Status: ✔ enabled`, ships `hooks/hooks.json`, and populates the
+versioned cache dir, but whose `SessionStart` hook **never executes**. Installing the same
+version from the github source (`claude plugin marketplace add rbinar/cli-dispatch`) runs it
+normally. Measured A/B in a clean container, both arms pinned to v4.18.0, canary shim
+self-tested before every run: github fired 2/2, directory fired 0/2. Filed upstream as
+anthropics/claude-code#86809.
+
+What this rules out is as important as what it shows: it is not print-vs-interactive mode
+(reproduced under a real pty), not directory trust, not the plugin version, not the hook's
+interpreter (a plain `bash -c` hook is equally inert), and not `SessionStart` itself — a hook
+registered in `~/.claude/settings.json` fires in the very same session where the plugin's does
+not.
+
+The practical consequence: **`policy-inject.mjs` cannot be verified through a directory-source
+install.** Testing it that way shows no output and proves nothing. Verify hook behavior either
+by running the script directly (`node plugins/cli-dispatch/scripts/policy-inject.mjs`, which is
+what `__tests__/policy-inject.test.mjs` does) or from a github-source install after pushing.
+The unit tests are unaffected — they import and exec the module, never the hook pathway.
+
 **Cross-platform pairing.** Every standalone installed binary (`cli-dispatch-clean`,
 `cli-dispatch-wait`, `cli-dispatch-dashboard`, and each backend's `*-agent`) ships both a
 bash script and a `.ps1` twin for native Windows, installed by `install.sh` and
