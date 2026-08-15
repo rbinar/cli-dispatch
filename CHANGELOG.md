@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.20.0] — 2026-08-15
+
+### Added
+
+- **`/cli-dispatch:drift` reports delegation drift between injected policy and actual runner use.**
+  The new read-only report counts recent deterministic runner sessions, raw worker sessions,
+  policy-injected Claude Code transcripts, Anthropic `Agent` spawns, inline `Edit`/`Write`
+  tool use, and Bash invocations of `cli-dispatch-run` or `/cli-dispatch:run`. It keeps
+  transcript scanning cheap by filtering JSONL files by mtime before reading them and by
+  counting with text scans rather than JSON parsing, making the "policy arrived but behaviour
+  did not change" failure mode visible without dumping transcript contents.
+
 ## [4.19.0] — 2026-08-15
 
 ### Fixed

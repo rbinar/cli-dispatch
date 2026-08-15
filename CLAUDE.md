@@ -38,7 +38,7 @@ Everything the plugin installs lives under `plugins/cli-dispatch/`:
   cache and are **not** installed, so they can never go stale relative to the plugin — do
   not add them to `install.sh`. Bash/PowerShell
   wrappers around Node engines (`*-stream-parse.mjs` parsers, `verdict-writer.mjs`,
-  `gain-report.mjs`, `dashboard-server.mjs`, `cli-dispatch-clean.mjs`).
+  `gain-report.mjs`, `drift-report.mjs`, `dashboard-server.mjs`, `cli-dispatch-clean.mjs`).
   `install.sh`/`install.ps1` copy these into `~/.local/bin` (wrappers) and
   `~/.local/share/cli-dispatch/` (engines + shared libs).
 - `hooks/hooks.json` — the SessionStart hook registration. Wires `scripts/policy-inject.mjs`

@@ -7,6 +7,18 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.20.0] — 2026-08-15
+
+### Eklendi
+
+- **`/cli-dispatch:drift`, enjekte edilen policy ile gerçek runner kullanımı arasındaki delegasyon sapmasını raporlar.**
+  Yeni read-only rapor yakın dönem deterministik runner session'larını, ham worker
+  session'larını, policy enjekte edilmiş Claude Code transcript'lerini, Anthropic `Agent`
+  spawn'larını, inline `Edit`/`Write` kullanımını ve `cli-dispatch-run` veya
+  `/cli-dispatch:run` içeren Bash çağrılarını sayar. JSONL dosyalarını okumadan önce mtime
+  ile filtreleyip içeride JSON parse yerine metin taraması yaptığı için transcript içeriğini
+  dökmeden "policy ulaştı ama davranış değişmedi" arızasını görünür kılar.
+
 ## [4.19.0] — 2026-08-15
 
 ### Düzeltildi
