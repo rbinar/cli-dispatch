@@ -211,26 +211,26 @@ the version the *session* loaded, not the newest one on disk. All three ship ins
 so none of them can help a session still running a cache dir from before they existed — the
 first restart after an upgrade is where they start working.
 
-**A directory-source marketplace installs this plugin with its hooks inert.** The obvious way
-to test an uncommitted change — `claude plugin marketplace add /path/to/this/repo` — produces
-an install that reports `Status: ✔ enabled`, ships `hooks/hooks.json`, and populates the
-versioned cache dir, but whose `SessionStart` hook **never executes**. Installing the same
-version from the github source (`claude plugin marketplace add rbinar/cli-dispatch`) runs it
-normally. Measured A/B in a clean container, both arms pinned to v4.18.0, canary shim
-self-tested before every run: github fired 2/2, directory fired 0/2. Filed upstream as
-anthropics/claude-code#86809.
+**A directory-source install runs from the working tree, not the cache dir.** Installing this
+plugin from a local path (`claude plugin marketplace add /path/to/this/repo`) still populates
+`~/.claude/plugins/cache/cli-dispatch/cli-dispatch/<version>/`, but `${CLAUDE_PLUGIN_ROOT}`
+resolves to `plugins/cli-dispatch/` **inside the repo**, so that is what every hook and `!`
+pre-execution line actually executes. A github-source install is the other way round: the cache
+dir is the executed path.
 
-What this rules out is as important as what it shows: it is not print-vs-interactive mode
-(reproduced under a real pty), not directory trust, not the plugin version, not the hook's
-interpreter (a plain `bash -c` hook is equally inert), and not `SessionStart` itself — a hook
-registered in `~/.claude/settings.json` fires in the very same session where the plugin's does
-not.
+This is the useful behavior for development — an edit to `policy-inject.mjs` takes effect on the
+next session with no reinstall — but it makes the cache dir a decoy. Instrumenting or patching
+the cached copy of a directory-source install measures a file nothing runs, and the silence
+reads exactly like a hook that never fired. Verify against the path the install actually points
+at: `installPath` in `~/.claude/plugins/installed_plugins.json` is the cache dir either way, so
+check `installLocation` in `known_marketplaces.json` — for a directory source it is the repo.
 
-The practical consequence: **`policy-inject.mjs` cannot be verified through a directory-source
-install.** Testing it that way shows no output and proves nothing. Verify hook behavior either
-by running the script directly (`node plugins/cli-dispatch/scripts/policy-inject.mjs`, which is
-what `__tests__/policy-inject.test.mjs` does) or from a github-source install after pushing.
-The unit tests are unaffected — they import and exec the module, never the hook pathway.
+The end-to-end chain, confirmed in a clean container against a real login: hook fires → but it
+prints nothing until `~/.config/cli-dispatch/policy.json` exists (that file is written by
+`/cli-dispatch:setup`, and `buildPolicyContext` returns null without it, by design) → once it
+does, the session quotes the `[cli-dispatch policy]` block back verbatim. A silent hook is
+therefore ambiguous on its own: it means "no policy file" at least as often as it means
+"something is broken." Check for the file before debugging the hook.
 
 **Cross-platform pairing.** Every standalone installed binary (`cli-dispatch-clean`,
 `cli-dispatch-wait`, `cli-dispatch-dashboard`, and each backend's `*-agent`) ships both a
