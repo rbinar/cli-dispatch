@@ -106,6 +106,27 @@ test('8. schemaVersion 1 is accepted -> string', () => {
   assert.equal(typeof ctx, 'string')
 })
 
+// A measured session vetoed the runner by quoting the first half of the
+// never-delegate-verification rule ("--verify only says the tests pass") and
+// dropping the remedy ("so re-measure it yourself"), then ran 732 gate-able
+// commands inline without delegating once. The caveat must not ship without the
+// remedy attached, in either order.
+test('8b. the verify caveat always ships with its remedy', () => {
+  const ctx = buildPolicyContext({ enabled: true })
+  assert.ok(
+    /--verify proving less than you need/.test(ctx),
+    'the caveat must be stated',
+  )
+  assert.ok(
+    /reason to re-measure after, never a reason to keep the work inline/.test(ctx),
+    'the caveat must name re-measuring as the remedy and reject staying inline',
+  )
+  assert.ok(
+    /verify it yourself/.test(ctx),
+    'the remedy must put verification back on the orchestrator',
+  )
+})
+
 test('9. token ceiling: a fully-populated policy stays well under the budget', () => {
   const ctx = buildPolicyContext({
     enabled: true,

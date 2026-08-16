@@ -7,6 +7,21 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.22.0] — 2026-08-17
+
+### Değişti
+
+- **Enjekte edilen policy artık verify uyarısını çaresiyle aynı nefeste söylüyor.**
+  Policy'yi alan ve runner'ı bir kez bile kullanmayan iki oturumda ölçüldü (5.799 ve 2.361
+  Bash çağrısı; bunların 732 ve 220'si gate'lenebilir test/build/lint komutu): runner tam
+  olarak bir kez düşünülüp şöyle reddedilmiş — "`--verify` yalnız testlerin geçtiğini söyler,
+  davranışın korunduğunu değil, o yüzden doğrulamayı ona bırakmam." Bu kuralı ters çeviriyor.
+  Uyarı, doğrulama orkestratörde kaldığı için var; bu **delege ettikten sonra yeniden ölçme**
+  gerekçesidir, işi inline tutma gerekçesi değil. Yarısı alıntılanınca uyarı vetoya dönüşmüş.
+  Policy paragrafı artık çareyi yanında taşıyor ve bir test bu eşleşmeyi sabitliyor, böylece
+  sessizce düşürülemiyor. Metin değişikliği mevcut 160 kelimelik tavan testiyle sınırlı —
+  o test değiştirilmedi (her şey açıkken 148 kelime).
+
 ## [4.21.0] — 2026-08-17
 
 ### Düzeltildi
