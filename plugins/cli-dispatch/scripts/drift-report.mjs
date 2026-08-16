@@ -69,6 +69,25 @@ function countMatches(text, re) {
   return n
 }
 
+function hasRunnerNeedle(command) {
+  return command.includes('cli-dispatch-run') || command.includes('/cli-dispatch:run')
+}
+
+function lineAt(text, index) {
+  const end = text.indexOf('\n', index)
+  return text.slice(index, end === -1 ? text.length : end)
+}
+
+function bashCommandHasRunnerNeedle(line) {
+  if (!/"name"\s*:\s*"Bash"/.test(line)) return false
+  const inputCommandRe = /"input"\s*:\s*\{[^\n]*?"command"\s*:\s*"((?:\\.|[^"\\])*)"/g
+  let m
+  while ((m = inputCommandRe.exec(line))) {
+    if (hasRunnerNeedle(m[1])) return true
+  }
+  return false
+}
+
 function countRunnerBashToolUses(text) {
   let n = 0
   const typeRe = /"type"\s*:\s*"tool_use"/g
@@ -78,16 +97,12 @@ function countRunnerBashToolUses(text) {
   if (!starts.length) {
     const bashRe = /"name"\s*:\s*"Bash"/g
     while ((m = bashRe.exec(text))) {
-      const segment = text.slice(m.index, Math.min(text.length, m.index + 20000))
-      if (segment.includes('cli-dispatch-run') || segment.includes('/cli-dispatch:run')) n++
+      if (bashCommandHasRunnerNeedle(lineAt(text, m.index))) n++
     }
     return n
   }
-  starts.push(text.length)
-  for (let i = 0; i < starts.length - 1; i++) {
-    const segment = text.slice(starts[i], starts[i + 1])
-    if (!/"name"\s*:\s*"Bash"/.test(segment)) continue
-    if (segment.includes('cli-dispatch-run') || segment.includes('/cli-dispatch:run')) n++
+  for (const start of starts) {
+    if (bashCommandHasRunnerNeedle(lineAt(text, start))) n++
   }
   return n
 }
