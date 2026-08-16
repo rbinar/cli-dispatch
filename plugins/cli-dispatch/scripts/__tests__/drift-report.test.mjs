@@ -172,3 +172,39 @@ test('transcript text analyzer counts names without JSON parsing', () => {
     runnerInvocations: 3,
   })
 })
+
+// The injected policy paragraph and CLAUDE.md both quote the runner's own command
+// line verbatim. Counting a Bash tool_use because that prose happens to sit between
+// it and the next tool_use turns every `git status` in a policy-carrying session
+// into a reported runner invocation — which is how the report once claimed 92
+// invocations for a project that ran the runner zero times.
+test('prose quoting the runner does not make unrelated Bash calls count as invocations', () => {
+  const text = [
+    'spends ZERO LLM babysitter tokens',
+    bash('git status --short'),
+    '{"type":"user","message":{"content":"Tier 2: /cli-dispatch:run <backend> \\"<task>\\" --verify \'<cmd>\'"}}',
+    bash('pytest tests/ -q'),
+    '{"type":"user","message":{"content":"use cli-dispatch-run for gateable work"}}',
+    toolUse('Agent'),
+  ].join('\n')
+  assert.equal(analyzeTranscriptText(text).runnerInvocations, 0)
+})
+
+test('a real runner Bash call is still counted when prose quotes the runner nearby', () => {
+  const text = [
+    '{"type":"user","message":{"content":"policy says prefer /cli-dispatch:run"}}',
+    bash('cli-dispatch-run cx "task" --verify "node --test x.mjs"'),
+    '{"type":"user","message":{"content":"more prose about cli-dispatch-run"}}',
+    bash('ls -la'),
+  ].join('\n')
+  assert.equal(analyzeTranscriptText(text).runnerInvocations, 1)
+})
+
+test('a tool_result echoing the runner does not credit the next unrelated Bash call', () => {
+  const text = [
+    bash('cli-dispatch-run cx "task" --verify "true"'),
+    '{"type":"user","message":{"content":[{"type":"tool_result","content":"verdict: cli-dispatch-run exit 0"}]}}',
+    bash('cat CHANGELOG.md'),
+  ].join('\n')
+  assert.equal(analyzeTranscriptText(text).runnerInvocations, 1)
+})
