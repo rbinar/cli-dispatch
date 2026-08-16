@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.22.0] — 2026-08-17
+
+### Changed
+
+- **The injected policy now states the remedy in the same breath as the verify caveat.**
+  Measured across two sessions that received the policy and never once used the runner
+  (5,799 and 2,361 Bash calls, 732 and 220 of them gate-able test/build/lint commands), the
+  runner was considered exactly once and rejected like this: "`--verify` only says the tests
+  pass, not that behavior was preserved — so I won't delegate the verification." That inverts
+  the rule. The caveat exists because verification stays with the orchestrator, which is a
+  reason to **re-measure after delegating**, not a reason to keep the work inline. Quoted
+  half, the caveat became a veto. The policy paragraph now carries the remedy attached, and a
+  test pins the pairing so it cannot be dropped silently. The wording change is bounded by the
+  existing 160-word ceiling test, which was not modified (148 words with everything enabled).
+
 ## [4.21.0] — 2026-08-17
 
 ### Fixed
