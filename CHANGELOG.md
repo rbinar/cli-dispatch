@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.21.0] — 2026-08-17
+
+### Fixed
+
+- **`/cli-dispatch:drift` no longer counts its own policy text as runner adoption.**
+  `countRunnerBashToolUses` searched the whole span between two `"type":"tool_use"` markers
+  for `cli-dispatch-run` / `/cli-dispatch:run`. That span can run to ~90KB and swallow the
+  injected policy paragraph, user messages and tool_result payloads — and since the policy
+  quotes the runner's command line verbatim, every ordinary Bash call in a policy-carrying
+  session was scored as a runner invocation. The counter now reads only the Bash tool_use's
+  own `input.command`, bounded to its JSONL record line, and applies the same rule to the
+  no-marker fallback path.
+
+- **A command that merely names the runner is no longer counted as running it.**
+  Waiting on it (`pgrep -f cli-dispatch-run`), reading its source (`grep`/`sed` on the
+  script), probing it (`command -v`), and writing a commit message or PR body that quotes the
+  documented command line were all scored as delegations. A runner invocation now requires
+  the needle in shell command position — the first word of the command or of a `;`/`&&`/`||`/
+  pipe/newline-separated segment, after any leading `VAR=value` assignments — with heredoc
+  bodies excluded. The bare, `cd`-prefixed, env-prefixed, absolute-path, multi-line and
+  `/cli-dispatch:run` slash forms all still count.
+
+  Measured on a frozen 646-file transcript snapshot, reported invocations fell from 228 to 18
+  (about 15 real launches plus three `--help` probes) while `agentSpawns`, `inlineEdits` and
+  `policyInjectedSessions` stayed byte-identical. The drift ratio the report had been printing
+  was therefore understating drift by roughly an order of magnitude: 5.5 became 69.8 on the
+  same data. Transcript scanning stays a text scan with no per-line `JSON.parse`; the report
+  runs in the same ~2.5s over that snapshot as before.
+
 ## [4.20.0] — 2026-08-15
 
 ### Added

@@ -69,6 +69,191 @@ function countMatches(text, re) {
   return n
 }
 
+function decodeJsonStringLiteral(raw) {
+  let out = ''
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i]
+    if (ch !== '\\' || i + 1 >= raw.length) {
+      out += ch
+      continue
+    }
+    const esc = raw[++i]
+    if (esc === 'n') out += '\n'
+    else if (esc === 'r') out += '\r'
+    else if (esc === 't') out += '\t'
+    else if (esc === 'b') out += '\b'
+    else if (esc === 'f') out += '\f'
+    else if (esc === 'u' && i + 4 < raw.length) {
+      const hex = raw.slice(i + 1, i + 5)
+      if (/^[0-9a-fA-F]{4}$/.test(hex)) {
+        out += String.fromCharCode(Number.parseInt(hex, 16))
+        i += 4
+      } else {
+        out += esc
+      }
+    } else {
+      out += esc
+    }
+  }
+  return out
+}
+
+function findHeredocDelimiter(line) {
+  let quote = ''
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    if (quote) {
+      if (ch === '\\' && quote === '"') i++
+      else if (ch === quote) quote = ''
+      continue
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch
+      continue
+    }
+    if (ch !== '<' || line[i + 1] !== '<') continue
+
+    let j = i + 2
+    const stripTabs = line[j] === '-'
+    if (stripTabs) j++
+    while (/\s/.test(line[j] || '')) j++
+    const q = line[j]
+    if (q === "'" || q === '"') {
+      const end = line.indexOf(q, j + 1)
+      if (end === -1) return null
+      return { delimiter: line.slice(j + 1, end), stripTabs }
+    }
+    const start = j
+    while (j < line.length && !/[\s;&|<>]/.test(line[j])) j++
+    const delimiter = line.slice(start, j)
+    return delimiter ? { delimiter, stripTabs } : null
+  }
+  return null
+}
+
+function stripHeredocBodies(command) {
+  const lines = command.split('\n')
+  const kept = []
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    kept.push(line)
+    const heredoc = findHeredocDelimiter(line)
+    if (!heredoc) continue
+    i++
+    while (i < lines.length) {
+      const terminator = heredoc.stripTabs ? lines[i].replace(/^\t+/, '') : lines[i]
+      if (terminator === heredoc.delimiter) break
+      i++
+    }
+  }
+  return kept.join('\n')
+}
+
+function splitShellCommandSegments(command) {
+  const segments = []
+  let start = 0
+  let quote = ''
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i]
+    if (quote) {
+      if (ch === '\\' && quote === '"') i++
+      else if (ch === quote) quote = ''
+      continue
+    }
+    if (ch === '\\') {
+      i++
+      continue
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch
+      continue
+    }
+    if (ch === '\n' || ch === ';' || ch === '|' || (ch === '&' && command[i + 1] === '&')) {
+      segments.push(command.slice(start, i))
+      if ((ch === '|' || ch === '&') && command[i + 1] === ch) i++
+      start = i + 1
+    }
+  }
+  segments.push(command.slice(start))
+  return segments
+}
+
+function readShellWord(segment, start) {
+  let out = ''
+  let quote = ''
+  let i = start
+  for (; i < segment.length; i++) {
+    const ch = segment[i]
+    if (quote) {
+      if (ch === '\\' && quote === '"' && i + 1 < segment.length) {
+        out += segment[++i]
+      } else if (ch === quote) {
+        quote = ''
+      } else {
+        out += ch
+      }
+      continue
+    }
+    if (/\s/.test(ch) || /[<>]/.test(ch)) break
+    if (ch === '\\' && i + 1 < segment.length) {
+      out += segment[++i]
+    } else if (ch === "'" || ch === '"') {
+      quote = ch
+    } else {
+      out += ch
+    }
+  }
+  return { word: out, end: i }
+}
+
+function skipWhitespace(text, start) {
+  let i = start
+  while (/\s/.test(text[i] || '')) i++
+  return i
+}
+
+function isEnvAssignment(word) {
+  return /^[A-Za-z_][A-Za-z0-9_]*=/.test(word)
+}
+
+function isRunnerCommandWord(word) {
+  return word === 'cli-dispatch-run' ||
+    word.endsWith('/cli-dispatch-run') ||
+    word === '/cli-dispatch:run' ||
+    word.endsWith('/cli-dispatch:run')
+}
+
+function segmentStartsWithRunner(segment) {
+  let i = skipWhitespace(segment, 0)
+  while (i < segment.length) {
+    const { word, end } = readShellWord(segment, i)
+    if (!word) return false
+    if (!isEnvAssignment(word)) return isRunnerCommandWord(word)
+    i = skipWhitespace(segment, end)
+  }
+  return false
+}
+
+function commandRunsRunner(rawCommand) {
+  const command = stripHeredocBodies(decodeJsonStringLiteral(rawCommand))
+  return splitShellCommandSegments(command).some(segmentStartsWithRunner)
+}
+
+function lineAt(text, index) {
+  const end = text.indexOf('\n', index)
+  return text.slice(index, end === -1 ? text.length : end)
+}
+
+function bashCommandHasRunnerNeedle(line) {
+  if (!/"name"\s*:\s*"Bash"/.test(line)) return false
+  const inputCommandRe = /"input"\s*:\s*\{[^\n]*?"command"\s*:\s*"((?:\\.|[^"\\])*)"/g
+  let m
+  while ((m = inputCommandRe.exec(line))) {
+    if (commandRunsRunner(m[1])) return true
+  }
+  return false
+}
+
 function countRunnerBashToolUses(text) {
   let n = 0
   const typeRe = /"type"\s*:\s*"tool_use"/g
@@ -78,16 +263,12 @@ function countRunnerBashToolUses(text) {
   if (!starts.length) {
     const bashRe = /"name"\s*:\s*"Bash"/g
     while ((m = bashRe.exec(text))) {
-      const segment = text.slice(m.index, Math.min(text.length, m.index + 20000))
-      if (segment.includes('cli-dispatch-run') || segment.includes('/cli-dispatch:run')) n++
+      if (bashCommandHasRunnerNeedle(lineAt(text, m.index))) n++
     }
     return n
   }
-  starts.push(text.length)
-  for (let i = 0; i < starts.length - 1; i++) {
-    const segment = text.slice(starts[i], starts[i + 1])
-    if (!/"name"\s*:\s*"Bash"/.test(segment)) continue
-    if (segment.includes('cli-dispatch-run') || segment.includes('/cli-dispatch:run')) n++
+  for (const start of starts) {
+    if (bashCommandHasRunnerNeedle(lineAt(text, start))) n++
   }
   return n
 }

@@ -7,6 +7,35 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.21.0] — 2026-08-17
+
+### Düzeltildi
+
+- **`/cli-dispatch:drift` artık kendi policy metnini runner kullanımı sanmıyor.**
+  `countRunnerBashToolUses`, iki `"type":"tool_use"` işareti arasındaki tüm aralıkta
+  `cli-dispatch-run` / `/cli-dispatch:run` arıyordu. Bu aralık ~90KB'a çıkıp enjekte edilen
+  policy paragrafını, kullanıcı mesajlarını ve tool_result gövdelerini içine alabiliyor —
+  policy runner'ın komut satırını birebir alıntıladığı için, policy taşıyan bir session'daki
+  her sıradan Bash çağrısı runner invocation'ı olarak sayılıyordu. Sayaç artık yalnız Bash
+  tool_use'un kendi `input.command` alanını, kendi JSONL kayıt satırıyla sınırlı biçimde
+  okuyor; aynı kural işaretsiz fallback yoluna da uygulandı.
+
+- **Runner'ın yalnızca adını geçiren komut artık onu koşturmuş sayılmıyor.**
+  Onu beklemek (`pgrep -f cli-dispatch-run`), kaynağını okumak (script üzerinde `grep`/`sed`),
+  varlığını yoklamak (`command -v`) ve dokümante edilen komut satırını alıntılayan bir commit
+  mesajı veya PR gövdesi yazmak — hepsi delegasyon sayılıyordu. Runner invocation'ı artık
+  needle'ın shell komut pozisyonunda olmasını şart koşuyor: komutun ya da `;`/`&&`/`||`/pipe/
+  yeni satır ile ayrılmış bir parçanın ilk kelimesi, baştaki `VAR=value` atamalarından sonra —
+  heredoc gövdeleri hariç. Çıplak, `cd` önekli, env önekli, mutlak yollu, çok satırlı ve
+  `/cli-dispatch:run` slash biçimlerinin hepsi saymaya devam ediyor.
+
+  Donmuş 646 dosyalık bir transcript snapshot'ında ölçüldü: raporlanan invocation sayısı
+  228'den 18'e düştü (yaklaşık 15 gerçek başlatma artı üç `--help` probe'u); `agentSpawns`,
+  `inlineEdits` ve `policyInjectedSessions` bit birebir aynı kaldı. Yani raporun bastığı drift
+  oranı sapmayı yaklaşık bir büyüklük mertebesi eksik gösteriyormuş: aynı veride 5.5 iken 69.8
+  oldu. Transcript taraması satır başına `JSON.parse` olmadan metin taraması olarak kaldı;
+  rapor bu snapshot üzerinde eskisiyle aynı ~2.5s'de koşuyor.
+
 ## [4.20.0] — 2026-08-15
 
 ### Eklendi
