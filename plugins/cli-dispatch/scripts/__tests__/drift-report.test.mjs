@@ -163,13 +163,14 @@ test('transcript text analyzer counts names without JSON parsing', () => {
     toolUse('Write'),
     bash('cli-dispatch-run ds "x"'),
     bash('/cli-dispatch:run cx "x"'),
+    // Named inside an argument, not run: not an invocation.
     '{"type":"tool_use","name":"Bash","input":{"command":"echo cli-dispatch-run mentioned outside runner? no"}}',
   ].join('\n')
   assert.deepEqual(analyzeTranscriptText(text), {
     policyInjected: true,
     agentSpawns: 1,
     inlineEdits: 2,
-    runnerInvocations: 3,
+    runnerInvocations: 2,
   })
 })
 
@@ -198,6 +199,56 @@ test('a real runner Bash call is still counted when prose quotes the runner near
     bash('ls -la'),
   ].join('\n')
   assert.equal(analyzeTranscriptText(text).runnerInvocations, 1)
+})
+
+// Naming the runner in an argument is not running it. Waiting on it, reading its
+// source, and writing a commit message about it are all things a session does
+// *around* the runner, and each one used to be scored as a delegation.
+test('commands that only name the runner are not invocations', () => {
+  const cases = [
+    'until ! pgrep -f "cli-dispatch-run" >/dev/null; do sleep 30; done',
+    'rtk proxy grep -n "VERIFY" ~/.local/bin/cli-dispatch-run | head -30',
+    'sed -n \'1,60p\' plugins/cli-dispatch/scripts/cli-dispatch-run',
+    'command -v cli-dispatch-run >/dev/null 2>&1 && echo "runner: VAR"',
+    'tail -12 /tmp/run.log; pgrep -fl "cli-dispatch-run|cx-agent" | head',
+  ]
+  for (const command of cases) {
+    assert.equal(
+      analyzeTranscriptText(bash(command)).runnerInvocations,
+      0,
+      `must not count: ${command}`,
+    )
+  }
+})
+
+test('a heredoc body quoting the runner is not an invocation', () => {
+  const command = [
+    "git commit -F - <<'EOF'",
+    'fix(upgrade): keep the runner reachable after a plugin upgrade',
+    '',
+    'The documented flow is:',
+    '/cli-dispatch:run <backend> "<task>" --verify \'<cmd>\'',
+    'EOF',
+  ].join('\n')
+  assert.equal(analyzeTranscriptText(bash(command)).runnerInvocations, 0)
+})
+
+test('launch-shaped commands are still counted', () => {
+  const cases = [
+    'cli-dispatch-run --backend cx --cwd /repo --prompt "x"',
+    'cd /Users/me/repo && cli-dispatch-run --backend cx --cwd "$PWD" --prompt "x"',
+    '/cli-dispatch:run cx "task" --verify \'node --test x.mjs\'',
+    'CLI_DISPATCH_ALLOW_CONCURRENT_EDITS=1 cli-dispatch-run --backend ds --cwd /repo',
+    'P=/repo\ncli-dispatch-run --backend ds --cwd "$P" --prompt "x"',
+    '~/.local/bin/cli-dispatch-run --backend cp --cwd /repo',
+  ]
+  for (const command of cases) {
+    assert.equal(
+      analyzeTranscriptText(bash(command)).runnerInvocations,
+      1,
+      `must count: ${command}`,
+    )
+  }
 })
 
 test('a tool_result echoing the runner does not credit the next unrelated Bash call', () => {
