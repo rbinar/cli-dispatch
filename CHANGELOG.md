@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.23.0] — 2026-08-17
+
+### Added
+
+- **Worker rows now identify the Claude Code session that spawned them.** Every backend parser
+  records Claude Code's inherited session id in `meta.json`, preserving the original non-empty
+  value across resumes. The dashboard shows the parent project and short session id before the
+  worker cwd, while legacy workers without the field retain their previous metadata line.
+
+- **Parent-project resolution stays cheap on the SSE-refreshed worker list.** The list route maps
+  session ids to dash-encoded `~/.claude/projects` directories using cached directory listings
+  only; it never reads transcript contents. The existing transcript-based parent index remains
+  confined to the worker detail route.
+
 ## [4.22.0] — 2026-08-17
 
 ### Changed

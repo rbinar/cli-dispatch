@@ -680,6 +680,31 @@ test('workerMetaLineHtml: the timestamp is last in the DOM and carries the right
   assert.ok(html.indexOf('<span class="lt">') < whenAt)
 })
 
+test('workerMetaLineHtml: parent session is the first token when resolved, id-only, or absent', () => {
+  const { workerMetaLineHtml } = api()
+  const parentSessionId = '0f3b3761-0c73-4650-abde-d5374bb04f3b'
+
+  const resolved = workerMetaLineHtml({
+    parentSessionId,
+    parentProject: '-Users-someone-Repos-blinkbrosai-blinkfin',
+    cwd: '/tmp/blinkfin/api',
+    started: '',
+  }, false, '')
+  assert.match(resolved, /<span class="lt">blinkbrosai\/blinkfin 0f3b3761 · blinkfin\/api<\/span>/)
+
+  const idOnly = workerMetaLineHtml({
+    parentSessionId,
+    parentProject: null,
+    cwd: '/tmp/blinkfin/api',
+    started: '',
+  }, false, '')
+  assert.match(idOnly, /<span class="lt">0f3b3761 · blinkfin\/api<\/span>/)
+
+  const absent = workerMetaLineHtml({ cwd: '/tmp/blinkfin/api', started: '' }, false, '')
+  assert.match(absent, /<span class="lt">blinkfin\/api<\/span>/)
+  assert.doesNotMatch(absent, /0f3b3761|blinkbrosai/)
+})
+
 test('workerMetaLineHtml: absent tokens leave no dangling separators', () => {
   const { workerMetaLineHtml } = api()
 

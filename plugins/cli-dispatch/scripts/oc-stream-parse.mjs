@@ -69,6 +69,7 @@ meta = {
   ...meta,
   sessionId: path.basename(dir),
   backend: 'opencode',
+  parentSessionId: meta.parentSessionId || process.env.CLAUDE_CODE_SESSION_ID || '',
   threadId: process.env.OC_THREAD_ID ?? meta.threadId ?? '',
   promptPreview: process.env.OC_PROMPT_PREVIEW ?? meta.promptPreview ?? '',
   cwd: process.env.OC_CWD ?? meta.cwd ?? '',

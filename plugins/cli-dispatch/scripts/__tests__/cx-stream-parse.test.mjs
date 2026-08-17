@@ -16,9 +16,9 @@ const parserScript = path.join(SELF_DIR, '..', 'cx-stream-parse.mjs')
 const testDir = mkdtempSync(path.join(os.tmpdir(), 'cli-dispatch-test-cx-session-'))
 const modelMismatchAdvisory = 'This session was recorded with model `gpt-5.5` but is resuming with `gpt-5.3-codex-spark`. Consider switching back to `gpt-5.5` as it may affect Codex performance.'
 
-function runParser(events, envOverrides = {}) {
+function runParser(events, envOverrides = {}, { preserveDir = false } = {}) {
   return new Promise((resolve, reject) => {
-    if (existsSync(testDir)) {
+    if (!preserveDir && existsSync(testDir)) {
       rmSync(testDir, { recursive: true, force: true })
     }
     const proc = spawn('node', [parserScript], {
@@ -112,6 +112,30 @@ test('cx-stream-parse: CX_MODEL and thread.started are written to meta.json', as
   // thread.started overwrites the initially-configured CX_THREAD_ID.
   assert.equal(meta.threadId, 'thread-abc')
   assert.equal(meta.backend, 'codex')
+
+  rmSync(testDir, { recursive: true, force: true })
+})
+
+test('cx-stream-parse: writes the spawning Claude Code session and preserves it on resume', async () => {
+  const spawnedBy = '40a4706b-0c73-4650-abde-d5374bb04f3b'
+  const resumedBy = '7b5e6f3c-fc84-4e92-a553-a40f7b388feb'
+  const events = [{
+    type: 'item.completed',
+    item: { id: '1', type: 'agent_message', text: 'Done.' }
+  }]
+
+  let result = await runParser(events, { CLAUDE_CODE_SESSION_ID: spawnedBy })
+  assert.equal(result.code, 0)
+  let meta = JSON.parse(readFileSync(path.join(testDir, 'meta.json'), 'utf8'))
+  assert.equal(meta.parentSessionId, spawnedBy)
+
+  result = await runParser(events, {
+    CX_RESUME: '1',
+    CLAUDE_CODE_SESSION_ID: resumedBy,
+  }, { preserveDir: true })
+  assert.equal(result.code, 0)
+  meta = JSON.parse(readFileSync(path.join(testDir, 'meta.json'), 'utf8'))
+  assert.equal(meta.parentSessionId, spawnedBy)
 
   rmSync(testDir, { recursive: true, force: true })
 })

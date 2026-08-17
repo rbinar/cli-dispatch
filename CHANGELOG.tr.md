@@ -7,6 +7,21 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.23.0] — 2026-08-17
+
+### Eklendi
+
+- **Worker satırları artık kendilerini başlatan Claude Code session'ını gösteriyor.** Her backend
+  parser'ı Claude Code'dan miras kalan session kimliğini `meta.json` içine kaydediyor ve resume'lar
+  boyunca özgün, boş olmayan değeri koruyor. Dashboard parent project ile kısa session kimliğini
+  worker cwd'sinden önce gösterirken, bu alanı taşımayan eski worker'ların metadata satırı eskisi
+  gibi kalıyor.
+
+- **Parent-project çözümleme, SSE ile yenilenen worker listesinde düşük maliyetli kalıyor.** Liste
+  route'u session kimliklerini dash-encoded `~/.claude/projects` dizinlerine yalnızca cache'lenen
+  dizin listeleriyle eşliyor; transcript içeriklerini asla okumuyor. Mevcut transcript tabanlı
+  parent index yalnızca worker detay route'unda kalmaya devam ediyor.
+
 ## [4.22.0] — 2026-08-17
 
 ### Değişti
