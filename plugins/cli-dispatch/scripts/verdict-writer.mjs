@@ -179,10 +179,20 @@ export function normalizeWorkerReport(raw) {
 // the other is `git status --short` in stream-utils.sh — so disagreement between them is
 // exactly the signal worth surfacing.
 //
-// Deliberately conservative: it only flags a path-looking token that appears in a claim and is
-// absent from the measured file list. It does NOT try to judge whether a claim is true, and a
-// silent empty result means "nothing contradicted", never "everything checked out".
-const PATH_TOKEN = /(?:[\w.@-]+\/)*[\w.@-]+\.[A-Za-z][\w]{0,7}/g
+// Deliberately conservative: it extracts path-shaped tokens only and intentionally under-reports
+// rather than treating every dotted word as a file. It does NOT try to judge whether a claim is
+// true, and an empty result means "nothing contradicted", never "claims verified".
+const PATH_TOKEN = /(?:[\w.@-]+\/)*[\w.@-]+\.[A-Za-z]\w*(?![\w.@\/-])/g
+
+// Bare filenames need a known source, asset, or config extension; slash paths remain candidates.
+// This one allowlist also does the domain rejection `www.java.com` needs: no TLD is a source
+// extension, so a separate TLD set would be unreachable code — do not add one back.
+const PATH_EXTENSIONS = new Set([
+  'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'json', 'md', 'sh', 'ps1', 'py', 'kt',
+  'swift', 'java', 'rb', 'go', 'rs', 'c', 'h', 'cpp', 'hpp', 'yml', 'yaml', 'toml',
+  'css', 'scss', 'html', 'htm', 'sql', 'txt', 'lock', 'env', 'cfg', 'ini', 'xml',
+  'gradle', 'plist', 'gif', 'mp4',
+])
 
 export function crossCheckClaims(claims, changedFiles) {
   if (!Array.isArray(claims) || !claims.length) return []
@@ -191,6 +201,9 @@ export function crossCheckClaims(claims, changedFiles) {
   for (const c of claims) {
     const text = `${c.claim || ''} ${c.howVerified || ''} ${c.result || ''}`
     for (const tok of text.match(PATH_TOKEN) || []) {
+      const hasSlash = tok.includes('/')
+      const extension = tok.slice(tok.lastIndexOf('.') + 1).toLowerCase()
+      if (!hasSlash && !PATH_EXTENSIONS.has(extension)) continue
       // A bare basename is enough to match: the worker says "page.test.tsx", the measured list
       // carries "app/x/page.test.tsx". Suffix matching keeps that a hit, not a false alarm.
       const hit = measured.some((f) => f === tok || f.endsWith(`/${tok}`) || tok.endsWith(`/${f}`))
