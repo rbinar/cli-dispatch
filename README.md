@@ -156,9 +156,12 @@ busy/idle), and `~/.cache/cli-dispatch/sessions/**` (workers). Notes:
 
 `scripts/cli-dispatch-statusline.sh` is a statusline **fragment**: a combining
 `~/.claude/hooks/statusline.sh` wrapper pipes the statusline's stdin JSON to it and appends
-its output. It prints a cyan `[CD]` badge when cli-dispatch is **active** (policy injection
-enabled, or ≥1 worker running), plus a yellow `▶N` counter while N worker sessions are
-running — and nothing when inactive.
+its output. From Claude Code's snake_case `session_id`, it counts only fresh, running workers
+spawned by **this Claude Code session** and groups them by backend in a yellow suffix, such as
+`[CD](ds:1,ag:2,cx:1)`. The fixed group order is `ds`, `ag`, `cx`, `oc`, `cp`; empty groups are
+omitted. The cyan `[CD]` badge appears when policy injection is enabled or this session has a
+live worker, and nothing is printed when inactive. Legacy workers without `parentSessionId` are
+excluded. Callers without a non-empty `session_id` retain the legacy global yellow `▶N` counter.
 
 Wire it up with one line in your combining wrapper, globbing the fragment out of the plugin
 cache (hash/version-named, so glob — don't hardcode a path):
@@ -167,8 +170,8 @@ cache (hash/version-named, so glob — don't hardcode a path):
 CD_SCRIPT=$(ls "$CONFIG_DIR"/plugins/cache/cli-dispatch/cli-dispatch/*/scripts/cli-dispatch-statusline.sh 2>/dev/null | head -1)
 ```
 
-It only reads tiny `status.json` files (never `transcript.jsonl`), so it stays cheap even
-though statuslines re-run on every prompt. Unix (bash) statusline setups only.
+It only reads tiny `status.json` and `meta.json` files (never `transcript.jsonl`), so it stays
+cheap even though statuslines re-run on every prompt. Unix (bash) statusline setups only.
 
 ## Usage
 
@@ -217,7 +220,7 @@ All used from inside Claude Code (`/cli-dispatch:ds-run <task>`, `/cli-dispatch:
 - **Isolation & read-only** — real repo tasks run in a throwaway git worktree, diff left uncommitted; Codex's `--read-only` additionally activates a kernel-enforced no-writes sandbox. → [Security and data](#security-and-data)
 - **Deterministic runner, no LLM babysitter (`/cli-dispatch:run`)** — the only delegation path: launches a worker, isolates real repo changes in a worktree, blocks until done, and gates on a machine-checkable `--verify` command — zero Anthropic tokens spent on orchestration. For judgment-heavy work with no verify command, the escalation path is the same runner (or a plain `*-agent` CLI) — you read the compact verdict + diff yourself and follow up with `/cli-dispatch:resume` if needed. → [Deterministic runner](#deterministic-runner-cli-dispatchrun--no-llm-babysitter)
 - **Session-start policy injection (optional)** — a `SessionStart` hook auto-injects a compact delegation policy (deterministic-runner routing, escalation path, issue-filing reminder) into every session's context, configured once at `/cli-dispatch:setup`. Opt-in, default off, zero token cost when disabled. → [Session-start policy injection](#session-start-policy-injection-optional)
-- **Statusline badge (optional)** — a cyan `[CD]` badge, plus a yellow `▶N` running-worker counter, in your terminal statusline while cli-dispatch is active. → [Statusline badge](#statusline-badge)
+- **Statusline badge (optional)** — a cyan `[CD]` badge with yellow per-backend counts for this Claude Code session's live workers. → [Statusline badge](#statusline-badge)
 - **Web dashboard** — a local view: Claude Code sessions → flow → subagents → flow, plus a worker panel with each run's verify result and diff, cost/model visibility, and a Config editor. → [Dashboard](#dashboard)
 - **Native usage / quota** — `/cli-dispatch:balance` (all five at once) or a per-backend `*-balance`; reverse-engineered from each CLI's own local data where available, **no third-party tools**. Copilot is explicitly not CLI-queryable. → [Usage & quota](#usage--quota--native-no-third-party-tool)
 - **Housekeeping** — `/cli-dispatch:clean` prunes stale (`running`-but-dead) worker dirs; `/cli-dispatch:clean-schedule` automates it daily via launchd / cron / Scheduled Tasks.

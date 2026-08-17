@@ -7,6 +7,21 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.24.0] — 2026-08-17
+
+### Değişti
+
+- **`[CD]` statusline artık yalnızca mevcut Claude Code session'ının başlattığı worker'ları
+  gösteriyor.** Stdin Claude Code'un snake_case `session_id` alanını taşıdığında fragment,
+  mevcut `running` state ve 90 saniyelik `status.json` tazelik kontrolüne ek olarak `meta.json`
+  içinde eşleşen bir `parentSessionId` arıyor. Canlı worker'ları sabit `ds`, `ag`, `cx`, `oc`,
+  `cp` sırasıyla grupluyor (örneğin `[CD](ds:1,ag:2,cx:1)`), uzun ve kısa backend yazımlarının
+  ikisini de kabul ediyor; başka parent session'ların worker'larını ve parent metadata'sı olmayan
+  eski worker'ları hariç tutuyor. Grup mevcut sarı sayaç rengini kullanıyor; `[CD]` cyan kalıyor.
+  Stdin hâlâ tamamen tüketiliyor ve boş olmayan `session_id` taşımayan çağırıcılarda global
+  `▶N` davranışı değişmeden korunuyor. Sıcak yol yalnızca `status.json` ve `meta.json` okuyor;
+  transcript'lere asla dokunmuyor.
+
 ## [4.23.0] — 2026-08-17
 
 ### Eklendi

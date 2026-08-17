@@ -52,6 +52,19 @@ function makeSession(rootDir, id, state, mtimeAgeSec) {
   return d
 }
 
+function makeScopedSession(rootDir, id, {
+  state = 'running',
+  mtimeAgeSec = 0,
+  backend = 'codex',
+  parentSessionId,
+} = {}) {
+  const d = makeSession(rootDir, id, state, mtimeAgeSec)
+  const meta = { backend }
+  if (parentSessionId !== undefined) meta.parentSessionId = parentSessionId
+  writeJson(path.join(d, 'meta.json'), meta)
+  return d
+}
+
 // ---- helpers ----
 
 function runStatusline({ sessionsDir, policyFile, stdinJson, now, timeoutMs = 5000 }) {
@@ -103,6 +116,16 @@ const FAKE_STDIN = {
   sessionId: 'test-session-1',
   model: { id: 'claude-sonnet-5' },
   cost: { used: 0.05, remaining: 10 },
+}
+
+const SCOPED_STDIN = {
+  session_id: 'claude-session-current',
+  cwd: '/tmp/example-project',
+  model: { id: 'claude-sonnet-5' },
+}
+
+function stripAnsi(s) {
+  return s.replace(/\x1b\[[0-9;]*m/g, '')
 }
 
 // ============================================================================
@@ -355,4 +378,138 @@ test('session at 91s is NOT counted (> stale threshold)', (t) => {
   assert.equal(res.status, 0)
   assert.equal(res.stdout, '',
     `session at 91s (>90) must not be counted, got: ${JSON.stringify(res.stdout)}`)
+})
+
+// ---------- snake_case session_id: per-session, per-backend scoped mode ----------
+
+test('scoped mode counts only this parent session\'s fresh running workers', (t) => {
+  const sessionsDir = tmpDir('cd-sl-scoped-')
+  const policyFile = path.join(tmpDir('cd-sl-policy-'), 'policy.json')
+  writeJson(policyFile, { enabled: false })
+
+  makeScopedSession(sessionsDir, 'current-fresh', {
+    backend: 'codex', parentSessionId: SCOPED_STDIN.session_id,
+  })
+  makeScopedSession(sessionsDir, 'current-stale', {
+    backend: 'deepseek', parentSessionId: SCOPED_STDIN.session_id, mtimeAgeSec: 120,
+  })
+  makeScopedSession(sessionsDir, 'current-done', {
+    backend: 'antigravity', parentSessionId: SCOPED_STDIN.session_id, state: 'done',
+  })
+
+  const res = runStatusline({ sessionsDir, policyFile, stdinJson: SCOPED_STDIN })
+  skipIfBashUnavailable(t, res)
+
+  assert.equal(res.status, 0, `exit ${res.status}: ${res.stderr}`)
+  assert.equal(stripAnsi(res.stdout), '[CD](cx:1)')
+  assert.equal(res.stdout, '\x1b[36m[CD]\x1b[0m\x1b[33m(cx:1)\x1b[0m',
+    'the parenthesised scoped group uses the existing yellow counter colour')
+})
+
+test('scoped mode excludes a worker with a different parentSessionId', (t) => {
+  const sessionsDir = tmpDir('cd-sl-scoped-')
+  const policyFile = path.join(tmpDir('cd-sl-policy-'), 'policy.json')
+  writeJson(policyFile, { enabled: false })
+  makeScopedSession(sessionsDir, 'foreign', {
+    backend: 'codex', parentSessionId: 'claude-session-other',
+  })
+
+  const res = runStatusline({ sessionsDir, policyFile, stdinJson: SCOPED_STDIN })
+  skipIfBashUnavailable(t, res)
+
+  assert.equal(res.status, 0)
+  assert.equal(res.stdout, '')
+})
+
+test('scoped mode excludes a legacy worker with no parentSessionId', (t) => {
+  const sessionsDir = tmpDir('cd-sl-scoped-')
+  const policyFile = path.join(tmpDir('cd-sl-policy-'), 'policy.json')
+  writeJson(policyFile, { enabled: false })
+  makeScopedSession(sessionsDir, 'legacy', { backend: 'deepseek' })
+
+  const res = runStatusline({ sessionsDir, policyFile, stdinJson: SCOPED_STDIN })
+  skipIfBashUnavailable(t, res)
+
+  assert.equal(res.status, 0)
+  assert.equal(res.stdout, '')
+})
+
+test('scoped mode keeps the enabled-policy badge when this session has no workers', (t) => {
+  const sessionsDir = tmpDir('cd-sl-scoped-')
+  const policyFile = path.join(tmpDir('cd-sl-policy-'), 'policy.json')
+  writeJson(policyFile, { enabled: true })
+  makeScopedSession(sessionsDir, 'foreign', {
+    backend: 'codex', parentSessionId: 'claude-session-other',
+  })
+
+  const res = runStatusline({ sessionsDir, policyFile, stdinJson: SCOPED_STDIN })
+  skipIfBashUnavailable(t, res)
+
+  assert.equal(res.status, 0)
+  assert.equal(stripAnsi(res.stdout), '[CD]')
+})
+
+test('scoped mode groups multiple backends in fixed ds, ag, cx, oc, cp order', (t) => {
+  const sessionsDir = tmpDir('cd-sl-scoped-')
+  const policyFile = path.join(tmpDir('cd-sl-policy-'), 'policy.json')
+  writeJson(policyFile, { enabled: false })
+  const parentSessionId = SCOPED_STDIN.session_id
+
+  // Create them in deliberately different order from the required rendering order.
+  for (const [id, backend] of [
+    ['cp-1', 'copilot'],
+    ['cx-1', 'codex'],
+    ['ag-1', 'antigravity'],
+    ['oc-1', 'opencode'],
+    ['ds-1', 'deepseek'],
+    ['ag-2', 'antigravity'],
+  ]) {
+    makeScopedSession(sessionsDir, id, { backend, parentSessionId })
+  }
+
+  const res = runStatusline({ sessionsDir, policyFile, stdinJson: SCOPED_STDIN })
+  skipIfBashUnavailable(t, res)
+
+  assert.equal(res.status, 0)
+  assert.equal(stripAnsi(res.stdout), '[CD](ds:1,ag:2,cx:1,oc:1,cp:1)')
+})
+
+test('scoped mode maps both long and short spellings for every backend', (t) => {
+  const sessionsDir = tmpDir('cd-sl-scoped-')
+  const policyFile = path.join(tmpDir('cd-sl-policy-'), 'policy.json')
+  writeJson(policyFile, { enabled: false })
+  const parentSessionId = SCOPED_STDIN.session_id
+
+  for (const [short, long] of [
+    ['ds', 'deepseek'],
+    ['ag', 'antigravity'],
+    ['cx', 'codex'],
+    ['oc', 'opencode'],
+    ['cp', 'copilot'],
+  ]) {
+    makeScopedSession(sessionsDir, `${short}-short`, { backend: short, parentSessionId })
+    makeScopedSession(sessionsDir, `${short}-long`, { backend: long, parentSessionId })
+  }
+
+  const res = runStatusline({ sessionsDir, policyFile, stdinJson: SCOPED_STDIN })
+  skipIfBashUnavailable(t, res)
+
+  assert.equal(res.status, 0)
+  assert.equal(stripAnsi(res.stdout), '[CD](ds:2,ag:2,cx:2,oc:2,cp:2)')
+})
+
+test('missing or empty snake_case session_id retains the fallback ▶N counter', (t) => {
+  const sessionsDir = tmpDir('cd-sl-test-')
+  const policyFile = path.join(tmpDir('cd-sl-policy-'), 'policy.json')
+  writeJson(policyFile, { enabled: false })
+  makeSession(sessionsDir, 'sess-1', 'running', 0)
+  makeSession(sessionsDir, 'sess-2', 'running', 0)
+
+  for (const stdinJson of [FAKE_STDIN, { ...FAKE_STDIN, session_id: '' }]) {
+    const res = runStatusline({ sessionsDir, policyFile, stdinJson })
+    skipIfBashUnavailable(t, res)
+
+    assert.equal(res.status, 0)
+    assert.equal(stripAnsi(res.stdout), '[CD]▶2')
+  }
 })

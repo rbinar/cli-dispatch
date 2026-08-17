@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.24.0] — 2026-08-17
+
+### Changed
+
+- **The `[CD]` statusline now shows only workers spawned by the current Claude Code session.**
+  When stdin contains Claude Code's snake_case `session_id`, the fragment requires a matching
+  `meta.json` `parentSessionId` in addition to the existing `running` state and 90-second
+  `status.json` freshness check. It groups live workers in fixed `ds`, `ag`, `cx`, `oc`, `cp`
+  order (for example, `[CD](ds:1,ag:2,cx:1)`), accepts both long and short backend spellings,
+  and excludes workers from other parent sessions plus legacy workers without parent metadata.
+  The group uses the existing yellow counter color; `[CD]` remains cyan. Stdin is still drained
+  fully, and callers without a non-empty `session_id` retain the global `▶N` behavior unchanged.
+  The hot path reads only `status.json` and `meta.json`, never transcripts.
+
 ## [4.23.0] — 2026-08-17
 
 ### Added
