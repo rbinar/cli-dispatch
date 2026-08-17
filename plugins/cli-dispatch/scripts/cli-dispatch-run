@@ -140,6 +140,20 @@ record_worktree_removed() {
   return 0
 }
 
+print_trivial_advisory() {
+  # Parse the artifact we just wrote, rather than trusting shell string matching. A missing,
+  # malformed, or error-shaped verdict must stay silent, and this advisory is never fatal.
+  if "$NODE_BIN" -e '
+    try {
+      const verdict = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))
+      process.exit(verdict?.trivial === true ? 0 : 1)
+    } catch { process.exit(1) }
+  ' "$SESSION_DIR/verdict.json" >/dev/null 2>&1; then
+    echo "cli-dispatch-run: trivial diff (<50 lines) — consider doing work this size inline or batching it"
+  fi
+  return 0
+}
+
 
 build_and_write_verdict() {
   set +e
@@ -166,6 +180,7 @@ build_and_write_verdict() {
     exit 5
   fi
   printf '%s\n' "$VERDICT_JSON" > "$SESSION_DIR/verdict.json"
+  print_trivial_advisory
   cleanup_worktree_if_requested "$WORKTREE_PATH" "$BUILD_EXIT"
   exit "$BUILD_EXIT"
 }

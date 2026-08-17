@@ -5,8 +5,19 @@ import {
   extractUserRequest,
   conversationMatchesPrompt,
   firstUserInputContent,
+  isTrivialDiffstat,
   selectOwnedConversation,
 } from '../parse-utils.mjs'
+
+test('isTrivialDiffstat: applies the shared changed-line rule', () => {
+  assert.equal(isTrivialDiffstat(' 2 files changed, 10 insertions(+), 3 deletions(-)'), true)
+  assert.equal(isTrivialDiffstat(' 9 files changed, 60 insertions(+), 4 deletions(-)'), false)
+  assert.equal(isTrivialDiffstat(' 1 file changed, 12 insertions(+)'), true)
+  assert.equal(isTrivialDiffstat(' 1 file changed, 12 deletions(-)'), true)
+  assert.equal(isTrivialDiffstat(''), false)
+  assert.equal(isTrivialDiffstat(undefined), false)
+  assert.equal(isTrivialDiffstat(' 0 files changed, 0 insertions(+), 0 deletions(-)'), false)
+})
 
 // ---- E7: Antigravity conversation-ownership matching ----
 

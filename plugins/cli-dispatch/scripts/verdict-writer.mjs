@@ -2,7 +2,7 @@ import { execSync } from 'node:child_process'
 import { readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { NON_TERMINAL_STATES, TERMINAL_STATES, normalizeBackend } from './parse-utils.mjs'
+import { NON_TERMINAL_STATES, TERMINAL_STATES, isTrivialDiffstat, normalizeBackend } from './parse-utils.mjs'
 
 // Moved to parse-utils.mjs (the shared session-dir contract) in 4.3.0 so the dashboard can
 // read it without importing this module. Re-exported here so existing importers keep working.
@@ -291,6 +291,9 @@ export function buildVerdict({ statusJson, metaJson, changedFilesJson, verifyRes
     // diff does not contain (issue #148).
     workerReport: attachCrossCheck(readWorkerReport(worktree) ?? readWorkerReport(sessionDir), files),
     stranded: Boolean(hasStrandedChanges(worktree)),
+    // Advisory about the delegation decision, not a judgement about the work. It never
+    // affects exitCode; an absent or empty diff remains the separate, non-trivial case.
+    trivial: isTrivialDiffstat(changedFiles.diffstat),
     worktreeRemoved: false,
     startedAt: meta.startedAt,
     endedAt: new Date().toISOString(),

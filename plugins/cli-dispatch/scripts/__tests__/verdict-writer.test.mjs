@@ -153,6 +153,30 @@ test('buildVerdict: diffPatchPath and changedFiles are populated', () => {
   cleanup(fixture.sessionRoot, fixture.worktree)
 })
 
+test('buildVerdict: trivial is advisory for small diffs only', () => {
+  const small = makeFixture({ diffstat: ' 2 files changed, 10 insertions(+), 3 deletions(-)' })
+  const large = makeFixture({ diffstat: ' 9 files changed, 60 insertions(+), 4 deletions(-)' })
+
+  const smallResult = buildVerdict({
+    statusJson: small.statusJson,
+    metaJson: small.metaJson,
+    changedFilesJson: small.changedFilesJson,
+    worktreeInfo: { sessionDir: small.sessionRoot, worktree: small.worktree },
+  })
+  const largeResult = buildVerdict({
+    statusJson: large.statusJson,
+    metaJson: large.metaJson,
+    changedFilesJson: large.changedFilesJson,
+    worktreeInfo: { sessionDir: large.sessionRoot, worktree: large.worktree },
+  })
+
+  assert.equal(smallResult.verdict.trivial, true)
+  assert.equal(largeResult.verdict.trivial, false)
+  assert.equal(smallResult.exitCode, largeResult.exitCode)
+
+  cleanup(small.sessionRoot, small.worktree, large.sessionRoot, large.worktree)
+})
+
 test('buildVerdict: stranded tracks git status truthiness', () => {
   const cleanRepo = makeRepo()
   const cleanFixture = makeFixture({ state: 'done' })

@@ -107,3 +107,14 @@ test('cli-dispatch-run.ps1: the bash launch line quotes through the helper, neve
     'bash -lc must not interpolate a value between bare single quotes (issue #125)',
   )
 })
+
+test('cli-dispatch-run.ps1: trivial advisory matches the bash runner and stays before cleanup', () => {
+  const ps1 = fs.readFileSync(RUNNER_PS1, 'utf8')
+  const bash = fs.readFileSync(path.join(SELF_DIR, '..', 'cli-dispatch-run'), 'utf8')
+  const advisory = 'cli-dispatch-run: trivial diff (<50 lines) — consider doing work this size inline or batching it'
+
+  assert.equal(ps1.split(advisory).length - 1, 1)
+  assert.equal(bash.split(advisory).length - 1, 1)
+  assert.ok(ps1.indexOf(advisory) < ps1.lastIndexOf('Invoke-CleanupWorktree'))
+  assert.match(ps1, /if \(\$verdictForNotes\.trivial -eq \$true\)/)
+})

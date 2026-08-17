@@ -1,5 +1,10 @@
 import {test} from 'node:test'
 import assert from 'node:assert/strict'
+import {spawnSync} from 'node:child_process'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import {fileURLToPath} from 'node:url'
 import {
   isStatusPollCommand,
   backendFromCommand,
@@ -8,6 +13,8 @@ import {
   RUNNER_RE,
   PINNED_RUNNER_MODEL_RE,
 } from '../gain-report.mjs'
+
+const GAIN_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'gain-report.mjs')
 
 // --- Fix 1 helper: real polling signal (status.json direct read, NOT cli-dispatch-wait) ---
 test('isStatusPollCommand: direct status.json read counts', () => {
@@ -150,4 +157,31 @@ test('PINNED_RUNNER_MODEL_RE identifies the legacy haiku pinning only', () => {
   assert.ok(PINNED_RUNNER_MODEL_RE.test('claude-haiku-4-5-20251001'))
   assert.equal(PINNED_RUNNER_MODEL_RE.test('claude-opus-5'), false)
   assert.equal(PINNED_RUNNER_MODEL_RE.test('claude-sonnet-5'), false)
+})
+
+test('gain report keeps the trivial delegation count for session fixtures', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cli-dispatch-gain-'))
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'cli-dispatch-gain-home-'))
+  const writeSession = (id, diffstat) => {
+    const dir = path.join(root, id)
+    fs.mkdirSync(dir)
+    fs.writeFileSync(path.join(dir, 'status.json'), JSON.stringify({ backend: 'ds', state: 'done' }))
+    fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({ cwd: '/fixture/repo', startedAt: `2026-08-18T00:00:0${id}.000Z` }))
+    fs.writeFileSync(path.join(dir, 'changed-files.json'), JSON.stringify({ files: [], diffstat }))
+  }
+  writeSession('1', ' 2 files changed, 10 insertions(+), 3 deletions(-)')
+  writeSession('2', ' 9 files changed, 60 insertions(+), 4 deletions(-)')
+  writeSession('3', ' 0 files changed, 0 insertions(+), 0 deletions(-)')
+
+  try {
+    const result = spawnSync(process.execPath, [GAIN_PATH], {
+      encoding: 'utf8',
+      env: { ...process.env, HOME: fakeHome, CLI_DISPATCH_SESSIONS_DIR: root },
+    })
+    assert.equal(result.status, 0, result.stderr)
+    assert.match(result.stdout, /^trivial delegations \(diff < 50 lines\): 1 — cheaper done inline; batch or inline next time$/m)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+    fs.rmSync(fakeHome, { recursive: true, force: true })
+  }
 })

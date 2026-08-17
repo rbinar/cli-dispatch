@@ -4,6 +4,7 @@ import path from 'node:path'
 import readline from 'node:readline'
 import os from 'node:os'
 import {pathToFileURL} from 'node:url'
+import {isTrivialDiffstat} from './parse-utils.mjs'
 
 // ---------------------------------------------------------------------------
 // Pure, testable core. Everything above the `runMain()` guard is import-safe:
@@ -187,16 +188,9 @@ async function runMain(){
     const st=read(path.join(dir,'status.json')), m=read(path.join(dir,'meta.json'))
     const backend=st.backend||m.backend||'deepseek'
     const cf=read(path.join(dir,'changed-files.json'))
-    if(cf && typeof cf.diffstat === 'string') {
-      let total = 0
-      const mi=cf.diffstat.match(/(\d+) insertion/)
-      const md=cf.diffstat.match(/(\d+) deletion/)
-      if(mi) total += parseInt(mi[1],10)
-      if(md) total += parseInt(md[1],10)
-      if(total > 0 && total < 50){
-        trivialCount++
-        trivialSessions.push({sessionId:d,cwd:m.cwd||'',backend,diffstat:cf.diffstat,startedAt:m.startedAt||''})
-      }
+    if(isTrivialDiffstat(cf.diffstat)) {
+      trivialCount++
+      trivialSessions.push({sessionId:d,cwd:m.cwd||'',backend,diffstat:cf.diffstat,startedAt:m.startedAt||''})
     }
     const vd=read(path.join(dir,'verdict.json'))
     if(vd && typeof vd==='object' && Object.keys(vd).length>0){

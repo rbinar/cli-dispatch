@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.26.0] — 2026-08-18
+
+### Added
+
+- **Deterministic runs now surface trivial delegation decisions immediately.** `verdict.json`
+  carries a top-level advisory `trivial` boolean derived from the same shared diffstat rule as
+  `cli-dispatch-gain`: a run is trivial only when insertions plus deletions are greater than zero
+  and fewer than 50. Empty and missing diffstats remain non-trivial, and the signal never changes
+  the runner's exit code or judges the work itself. When true, both Bash and PowerShell runners
+  print one short inline-or-batch suggestion after the terminal summary and before the worktree
+  note. The gain report's existing text and counts remain unchanged.
+
 ## [4.25.0] — 2026-08-18
 
 ### Fixed
