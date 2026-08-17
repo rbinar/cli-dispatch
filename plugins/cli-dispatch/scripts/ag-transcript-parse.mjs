@@ -57,6 +57,7 @@ meta = {
   ...meta,
   sessionId: path.basename(dir),
   backend: 'antigravity',
+  parentSessionId: meta.parentSessionId || process.env.CLAUDE_CODE_SESSION_ID || '',
   convId: process.env.AG_CONV_ID ?? meta.convId ?? '',
   promptPreview: process.env.AG_PROMPT_PREVIEW ?? meta.promptPreview ?? '',
   cwd: process.env.AG_CWD ?? meta.cwd ?? '',

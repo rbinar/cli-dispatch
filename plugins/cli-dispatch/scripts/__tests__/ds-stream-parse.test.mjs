@@ -15,9 +15,9 @@ const parserScript = path.join(SELF_DIR, '..', 'ds-stream-parse.mjs')
 // a junk directory behind in the working tree.
 const testDir = mkdtempSync(path.join(os.tmpdir(), 'cli-dispatch-test-ds-session-'))
 
-function runParser(events, envOverrides = {}) {
+function runParser(events, envOverrides = {}, { preserveDir = false } = {}) {
   return new Promise((resolve, reject) => {
-    if (existsSync(testDir)) {
+    if (!preserveDir && existsSync(testDir)) {
       rmSync(testDir, { recursive: true, force: true })
     }
     const proc = spawn('node', [parserScript], {
@@ -117,6 +117,27 @@ test('ds-stream-parse: result event overwrites accumulated usage and clears usag
   assert.equal(status.usage.input_tokens, 999)
   assert.equal(status.usage.output_tokens, 111)
   assert.equal(status.usagePartial, false)
+
+  rmSync(testDir, { recursive: true, force: true })
+})
+
+test('ds-stream-parse: writes the spawning Claude Code session and preserves it on resume', async () => {
+  const spawnedBy = '40a4706b-0c73-4650-abde-d5374bb04f3b'
+  const resumedBy = '7b5e6f3c-fc84-4e92-a553-a40f7b388feb'
+  const events = [{ type: 'result', result: 'Done.' }]
+
+  let result = await runParser(events, { CLAUDE_CODE_SESSION_ID: spawnedBy })
+  assert.equal(result.code, 0)
+  let meta = JSON.parse(readFileSync(path.join(testDir, 'meta.json'), 'utf8'))
+  assert.equal(meta.parentSessionId, spawnedBy)
+
+  result = await runParser(events, {
+    CLAUDE_DS_RESUME: '1',
+    CLAUDE_CODE_SESSION_ID: resumedBy,
+  }, { preserveDir: true })
+  assert.equal(result.code, 0)
+  meta = JSON.parse(readFileSync(path.join(testDir, 'meta.json'), 'utf8'))
+  assert.equal(meta.parentSessionId, spawnedBy)
 
   rmSync(testDir, { recursive: true, force: true })
 })

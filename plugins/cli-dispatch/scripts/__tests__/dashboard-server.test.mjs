@@ -537,6 +537,58 @@ test('GET /api/workers drops babysitter accounting but keeps the parent-session 
   }
 })
 
+test('GET /api/workers exposes meta parent ids and cached readdir-only project matches', async () => {
+  const sessionsDir = mkdtempSync(path.join(tmpdir(), 'dash-worker-parent-'))
+  const homeDir = mkdtempSync(path.join(tmpdir(), 'dash-home-'))
+  const resolvedId = '40a4706b-0c73-4650-abde-d5374bb04f3b'
+  const unresolvedId = '7b5e6f3c-fc84-4e92-a553-a40f7b388feb'
+  const project = '-Users-someone-Repos-blinkbrosai-blinkfin'
+  const port = 18800 + Math.floor(Math.random() * 1000)
+
+  const seed = (id, parentSessionId) => {
+    const dir = path.join(sessionsDir, id)
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(path.join(dir, 'status.json'), JSON.stringify({ backend: 'codex', state: 'done' }))
+    writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({
+      backend: 'codex',
+      startedAt: '2026-08-17T00:00:00.000Z',
+      ...(parentSessionId === undefined ? {} : { parentSessionId }),
+    }))
+  }
+  seed('cx-resolved', resolvedId)
+  seed('cx-unresolved', unresolvedId)
+  seed('cx-legacy')
+
+  const projDir = path.join(homeDir, '.claude', 'projects', project)
+  mkdirSync(projDir, { recursive: true })
+  const transcript = path.join(projDir, resolvedId + '.jsonl')
+  // Empty is enough: the list route needs only the directory entry, never transcript content.
+  writeFileSync(transcript, '')
+
+  const child = startServerIsolated({ sessionsDir, homeDir, port })
+  try {
+    const actualPort = await waitForServerReady(child)
+    const res = await httpRequest({ port: actualPort, method: 'GET', path: '/api/workers' })
+    assert.equal(res.status, 200)
+    const byId = Object.fromEntries(res.body.map(row => [row.id, row]))
+    assert.equal(byId['cx-resolved'].parentSessionId, resolvedId)
+    assert.equal(byId['cx-resolved'].parentProject, project)
+    assert.equal(byId['cx-unresolved'].parentSessionId, unresolvedId)
+    assert.equal(byId['cx-unresolved'].parentProject, null)
+    assert.equal(byId['cx-legacy'].parentSessionId, null)
+    assert.equal(byId['cx-legacy'].parentProject, null)
+
+    // Removing the entry after the first response proves the SSE-path lookup reuses its cache.
+    rmSync(transcript)
+    const cached = await httpRequest({ port: actualPort, method: 'GET', path: '/api/workers' })
+    assert.equal(cached.body.find(row => row.id === 'cx-resolved').parentProject, project)
+  } finally {
+    await stopServer(child)
+    rmSync(sessionsDir, { recursive: true, force: true })
+    rmSync(homeDir, { recursive: true, force: true })
+  }
+})
+
 // ---- verdict.json / changed-files.json readers (4.3.0) ----
 
 function seedDir(prefix) {

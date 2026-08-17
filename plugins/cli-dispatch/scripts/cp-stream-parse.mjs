@@ -57,6 +57,7 @@ meta = {
   ...meta,
   sessionId: path.basename(dir),
   backend: 'copilot',
+  parentSessionId: meta.parentSessionId || process.env.CLAUDE_CODE_SESSION_ID || '',
   threadId: process.env.CP_THREAD_ID ?? meta.threadId ?? '',
   promptPreview: process.env.CP_PROMPT_PREVIEW ?? meta.promptPreview ?? '',
   cwd: process.env.CP_CWD ?? meta.cwd ?? '',

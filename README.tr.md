@@ -156,9 +156,13 @@ busy/idle) ve `~/.cache/cli-dispatch/sessions/**` (worker'lar) okur. Notlar:
 
 `scripts/cli-dispatch-statusline.sh` bir statusline **fragment'ıdır**: birleştirici
 `~/.claude/hooks/statusline.sh` wrapper'ın statusline stdin JSON'unu bu script'e aktarıp
-çıktısını eklemesiyle çalışır. cli-dispatch **aktif** olduğunda (politika enjeksiyonu açık,
-ya da ≥1 worker çalışıyor) cyan bir `[CD]` rozeti, N worker çalışırken de sarı bir `▶N`
-sayacı basar — pasifken hiçbir şey basmaz.
+çıktısını eklemesiyle çalışır. Claude Code'un snake_case `session_id` alanından
+yalnızca **bu Claude Code session'ının** başlattığı taze ve çalışan worker'ları sayar;
+`[CD](ds:1,ag:2,cx:1)` gibi sarı bir ekte backend'e göre gruplar. Sabit grup sırası
+`ds`, `ag`, `cx`, `oc`, `cp`'dir; boş gruplar yazılmaz. Cyan `[CD]` rozeti politika enjeksiyonu
+açıkken veya bu session'ın canlı bir worker'ı varken görünür; pasifken hiçbir şey basılmaz.
+`parentSessionId` alanı olmayan eski worker'lar hariç tutulur. Boş olmayan `session_id`
+taşımayan çağırıcılar eski global sarı `▶N` sayacını kullanmaya devam eder.
 
 Birleştirici wrapper'ına tek satırla bağla; fragment'ı plugin cache'inden glob ile bul (hash/versiyon adlı, o yüzden glob kullan — yol'u sabit kodlama):
 
@@ -166,8 +170,9 @@ Birleştirici wrapper'ına tek satırla bağla; fragment'ı plugin cache'inden g
 CD_SCRIPT=$(ls "$CONFIG_DIR"/plugins/cache/cli-dispatch/cli-dispatch/*/scripts/cli-dispatch-statusline.sh 2>/dev/null | head -1)
 ```
 
-Sadece küçük `status.json` dosyalarını okur (asla `transcript.jsonl`'ı), böylece statusline
-her prompt'ta yeniden çalışsa da ucuz kalır. Yalnızca Unix (bash) statusline kurulumları.
+Sadece küçük `status.json` ve `meta.json` dosyalarını okur (asla `transcript.jsonl`'ı),
+böylece statusline her prompt'ta yeniden çalışsa da ucuz kalır. Yalnızca Unix (bash)
+statusline kurulumları.
 
 ## Kullanım
 
@@ -216,7 +221,7 @@ Hepsi Claude Code içinden kullanılır (`/cli-dispatch:ds-run <görev>`, `/cli-
 - **İzolasyon & read-only** — gerçek repo görevleri tek-kullanımlık git worktree'de çalışır, diff commit'siz bırakılır; Codex'in `--read-only`'si ayrıca kernel-zorunlu bir yazma-yok sandbox'ı aktive eder. → [Güvenlik ve veri](#güvenlik-ve-veri)
 - **Deterministik runner, LLM babysitter yok (`/cli-dispatch:run`)** — tek delegasyon yolu: bir işçi başlatır, gerçek repo değişikliklerini worktree'de izole eder, bitene kadar bloklar ve makine-kontrol-edilebilir bir `--verify` komutuna göre geçit koyar — orkestrasyonda sıfır Anthropic token harcanır. Verify komutu olmayan, muhakeme-yoğun işler için escalation yolu aynı runner'dır (veya doğrudan bir `*-agent` CLI) — kompakt verdict + diff'i kendin okur, gerekirse `/cli-dispatch:resume` ile devam edersin. → [Deterministik runner](#deterministik-runner-cli-dispatchrun--llm-babysitter-yok)
 - **Oturum-başı politika enjeksiyonu (opsiyonel)** — bir `SessionStart` hook'u, `/cli-dispatch:setup`'ta bir kez yapılandırılan kompakt bir delegasyon politikasını (deterministik-runner yönlendirmesi, escalation path, issue-açma hatırlatması) her oturumun context'ine otomatik enjekte eder. Opt-in, varsayılan kapalı, kapalıyken sıfır token maliyeti. → [Oturum-başı politika enjeksiyonu](#oturum-başı-politika-enjeksiyonu-opsiyonel)
-- **Statusline rozeti (opsiyonel)** — cli-dispatch aktifken terminal statusline'ında cyan bir `[CD]` rozeti, ayrıca sarı bir `▶N` çalışan-worker sayacı. → [Statusline rozeti](#statusline-rozeti)
+- **Statusline rozeti (opsiyonel)** — cyan bir `[CD]` rozeti ve bu Claude Code session'ının canlı worker'ları için sarı, backend bazlı sayaçlar. → [Statusline rozeti](#statusline-rozeti)
 - **Web dashboard** — local görünüm: Claude Code session'ları → akış → subagent'lar → akış, + her koşunun verify sonucu ve diff'iyle worker paneli, maliyet/model görünürlüğü ve bir Config editörü. → [Dashboard](#dashboard)
 - **Native kullanım / kota** — `/cli-dispatch:balance` (beşi birden) ya da backend başına `*-balance`; mümkün olduğunda her CLI'nın kendi local verisinden, **üçüncü-parti araç yok**. Copilot CLI'dan sorgulanamaz. → [Kullanım & kota](#kullanım--kota--native-üçüncü-parti-araç-yok)
 - **Temizlik** — `/cli-dispatch:clean` stale (`running` ama ölü) worker dizinlerini budar; `/cli-dispatch:clean-schedule` bunu launchd / cron / Scheduled Tasks ile günlük otomatikleştirir.

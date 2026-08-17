@@ -51,6 +51,7 @@ meta = {
   ...meta,
   sessionId: path.basename(dir),
   backend: 'codex',
+  parentSessionId: meta.parentSessionId || process.env.CLAUDE_CODE_SESSION_ID || '',
   threadId: process.env.CX_THREAD_ID ?? meta.threadId ?? '',
   promptPreview: process.env.CX_PROMPT_PREVIEW ?? meta.promptPreview ?? '',
   cwd: process.env.CX_CWD ?? meta.cwd ?? '',

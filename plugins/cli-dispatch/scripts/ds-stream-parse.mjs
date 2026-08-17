@@ -48,6 +48,7 @@ meta = {
   ...meta,
   sessionId: path.basename(dir),
   backend: 'deepseek',
+  parentSessionId: meta.parentSessionId || process.env.CLAUDE_CODE_SESSION_ID || '',
   promptPreview: process.env.CLAUDE_DS_PROMPT_PREVIEW ?? meta.promptPreview ?? '',
   cwd: process.env.CLAUDE_DS_CWD ?? meta.cwd ?? '',
   branch: process.env.CLAUDE_DS_BRANCH ?? meta.branch ?? '',

@@ -47,6 +47,8 @@ const HOME = os.homedir()
 const PROJECTS_DIR = path.join(HOME, '.claude', 'projects')
 const parentIndexCache = new Map() // keyed by CC session id -> { mtime, workerIds: string[] }
 const sessionTailCache = new Map() // keyed by CC session .jsonl path -> { mtime, head, tail, model, foundTail } — the readHead/readTail/parse result, invalidated by mtime
+const PARENT_PROJECT_CACHE_TTL_MS = 10 * 1000
+let parentProjectIndexCache = null // { at: number, value: Map<CC session id, dash-encoded project> }
 
 // Bounded-size cache write: these caches accumulate one entry per file/session seen
 // across the dashboard's lifetime with no natural eviction, which is an unbounded-growth
@@ -295,9 +297,33 @@ function listSubagents(sess) {
 }
 
 // ---- cli-dispatch workers ----
+// Build the cheap worker-row parent lookup from directory entries only. The transcript filename
+// already is the Claude Code session id, so no file content (or even per-file stat) is needed.
+// Cache the whole mapping briefly: /api/workers is refreshed via SSE, while a newly-created
+// Claude Code session should still become visible without restarting the dashboard.
+function parentProjectIndex() {
+  if (parentProjectIndexCache && Date.now() - parentProjectIndexCache.at < PARENT_PROJECT_CACHE_TTL_MS) {
+    return parentProjectIndexCache.value
+  }
+  const value = new Map()
+  try {
+    for (const entry of fs.readdirSync(PROJECTS_DIR, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue
+      let files
+      try { files = fs.readdirSync(path.join(PROJECTS_DIR, entry.name)) } catch { continue }
+      for (const file of files) {
+        if (file.endsWith('.jsonl')) value.set(file.slice(0, -6), entry.name)
+      }
+    }
+  } catch {}
+  parentProjectIndexCache = { at: Date.now(), value }
+  return value
+}
+
 function listWorkers(skipParentIndex = false) {
   const out = []
   if (!isDir(WORKERS_ROOT)) return out
+  const parentProjects = parentProjectIndex()
   for (const d of fs.readdirSync(WORKERS_ROOT)) {
     const dir = path.join(WORKERS_ROOT, d); if (!isDir(dir)) continue
     const m = readJSON(path.join(dir, 'meta.json')) || {}
@@ -327,6 +353,8 @@ function listWorkers(skipParentIndex = false) {
     // changed-files.json is richer and covers more sessions; the verdict's flat list is a fallback.
     const changedCount = changed ? changed.files.length : (verdict ? verdict.changedFiles.length : 0)
     const diffstat = (changed && changed.diffstat) || (verdict && verdict.diffstat) || ''
+    const parentSessionId = typeof m.parentSessionId === 'string' && m.parentSessionId
+      ? m.parentSessionId : null
     out.push({
       id: d,
       backend: s.backend || m.backend || 'deepseek',
@@ -336,6 +364,8 @@ function listWorkers(skipParentIndex = false) {
       started: m.startedAt || '',
       cwd: m.cwd || '',
       model: m.model || '',
+      parentSessionId,
+      parentProject: parentSessionId ? (parentProjects.get(parentSessionId) || null) : null,
       prompt: clip(m.promptPreview, 80),
       lastTool: s.lastTool || null,
       events: s.events || 0,
@@ -1734,9 +1764,9 @@ const ROUTES = [
   })),
   { method: 'GET', path: '/api/stream', handler: (req, res, params, u) => sse(req, res, u.searchParams.get('watch') || 'sessions') },
   { method: 'GET', path: '/api/sessions', handler: (req, res) => send(res, 200, listSessions()) },
-  // parentSession moved to the detail route in 4.3.0: the worker row no longer renders
-  // "from <project>", and resolving it cost a 2MB readTail per Claude Code transcript on the
-  // SSE-refreshed list path.
+  // The transcript-derived parentSession object stays on the detail route: resolving it costs a
+  // 2MB readTail per Claude Code transcript. Worker rows use only meta.parentSessionId plus the
+  // cached, readdir-only project mapping assembled above.
   { method: 'GET', path: '/api/workers', handler: (req, res) => send(res, 200, listWorkers(true)) },
   { method: 'GET', path: '/api/workers/aggregate', handler: (req, res) => send(res, 200, workerUsageAggregate()) },
   { method: 'GET', path: '/api/clean', handler: serveCleanGet },

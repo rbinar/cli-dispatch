@@ -460,6 +460,11 @@ function matchesWorkerFilter(w,flt){
 // assertion about order.
 function workerMetaLineHtml(w,live,usageBits){
   const parts=[]
+  const parentId=typeof w.parentSessionId==='string'?w.parentSessionId:''
+  if(parentId){
+    const parentProject=typeof w.parentProject==='string'&&w.parentProject?shortSessionProj(w.parentProject):''
+    parts.push(esc((parentProject?parentProject+' ':'')+parentId.slice(0,8)))
+  }
   const origin=shortProj(w.cwd)
   if(origin) parts.push(esc(origin))
   // lastTool only while the row is live — a fossil once the worker is dead (3.40.2).
