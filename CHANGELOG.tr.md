@@ -7,6 +7,34 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.26.0] — 2026-08-18
+
+### Eklendi
+
+- **Deterministik koşular artık trivial delegasyon kararlarını anında görünür kılıyor.**
+  `verdict.json`, `cli-dispatch-gain` ile aynı paylaşılan diffstat kuralından türetilen üst seviye
+  bir danışma amaçlı `trivial` boolean alanı taşıyor: bir koşu yalnızca insertion ve deletion
+  toplamı sıfırdan büyük ve 50'den küçük olduğunda trivial sayılıyor. Boş ve eksik diffstat'ler
+  trivial sayılmıyor; sinyal runner'ın exit code'unu asla değiştirmiyor ve işin kendisini
+  yargılamıyor. Değer true olduğunda hem Bash hem PowerShell runner terminal özetinden sonra ve
+  worktree notundan önce işi inline yapmayı veya batch'lemeyi öneren tek kısa satır basıyor. Gain
+  raporunun mevcut metni ve sayımları değişmeden kalıyor.
+
+## [4.25.0] — 2026-08-18
+
+### Düzeltildi
+
+- **Worker-report çapraz kontrolleri artık noktalı düz metni eksik dosya sanmıyor.** Claim'lerden
+  dosya çıkarımı artık ya slash içeren bir path ya da bilinen bir kaynak, asset veya config
+  uzantısına sahip yalın bir dosya adı gerektiriyor — `www.java.com` gibi yalın domain'leri dışarıda
+  tutan da bu, çünkü hiçbir TLD kaynak uzantısı değil. Uzantı eşleştirmesi token'ın tamamını
+  tüketerek `TasksServiceImpl.createTask` gibi uzun sembol adlarının `TasksServiceImpl.createTa`
+  gibi uydurma dosya claim'lerine kırpılmasını önlüyor. Bir makinedeki kullanılabilir worker
+  raporu taşıyan 68 verdict üzerinde ölçüldüğünde `claimedButMissing` değişiklikten önce
+  koşuların %47'sinde, sonra %19'unda tetiklendi (71 → 29 token); elenen her token bir sembol,
+  modül adı veya domain'di ve dosya biçimli hiçbir token kaybolmadı. Ölçülen dosyalara yönelik
+  suffix eşleştirmesi ve boş sonucun korumacı "çelişen bir şey yok" anlamı değişmeden kalıyor.
+
 ## [4.24.0] — 2026-08-17
 
 ### Değişti

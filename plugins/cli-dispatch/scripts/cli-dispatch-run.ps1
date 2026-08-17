@@ -560,6 +560,15 @@ honest empty `command` is more useful than a confident one that was never execut
   }
   Set-Content -Path (Join-Path $SessionDir 'verdict.json') -Value $verdictOut
 
+  # Read the artifact we just wrote. A missing, malformed, or error-shaped verdict stays silent;
+  # like the other closing notes, this advisory is informational and never changes the exit code.
+  try {
+    $verdictForNotes = Get-Content -Raw -Path (Join-Path $SessionDir 'verdict.json') -ErrorAction Stop | ConvertFrom-Json
+    if ($verdictForNotes.trivial -eq $true) {
+      Write-Host 'cli-dispatch-run: trivial diff (<50 lines) — consider doing work this size inline or batching it'
+    }
+  } catch {}
+
   Invoke-CleanupWorktree -Worktree $WorktreePath -VerdictExitCode $verdictExit -SessionDir $SessionDir
 
   exit $verdictExit

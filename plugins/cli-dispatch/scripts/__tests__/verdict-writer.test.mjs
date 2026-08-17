@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
-import { buildVerdict, markWorktreeRemoved, runVerify } from '../verdict-writer.mjs'
+import { buildVerdict, crossCheckClaims, markWorktreeRemoved, runVerify } from '../verdict-writer.mjs'
 
 const WRITER_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'verdict-writer.mjs')
 
@@ -153,6 +153,30 @@ test('buildVerdict: diffPatchPath and changedFiles are populated', () => {
   cleanup(fixture.sessionRoot, fixture.worktree)
 })
 
+test('buildVerdict: trivial is advisory for small diffs only', () => {
+  const small = makeFixture({ diffstat: ' 2 files changed, 10 insertions(+), 3 deletions(-)' })
+  const large = makeFixture({ diffstat: ' 9 files changed, 60 insertions(+), 4 deletions(-)' })
+
+  const smallResult = buildVerdict({
+    statusJson: small.statusJson,
+    metaJson: small.metaJson,
+    changedFilesJson: small.changedFilesJson,
+    worktreeInfo: { sessionDir: small.sessionRoot, worktree: small.worktree },
+  })
+  const largeResult = buildVerdict({
+    statusJson: large.statusJson,
+    metaJson: large.metaJson,
+    changedFilesJson: large.changedFilesJson,
+    worktreeInfo: { sessionDir: large.sessionRoot, worktree: large.worktree },
+  })
+
+  assert.equal(smallResult.verdict.trivial, true)
+  assert.equal(largeResult.verdict.trivial, false)
+  assert.equal(smallResult.exitCode, largeResult.exitCode)
+
+  cleanup(small.sessionRoot, small.worktree, large.sessionRoot, large.worktree)
+})
+
 test('buildVerdict: stranded tracks git status truthiness', () => {
   const cleanRepo = makeRepo()
   const cleanFixture = makeFixture({ state: 'done' })
@@ -230,6 +254,51 @@ test('buildVerdict: accepts long backend names and falls back to status.backend'
   }), /unknown backend/)
 
   cleanup(longName.sessionRoot, longName.worktree, noMeta.sessionRoot, noMeta.worktree)
+})
+
+test('crossCheckClaims: a Python module name is not treated as a claimed path', () => {
+  assert.deepEqual(crossCheckClaims([{ claim: 'checked with python -m json.tool' }], []), [])
+})
+
+test('crossCheckClaims: a domain in prose is not treated as a claimed path', () => {
+  assert.deepEqual(crossCheckClaims([{ claim: 'www.java.com was referenced in prose' }], []), [])
+})
+
+test('crossCheckClaims: a symbol chain is not treated as a claimed path', () => {
+  assert.deepEqual(crossCheckClaims([{ claim: 'inspected LocalizationManager.language.value.code' }], []), [])
+})
+
+test('crossCheckClaims: a long symbol is never truncated into a claimed path', () => {
+  const out = crossCheckClaims([{ claim: 'called TasksServiceImpl.createTask' }], [])
+  assert.deepEqual(out, [])
+  assert.equal(JSON.stringify(out).includes('TasksServiceImpl.createTa'), false)
+})
+
+// The extension allowlist alone would mask the truncation bug for BARE tokens (a truncated
+// `createTa` is not an allowed extension either way). A slash-bearing token skips the allowlist,
+// so this is the one case that pins the end-anchor in PATH_TOKEN on its own — without it the
+// regex reports `src/Foo.createTa`, a string that appears nowhere in the claim.
+test('crossCheckClaims: a slash-bearing symbol is reported whole, never truncated', () => {
+  const out = crossCheckClaims([{ claim: 'called src/Foo.createTask here' }], [])
+  assert.deepEqual(out, ['src/Foo.createTask'])
+})
+
+test('crossCheckClaims: a real nested source file absent from the measured diff is still flagged', () => {
+  assert.deepEqual(
+    crossCheckClaims([{ claim: 'added src/components/page.test.tsx' }], ['src/app.ts']),
+    ['src/components/page.test.tsx'],
+  )
+})
+
+test('crossCheckClaims: a bare source basename still matches a measured path by suffix', () => {
+  assert.deepEqual(
+    crossCheckClaims([{ claim: 'added page.test.tsx' }], ['app/x/page.test.tsx']),
+    [],
+  )
+})
+
+test('crossCheckClaims: a bare basename with a non-source extension is deliberately under-reported', () => {
+  assert.deepEqual(crossCheckClaims([{ claim: 'generated report.pdf' }], []), [])
 })
 
 // ---- markWorktreeRemoved (issue #128) ---------------------------------------------------

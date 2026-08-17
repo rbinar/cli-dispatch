@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.26.0] — 2026-08-18
+
+### Added
+
+- **Deterministic runs now surface trivial delegation decisions immediately.** `verdict.json`
+  carries a top-level advisory `trivial` boolean derived from the same shared diffstat rule as
+  `cli-dispatch-gain`: a run is trivial only when insertions plus deletions are greater than zero
+  and fewer than 50. Empty and missing diffstats remain non-trivial, and the signal never changes
+  the runner's exit code or judges the work itself. When true, both Bash and PowerShell runners
+  print one short inline-or-batch suggestion after the terminal summary and before the worktree
+  note. The gain report's existing text and counts remain unchanged.
+
+## [4.25.0] — 2026-08-18
+
+### Fixed
+
+- **Worker-report cross-checks no longer mistake dotted prose for missing files.** Claimed-file
+  extraction now requires either a slash-containing path or a bare filename with a known source,
+  asset, or config extension — which is also what keeps bare domains such as `www.java.com` out,
+  since no TLD is a source extension. Extension matching consumes the complete token, preventing
+  long symbol names such as `TasksServiceImpl.createTask` from being truncated into invented file
+  claims like `TasksServiceImpl.createTa`. Measured against the 68 verdicts on one machine that
+  carried a usable worker report, `claimedButMissing` fired on 47% of runs before the change and
+  19% after (71 → 29 tokens); every dropped token was a symbol, module name, or domain, and no
+  file-shaped token was lost. Measured-file suffix matching and the conservative "nothing
+  contradicted" meaning of an empty result remain unchanged.
+
 ## [4.24.0] — 2026-08-17
 
 ### Changed

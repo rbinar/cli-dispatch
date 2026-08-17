@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url'
 
 const SELF_DIR = path.dirname(fileURLToPath(import.meta.url))
 const RUNNER_PATH = path.join(SELF_DIR, '..', 'cli-dispatch-run')
+const WRITER_PATH = path.join(SELF_DIR, '..', 'verdict-writer.mjs')
 
 const mkdtemp = (prefix) => fs.mkdtempSync(path.join(os.tmpdir(), prefix))
 const rmrf = (p) => { try { fs.rmSync(p, { recursive: true, force: true }) } catch { /* ignore */ } }
@@ -40,14 +41,14 @@ function mkGitRepo() {
 }
 
 // Seed a terminal-state session so --resume goes straight to verify → verdict.
-function seedSession(worktree) {
+function seedSession(worktree, { diffstat = '' } = {}) {
   const sessionsRoot = mkdtemp('cd-verify-sessions-')
   const sessionId = 'ds-test-session'
   const dir = path.join(sessionsRoot, sessionId)
   fs.mkdirSync(dir, { recursive: true })
   fs.writeFileSync(path.join(dir, 'status.json'), JSON.stringify({ state: 'done', sessionId }))
   fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({ backend: 'ds', cwd: worktree, model: 'test-model' }))
-  fs.writeFileSync(path.join(dir, 'changed-files.json'), JSON.stringify({ files: [], diffstat: '' }))
+  fs.writeFileSync(path.join(dir, 'changed-files.json'), JSON.stringify({ files: [], diffstat }))
   return { sessionsRoot, sessionId, dir }
 }
 
@@ -177,6 +178,50 @@ test('6. --resume without a prompt is accepted (prompt requirement is resume-exe
     const out = `${res.stdout || ''}${res.stderr || ''}`
     assert.doesNotMatch(out, /--prompt or --prompt-file is required/, '--resume must not demand a prompt')
     assert.notEqual(res.status, 5, 'resume must not exit 5 (usage error)')
+  } finally {
+    rmrf(sessionsRoot); rmrf(repo)
+  }
+})
+
+test('7. a trivial verdict prints one advisory before the worktree note without changing exit code', () => {
+  const repo = mkGitRepo()
+  const { sessionsRoot, sessionId, dir } = seedSession(repo, {
+    diffstat: ' 2 files changed, 10 insertions(+), 3 deletions(-)',
+  })
+  try {
+    const res = runResumeWithVerify({
+      worktree: repo,
+      sessionsRoot,
+      sessionId,
+      verify: ['true'],
+      extraEnv: { CLI_DISPATCH_VERDICT_WRITER: WRITER_PATH },
+    })
+    const verdict = readVerdict(dir)
+    const advisory = 'cli-dispatch-run: trivial diff (<50 lines) — consider doing work this size inline or batching it'
+    const output = `${res.stdout || ''}${res.stderr || ''}`
+    assert.equal(verdict.trivial, true)
+    assert.equal(res.status, 0)
+    assert.equal(output.split(advisory).length - 1, 1, 'the advisory must print exactly once')
+    assert.ok(output.indexOf(advisory) < output.indexOf('cli-dispatch-run: --cleanup-if-clean not set; kept worktree'))
+  } finally {
+    rmrf(sessionsRoot); rmrf(repo)
+  }
+})
+
+test('8. a non-trivial verdict prints no advisory', () => {
+  const repo = mkGitRepo()
+  const { sessionsRoot, sessionId } = seedSession(repo, {
+    diffstat: ' 9 files changed, 60 insertions(+), 4 deletions(-)',
+  })
+  try {
+    const res = runResumeWithVerify({
+      worktree: repo,
+      sessionsRoot,
+      sessionId,
+      verify: ['true'],
+      extraEnv: { CLI_DISPATCH_VERDICT_WRITER: WRITER_PATH },
+    })
+    assert.doesNotMatch(`${res.stdout || ''}${res.stderr || ''}`, /cli-dispatch-run: trivial diff/)
   } finally {
     rmrf(sessionsRoot); rmrf(repo)
   }

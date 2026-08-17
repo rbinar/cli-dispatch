@@ -297,6 +297,7 @@ function scenarioEmptyBuildVerdictExitsFiveNotZero() {
     assert.equal(verdict.schemaVersion, 1, 'verdict should still carry schemaVersion')
     assert.ok(verdict.sessionId, 'verdict should still carry sessionId')
     assert.ok(result.stderr.includes('verdict could not be built'), 'stderr should report verdict build failure')
+    assert.doesNotMatch(output, /cli-dispatch-run: trivial diff/, 'a verdict build failure must not print the advisory')
 
     console.log('  [H] PASS')
   } finally {

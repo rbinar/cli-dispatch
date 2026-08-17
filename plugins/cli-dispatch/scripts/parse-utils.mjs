@@ -48,6 +48,19 @@ export function isNonTerminalState(state) {
   return NON_TERMINAL_STATES.has(state)
 }
 
+// Shared here because verdict-writer already depends on parse-utils, while standalone
+// gain-report can import this small helper without pulling in the verdict writer's git and
+// worker-report machinery. Both engines are installed beside parse-utils.mjs.
+export function isTrivialDiffstat(diffstat) {
+  if (typeof diffstat !== 'string' || !diffstat) return false
+  let total = 0
+  const insertions = diffstat.match(/(\d+) insertion/)
+  const deletions = diffstat.match(/(\d+) deletion/)
+  if (insertions) total += parseInt(insertions[1], 10)
+  if (deletions) total += parseInt(deletions[1], 10)
+  return total > 0 && total < 50
+}
+
 // ---- passive session-root pruning ----
 //
 // Session dirs accumulate forever unless someone runs /cli-dispatch:clean or installs the
