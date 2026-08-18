@@ -59,6 +59,30 @@ REPO="$1"; BRANCH="$2"; BRIEF="$3"
 STREAM="$(command -v claude-ds-stream 2>/dev/null || true)"
 [ -z "$STREAM" ] && STREAM="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/claude-ds-stream"
 [ -x "$STREAM" ] || { echo "ds-worktree-run.sh: claude-ds-stream not found (run /cli-dispatch:setup)." >&2; exit 1; }
+# Symlink the source checkout's installed dependencies into the worktree (see the call
+# site below). Candidates: every ignored `node_modules/` directory that git knows about
+# under the repo TOP, plus the top-level and $REPO-level dirs as a belt for repos whose
+# ignore rules do not cover them. Only directories that exist in the source and do not yet
+# exist in the worktree are linked; parents are created for packages that have no tracked
+# files of their own. `git ls-files --directory` stops at the first ignored dir on each
+# path, so a node_modules tree is one candidate, never thousands.
+_link_node_modules() {
+  local top rel nm cands
+  top="$(git -C "$REPO" rev-parse --show-toplevel 2>/dev/null || true)"
+  [ -n "$top" ] || top="$REPO"
+  rel="$(git -C "$REPO" rev-parse --show-prefix 2>/dev/null || true)"; rel="${rel%/}"
+  cands="$(git -C "$top" ls-files --others --ignored --exclude-standard --directory 2>/dev/null | grep -E '(^|/)node_modules/$' || true)"
+  cands="$(printf '%s\nnode_modules/\n%s\n' "$cands" "${rel:+$rel/}node_modules/")"
+  while IFS= read -r nm; do
+    nm="${nm%/}"
+    [ -n "$nm" ] || continue
+    [ -d "$top/$nm" ] || continue
+    [ -e "$WT/$nm" ] && continue
+    mkdir -p "$(dirname "$WT/$nm")" 2>/dev/null || true
+    ln -s "$top/$nm" "$WT/$nm" 2>/dev/null || true
+  done <<<"$cands"
+}
+_unlink_node_modules() { find "$WT" -name node_modules -type l -delete 2>/dev/null || true; }
 # --- in-place mode (issues #108 / #109) ----------------------------------------------
 # If $REPO is ALREADY a linked worktree, the caller opened it for this job on purpose.
 # Nesting a second worktree there puts the worker's cwd in /tmp while the brief's absolute
@@ -133,11 +157,15 @@ else
     WT="$(mktemp -d /tmp/ds-wt-XXXXXX)" && rmdir "$WT"
     git -C "$REPO" worktree add -b "$BRANCH" "$WT" "$BASE_REF"
   }
-  _cleanup() { rm -f "$WT/node_modules" 2>/dev/null; echo ">>> Worktree: $WT  (branch: $BRANCH)"; echo ">>> Review the diff, then YOU handle git/PR/merge. Cleanup:"; echo "    rm -f \"$WT/node_modules\"; git -C \"$REPO\" worktree remove \"$WT\" --force; git -C \"$REPO\" worktree prune"; }
+  _cleanup() { _unlink_node_modules; echo ">>> Worktree: $WT  (branch: $BRANCH)"; echo ">>> Review the diff, then YOU handle git/PR/merge. Cleanup:"; echo "    find \"$WT\" -name node_modules -type l -delete; git -C \"$REPO\" worktree remove \"$WT\" --force; git -C \"$REPO\" worktree prune"; }
   trap _cleanup ERR INT TERM
-  if [ -d "$REPO/node_modules" ] && [ ! -e "$WT/node_modules" ]; then
-    ln -s "$REPO/node_modules" "$WT/node_modules"
-  fi
+  # Dependencies: mirror EVERY ignored node_modules dir of the source checkout into the
+  # worktree at the same relative path, resolved from the repo TOP — not from $REPO.
+  # A single "$REPO/node_modules" → "$WT/node_modules" link broke the moment --cwd was a
+  # workspace package (packages/core): `git worktree add` checks out the whole repo, so the
+  # worktree ROOT got the package-local install while the hoisted root install (where npm
+  # workspaces put .bin/vitest) was never linked, and --verify died with exit 127 (#158).
+  _link_node_modules
 fi
 # Snapshot the guarded repo's dirt BEFORE the worker runs: the post-check below must fail
 # only on NEW entries, or any pre-existing untracked file (a stray CLAUDE.md, editor
@@ -153,7 +181,7 @@ if [ "$IN_PLACE" -eq 1 ]; then
 else
   echo ">>> Worktree: $WT  (branch: $BRANCH)"
   echo ">>> Review the diff, then YOU handle git/PR/merge. Cleanup:"
-  echo "    rm -f \"$WT/node_modules\"; git -C \"$REPO\" worktree remove \"$WT\" --force; git -C \"$REPO\" worktree prune"
+  echo "    find \"$WT\" -name node_modules -type l -delete; git -C \"$REPO\" worktree remove \"$WT\" --force; git -C \"$REPO\" worktree prune"
 fi
 git -C "$WT" status --short
 # Post-run: verify the guarded repo gained no NEW dirt from the worker (issue #68).

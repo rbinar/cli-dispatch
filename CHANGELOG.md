@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.27.0] — 2026-08-18
+
+### Fixed
+
+- **Worktree runners now mirror every `node_modules` dir of the source checkout, resolved
+  from the repo top** (issue #158). Each `*-worktree-run.sh` used to create one link,
+  `$REPO/node_modules → $WT/node_modules`, with `$REPO` being whatever `--cwd` was. On an npm
+  workspaces monorepo with `--cwd <repo>/packages/core`, `git worktree add` still checks out the
+  whole repo, so the worktree ROOT received the package-local `node_modules` and the hoisted
+  root install (`node_modules/.bin/vitest`) was never linked — the worker finished fine and
+  `--verify 'cd packages/core && npx vitest run …'` died with `sh: vitest: command not found`
+  (exit 127). The runners now list the source's ignored `node_modules/` directories from
+  `git rev-parse --show-toplevel` (`git ls-files --others --ignored --exclude-standard
+  --directory`, ~17 ms on a six-package monorepo) and symlink each into the worktree at the same
+  relative path — root and per-package alike — skipping anything that already exists there.
+  Cleanup removes all such links (`find "$WT" -name node_modules -type l -delete`; the printed
+  manual-cleanup hint says the same); `git worktree remove --force` was verified not to follow
+  the links into the source install. Regression test: `worktree-node-modules.test.mjs` (all
+  five runners; `--cwd` at a package, at the root, and with no `node_modules` at all).
+
 ## [4.26.0] — 2026-08-18
 
 ### Added

@@ -7,6 +7,26 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.27.0] — 2026-08-18
+
+### Düzeltildi
+
+- **Worktree runner'ları artık kaynak checkout'un TÜM `node_modules` dizinlerini, repo
+  tepesinden çözerek worktree'ye yansıtıyor** (issue #158). Her `*-worktree-run.sh` tek bir link
+  kuruyordu: `$REPO/node_modules → $WT/node_modules`, `$REPO` de `--cwd` ne ise oydu. npm
+  workspaces monorepo'sunda `--cwd <repo>/packages/core` verildiğinde `git worktree add` yine
+  repo'nun tamamını çıkarır; dolayısıyla worktree KÖKÜ paket-yerel `node_modules`'ı alıyor,
+  hoisted kök kurulum (`node_modules/.bin/vitest`) ise hiç link'lenmiyordu — worker işini
+  bitiriyor, `--verify 'cd packages/core && npx vitest run …'` ise `sh: vitest: command not found`
+  (exit 127) ile ölüyordu. Runner'lar artık kaynağın ignore'lu `node_modules/` dizinlerini
+  `git rev-parse --show-toplevel` üzerinden listeliyor (`git ls-files --others --ignored
+  --exclude-standard --directory`, altı paketli monorepo'da ~17 ms) ve her birini worktree'de
+  aynı göreli yola symlink'liyor — kök ve paket bazında — orada zaten var olanı atlayarak.
+  Temizlik tüm bu link'leri kaldırıyor (`find "$WT" -name node_modules -type l -delete`; basılan
+  elle-temizlik ipucu da aynı komutu söylüyor); `git worktree remove --force`'un link'leri takip
+  edip kaynak kurulumu silmediği doğrulandı. Regresyon testi: `worktree-node-modules.test.mjs`
+  (beş runner; `--cwd` pakette, kökte ve hiç `node_modules` yokken).
+
 ## [4.26.0] — 2026-08-18
 
 ### Eklendi

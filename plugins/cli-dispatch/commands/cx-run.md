@@ -35,7 +35,8 @@ Prerequisite: `cx-agent` / `cx-stream` installed (`/cli-dispatch:setup`, Codex b
    which have no sandbox and thus full network). Pass `--no-network` (or set `CX_NETWORK=0`
    in the config) for a no-egress run. `--read-only` stays no-network regardless of this flag.
    Or use the bundled helper, which creates the worktree off `origin/main`, symlinks
-   `node_modules`, runs `cx-stream` in it, and prints the cleanup command:
+   every `node_modules` dir of the source checkout (root + workspace packages, resolved from
+   the repo top even when `<repo-path>` is a subdirectory), runs `cx-stream` in it, and prints the cleanup command:
    ```bash
    "${CLAUDE_PLUGIN_ROOT}/scripts/cx-worktree-run.sh" <repo-path> cx-run-<branch-name> <brief-file>
    # Windows: run this under bash (WSL or Git Bash). The PowerShell twin was removed in 4.6.0
