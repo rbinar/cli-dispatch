@@ -21,7 +21,8 @@ host `gh auth token` as `GH_TOKEN` when available.
 
 **If it's a real repo task** (file changes needed) — isolate in a git worktree:
 1. Use the bundled helper, which creates the worktree off `origin/main`, symlinks
-   `node_modules`, runs `cp-stream` in it, and prints the cleanup command:
+   every `node_modules` dir of the source checkout (root + workspace packages, resolved from
+   the repo top even when `<repo-path>` is a subdirectory), runs `cp-stream` in it, and prints the cleanup command:
    ```bash
    "${CLAUDE_PLUGIN_ROOT}/scripts/cp-worktree-run.sh" <repo-path> cp-run-<branch-name> <brief-file>
    ```
