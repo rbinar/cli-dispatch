@@ -143,7 +143,8 @@ model_listed() {
 
   while IFS= read -r line; do
     [ -n "$line" ] || continue
-    if [ "$(model_key "$line")" = "$want" ]; then
+    # agy 1.2 prints `slug<TAB>Display Name`; either column may be what the caller passed (#163).
+    if [ "$(model_key "${line%%$'\t'*}")" = "$want" ] || [ "$(model_key "${line#*$'\t'}")" = "$want" ]; then
       return 0
     fi
   done <<< "$models"
@@ -194,6 +195,7 @@ pick_model_for_effort() {
   [ -n "$models" ] || { printf 'Gemini 3.5 Flash (%s)\n' "$suffix"; return 0; }
 
   while IFS= read -r line; do
+    line="${line%%$'\t'*}"  # slug column only — the tab-joined line is not a model name
     lower="$(printf '%s' "$line" | tr '[:upper:]' '[:lower:]')"
     if [[ "$lower" == *-"$suffix_lower" || "$lower" == *"($suffix_lower)" ]]; then
       printf '%s\n' "$line"

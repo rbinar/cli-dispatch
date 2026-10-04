@@ -182,11 +182,11 @@ $readOnly = 0
 $sandbox = ""
 $effort = if ($env:CX_EFFORT) { $env:CX_EFFORT } else { "" }
 
-# Model precedence: config overrides env in bash (since config is sourced afterwards)
+# Model precedence: env wins over the config, matching bash source_config (#163)
 $cxModelEnv = $env:CX_MODEL
 $codexModelEnv = $env:CODEX_MODEL
-if ($cfg.ContainsKey("CX_MODEL")) { $cxModelEnv = $cfg["CX_MODEL"] }
-if ($cfg.ContainsKey("CODEX_MODEL")) { $codexModelEnv = $cfg["CODEX_MODEL"] }
+if (-not $cxModelEnv -and $cfg.ContainsKey("CX_MODEL")) { $cxModelEnv = $cfg["CX_MODEL"] }
+if (-not $codexModelEnv -and $cfg.ContainsKey("CODEX_MODEL")) { $codexModelEnv = $cfg["CODEX_MODEL"] }
 $model = if (-not [string]::IsNullOrEmpty($cxModelEnv)) { $cxModelEnv } else { $codexModelEnv }
 
 $maxRuntime = ConvertTo-Int $env:CX_MAX_RUNTIME
