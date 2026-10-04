@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [4.28.0] — 2026-10-05
+
+### Fixed
+
+- **`cli-dispatch-run --model` is no longer overwritten by the config file** (issues #163,
+  #168, #166). The runner forwards the selection to the worker as `<BACKEND>_MODEL`, but every
+  bash `*-stream` calls `source_config` first, and that sourced the config unconditionally — so
+  a configured `AG_MODEL`/`DS_MODEL`/`CX_MODEL`/`OC_MODEL`/`CP_MODEL` silently replaced the
+  per-call model on all five backends, despite the function's own "env wins" comment.
+  `source_config` now puts back every config key the environment already carried with a
+  non-empty value; unset or empty variables still take the config default. This also applies
+  to API keys: a key exported in the shell now beats the one in the config. The `.ps1` twins
+  had copied the old precedence on purpose (`claude-ds-stream.ps1`, `cx-stream.ps1`) and now
+  prefer the env model too. Regression test: `source-config-env-wins.test.mjs` (bash 3.2 and
+  modern bash, plus the extracted `.ps1` lines under `pwsh`).
+- **ag: the two-column `agy models` listing no longer breaks model checks** (issues #163,
+  #166). agy 1.2 prints `slug<TAB>Display Name` per line. `model_listed` compared the whole
+  line to the requested model, so every valid slug drew a false "not listed by `agy models`"
+  warning; `pick_model_for_effort` returned the whole tab-joined line, so an `--effort` run
+  passed it to agy as `--model`. Both now read the columns separately. Tests added to
+  `ag-model-format.test.mjs`.
+
 ## [4.27.0] — 2026-08-18
 
 ### Fixed

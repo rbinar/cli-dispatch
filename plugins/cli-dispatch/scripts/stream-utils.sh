@@ -87,8 +87,16 @@ source_config() {
   fi
   CONFIG="$config"
   if [ -f "$config" ]; then
+    # Env wins: a non-empty value the environment already carries (e.g. AG_MODEL forwarded
+    # by `cli-dispatch-run --model`) is put back after sourcing (#163). No process
+    # substitution — /dev/fd is not permitted in some managed sandboxes (#166).
+    local name saved=()
+    for name in $(sed -nE 's/^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)=.*/\2/p' "$config"); do
+      [ -n "${!name:-}" ] && saved+=("$name=${!name}")
+    done
     # shellcheck disable=SC1090
     . "$config"
+    for name in "${saved[@]+"${saved[@]}"}"; do export "$name"; done
   fi
 }
 

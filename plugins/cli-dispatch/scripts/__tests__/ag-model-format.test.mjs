@@ -54,6 +54,14 @@ const LEGACY_LIST = [
   'GPT-OSS 120B (Medium)',
 ].join('\n')
 
+// agy 1.2.x (issues #163/#166): `slug<TAB>Display Name` per line. Comparing or returning the
+// whole line made every slug "unlisted" and handed agy a tab-joined --model on --effort runs.
+const TAB_LIST = [
+  'gemini-3.8-flash-high\tGemini 3.8 Flash (High)',
+  'gemini-3.8-flash-medium\tGemini 3.8 Flash (Medium)',
+  'claude-sonnet-4-6\tClaude Sonnet 4.6',
+].join('\n')
+
 // Runs `body` in bash with the helpers in scope and `agy models` stubbed to `listing`.
 // listing === null stubs an agy that fails outright (not installed / not signed in).
 function runShell(body, listing) {
@@ -170,6 +178,20 @@ test('pick_model_for_effort reads the live listing in either format', () => {
 
   const legacy = runShell(`pick_model_for_effort "High"`, LEGACY_LIST)
   assert.equal(legacy.stdout, 'Gemini 3.5 Flash (High)')
+})
+
+test('a two-column listing accepts the slug and the display name (#163)', () => {
+  for (const model of ['claude-sonnet-4-6', 'gemini-3.8-flash-high', 'Gemini 3.8 Flash (High)']) {
+    const { stdout } = runShell(`model_listed "${model}" && echo LISTED || echo UNLISTED`, TAB_LIST)
+    assert.equal(stdout, 'LISTED', model)
+  }
+  const { stdout } = runShell(`model_listed "gemini-9.9-ultra" && echo LISTED || echo UNLISTED`, TAB_LIST)
+  assert.equal(stdout, 'UNLISTED')
+})
+
+test('pick_model_for_effort returns only the slug from a two-column listing', () => {
+  const { stdout } = runShell(`pick_model_for_effort "High"`, TAB_LIST)
+  assert.equal(stdout, 'gemini-3.8-flash-high')
 })
 
 test('pick_model_for_effort falls back only when there is no listing', () => {

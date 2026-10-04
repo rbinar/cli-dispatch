@@ -7,6 +7,29 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [4.28.0] — 2026-10-05
+
+### Düzeltildi
+
+- **`cli-dispatch-run --model` artık config dosyası tarafından ezilmiyor** (issue #163, #168,
+  #166). Runner seçimi worker'a `<BACKEND>_MODEL` olarak iletiyor, ama her bash `*-stream`
+  önce `source_config`'i çağırıyor ve o da config'i koşulsuz source'luyordu. Sonuçta config'deki
+  `AG_MODEL`/`DS_MODEL`/`CX_MODEL`/`OC_MODEL`/`CP_MODEL`, fonksiyonun kendi "env wins" yorumuna
+  rağmen beş backend'in hepsinde çağrıya özel modeli sessizce eziyordu. `source_config` artık
+  ortamda boş olmayan bir değerle zaten bulunan her config anahtarını source sonrası geri
+  yüklüyor; set edilmemiş ya da boş değişkenler config'teki varsayılanı almaya devam ediyor.
+  Bu kural API anahtarları için de geçerli: shell'de export edilen anahtar artık config'tekinin
+  önüne geçiyor. `.ps1` ikizleri eski önceliği bilerek kopyalamıştı (`claude-ds-stream.ps1`,
+  `cx-stream.ps1`); artık onlar da env'deki modeli tercih ediyor. Regresyon testi:
+  `source-config-env-wins.test.mjs` (bash 3.2 ve güncel bash, ayrıca `pwsh` altında çıkarılan
+  `.ps1` satırları).
+- **ag: iki sütunlu `agy models` listesi artık model kontrollerini bozmuyor** (issue #163,
+  #166). agy 1.2 her satırı `slug<TAB>Görünen Ad` biçiminde basıyor. `model_listed` satırın
+  tamamını istenen modelle karşılaştırdığı için her geçerli slug yanlış bir "not listed by
+  `agy models`" uyarısı alıyordu; `pick_model_for_effort` ise tab'lı satırın tamamını
+  döndürdüğünden `--effort` koşusu bunu agy'ye `--model` olarak geçiriyordu. İkisi de artık
+  sütunları ayrı okuyor. Testler `ag-model-format.test.mjs`'e eklendi.
+
 ## [4.27.0] — 2026-08-18
 
 ### Düzeltildi
