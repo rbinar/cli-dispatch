@@ -580,9 +580,14 @@ WORKER_REPORT
     IN_PLACE_RUN=1
   fi
 
+  # Issue #167: a non-zero runner exit means the worker's turn was classified as failed, not
+  # that nothing happened — finished work has been left behind by cx patch rejections, codex
+  # notices and agy discovery errors. Carry on to wait → verify → verdict whenever the session
+  # can be found, and record the runner's code as verdict.workerExit; only exit here if not.
+  WORKER_EXIT=0
   if [ "$WORKTREE_RC" -ne 0 ]; then
-    echo "cli-dispatch-run: worktree runner failed (code $WORKTREE_RC)" >&2
-    exit "$WORKTREE_RC"
+    echo "cli-dispatch-run: worktree runner failed (code $WORKTREE_RC) — verifying whatever it left" >&2
+    WORKER_EXIT="$WORKTREE_RC"
   fi
 
   # `|| true`: under set -e a no-match grep would kill the script SILENTLY before the
@@ -594,6 +599,7 @@ WORKER_REPORT
 
   if [ -z "$SESSION_ID" ]; then
     echo "cli-dispatch-run: failed to discover session id" >&2
+    [ "$WORKER_EXIT" -eq 0 ] || exit "$WORKER_EXIT"
     exit 5
   fi
 
@@ -606,7 +612,22 @@ WORKER_REPORT
 
   if [ ! -d "$SESSION_DIR" ]; then
     echo "cli-dispatch-run: session dir not found: $SESSION_DIR" >&2
+    [ "$WORKER_EXIT" -eq 0 ] || exit "$WORKER_EXIT"
     exit 5
+  fi
+
+  if [ "$WORKER_EXIT" -ne 0 ]; then
+    export CLI_DISPATCH_WORKER_EXIT="$WORKER_EXIT"
+    # The runner has exited, so the worker is gone: a status still saying "running" would make
+    # the wait below block forever. Settle it as an error.
+    if [ "$(read_json_field "$SESSION_DIR/status.json" state)" = "running" ]; then
+      "$NODE_BIN" -e '
+        const fs = require("fs"); const p = process.argv[1]
+        const s = JSON.parse(fs.readFileSync(p, "utf8")); s.state = "error"
+        s.error = s.error || ("worker runner exited " + process.argv[2] + " with the session still running")
+        fs.writeFileSync(p + ".tmp", JSON.stringify(s, null, 2) + "\n"); fs.renameSync(p + ".tmp", p)
+      ' "$SESSION_DIR/status.json" "$WORKER_EXIT" || true
+    fi
   fi
 fi
 

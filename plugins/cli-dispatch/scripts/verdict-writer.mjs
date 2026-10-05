@@ -296,6 +296,8 @@ export function buildVerdict({ statusJson, metaJson, changedFilesJson, verifyRes
     worktreeRemoved: false,
     // Only when --fix-attempts asked for retries; absent keeps the plain verdict shape.
     ...(worktreeInfo.fixAttempts ? { fixAttempts: worktreeInfo.fixAttempts } : {}),
+    // #167: the worker runner's own non-zero exit, kept apart from the 0-5 contract exitCode.
+    ...(worktreeInfo.workerExit ? { workerExit: worktreeInfo.workerExit } : {}),
     startedAt: meta.startedAt,
     endedAt: new Date().toISOString(),
   }
@@ -400,6 +402,7 @@ if (entryPath && import.meta.url === pathToFileURL(entryRealPath).href) {
           sessionDir,
           worktree: metaJson.cwd,
           timeoutExpired: parseBoolean(timeoutExpired),
+          workerExit: Number(process.env.CLI_DISPATCH_WORKER_EXIT) || 0,
           fixAttempts: Number(process.env.CLI_DISPATCH_FIX_MAX) > 0
             ? { used: Number(process.env.CLI_DISPATCH_FIX_USED) || 0, max: Number(process.env.CLI_DISPATCH_FIX_MAX) }
             : undefined,

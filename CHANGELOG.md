@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [5.3.0] — 2026-10-05
+
+### Changed
+
+- **A failed worker turn no longer skips verify and the verdict** (issue #167). When the
+  worktree runner exited non-zero, `cli-dispatch-run` stopped at once — no `--verify`, no
+  `verdict.json` — although the worker had often finished the work (a cx "writing outside of the
+  project" rejection, a codex "skills context budget" notice, an agy discovery error after edits).
+  Finished work and no work looked identical. The runner now carries on to the normal wait →
+  verify → verdict path whenever it can find the session, and records the runner's own exit code
+  as `verdict.workerExit`. The verdict's `exitCode` keeps the 0-5 contract (a worker that ended in
+  `error` is still 2), so a caller tells "died after doing the work" from "died doing nothing" by
+  `verify.exitCode` and the diff. A session whose `status.json` still says `running` after the
+  runner exited is settled as `error` first, so the wait cannot block. When no session is found
+  the runner exits with the worker's code as before. Bash and `.ps1`. Test:
+  `worker-death-verdict.test.mjs`.
+
 ## [5.2.2] — 2026-10-05
 
 ### Fixed
