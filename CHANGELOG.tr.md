@@ -7,6 +7,18 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [5.3.1] — 2026-10-05
+
+### Değişti
+
+- **README ön sayfaya indirildi; ayrıntı `docs/` altına taşındı.** `README.md` artık kısa bir ön
+  sayfa (ne olduğu, kurulum, backend gereksinim tablosu, setup, delege etme, güncelleme ve
+  dokümantasyon dizini). Geri kalan her şey — komut tablosu, deterministik runner, session
+  takibi, politika enjeksiyonu, statusline rozeti, kullanım ve kota, kurulan CLI'lar, Windows,
+  kaldırma, güvenlik ve veri — `docs/*.md` altında; aynı dosya adlı Türkçe ikizleri `docs/tr/`
+  içinde (`README.tr.md` de aynı şekilde sadeleştirildi). Yalnızca dokümantasyon; hiçbir şey
+  silinmedi.
+
 ## [5.3.0] — 2026-10-05
 
 ### Değişti

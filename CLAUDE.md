@@ -198,7 +198,8 @@ heading, and `CHANGELOG.tr.md`'s topmost heading. `check-version-sync.mjs` enfor
 and is covered by its own test. **Every change that ships gets a version bump and a
 changelog entry in both `CHANGELOG.md` (English, canonical) and `CHANGELOG.tr.md`
 (Turkish translation, kept in lockstep)** — `README.md`/`README.tr.md` are the only
-docs where Turkish is primary; changelogs are English-first, bilingual.
+docs where Turkish is primary, and `docs/tr/` holds the Turkish twins of `docs/` (same file
+names, kept in lockstep); changelogs are English-first, bilingual.
 
 **Shipping a version has a fourth step that is easy to miss: the GitHub Release.** Pushing a
 tag does NOT create one — `gh release create vX.Y.Z --title "vX.Y.Z — <short description>"
@@ -275,7 +276,7 @@ drift. Repo tasks on Windows go through WSL or Git Bash. Do not "restore parity"
 One deliberate exception to the pairing rule: `cli-dispatch-statusline.sh` has **no `.ps1`
 twin**. It is not an installed binary — a combining `~/.claude/hooks/statusline.sh` wrapper
 globs it straight out of the plugin cache — and statusline wrappers of that shape are a
-bash-only convention. Both READMEs say so explicitly ("Unix (bash) statusline setups only").
+bash-only convention. Both `docs/statusline.md` and `docs/tr/statusline.md` say so explicitly ("Unix (bash) statusline setups only").
 
 Parity is also a *behavior* rule, not just a file-existence one: 4.2.0 fixed three cases
 where a `.ps1` had silently drifted from its bash twin (an unreachable `--resume`, an
