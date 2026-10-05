@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [5.1.0] — 2026-10-05
+
+### Changed
+
+- **Setup collects API keys and model names in a one-shot local web form instead of opening
+  the config in Notepad/TextEdit/`xdg-open`.** New `scripts/setup-form.mjs` (Node built-ins
+  only) serves a small form on `127.0.0.1` at a random port behind a per-run token, opens
+  the browser, writes the submitted values into `~/.config/cli-dispatch/config`, and exits.
+  `install.sh`/`install.ps1` launch it in an interactive install; `/cli-dispatch:setup` runs it
+  as a background task and shows the URL. The OpenCode model is now a form field, so setup no
+  longer asks for it separately.
+  - Keys never pass through Claude: they go browser -> form process -> config file. Secret
+    inputs are never prefilled or echoed (a set/not-set badge only); an empty secret field
+    keeps the stored value.
+  - Security model: loopback-only bind, per-run token in the URL path, `Host`/`Origin` must be
+    loopback with the form's port (DNS rebinding), strict CSP, and only printable ASCII
+    without `"`, `$`, backtick or backslash is accepted (the config is sourced by bash; an
+    allowlist, because JS line anchors treat U+2028 as a line break and bash does not) — a
+    refused value writes nothing. Unknown field names are ignored, every assignment of a
+    key is rewritten (bash keeps the last one), a symlinked config is written through the
+    link, the write is atomic with mode 0600, and the server exits after one save (or exit 2
+    on `--timeout`, default 600 s).
+  - `CLI_DISPATCH_EDITOR` (legacy `CLAUDE_DS_EDITOR`) still opens that editor instead of the
+    form. The form runs from the plugin directory and is not installed to `~/.local`; it is
+    Node, so it has no `.ps1` twin.
+
 ## [5.0.0] — 2026-10-05
 
 ### Removed

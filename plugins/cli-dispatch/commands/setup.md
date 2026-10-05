@@ -114,32 +114,26 @@ Follow these steps:
 5. **Configure auth for each chosen backend:**
    > Even if a CLI was auto-installed in step 4, **auth is always manual** — auto-install only
    > places the binary on `PATH`; it never signs the user in or writes a key. The steps below
-   > (DeepSeek key paste, OpenCode key + model pick, Antigravity `agy` sign-in, `codex login`, Copilot gh/token auth)
+   > (the key/model form, Antigravity `agy` sign-in, `codex login`, Copilot gh/token auth)
    > are unaffected by whether the CLI arrived via auto-install or was already present.
-   - **DeepSeek** — the user must add their API key themselves. The installer only auto-opens
-     the config in the default editor during an *interactive* install (a real TTY) when the
-     config was just freshly created or a missing key block was added. Under the Claude-run
-     installer (`/cli-dispatch:setup`, invoked through the Bash tool, no TTY) the editor does
-     **not** open — instead the installer prints the config path; ask the user to paste their
-     DeepSeek API key into the `DEEPSEEK_API_KEY=""` line in `~/.config/cli-dispatch/config`
-     (the editor no longer auto-opens under the Claude-run installer).
-     **You (Claude) must NEVER write/paste the API key** — only the user enters it.
-   - **OpenCode** — grouped with DeepSeek's (both are paste-a-raw-key, no OAuth backends).
-     The installer creates `OPENROUTER_API_KEY=""` and `OC_MODEL=""` placeholders in the
-     config. **Ordering matters here**: immediately after the installer runs, ask the user
-     (via `AskUserQuestion`) to pick a default OpenCode model — offer 2-3 curated free-tier
-     OpenRouter slugs (e.g. `google/gemma-4-31b-it:free`; note the free catalog rotates, so
-     re-verify live with `opencode models openrouter` if a test key is available) plus a
-     "type your own" custom/freeform option — then write the chosen slug into the
-     `OC_MODEL=""` line in `~/.config/cli-dispatch/config` yourself (this is NOT a secret, so
-     Claude writing it is fine). Do the `OC_MODEL` write before prompting the user for the
-     key so your programmatic `OC_MODEL` edit and the user's manual key paste never race on
-     the same file. As with DeepSeek, the installer only auto-opens the config in an editor
-     during an *interactive* install with a real TTY; under the Claude-run installer it does
-     **not** open — instead the installer prints the config path; ask the user to paste their
-     `OPENROUTER_API_KEY` into that line themselves (the editor no longer auto-opens under the
-     Claude-run installer). **You (Claude) must NEVER write/paste the API key** — only the
-     user enters it.
+   - **API keys and model names (DeepSeek, OpenCode, and any optional keys) go through a local
+     one-shot web form** — never through you. Run it as a background Bash task
+     (`run_in_background: true`), resolving `PLUGIN_ROOT` exactly as in step 4:
+     ```bash
+     PLUGIN_ROOT="$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/resolve-plugin-root.sh" "${CLAUDE_PLUGIN_ROOT}")"
+     node "$PLUGIN_ROOT/scripts/setup-form.mjs" --config "$HOME/.config/cli-dispatch/config" --backends <comma-list|all>
+     ```
+     On native Windows use the same `node` command with `$PluginRoot/scripts/setup-form.mjs` and
+     the PowerShell config path (`$env:USERPROFILE\.config\cli-dispatch\config`). Pass the
+     backends the user chose. The script opens the browser and prints
+     `setup-form: http://127.0.0.1:<port>/<token>/` — show that URL to the user in case the
+     browser did not open, then wait for the background completion notification: exit `0` =
+     saved, exit `2` = timed out with nothing saved (offer to re-run it). The form has the API
+     key, default model and model-list fields for each chosen backend (DeepSeek key from
+     platform.deepseek.com; OpenRouter key from openrouter.ai/keys; the OpenCode model is a form
+     field too — do not ask for it yourself). Antigravity, Codex and Copilot keys are optional
+     there (see their bullets below).
+     **You (Claude) must NEVER write/paste the API key** — only the user enters it, in the form.
    - **Antigravity** — normally needs no key: the user signs in once by running `agy`
      interactively (Google). For headless/CI, they can set `GEMINI_API_KEY` in the config
      instead. If `agy` was MISSING in step 1, share the install command the installer printed.

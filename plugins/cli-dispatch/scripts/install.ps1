@@ -250,11 +250,11 @@ if (($PolicyInjection -eq "on") -and (-not (Test-Path $policyFile))) {
   Write-Host "Created policy.json (injection ENABLED) -> $policyFile"
 }
 
-# Open the config so the user can paste their key — only when the config was created or
-# changed (a new backend block appended) AND the session is interactive. Best-effort: never
-# fail the install if opening fails. Override the opener via $env:CLI_DISPATCH_EDITOR or
-# $env:CLAUDE_DS_EDITOR (e.g. "code"); CLI_DISPATCH_EDITOR is preferred, CLAUDE_DS_EDITOR is
-# the legacy fallback.
+# Open the one-shot setup form so the user can enter keys — only when the config was created
+# or changed (a new backend block appended) AND the session is interactive. The form blocks
+# until saved or timed out. Best-effort: never fail the install if it fails. An explicit
+# $env:CLI_DISPATCH_EDITOR / $env:CLAUDE_DS_EDITOR (e.g. "code") opens that editor instead;
+# CLI_DISPATCH_EDITOR is preferred, CLAUDE_DS_EDITOR is the legacy fallback.
 $interactive = -not ($NonInteractive -or -not [Environment]::UserInteractive)
 if (-not ($cfgCreated -or $cfgChanged)) {
   Write-Host "Config: $Config (edit to add your keys)"
@@ -262,10 +262,13 @@ if (-not ($cfgCreated -or $cfgChanged)) {
   Write-Host "Config: $Config (edit to add your keys)"
 } else {
   try {
-    if ($env:CLI_DISPATCH_EDITOR) { Start-Process $env:CLI_DISPATCH_EDITOR $Config }
-    elseif ($env:CLAUDE_DS_EDITOR) { Start-Process $env:CLAUDE_DS_EDITOR $Config }
-    else { Start-Process notepad $Config }
-    Write-Host "Opened config in editor -> add your key, then save."
+    if ($env:CLI_DISPATCH_EDITOR) { Start-Process $env:CLI_DISPATCH_EDITOR $Config; Write-Host "Opened config in editor -> add your key, then save." }
+    elseif ($env:CLAUDE_DS_EDITOR) { Start-Process $env:CLAUDE_DS_EDITOR $Config; Write-Host "Opened config in editor -> add your key, then save." }
+    elseif (Get-Command node -ErrorAction SilentlyContinue) {
+      $formBackends = (@('deepseek', 'codex') | Where-Object { $want.ContainsKey($_) }) -join ','
+      node (Join-Path $ScriptDir "setup-form.mjs") --config $Config --backends $formBackends
+    }
+    else { Write-Host "node not found — edit manually: $Config" }
   } catch { }
 }
 

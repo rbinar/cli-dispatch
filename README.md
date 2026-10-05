@@ -67,7 +67,7 @@ The install output says `Run /reload-plugins to apply`. This step is required fo
 
 Native Windows: DeepSeek and Codex only — install the other three under WSL (see [Windows](#windows)). Sandbox: only Codex's `--read-only` is a kernel-enforced OS sandbox — the rest need worktree isolation (see [Security and data](#security-and-data)).
 
-For DeepSeek and OpenCode, since you paste the key yourself, setup **auto-opens the config file** in your platform's default editor (macOS `open`, Linux `xdg-open`, WSL `explorer.exe`, Windows `notepad`) when the key is still empty:
+For DeepSeek and OpenCode, since you enter the key yourself, setup opens a **one-shot local web form** in your browser (loopback-only, per-run token) where you type keys and model names; they are written straight into the config file and never pass through Claude. The result is this file:
 
 ```bash
 # ~/.config/cli-dispatch/config
@@ -76,7 +76,7 @@ DS_MODEL="deepseek-v4-pro"
 DS_FLASH_MODEL="deepseek-v4-flash"
 ```
 
-> Want a different editor? Set `CLI_DISPATCH_EDITOR` (e.g. `CLI_DISPATCH_EDITOR="code"`; the legacy `CLAUDE_DS_EDITOR` is still honored). If auto-open fails, open the file manually: `${EDITOR:-nano} ~/.config/cli-dispatch/config`.
+> Prefer a text editor over the form? Set `CLI_DISPATCH_EDITOR` (e.g. `CLI_DISPATCH_EDITOR="code"`; the legacy `CLAUDE_DS_EDITOR` is still honored). To edit the file by hand: `${EDITOR:-nano} ~/.config/cli-dispatch/config`.
 
 OpenCode's setup step additionally asks (multiple-choice) for a default model from 2-3 curated free-tier OpenRouter slugs (e.g. `google/gemma-4-31b-it:free`) or a custom slug, writing it to `OC_MODEL`. Copilot's model list is only visible interactively (`/model` in the copilot TUI, or GitHub Copilot docs) — slugs change over time.
 

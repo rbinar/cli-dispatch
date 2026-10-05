@@ -67,7 +67,7 @@ Install çıktısı `Run /reload-plugins to apply` der. Komutların (`/cli-dispa
 
 Native Windows: yalnızca DeepSeek ve Codex — diğer üçü WSL altında kur (bkz. [Windows](#windows)). Sandbox: yalnızca Codex'in `--read-only`'si kernel-zorunlu bir OS sandbox'ıdır — gerisi worktree izolasyonu gerektirir (bkz. [Güvenlik ve veri](#güvenlik-ve-veri)).
 
-DeepSeek ve OpenCode için, key'i kendin yapıştırdığından, key hâlâ boşsa setup config dosyasını **platformun varsayılan editöründe otomatik açar** (macOS `open`, Linux `xdg-open`, WSL `explorer.exe`, Windows `notepad`):
+DeepSeek ve OpenCode key'ini kendin girdiğin için setup, tarayıcında **tek kullanımlık yerel bir web formu** açar (yalnızca loopback, çalıştırmaya özel token). Key ve model adlarını bu forma yazarsın; değerler doğrudan config dosyasına gider, Claude'dan geçmez. Sonuçta dosya şuna benzer:
 
 ```bash
 # ~/.config/cli-dispatch/config
@@ -76,7 +76,7 @@ DS_MODEL="deepseek-v4-pro"
 DS_FLASH_MODEL="deepseek-v4-flash"
 ```
 
-> Farklı bir editör istiyorsan `CLI_DISPATCH_EDITOR` ortam değişkenini ayarla (ör. `CLI_DISPATCH_EDITOR="code"`; eski `CLAUDE_DS_EDITOR` da hâlâ geçerli). Otomatik açma başarısız olursa dosyayı elle aç: `${EDITOR:-nano} ~/.config/cli-dispatch/config`.
+> Form yerine metin editörü mü istiyorsun? `CLI_DISPATCH_EDITOR` ortam değişkenini ayarla (ör. `CLI_DISPATCH_EDITOR="code"`; eski `CLAUDE_DS_EDITOR` da hâlâ geçerli). Dosyayı elle düzenlemek için: `${EDITOR:-nano} ~/.config/cli-dispatch/config`.
 
 OpenCode'un setup adımı ayrıca (seçmeli bir soru ile) 2-3 seçkin ücretsiz-katman OpenRouter slug'ından (ör. `google/gemma-4-31b-it:free`) bir default model ister ya da özel bir slug girmene izin verir; sonucu `OC_MODEL`'e yazar. Copilot'ın model listesi yalnızca interaktif olarak görülebilir (copilot TUI içinde `/model` veya GitHub Copilot docs) — slug'lar zamanla değişir.
 
