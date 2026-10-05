@@ -93,8 +93,8 @@ while :; do
     echo "cli-dispatch-wait: cannot read state for $SID (status.json missing or unreadable — session dir removed/relocated?)" >&2
   fi
 
-  # Terminal = anything other than running/human-controlled (done|error|killed, in practice).
-  if [ "$STATE" != "running" ] && [ "$STATE" != "human-controlled" ]; then
+  # Terminal = anything other than running (done|error|killed, in practice).
+  if [ "$STATE" != "running" ]; then
     break
   fi
 

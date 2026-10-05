@@ -1,6 +1,6 @@
 #!/usr/bin/env pwsh
 # version-check.ps1 — shared version-staleness check for pwsh entry points. Dot-sourced by
-# cli-dispatch-dashboard.ps1, ds-agent.ps1, and cx-agent.ps1 (mirrors the bash equivalent,
+# ds-agent.ps1 and cx-agent.ps1 (mirrors the bash equivalent,
 # version-check.sh, sourced the same way by the bash *-agent wrappers — see that file for
 # the shared installed-vs-cached-plugin-version semantics). Best-effort: any failure
 # (missing file, malformed version) is silently ignored via the try/return-early style below.

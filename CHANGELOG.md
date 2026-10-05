@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [5.0.0] — 2026-10-05
+
+### Removed
+
+- **BREAKING: the local web dashboard and the human-takeover feature are gone.** The
+  dashboard and everything that only existed to serve it are deleted:
+  - `/cli-dispatch:dashboard` and the `cli-dispatch-dashboard` binary (bash + `.ps1`), with its
+    server, page, utility, pty-host and `takeover-cmd` engines and the vendored xterm assets.
+  - Human takeover: the `human-controlled` session state (`status.json.state` is now the
+    four-value enum `running | done | error | killed`), the takeover helpers in
+    `parse-utils.mjs`, the transition sentinel file, the stream wrappers' human-controlled
+    guards, and `cli-dispatch-clean`'s `--takeover-stale-mins` flag and takeover reap pass.
+  - The dashboard entry in `/cli-dispatch:help`, the policy-inject core-wrapper probe, the
+    README sections and the `dashboard` plugin keyword.
+- **Upgrade cleanup:** `install.sh` and `install.ps1` now delete the previously installed
+  dashboard artifacts from `~/.local/bin` and `~/.local/share/cli-dispatch/` (including
+  `vendor/`), so re-running `/cli-dispatch:setup` after the upgrade leaves nothing behind.
+- Old session dirs that still say `human-controlled` are tolerated: `cli-dispatch-wait`,
+  `/cli-dispatch:kill` and prune simply treat them as finished, and `cli-dispatch-clean` ages
+  them out like a dead `running` session once their `status.json` is stale. The runner's exit code 4
+  ("human control requested") can no longer occur.
+- The feature may be revisited later; for now the worker, runner, `sessions`/`watch`/`gain`
+  commands and the `[CD]` statusline are unchanged.
+
 ## [4.28.0] — 2026-10-05
 
 ### Fixed

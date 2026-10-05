@@ -501,11 +501,6 @@ honest empty `command` is more useful than a confident one that was never execut
     $waitRc = $LASTEXITCODE
 
     $State = Read-JsonField -Path $StatusPath -Key 'state'
-    if ($State -eq 'human-controlled') {
-      Write-Host 'cli-dispatch-run: human control requested'
-      exit 4
-    }
-
     if ($waitRc -eq 0) { break }
 
     if ($waitRc -eq 2) {
@@ -531,7 +526,7 @@ honest empty `command` is more useful than a confident one that was never execut
   }
 
   $verifyResultsPath = ''
-  if (($Verify.Count -gt 0) -and ($State -ne 'human-controlled')) {
+  if ($Verify.Count -gt 0) {
     $verifyResult = Invoke-Verify -Commands $Verify -Worktree $WorktreePath -TimeoutMs ($VerifyTimeout * 1000) -TailLines 40
     $verifyResultsPath = Join-Path $env:TEMP ([IO.Path]::GetRandomFileName())
     $script:TempFiles.Add($verifyResultsPath)

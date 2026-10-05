@@ -521,11 +521,6 @@ while :; do
   set -e
 
   STATE="$(read_json_field "$STATUS_PATH" state)"
-  if [ "$STATE" = "human-controlled" ]; then
-    echo "cli-dispatch-run: human control requested" >&2
-    exit 4
-  fi
-
   if [ "$WAIT_RC" -eq 0 ]; then
     break
   fi
@@ -560,7 +555,7 @@ if [ -n "$WORKTREE_PATH" ] && [ -d "$WORKTREE_PATH" ]; then
 fi
 
 VERIFY_RESULTS_PATH=""
-if [ "${#VERIFY[@]}" -gt 0 ] && [ "$STATE" != "human-controlled" ]; then
+if [ "${#VERIFY[@]}" -gt 0 ]; then
   VERIFY_RESULTS_PATH="$(mktemp)"
   TEMP_FILES+=("$VERIFY_RESULTS_PATH")
   VERIFY_TIMEOUT_MS=$((VERIFY_TIMEOUT * 1000))

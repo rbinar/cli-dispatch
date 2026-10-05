@@ -58,7 +58,7 @@ test('max 0 disables pruning entirely', () => withRoot((root) => {
   assert.equal(readdirSync(root).length, 5)
 }))
 
-for (const state of ['running', 'human-controlled']) {
+for (const state of ['running']) {
   test(`a ${state} session is never removed, however old`, () => withRoot((root) => {
     // The live one is the OLDEST, so a naive newest-first cap would delete it first.
     mkSession(root, 'live', { state, age: 999 })
@@ -109,11 +109,11 @@ test('the verdict-archive dir is not itself a prune candidate', () => withRoot((
   assert.ok(existsSync(path.join(root, 'verdict-archive', 'old.json')))
 }))
 
-test('dotfiles (e.g. the transition sentinel) are skipped', () => withRoot((root) => {
-  writeFileSync(path.join(root, '.cli-dispatch-transitions'), 'x')
+test('dotfiles are skipped', () => withRoot((root) => {
+  writeFileSync(path.join(root, '.some-dotfile'), 'x')
   for (let i = 0; i < 3; i++) mkSession(root, `s${i}`, { age: i })
   const r = pruneSessionRoot(root, { max: 1 })
-  assert.ok(existsSync(path.join(root, '.cli-dispatch-transitions')))
+  assert.ok(existsSync(path.join(root, '.some-dotfile')))
   assert.ok(!r.removed.some((n) => n.startsWith('.')))
 }))
 

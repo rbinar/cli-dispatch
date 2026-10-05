@@ -14,4 +14,3 @@ config
 
 # Playwright MCP QC artifacts (transient)
 .playwright-mcp/
-dashboard-*.png

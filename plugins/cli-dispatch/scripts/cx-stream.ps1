@@ -337,7 +337,7 @@ if (-not [string]::IsNullOrEmpty($effort)) {
 }
 
 # Scrape codex's own config.toml for defaults when the user hasn't passed a flag,
-# so the dashboard can show the model/effort actually in use. NOT added to the
+# so the session record shows the model/effort actually in use. NOT added to the
 # codex command line — codex applies these defaults itself.
 $codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $HOME ".codex" }
 $codexConfig = Join-Path $codexHome "config.toml"
@@ -635,32 +635,22 @@ try {
   }
 
   # Reconcile status.json/meta.json to state:error on abnormal/interrupted run
-  $takeoverState = ""
-  $statusFile = Join-Path $sessionDir 'status.json'
-  if (Test-Path $statusFile) {
-    try {
-      $takeoverState = (Get-Content -Raw $statusFile | ConvertFrom-Json).state
-    } catch {}
-  }
-
-  if ($takeoverState -ne "human-controlled") {
-    if (-not $completedNormal) {
-      [Console]::Error.WriteLine("cx-stream: interrupted.")
-      if ($resume -eq 0) {
-        $metaFile = Join-Path $sessionDir 'meta.json'
-        $threadId = ""
-        if (Test-Path $metaFile) {
-          try { $threadId = (Get-Content -Raw $metaFile | ConvertFrom-Json).threadId } catch {}
-        }
-        if (-not [string]::IsNullOrEmpty($threadId) -and $threadId -ne $sid) {
-          $finalDir = Join-Path $sessionsRoot $threadId
-          if (-not (Test-Path $finalDir)) {
-            try { Move-Item -Force $sessionDir $finalDir; $sessionDir = $finalDir } catch {}
-          }
+  if (-not $completedNormal) {
+    [Console]::Error.WriteLine("cx-stream: interrupted.")
+    if ($resume -eq 0) {
+      $metaFile = Join-Path $sessionDir 'meta.json'
+      $threadId = ""
+      if (Test-Path $metaFile) {
+        try { $threadId = (Get-Content -Raw $metaFile | ConvertFrom-Json).threadId } catch {}
+      }
+      if (-not [string]::IsNullOrEmpty($threadId) -and $threadId -ne $sid) {
+        $finalDir = Join-Path $sessionsRoot $threadId
+        if (-not (Test-Path $finalDir)) {
+          try { Move-Item -Force $sessionDir $finalDir; $sessionDir = $finalDir } catch {}
         }
       }
-      Reconcile-SessionError -dir $sessionDir -err "interrupted" -exitCode 130
     }
+    Reconcile-SessionError -dir $sessionDir -err "interrupted" -exitCode 130
   }
 
   Remove-Item -Force $timeoutFile -ErrorAction SilentlyContinue

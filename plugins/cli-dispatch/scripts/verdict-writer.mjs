@@ -4,7 +4,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { NON_TERMINAL_STATES, TERMINAL_STATES, isTrivialDiffstat, normalizeBackend } from './parse-utils.mjs'
 
-// Moved to parse-utils.mjs (the shared session-dir contract) in 4.3.0 so the dashboard can
+// Moved to parse-utils.mjs (the shared session-dir contract) in 4.3.0 so consumers can
 // read it without importing this module. Re-exported here so existing importers keep working.
 export { normalizeBackend }
 
@@ -105,7 +105,6 @@ export function runVerify(commands, { cwd, timeoutMs = 600000, tailLines = 40 })
 
 function mapExitCode({ state, verify, timeoutExpired }) {
   if (timeoutExpired) return 3
-  if (state === 'human-controlled') return 4
   if (TERMINAL_STATES.has(state)) {
     if (state === 'done') {
       const verifyExitCode = Number(verify?.exitCode ?? 0)
@@ -328,8 +327,8 @@ export function markWorktreeRemoved(verdictPath) {
 
   parsed.worktreeRemoved = true
   try {
-    // Temp + rename, not truncate-in-place: the dashboard caches this file on (mtime, size)
-    // and reads it while runs finish, so it must never observe a half-written verdict.
+    // Temp + rename, not truncate-in-place: readers poll this file while runs finish, so
+    // it must never observe a half-written verdict.
     const tmpPath = `${verdictPath}.tmp`
     writeFileSync(tmpPath, `${JSON.stringify(parsed)}\n`)
     renameSync(tmpPath, verdictPath)

@@ -164,3 +164,18 @@ test('session dir with NO status.json ever written becomes a stale candidate via
   assert.equal(fs.existsSync(dir), false)
   cleanup(root)
 })
+
+test('a stale legacy (pre-5.0.0) human-controlled dir is removed like a dead running session', () => {
+  // Nothing writes that state any more, so nothing will ever finish such a dir.
+  const root = tmpRoot()
+  const dir = makeStaleSession(root, { id: 'legacy-takeover' })
+  const statusPath = path.join(dir, 'status.json')
+  const oldTime = new Date(Date.now() - 2000 * 1000)
+  fs.writeFileSync(statusPath, JSON.stringify({ state: 'human-controlled', backend: 'cx' })) // legacy
+  fs.utimesSync(statusPath, oldTime, oldTime)
+
+  runClean(root, ['--stale-secs', '1', '--remove'])
+
+  assert.equal(fs.existsSync(dir), false)
+  cleanup(root)
+})

@@ -215,7 +215,6 @@ Don't trust any output until verified.
 
 ## Commands
 - `/cli-dispatch:setup` — install worker backends (DeepSeek / Antigravity / Codex / OpenCode / Copilot); choose at setup + config + smoke test.
-- `/cli-dispatch:dashboard` — open the local read-only web dashboard (Claude Code sessions → flow → subagents → flow, + a cli-dispatch worker panel).
 - `/cli-dispatch:ds-run <task>` — delegate to the **DeepSeek** worker (worktree isolation for repo tasks, session-tracked).
 - `/cli-dispatch:ag-run <task>` — delegate to the **Antigravity (Gemini)** worker (same workflow).
 - `/cli-dispatch:cx-run <task>` — delegate to the **Codex (OpenAI)** worker (real read-only sandbox; same workflow).

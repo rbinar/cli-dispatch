@@ -177,8 +177,7 @@ async function runMain(){
   // before the write leaves none). These cost ZERO Anthropic babysitter tokens by construction —
   // the runner is plain shell — which is the whole point of the 4.0.0 architecture and was
   // invisible in this report until now.
-  // Same four verify buckets the dashboard uses, so the two surfaces cannot disagree about the
-  // same files. 124/126/127 mean the CHECK never ran (timeout / not executable / not found) —
+  // Four verify buckets. 124/126/127 mean the CHECK never ran (timeout / not executable / not found) —
   // that is not a failure of the work, and calling it one would blame a worker for a typo.
   const runs={total:0,verifyPass:0,verifyFail:0,verifyHarness:0,verifyNone:0,input:0,output:0}
   const VERIFY_HARNESS_EXITS=new Set([124,126,127])

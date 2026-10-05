@@ -22,7 +22,6 @@ const CORE_WRAPPER_BINARIES = [
   'cli-dispatch-wait',
   'cli-dispatch-clean',
   'cli-dispatch-gain',
-  'cli-dispatch-dashboard',
 ]
 
 // ============================================================================
@@ -264,11 +263,11 @@ test('12b. buildStalenessNotice without missing binaries warns stale but invents
 test('12c. buildStalenessNotice names every probed missing binary', () => {
   const notice = buildStalenessNotice('4.16.0', '4.17.0', [
     'cli-dispatch-wait',
-    'cli-dispatch-dashboard',
+    'cli-dispatch-gain',
   ])
   assert.ok(notice.includes('missing from PATH'), 'must explicitly identify PATH misses')
   assert.ok(notice.includes('cli-dispatch-wait'), 'must name first missing binary')
-  assert.ok(notice.includes('cli-dispatch-dashboard'), 'must name second missing binary')
+  assert.ok(notice.includes('cli-dispatch-gain'), 'must name second missing binary')
   assert.ok(!notice.includes('cli-dispatch-run'), 'must not invent an unreported missing binary')
 })
 
@@ -301,7 +300,7 @@ test('13d. integration: PATH probe reports only missing backend-agnostic core wr
   const ctx = JSON.parse(out).hookSpecificOutput.additionalContext
   assert.ok(ctx.includes('missing from PATH'), 'must report missing core wrappers')
   assert.ok(ctx.includes('cli-dispatch-wait'), 'must name a missing core wrapper')
-  assert.ok(ctx.includes('cli-dispatch-dashboard'), 'must name a missing core wrapper')
+  assert.ok(ctx.includes('cli-dispatch-gain'), 'must name a missing core wrapper')
   assert.ok(!ctx.includes('ds-agent'), 'must not probe backend-specific wrappers')
   assert.ok(!ctx.includes('cx-agent'), 'must not probe backend-specific wrappers')
 })

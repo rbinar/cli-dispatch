@@ -345,7 +345,7 @@ function finalize(code) {
   // real reason + exit code) while this parser is still alive — then cleanup() kills copilot,
   // whose stdin EOF triggers THIS finalize asynchronously. The interrupted stream never set
   // errorText, so the logic below would compute "done"/exitCode:0 and clobber the reconciled
-  // record, making the kill invisible to the dashboard/sessions/clean tooling. If the on-disk
+  // record, making the kill invisible to the sessions/clean tooling. If the on-disk
   // record is already a terminal FAILURE (error/killed — never the success state), defer to
   // it: keep its state + error and only refresh the preview (E3-captured deltas are still
   // worth surfacing). TERMINAL_STATES is {done,error,killed}; we exclude 'done' since the

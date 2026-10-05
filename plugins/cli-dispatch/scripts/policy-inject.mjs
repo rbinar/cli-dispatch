@@ -20,7 +20,6 @@ const CORE_WRAPPER_BINARIES = [
   'cli-dispatch-wait',
   'cli-dispatch-clean',
   'cli-dispatch-gain',
-  'cli-dispatch-dashboard',
 ]
 const PATH_PROBE_EXTENSIONS = ['', '.ps1', '.cmd', '.exe']
 

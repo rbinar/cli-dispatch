@@ -94,8 +94,8 @@ while ($true) {
     [Console]::Error.WriteLine("cli-dispatch-wait: cannot read state for $SessionId (status.json missing or unreadable — session dir removed/relocated?)")
   }
 
-  # Terminal = anything other than running/human-controlled (done|error|killed, in practice).
-  if ($state -ne 'running' -and $state -ne 'human-controlled') { break }
+  # Terminal = anything other than running (done|error|killed, in practice).
+  if ($state -ne 'running') { break }
 
   if ($Timeout -gt 0) {
     $elapsedSeconds = ((Get-Date) - $startTime).TotalSeconds

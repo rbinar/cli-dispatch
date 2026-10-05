@@ -57,27 +57,20 @@ Copy-Item -Force (Join-Path $ScriptDir "parse-utils.mjs") (Join-Path $LibExecDir
 Write-Host "Installed shared parser helpers -> $LibExecDir\parse-utils.mjs"
 
 # Shared pwsh version-staleness check (backend-agnostic; always installed) — dot-sourced by
-# cli-dispatch-dashboard.ps1, ds-agent.ps1, and cx-agent.ps1 via
+# ds-agent.ps1 and cx-agent.ps1 via
 # "(Split-Path -Parent $MyInvocation.MyCommand.Path)\version-check.ps1", so it must sit next
 # to them in BinDir (mirrors version-check.sh's install on the bash side).
 Copy-Item -Force (Join-Path $ScriptDir "version-check.ps1") (Join-Path $BinDir "version-check.ps1")
 Write-Host "Installed shared version-check helper -> $BinDir\version-check.ps1"
 
-# Dashboard (backend-agnostic; always installed).
-Copy-Item -Force (Join-Path $ScriptDir "cli-dispatch-dashboard.ps1") (Join-Path $BinDir "cli-dispatch-dashboard.ps1")
-Set-Content -Path (Join-Path $BinDir "cli-dispatch-dashboard.cmd") -Value (New-Shim "cli-dispatch-dashboard") -Encoding ASCII
-Copy-Item -Force (Join-Path $ScriptDir "dashboard-server.mjs") (Join-Path $LibExecDir "dashboard-server.mjs")
-Copy-Item -Force (Join-Path $ScriptDir "public-page.mjs") (Join-Path $LibExecDir "public-page.mjs")
-Copy-Item -Force (Join-Path $ScriptDir "dashboard-utils.mjs") (Join-Path $LibExecDir "dashboard-utils.mjs")
-# takeover on native Windows is untested (node-pty); assets shipped for parity.
-Copy-Item -Force (Join-Path $ScriptDir "pty-host.mjs") (Join-Path $LibExecDir "pty-host.mjs")
-Copy-Item -Force (Join-Path $ScriptDir "takeover-cmd.mjs") (Join-Path $LibExecDir "takeover-cmd.mjs")
-New-Item -ItemType Directory -Force -Path (Join-Path $LibExecDir "vendor") | Out-Null
-Copy-Item -Force (Join-Path $ScriptDir "vendor/LICENSE-xterm.txt") (Join-Path $LibExecDir "vendor/LICENSE-xterm.txt")
-Copy-Item -Force (Join-Path $ScriptDir "vendor/xterm-addon-fit.js") (Join-Path $LibExecDir "vendor/xterm-addon-fit.js")
-Copy-Item -Force (Join-Path $ScriptDir "vendor/xterm.css") (Join-Path $LibExecDir "vendor/xterm.css")
-Copy-Item -Force (Join-Path $ScriptDir "vendor/xterm.js") (Join-Path $LibExecDir "vendor/xterm.js")
-Write-Host "Installed dashboard -> $BinDir\cli-dispatch-dashboard.ps1 (+ .cmd shim; server + public-page + dashboard-utils + takeover pty-host/takeover-cmd/vendor xterm -> $LibExecDir\dashboard-server.mjs)"
+# Upgrade cleanup: remove artifacts of the legacy dashboard (removed in 5.0.0).
+foreach ($f in @("cli-dispatch-dashboard.ps1", "cli-dispatch-dashboard.cmd", "cli-dispatch-dashboard")) { # legacy
+  Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $BinDir $f)
+}
+foreach ($m in @("dashboard-server", "public-page", "dashboard-utils", "pty-host", "takeover-cmd")) { # legacy
+  Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $LibExecDir "$m.mjs")
+}
+Remove-Item -Recurse -Force -ErrorAction SilentlyContinue (Join-Path $LibExecDir "vendor")
 
 # Cleanup tool (backend-agnostic; always installed).
 Copy-Item -Force (Join-Path $ScriptDir "cli-dispatch-clean.ps1") (Join-Path $BinDir "cli-dispatch-clean.ps1")
