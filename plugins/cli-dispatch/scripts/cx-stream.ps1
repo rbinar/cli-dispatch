@@ -5,6 +5,9 @@
 # use. Codex runs natively on Windows (unlike agy, which needs a pseudo-TTY), so this is a real
 # first-class backend here. The parser .mjs is shared cross-platform.
 $ErrorActionPreference = "Stop"
+# Mark the worker (mirrors stream-utils.sh): keeps the SessionStart policy out of it and makes
+# cli-dispatch-run refuse nested delegation from inside it.
+$env:CLI_DISPATCH_WORKER = '1'
 # Native stderr from codex/node is informational — don't let it raise terminating errors.
 $PSNativeCommandUseErrorActionPreference = $false
 

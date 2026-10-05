@@ -5,6 +5,12 @@ param()
 
 $ErrorActionPreference = 'Stop'
 
+# Mirrors the bash runner: never delegate again from inside a cli-dispatch worker.
+if ($env:CLI_DISPATCH_WORKER -eq '1') {
+  [Console]::Error.WriteLine('cli-dispatch-run: refusing to delegate from inside a cli-dispatch worker (CLI_DISPATCH_WORKER=1) - do the task directly')
+  exit 5
+}
+
 function Show-Usage {
   Write-Host 'usage: cli-dispatch-run --backend <ds|ag|cx|oc|cp> --cwd <repo> [--prompt <text> | --prompt-file <path>] [--branch <name>] [--model <slug>] [--effort low|medium|high] [--verify <cmd>] [--verify-timeout SECS] [--timeout SECS] [--resume <session-id>] [--cleanup-if-clean]'
 }
@@ -544,7 +550,21 @@ honest empty `command` is more useful than a confident one that was never execut
   Set-Content -Path $diffPatchPath -Value ''
   if ($WorktreePath -and (Test-Path $WorktreePath)) {
     git -C $WorktreePath status --short --untracked-files=all > $diffPatchPath
-    git -C $WorktreePath diff HEAD >> $diffPatchPath
+    # Mirrors the bash runner: diff from a throwaway index so NEW files are in the patch, without
+    # touching the worker's index; worker-report.json and node_modules links never ship.
+    $patchIndex = [IO.Path]::GetTempFileName()
+    $script:TempFiles.Add($patchIndex)
+    $prevIndex = $env:GIT_INDEX_FILE
+    try {
+      $env:GIT_INDEX_FILE = $patchIndex
+      git -C $WorktreePath read-tree HEAD 2>$null
+      $ok = ($LASTEXITCODE -eq 0)
+      if ($ok) { git -C $WorktreePath add -A -- . ':(exclude)worker-report.json' ':(exclude,glob)**/node_modules' 2>$null; $ok = ($LASTEXITCODE -eq 0) }
+      if ($ok) { git -C $WorktreePath diff --cached --binary HEAD >> $diffPatchPath }
+    } finally {
+      if ($null -eq $prevIndex) { Remove-Item Env:GIT_INDEX_FILE -ErrorAction SilentlyContinue } else { $env:GIT_INDEX_FILE = $prevIndex }
+    }
+    if (-not $ok) { git -C $WorktreePath diff HEAD >> $diffPatchPath }
   }
 
   $verifyResultsPath = ''

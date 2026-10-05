@@ -37,7 +37,7 @@ babysitter yok. Sen (Claude Code) deterministik runner'ı — veya doğrudan bir
 kendin okur, sonuç bir tur daha gerektiriyorsa `/cli-dispatch:resume <session-id> "<prompt>"`
 ile devam edersin.
 
-Tek dosyalık, önemsiz bir düzeltme için (yaklaşık 50 satırın çok altında, sıfır keşif/belirsizlik)
-delegasyonu hiç kullanma, doğrudan inline yap — herhangi bir delegasyonun sabit maliyeti buna
-değmez. Repo değişikliği olmayan basit, tek-atışlık bir iş için düz `/cli-dispatch:ds-run` /
+Varsayılan delege etmektir: test ekleyen ya da değiştiren veya birden fazla dosyaya dokunan iş
+runner agent'ına gider. Yalnızca tek dosyada ~20 satırlık bir düzeltme (sıfır keşif/belirsizlik)
+inline kalır — orada delegasyonun sabit maliyeti işe değmez. Repo değişikliği olmayan basit, tek-atışlık bir iş için düz `/cli-dispatch:ds-run` /
 `ag-run` / `cx-run` / `oc-run` / `cp-run` komutları yeterlidir.

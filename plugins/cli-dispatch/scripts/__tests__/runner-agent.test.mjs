@@ -223,5 +223,70 @@ test('policy routes delegation to the runner agent and no longer forbids a babys
   // Found in a live headless run: the orchestrator passed model: "sonnet", which overrides the
   // agent's haiku frontmatter, and blocked on the agent in the foreground.
   assert.match(ctx, /NO model parameter/)
+  // Found in a container (5.3.2): with "Trivial single-file fixes stay inline" as the only
+  // threshold, a capable orchestrator did two rounds of multi-file, test-adding features inline
+  // and never delegated. The policy now states the default and a concrete inline ceiling.
+  assert.match(ctx, /Default to delegating/)
+  assert.match(ctx, /adds or changes tests or touches more than one file/)
+  assert.match(ctx, /~20 lines in one file/)
   assert.match(ctx, /run_in_background: true/)
+})
+
+// Found in a container (5.3.2): a DeepSeek worker — itself a Claude Code session with this
+// plugin loaded — delegated again. Its nested `cli-dispatch-run --detach` launcher inherited the
+// outer run's CLI_DISPATCH_RUN_DIR, and its EXIT trap overwrote the OUTER run's exit/summary with
+// "exit: 0 (no verdict.json found)" while the outer worker was still running.
+test('a run dir is written only by its own detached child, never by a process that inherited it', () => {
+  const f = fixture()
+  try {
+    const outer = path.join(f.root, '.runs', 'outer-run')
+    fs.mkdirSync(outer, { recursive: true })
+    const d = run(RUNNER, ['--detach', '--backend', 'ds', '--cwd', f.repo, '--resume', SID, '--verify', 'true'], { ...f.env, CLI_DISPATCH_RUN_DIR: outer })
+    assert.equal(d.status, 0, d.stdout + d.stderr)
+    const id = /^run: (\S+)$/m.exec(d.stdout)[1]
+    assert.equal(run(WAIT, ['--run', id, '--timeout', '60'], f.env).status, 0)
+    assert.equal(fs.existsSync(path.join(outer, 'exit')), false, 'the inherited outer run dir must stay untouched')
+  } finally { f.cleanup() }
+})
+
+test('the detached child does not pass its run dir down to the worker or verify commands', () => {
+  const f = fixture()
+  try {
+    const d = run(RUNNER, ['--detach', '--backend', 'ds', '--cwd', f.repo, '--resume', SID, '--verify', 'test -z "${CLI_DISPATCH_RUN_DIR:-}"'], f.env)
+    const id = /^run: (\S+)$/m.exec(d.stdout)[1]
+    const w = run(WAIT, ['--run', id, '--timeout', '60'], f.env)
+    assert.equal(w.status, 0, w.stdout + w.stderr)
+    assert.match(w.stdout, /verify: pass/)
+  } finally { f.cleanup() }
+})
+
+test('inside a worker (CLI_DISPATCH_WORKER=1) the runner refuses to delegate again', () => {
+  const f = fixture()
+  try {
+    const r = run(RUNNER, ['--backend', 'ds', '--cwd', f.repo, '--resume', SID, '--verify', 'true'], { ...f.env, CLI_DISPATCH_WORKER: '1' })
+    assert.equal(r.status, 5, r.stdout + r.stderr)
+    assert.match(r.stdout + r.stderr, /inside a cli-dispatch worker/)
+    assert.equal(fs.existsSync(path.join(f.dir, 'verdict.json')), false)
+  } finally { f.cleanup() }
+})
+
+test('inside a worker the SessionStart hook injects nothing', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cd-policy-'))
+  try {
+    const policy = path.join(dir, 'policy.json')
+    fs.writeFileSync(policy, JSON.stringify({ schemaVersion: 1, enabled: true }))
+    const hook = (extra) => spawnSync(process.execPath, [path.join(SCRIPTS, 'policy-inject.mjs')], {
+      encoding: 'utf8', input: '{"hook_event_name":"SessionStart","source":"startup"}',
+      env: { ...process.env, CLI_DISPATCH_POLICY_FILE: policy, ...extra },
+    })
+    assert.match(hook({}).stdout, /cli-dispatch policy/, 'control: an orchestrator session gets the policy')
+    const worker = hook({ CLI_DISPATCH_WORKER: '1' })
+    assert.equal(worker.status, 0)
+    assert.doesNotMatch(worker.stdout, /cli-dispatch policy/)
+  } finally { fs.rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('every bash worker stream marks its worker with CLI_DISPATCH_WORKER=1', () => {
+  const r = spawnSync('bash', ['-c', `. "${path.join(SCRIPTS, 'stream-utils.sh')}"; bash -c 'printf %s "$CLI_DISPATCH_WORKER"'`], { encoding: 'utf8' })
+  assert.equal(r.stdout, '1')
 })

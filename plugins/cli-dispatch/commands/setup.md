@@ -271,8 +271,9 @@ Follow these steps:
 
    Route delegations by shape, not reflex — this preserves native Anthropic token budget:
 
-   - **Trivial single-file surgical fixes** — do them inline; delegation overhead exceeds
-     the work itself.
+   - **Default to delegating.** Work that adds or changes tests or touches more than one file
+     goes to the runner agent; do inline only a fix of ~20 lines in one file, where delegation
+     overhead exceeds the work itself.
    - **Work with a machine-checkable check** — delegate through the thin runner agent:
      `Agent(subagent_type: "cli-dispatch:runner", run_in_background: true)` with NO `model`
      parameter (it is pinned to haiku). Its prompt is a `backend:` / `cwd:` / `verify:` header,

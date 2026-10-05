@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [5.4.0] — 2026-10-05
+
+Found by giving Claude Code real work in a clean container — a small Node project with a
+`TASKS.md`, prompted only with "complete every task, commit each separately", never told to
+delegate.
+
+### Changed
+
+- **The SessionStart policy now defaults to delegating, with a concrete inline ceiling.** With
+  "trivial single-file fixes stay inline" as the only threshold, two rounds of multi-file,
+  test-adding features were done inline and nothing was delegated. The policy now says: work that
+  adds or changes tests or touches more than one file goes to the `cli-dispatch:runner` agent; do
+  inline only a fix of ~20 lines in one file. Same wording in setup's static CLAUDE.md block and in
+  `docs/runner.md`. Measured after the change: both tasks delegated in parallel to DeepSeek, two
+  agent commands each, both patches applied and committed, tests green.
+
+### Fixed
+
+- **A worker no longer delegates again.** DeepSeek's worker is itself a Claude Code session, so it
+  loaded this plugin, received the policy and handed its task to the runner agent — nesting runs
+  and leaving its own worktree empty. Every worker stream now exports `CLI_DISPATCH_WORKER=1`
+  (bash via `stream-utils.sh`, and the `.ps1` twins); the SessionStart hook injects nothing there
+  and `cli-dispatch-run` refuses to start (exit 5).
+- **A detached run's result can no longer be overwritten by another process.** The nested
+  launcher inherited the outer run's `CLI_DISPATCH_RUN_DIR`, and its EXIT trap wrote "exit 0, no
+  verdict" into the OUTER run while the outer worker was still running. The detached child now
+  takes its run dir out of the environment, so nothing it starts inherits it, and the `--detach`
+  launcher never writes a result.
+- **`verdict-diff.patch` includes new files and applies cleanly.** It was built from `git diff
+  HEAD`, which never shows untracked files, so a worker that only added files produced a patch with
+  nothing to apply (`No valid patches in input`) and the orchestrator copied files out of the
+  worktree by hand. The diff now comes from a throwaway index (the worker's own index is
+  untouched) and carries new, modified and deleted files; `worker-report.json` and the worktree's
+  `node_modules` links are left out. Bash and `.ps1`. Test: `verdict-patch.test.mjs`.
+
 ## [5.3.2] — 2026-10-05
 
 ### Fixed

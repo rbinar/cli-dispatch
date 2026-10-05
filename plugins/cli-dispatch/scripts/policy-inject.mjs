@@ -134,17 +134,17 @@ export function buildPolicyContext(policyJson) {
 
   const parts = []
   parts.push(
-    `Route delegations by auditability, not reflex. Work with a machine-checkable check belongs on the deterministic runner — including exploratory work, as long as behavior-changing decisions stay in the orchestrator's brief. Delegate with Agent(subagent_type: "cli-dispatch:runner", run_in_background: true), NO model parameter (it is pinned to haiku): prompt = "backend: <ds|ag|cx|oc|cp>", "cwd: <abs path>", "verify: <cmd>", "---", brief. It returns the verdict (retries a failing verify once); apply the worktree patch yourself. /cli-dispatch:run stays for direct use. Trivial single-file fixes stay inline.`
+    `Route delegations by auditability, not reflex. Work with a machine-checkable check belongs on the deterministic runner — including exploratory work, as long as behavior-changing decisions stay in the orchestrator's brief. Delegate with Agent(subagent_type: "cli-dispatch:runner", run_in_background: true), NO model parameter (haiku is pinned): prompt = "backend: <ds|ag|cx|oc|cp>", "cwd: <abs path>", "verify: <cmd>", "---", brief. It returns the verdict; apply the patch yourself. /cli-dispatch:run stays for direct use. Default to delegating: work that adds or changes tests or touches more than one file goes to the agent; do inline only a fix of ~20 lines in one file.`
   )
   // Sessions have vetoed the runner by quoting the first half of the
   // never-delegate-verification rule and dropping the remedy: "--verify only says
   // the tests pass" became a reason not to delegate at all. Say the remedy in the
   // same breath as the caveat, so the caveat cannot be spent as a veto.
   parts.push(
-    `--verify proving less than you need is a reason to re-measure after, never a reason to keep the work inline. Send it, then verify it yourself: re-run the old code, diff output and exit code, read the test diff.`
+    `--verify proving less than you need is a reason to re-measure after, never a reason to keep the work inline: send it, then verify it yourself.`
   )
   parts.push(
-    `Still FAIL, or no verify? Escalate yourself: read verdict + diff, follow up with /cli-dispatch:resume. Do not spawn any other LLM subagent to watch a worker.`
+    `Still failing? Follow up with /cli-dispatch:resume. Do not spawn any other LLM subagent to watch a worker.`
   )
   if (issueReminder) {
     parts.push(
@@ -156,6 +156,8 @@ export function buildPolicyContext(policyJson) {
 }
 
 function main() {
+  // Inside a worker (set by every *-stream): the worker must do its task, not delegate it again.
+  if (process.env.CLI_DISPATCH_WORKER === '1') return
   try {
     const policyPath = process.env.CLI_DISPATCH_POLICY_FILE
       ? process.env.CLI_DISPATCH_POLICY_FILE
