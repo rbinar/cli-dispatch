@@ -78,14 +78,6 @@ test('buildVerdict: exit-code mapping [0..5]', () => {
   })
   assert.equal(timeoutResult.exitCode, 3)
 
-  const humanResult = buildVerdict({
-    statusJson: { ...doneFixture.statusJson, state: 'human-controlled' },
-    metaJson: { ...doneFixture.metaJson, state: 'human-controlled' },
-    changedFilesJson: doneFixture.changedFilesJson,
-    worktreeInfo: { sessionDir: doneFixture.sessionRoot, worktree: doneFixture.worktree },
-  })
-  assert.equal(humanResult.exitCode, 4)
-
   const badBackend = makeFixture({ state: 'done', backend: 'invalid' })
   assert.throws(() =>
     buildVerdict({

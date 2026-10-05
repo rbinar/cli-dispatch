@@ -132,7 +132,7 @@ maybe_export_gh_token() {
 
 # Rewrite status.json/meta.json after a wrapper-level failure the parser cannot see.
 # On a watchdog kill the parser just gets stdin EOF and finalizes state:"done"/exitCode:0 —
-# making the timeout invisible to the dashboard/sessions/clean tooling. Call this from the
+# making the timeout invisible to the sessions/clean tooling. Call this from the
 # wrapper's timeout path to force state:"error" with the real reason and exit code.
 reconcile_session_error() {
   local dir="$1" err="$2" rc="$3"

@@ -29,7 +29,6 @@ cat <<'HELP'
 │    /cli-dispatch:wait <id>      Block until session finishes                 │
 │    /cli-dispatch:resume <id> …  Continue a session with a follow-up          │
 │    /cli-dispatch:kill <id>      Stop a running worker session                │
-│    /cli-dispatch:dashboard      Open local web dashboard (port 7878)         │
 │                                                                               │
 │  USAGE & HOUSEKEEPING                                                         │
 │    /cli-dispatch:balance        Usage / credits (all backends)               │

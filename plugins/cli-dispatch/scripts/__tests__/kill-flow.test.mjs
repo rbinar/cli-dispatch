@@ -107,25 +107,6 @@ test('terminal-state guard: session already state=done is skipped, status.json u
   }
 })
 
-// Same guard, but for the other non-terminal-but-not-"running" state the script explicitly
-// treats as skip-worthy too (only state === "running" triggers a kill attempt).
-test('terminal-state guard: session state=human-controlled is also skipped (only "running" triggers a kill)', async () => {
-  const sessionsRoot = mkdtemp('cli-dispatch-kill-guard-hc-')
-  const id = 'test-guard-hc-' + crypto.randomBytes(4).toString('hex')
-  try {
-    const dir = seedSession(sessionsRoot, id, { state: 'human-controlled', takeover: { active: true } })
-    const res = await runKillScript({ sid: id, sessionsRoot })
-
-    assert.equal(res.code, 0)
-    assert.match(res.stdout, /not running \(state: human-controlled\)/)
-
-    const status = JSON.parse(fs.readFileSync(path.join(dir, 'status.json'), 'utf8'))
-    assert.equal(status.state, 'human-controlled', 'status.json state must remain untouched')
-  } finally {
-    rmrf(sessionsRoot)
-  }
-})
-
 // ============================================================================
 // Test 2: real tree-kill via worker.pid — root + child processes are actually killed, and
 // status.json is finalized to state=killed (no parser existed to write its own record)

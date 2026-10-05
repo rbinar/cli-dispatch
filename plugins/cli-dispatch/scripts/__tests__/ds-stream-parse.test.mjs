@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url'
 
 // Absolute, cwd-independent: works whether the test runner is invoked from the
 // repo root or from plugins/cli-dispatch/scripts/ (see check-version-sync.test.mjs
-// / dashboard-server.test.mjs for the same idiom).
+// for the same idiom).
 const SELF_DIR = path.dirname(fileURLToPath(import.meta.url))
 const parserScript = path.join(SELF_DIR, '..', 'ds-stream-parse.mjs')
 // Use the OS temp dir (not a repo-relative path) so a stray run never leaves

@@ -8,7 +8,7 @@ import {
   writeFileSync, readFileSync, openSync, writeSync, closeSync, mkdirSync, renameSync, unlinkSync,
   readdirSync, statSync, copyFileSync, rmSync,
 } from 'node:fs'
-import { basename, dirname, join } from 'node:path'
+import { basename, join } from 'node:path'
 
 // ---- atomic full-file write ----
 //
@@ -37,12 +37,11 @@ function atomicWriteFileSync(file, data) {
 
 // ---- state enum ----
 //
-// status.json.state is a 5-value enum (see .specs/dev/sdd/human-takeover.md, "Veri
-// Modeli"): 'running' | 'done' | 'error' | 'killed' | 'human-controlled'. This is the
-// first place a formal enum exists for it — consumers (dashboard-server.mjs,
-// cli-dispatch-clean.mjs) should import these instead of hardcoding string checks.
+// status.json.state is a 4-value enum: 'running' | 'done' | 'error' | 'killed'. This is the
+// first place a formal enum exists for it — consumers (cli-dispatch-clean.mjs, ...)
+// should import these instead of hardcoding string checks.
 export const TERMINAL_STATES = new Set(['done', 'error', 'killed'])
-export const NON_TERMINAL_STATES = new Set(['running', 'human-controlled'])
+export const NON_TERMINAL_STATES = new Set(['running'])
 
 export function isNonTerminalState(state) {
   return NON_TERMINAL_STATES.has(state)
@@ -70,9 +69,9 @@ export function isTrivialDiffstat(diffstat) {
 // scheduler and no user action.
 //
 // It is deliberately NOT a replacement for cli-dispatch-clean. Clean detects stale/dead
-// sessions, reaps orphaned takeovers and offers an age-based sweep; this only caps how many
+// sessions and offers an age-based sweep; this only caps how many
 // FINISHED sessions pile up. Rules:
-//   - a non-terminal session ('running', 'human-controlled') is NEVER removed, no matter how
+//   - a non-terminal session ('running') is NEVER removed, no matter how
 //     far down the list it sorts — a live worker must survive its own sibling's prune
 //   - the caller's own dir is never removed (keepDir)
 //   - verdict.json / verdict-diff.patch are archived first, same layout clean.mjs uses, so
@@ -150,8 +149,7 @@ export function pruneSessionRoot(root, { max = resolveMaxSessions(), keepDir = n
 // name into status.json/meta.json ("codex"), while cli-dispatch-run and verdict.json use the
 // SHORT form ("cx"). Any consumer that reads both files needs the mapping, so it lives here in
 // the shared-contract module rather than in verdict-writer.mjs (which re-exports it for
-// compatibility). dashboard-server.mjs deliberately does not import verdict-writer.mjs —
-// see the comment at the top of that file about static imports of optionally-installed modules.
+// compatibility).
 // Returns null for an unrecognised value; callers decide whether that is fatal.
 const VALID_BACKENDS = new Set(['ds', 'ag', 'cx', 'oc', 'cp'])
 const BACKEND_ALIASES = { deepseek: 'ds', antigravity: 'ag', codex: 'cx', opencode: 'oc', copilot: 'cp' }
@@ -161,21 +159,6 @@ export function normalizeBackend(value) {
   return BACKEND_ALIASES[b] ?? null
 }
 
-// ---- dashboard transition sentinel ----
-
-// The dashboard watches WORKERS_ROOT shallowly, so transitions inside an existing
-// session directory also bump this direct child of WORKERS_ROOT. Best-effort only:
-// status writing must never fail because this notification side channel failed.
-export function bumpTransitionSentinel(statusFile, now = new Date().toISOString()) {
-  try {
-    const workersRoot = dirname(dirname(statusFile))
-    const sentinelFile = join(workersRoot, '.cli-dispatch-transitions')
-    atomicWriteFileSync(sentinelFile, String(now) + '\n')
-  } catch {
-    // best-effort notification only
-  }
-}
-
 // ---- throttled status writer ----
 
 // Factory: returns { flush, write } bound to `status` (mutated in-place by the
@@ -183,7 +166,6 @@ export function bumpTransitionSentinel(statusFile, now = new Date().toISOString(
 // disk on every event in a burst.
 export function createStatusWriter(statusFile, status, { throttleMs = 200 } = {}) {
   let lastWrite = 0
-  let lastState = status.state
   let timer = null
   let warned = false
 
@@ -192,10 +174,6 @@ export function createStatusWriter(statusFile, status, { throttleMs = 200 } = {}
     lastWrite = Date.now()
     try {
       atomicWriteFileSync(statusFile, JSON.stringify(status, null, 2) + '\n')
-      if (status.state !== lastState) {
-        bumpTransitionSentinel(statusFile)
-        lastState = status.state
-      }
     } catch (err) {
       // A swallowed write here leaves status.json stuck at "running" forever with no
       // trace (see stream-utils.sh's reconcile_session_error) — warn once per writer
@@ -265,80 +243,12 @@ export function writeMetaFile(metaFile, meta) {
 // Unlike createStatusWriter (an in-process throttled writer meant to be held open
 // for the lifetime of a streaming backend CLI), these are plain synchronous
 // read-modify-write helpers for callers OUTSIDE that writer's lifecycle — e.g. a
-// dashboard-server endpoint mutating status.json/meta.json for a session whose
-// original writer process has already exited.
+// session whose original writer process has already exited.
 
 // Read + parse a JSON file. Best-effort: any read/parse failure yields {} (matches
 // writeMetaFile's own best-effort try/catch style).
 export function readJsonFile(file) {
   try { return JSON.parse(readFileSync(file, 'utf8')) } catch { return {} }
-}
-
-// Write obj to file as pretty JSON (best-effort, ignores I/O errors — matches
-// writeMetaFile's existing style exactly).
-function writeJsonFile(file, obj) {
-  try {
-    atomicWriteFileSync(file, JSON.stringify(obj, null, 2) + '\n')
-  } catch (err) {
-    process.stderr.write(`writeJsonFile: cannot write ${file}: ${err.message}\n`)
-  }
-}
-
-// ---- human-takeover state helpers ----
-//
-// Implements the status.json Veri Modeli from .specs/dev/sdd/human-takeover.md:
-//   state: 'human-controlled'
-//   completedVia: 'autonomous' | 'human-takeover'   (terminal states only)
-//   takeover: { active, startedAt, host, lastHeartbeat, ptyPid, ptyPgid }
-// The takeover TOKEN is NEVER written to disk by these (or any other) helpers — it is held
-// only in the dashboard-server process's memory. ptyPid/ptyPgid, by contrast, are NOT
-// secret and ARE persisted on purpose: they let the OUT-OF-PROCESS reaper
-// (cli-dispatch-clean.mjs) kill an orphaned takeover PTY tree when dashboard-server itself
-// has died and can no longer reap via its live in-memory ptyHandle.
-export function markTakeoverActive(statusFile, { host, ptyPid, ptyPgid, now = new Date().toISOString() }) {
-  const status = readJsonFile(statusFile)
-  status.state = 'human-controlled'
-  status.takeover = { active: true, startedAt: now, host, lastHeartbeat: now, ptyPid, ptyPgid }
-  writeJsonFile(statusFile, status)
-  bumpTransitionSentinel(statusFile)
-  return status
-}
-
-// Refresh takeover.lastHeartbeat for an in-progress takeover. No-op (does not
-// write, returns the status unchanged) if the session has no active takeover —
-// callers that need a hard failure should check status.takeover?.active
-// themselves before calling this.
-export function touchTakeoverHeartbeat(statusFile, { now = new Date().toISOString() } = {}) {
-  const status = readJsonFile(statusFile)
-  // Reap-revival guard: only refresh the heartbeat if the takeover is STILL active as of
-  // the read we just did. Between a caller's decision to heartbeat and this read, an
-  // out-of-process reaper (cli-dispatch-clean.mjs) may have cleared a stale takeover —
-  // transitioning state to a terminal value and deleting the takeover sub-object. Writing
-  // our stale in-memory copy back would resurrect a dead 'human-controlled' session. Since
-  // this check reads immediately before the write (no lock, minimal TOCTOU window), skip the
-  // write entirely unless state is still 'human-controlled' with an active takeover. Returns
-  // the status unchanged in the skip case (same no-op semantics as before).
-  if (!(status.state === 'human-controlled' && status.takeover && status.takeover.active === true)) {
-    process.stderr.write(`touchTakeoverHeartbeat: skipping heartbeat for ${statusFile} — takeover no longer active (state=${status.state})\n`)
-    return status
-  }
-  status.takeover.lastHeartbeat = now
-  writeJsonFile(statusFile, status)
-  return status
-}
-
-// End a takeover, transitioning to a terminal state. Sets state (caller passes
-// 'done' or 'error'), optionally completedVia and error, and removes the
-// takeover sub-object entirely. Returns the updated object.
-export function clearTakeoverState(statusFile, { finalState, completedVia, error } = {}) {
-  const status = readJsonFile(statusFile)
-  status.state = finalState
-  if (completedVia !== undefined) status.completedVia = completedVia
-  if (error !== undefined) status.error = error
-  delete status.takeover
-  writeJsonFile(statusFile, status)
-  bumpTransitionSentinel(statusFile)
-  return status
 }
 
 // ---- formatting utilities ----

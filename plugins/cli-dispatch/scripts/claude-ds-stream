@@ -125,11 +125,10 @@ fi
 SESSION_DIR="$SESSIONS_ROOT/$SID"
 mkdir -p "$SESSION_DIR"
 # Persist THIS wrapper's own pid ($$, NOT $CPID of the backgrounded claude process) as the
-# worker-tree root. A dashboard takeover must kill the ENTIRE headless writer tree — the
-# backgrounded claude process AND this wrapper's own post-wait finalize logic below — before
-# spawning the interactive PTY, or the old writer clobbers status.json right after takeover
-# starts. A stale worker.pid in a finished session is harmless: the dashboard only acts on it
-# while status.json state=="running".
+# worker-tree root. /cli-dispatch:kill must kill the ENTIRE headless writer tree — the
+# backgrounded claude process AND this wrapper's own post-wait finalize logic below. A stale
+# worker.pid in a finished session is harmless: kill only acts on it while status.json
+# state=="running".
 printf '%s' "$$" > "$SESSION_DIR/worker.pid" 2>/dev/null || true
 printf '%s' "$PROMPT" > "$SESSION_DIR/prompt.txt" 2>/dev/null || true
 
@@ -306,19 +305,6 @@ set -e
 # Tear down the watchdog and any sleep child it left behind (it usually self-exits when
 # claude finishes, but may be mid-sleep when we get here).
 [ -n "$WATCHDOG_PID" ] && kill_tree "$WATCHDOG_PID" -TERM
-
-# ---- human-controlled guard (defense-in-depth) ----
-# If a human already took over this session, the dashboard tree-killed the WHOLE worker
-# (via worker.pid, see above) and spawned an interactive PTY that now owns status.json,
-# writing state:"human-controlled". That kill normally reaps this wrapper before it ever
-# gets here — but if it raced or somehow missed us, this guard stops the reconcile logic
-# below from clobbering the dashboard's record. Exit 0 so the caller sees a clean exit;
-# the EXIT trap (cleanup) still runs.
-TAKEOVER_STATE="$(json_field "$SESSION_DIR/status.json" state || true)"
-if [ "$TAKEOVER_STATE" = "human-controlled" ]; then
-  echo "claude-ds-stream: session taken over by a human — leaving record to the dashboard." >&2
-  exit 0
-fi
 
 # ---- post-run read-only integrity guard (defense-in-depth against hooks bypass) ----
 # Hooks (PreToolUse/PostToolUse) fire on Read/Grep calls and can execute arbitrary

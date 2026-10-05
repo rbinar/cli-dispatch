@@ -81,7 +81,7 @@ const path = require("path");
 const os = require("os");
 const dir = process.env.CLI_DISPATCH_SESSION_DIR;
 const statusPath = path.join(dir, "status.json");
-const NON_TERMINAL_FALLBACK = new Set(["running", "human-controlled"]);
+const NON_TERMINAL_FALLBACK = new Set(["running"]);
 (async () => {
   let isNonTerminalState = (s) => NON_TERMINAL_FALLBACK.has(s);
   const share = process.env.XDG_DATA_HOME || path.join(os.homedir(), ".local", "share");

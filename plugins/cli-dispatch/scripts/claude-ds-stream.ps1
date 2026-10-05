@@ -393,7 +393,7 @@ if (-not [string]::IsNullOrWhiteSpace($resumeId)) {
 $sessionDir = Join-Path $sessionsRoot $sid
 New-Item -ItemType Directory -Force -Path $sessionDir | Out-Null
 # worker.pid = the wrapper's own PID, matching bash (printf '%s' "$$" > worker.pid) —
-# the dashboard kills the tree from this. Best-effort: the script-block pipeline cannot
+# /cli-dispatch:kill kills the tree from this. Best-effort: the script-block pipeline cannot
 # expose the inner claude PID directly.
 $pidFile = Join-Path $sessionDir 'worker.pid'
 Set-Content -Path $pidFile -Value "$PID" -NoNewline -Encoding UTF8 -ErrorAction SilentlyContinue
@@ -538,7 +538,6 @@ if ($maxRuntime -gt 0 -or $idleTimeout -gt 0) {
 $runStarted = $false
 $completed = $false
 $interrupted = $false
-$humanTookOver = $false
 $interruptedSignal = "SIGINT"
 $claudeRc = 0
 
@@ -563,67 +562,59 @@ try {
 
   if ($watchJob) { Stop-Job -Job $watchJob -ErrorAction SilentlyContinue; Remove-Job $watchJob -Force -ErrorAction SilentlyContinue; $watchJob = $null }
 
-  $state = Get-JsonField (Join-Path $sessionDir "status.json") "state"
-  if ($state -eq "human-controlled") {
-    [Console]::Error.WriteLine("claude-ds-stream: session taken over by a human — leaving record to the dashboard.")
-    $completed = $true
-    $claudeRc = 0
-    $humanTookOver = $true
-  } else {
-    $readOnlyViolation = ""
-    if ($readOnly -eq 1) {
-      $readOnlyStatus = git -C "$cwd" status --short 2>$null
-      if (-not [string]::IsNullOrWhiteSpace($readOnlyStatus)) {
-        $readOnlyLines = ($readOnlyStatus -split "`r?`n")
-        $count = 0
-        foreach ($line in $readOnlyLines) { if ($line) { $count++ } }
-        [Console]::Error.WriteLine(">>> READ-ONLY VIOLATION: $count file(s) modified in $cwd despite --read-only")
-        [Console]::Error.WriteLine($readOnlyStatus)
-        $readOnlyViolation = "read-only violation: $count file(s) modified despite --read-only"
-      }
+  $readOnlyViolation = ""
+  if ($readOnly -eq 1) {
+    $readOnlyStatus = git -C "$cwd" status --short 2>$null
+    if (-not [string]::IsNullOrWhiteSpace($readOnlyStatus)) {
+      $readOnlyLines = ($readOnlyStatus -split "`r?`n")
+      $count = 0
+      foreach ($line in $readOnlyLines) { if ($line) { $count++ } }
+      [Console]::Error.WriteLine(">>> READ-ONLY VIOLATION: $count file(s) modified in $cwd despite --read-only")
+      [Console]::Error.WriteLine($readOnlyStatus)
+      $readOnlyViolation = "read-only violation: $count file(s) modified despite --read-only"
     }
-
-    $err = ""
-    if (-not [string]::IsNullOrWhiteSpace($readOnlyViolation)) {
-      $err = $readOnlyViolation
-    } elseif (Test-Path $timeoutFile) {
-      $timeoutReason = (Get-Content -Raw $timeoutFile -ErrorAction SilentlyContinue).Trim()
-      $err = "timeout: $timeoutReason"
-    } elseif ($claudeRc -ne 0) {
-      $err = "claude exited $claudeRc"
-    }
-
-    if ([string]::IsNullOrWhiteSpace($err) -and $claudeRc -eq 0 -and -not [string]::IsNullOrWhiteSpace($verifyCmd)) {
-      $verifyOutput = [System.IO.Path]::GetTempFileName()
-      $verifyRc = 0
-      try {
-        Set-Location -LiteralPath $cwd
-        if (Get-Command bash -ErrorAction SilentlyContinue) {
-          bash -c $verifyCmd > $verifyOutput 2>&1
-        } else {
-          & pwsh -NoProfile -Command $verifyCmd > $verifyOutput 2>&1
-        }
-        $verifyRc = $LASTEXITCODE
-      } finally {
-        $verifyTail = (Get-Content -Path $verifyOutput -Tail 20 -ErrorAction SilentlyContinue) -join "`n"
-        Record-VerifyResult -Directory $sessionDir -Command $verifyCmd -ExitCode $verifyRc -TailText $verifyTail
-        Remove-Item -Force $verifyOutput -ErrorAction SilentlyContinue
-      }
-      Set-Location -LiteralPath $originalLocation.Path
-    }
-
-    Write-DiffArtifacts -SessionDir $sessionDir -Cwd $cwd -PreexistingDirty $preexistingDirty
-
-    if (-not [string]::IsNullOrWhiteSpace($err)) {
-      $currentState = Get-JsonField (Join-Path $sessionDir "status.json") "state"
-      if ($currentState -eq "running" -or $currentState -eq "done") {
-        Reconcile-SessionError -Directory $sessionDir -ErrorMessage $err -ExitCode $claudeRc
-      }
-    }
-
-    Remove-Item -Force $pidFile, $timeoutFile -ErrorAction SilentlyContinue
-    $completed = $true
   }
+
+  $err = ""
+  if (-not [string]::IsNullOrWhiteSpace($readOnlyViolation)) {
+    $err = $readOnlyViolation
+  } elseif (Test-Path $timeoutFile) {
+    $timeoutReason = (Get-Content -Raw $timeoutFile -ErrorAction SilentlyContinue).Trim()
+    $err = "timeout: $timeoutReason"
+  } elseif ($claudeRc -ne 0) {
+    $err = "claude exited $claudeRc"
+  }
+
+  if ([string]::IsNullOrWhiteSpace($err) -and $claudeRc -eq 0 -and -not [string]::IsNullOrWhiteSpace($verifyCmd)) {
+    $verifyOutput = [System.IO.Path]::GetTempFileName()
+    $verifyRc = 0
+    try {
+      Set-Location -LiteralPath $cwd
+      if (Get-Command bash -ErrorAction SilentlyContinue) {
+        bash -c $verifyCmd > $verifyOutput 2>&1
+      } else {
+        & pwsh -NoProfile -Command $verifyCmd > $verifyOutput 2>&1
+      }
+      $verifyRc = $LASTEXITCODE
+    } finally {
+      $verifyTail = (Get-Content -Path $verifyOutput -Tail 20 -ErrorAction SilentlyContinue) -join "`n"
+      Record-VerifyResult -Directory $sessionDir -Command $verifyCmd -ExitCode $verifyRc -TailText $verifyTail
+      Remove-Item -Force $verifyOutput -ErrorAction SilentlyContinue
+    }
+    Set-Location -LiteralPath $originalLocation.Path
+  }
+
+  Write-DiffArtifacts -SessionDir $sessionDir -Cwd $cwd -PreexistingDirty $preexistingDirty
+
+  if (-not [string]::IsNullOrWhiteSpace($err)) {
+    $currentState = Get-JsonField (Join-Path $sessionDir "status.json") "state"
+    if ($currentState -eq "running" -or $currentState -eq "done") {
+      Reconcile-SessionError -Directory $sessionDir -ErrorMessage $err -ExitCode $claudeRc
+    }
+  }
+
+  Remove-Item -Force $pidFile, $timeoutFile -ErrorAction SilentlyContinue
+  $completed = $true
 } catch [System.Management.Automation.PipelineStoppedException] {
   $interrupted = $true
   $interruptedSignal = "SIGINT"
@@ -670,10 +661,6 @@ try {
 
 if ($interrupted) {
   exit $claudeRc
-}
-
-if ($humanTookOver) {
-  exit 0
 }
 
 exit $claudeRc

@@ -40,7 +40,7 @@ ENABLED=0
 # Count only sessions that are running AND still alive. `state: running` alone is not
 # liveness: a crashed worker keeps that state until `cli-dispatch-clean` sweeps it, which
 # would pin a permanent phantom "▶1" in the statusline. Use the same staleness signal the
-# rest of the repo uses — status.json mtime (dashboard-server.mjs: 90s; clean: staleSecs).
+# rest of the repo uses — status.json mtime (clean: staleSecs).
 STALE_AFTER=90
 RUNNING=0
 DS_RUNNING=0

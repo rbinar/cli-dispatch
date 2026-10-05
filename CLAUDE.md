@@ -30,7 +30,7 @@ Everything the plugin installs lives under `plugins/cli-dispatch/`:
 - `scripts/` — the actual installed CLIs. Per-backend: `ds-agent`, `ag-agent`, `cx-agent`,
   `oc-agent`, `cp-agent` + their `*-stream` siblings and `*-worktree-run.sh` runners.
   Backend-agnostic: `cli-dispatch-run` (the deterministic runner — the delegation path),
-  `cli-dispatch-wait`, `cli-dispatch-clean`, `cli-dispatch-gain`, `cli-dispatch-dashboard`,
+  `cli-dispatch-wait`, `cli-dispatch-clean`, `cli-dispatch-gain`,
   and `cli-dispatch-statusline.sh` (the `[CD]` statusline fragment — bash-only by design,
   glob-loaded from the plugin cache rather than installed to `~/.local/bin`). The
   pre-execution scripts (`cli-dispatch-status.sh` + its `.ps1` twin, `cli-dispatch-doctor.sh`,
@@ -38,7 +38,7 @@ Everything the plugin installs lives under `plugins/cli-dispatch/`:
   cache and are **not** installed, so they can never go stale relative to the plugin — do
   not add them to `install.sh`. Bash/PowerShell
   wrappers around Node engines (`*-stream-parse.mjs` parsers, `verdict-writer.mjs`,
-  `gain-report.mjs`, `drift-report.mjs`, `dashboard-server.mjs`, `cli-dispatch-clean.mjs`).
+  `gain-report.mjs`, `drift-report.mjs`, `cli-dispatch-clean.mjs`).
   `install.sh`/`install.ps1` copy these into `~/.local/bin` (wrappers) and
   `~/.local/share/cli-dispatch/` (engines + shared libs).
 - `hooks/hooks.json` — the SessionStart hook registration. Wires `scripts/policy-inject.mjs`
@@ -65,8 +65,8 @@ node plugins/cli-dispatch/scripts/check-version-sync.mjs
 ```
 
 Test files live in `plugins/cli-dispatch/scripts/__tests__/`, one per parser/utility
-(`ds-stream-parse.test.mjs`, `cx-stream-parse.test.mjs`, `dashboard-server.test.mjs`,
-`takeover-integration.test.mjs`, `check-version-sync.test.mjs`, etc.) — not every script
+(`ds-stream-parse.test.mjs`, `cx-stream-parse.test.mjs`,
+`policy-inject.test.mjs`, `check-version-sync.test.mjs`, etc.) — not every script
 has a test file (e.g. `ag-transcript-parse.mjs` does, some bash-only tools don't; there is
 no enforced coverage requirement).
 
@@ -88,11 +88,11 @@ scratch generation dir needs `git init` + one base commit first).
 run — regardless of backend — creates `~/.cache/cli-dispatch/sessions/<id>/` containing:
 - `status.json` — the *only* file consumers should poll while a worker runs (small,
   throttled writes via `parse-utils.mjs`'s `createStatusWriter`, ~200ms). Its `state` field
-  is a 5-value enum: `running | done | error | killed | human-controlled` — terminal states
+  is a 4-value enum: `running | done | error | killed` — terminal states
   are `done`/`error`/`killed`. `parse-utils.mjs` exports `TERMINAL_STATES` /
   `NON_TERMINAL_STATES` / `isNonTerminalState()`; use these instead of hardcoding string
-  checks (see `.specs/dev/sdd/human-takeover.md`, "Veri Modeli", for the full schema
-  including the `human-controlled` takeover sub-object).
+  checks. Pre-5.0.0 session dirs may carry a retired state; readers treat it as finished
+  (legacy: `human-controlled`).
 - `meta.json` — static fields: `cwd`, `backend`, `model`, `startedAt`, `promptPreview`.
 - `transcript.jsonl` — the full raw JSONL stream. Never read this while polling — it's for
   resume/audit only. Consumers (`gain`, `clean`, any orchestrator following up on a run)
@@ -118,7 +118,7 @@ run — regardless of backend — creates `~/.cache/cli-dispatch/sessions/<id>/`
 Each backend's `*-stream-parse.mjs` (`ds-`, `cx-`, `cp-`, `oc-`, plus
 `ag-transcript-parse.mjs` for Antigravity) reads that backend's native JSONL event stream
 from stdin and normalizes it into this same session-dir shape — this is what lets
-`/cli-dispatch:sessions`, `/cli-dispatch:watch`, `/cli-dispatch:gain`, the dashboard, and
+`/cli-dispatch:sessions`, `/cli-dispatch:watch`, `/cli-dispatch:gain`, and
 `cli-dispatch-clean` all be backend-agnostic. `parse-utils.mjs` holds the logic shared
 across parsers (status-file throttling, session fd management, formatting).
 
@@ -155,11 +155,11 @@ immediately after `mkdirSync`-ing its own session dir, capping the root at the n
 `CLI_DISPATCH_MAX_SESSIONS` (default 100) **finished** sessions. It exists because session
 dirs otherwise grow forever unless someone runs `/cli-dispatch:clean` or installs the
 scheduled job, and most people do neither. Three invariants it must never lose: a
-non-terminal session (`running`/`human-controlled`) is never removed however old it sorts, a
+non-terminal session (`running`) is never removed however old it sorts, a
 session with no state at all is left to `cli-dispatch-clean` (a parser that died before its
 first status write is indistinguishable from one that never started), and verdicts are
 archived into `verdict-archive/` first. It is a floor, not a replacement for
-`cli-dispatch-clean` — it does no staleness detection and no takeover reaping. Ordering
+`cli-dispatch-clean` — it does no staleness detection. Ordering
 matters at the call site: prune AFTER creating your own dir, or you become your own target.
 
 **Session-dir root resolution** is duplicated (by design, not accidentally) across
@@ -233,7 +233,7 @@ therefore ambiguous on its own: it means "no policy file" at least as often as i
 "something is broken." Check for the file before debugging the hook.
 
 **Cross-platform pairing.** Every standalone installed binary (`cli-dispatch-clean`,
-`cli-dispatch-wait`, `cli-dispatch-dashboard`, and each backend's `*-agent`) ships both a
+`cli-dispatch-wait`, and each backend's `*-agent`) ships both a
 bash script and a `.ps1` twin for native Windows, installed by `install.sh` and
 `install.ps1` respectively — keep both in sync when changing one. Antigravity, OpenCode,
 and GitHub Copilot backends are Unix-only (macOS/Linux/WSL) for now; only DeepSeek and
@@ -266,6 +266,6 @@ diff the guards — not only the happy path.
   the author is verified — see the `dev-security`-style caution already baked into
   `commands/*.md` prompts that touch GitHub content.
 - `.specs/dev/` contains SDD (spec-driven design) docs and ADRs for larger features (e.g.
-  `.specs/dev/sdd/human-takeover.md` for the dashboard's human-takeover feature,
-  `.specs/dev/adr/` for architecture decisions like the `node-pty` dependency). Check there
+  `.specs/dev/sdd/deterministic-runner.md` for the runner's exit-code contract,
+  `.specs/dev/adr/` for architecture decisions). Check there
   before redesigning a feature that already has a spec on file.

@@ -17,7 +17,6 @@ This document covers only the terminal-runnable commands. Three DeepSeek executa
 | `cli-dispatch-wait` | Blocks until a session reaches a terminal state, then prints a compact summary (silent while polling). |
 | `cli-dispatch-clean` | Prunes stale (`running`-but-dead) session dirs and leftover worktree artifacts. |
 | `cli-dispatch-gain` | Reports worker token totals per backend. |
-| `cli-dispatch-dashboard` | Serves the local read-only web dashboard. |
 
 See [README.md](README.md) for `cli-dispatch-run`'s full flag set and the escalation path.
 

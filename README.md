@@ -12,10 +12,6 @@
 
 > **Demo** — install the plugin, run `/cli-dispatch:setup` to pick and configure your backend(s), then delegate tasks with `/cli-dispatch:ds-run` / `ag-run` / `cx-run` / `oc-run` / `cp-run`, or `/cli-dispatch:run <backend> "<task>" --verify '<cmd>'` for the deterministic, zero-babysitter path. The worker generates; Claude Code watches live and verifies.
 
-![cli-dispatch dashboard — live session list, subagent drill-down, worker session trace per backend](assets/dashboard.gif)
-
-> **Dashboard** (`/cli-dispatch:dashboard`) — live view of all Claude Code sessions, any subagents they spawn, and the worker CLI sessions delegated via cli-dispatch. Shows status, task, and per-backend trace in real time.
-
 ## Install
 
 > ⚠️ These commands are **slash commands** and must be run **from inside the Claude Code CLI** (not in a normal terminal/shell). First type `claude` to start a Claude Code session, then enter the commands at that session's prompt.
@@ -114,44 +110,6 @@ to the running session (without a full restart). Verify with `/cli-dispatch:stat
 
 > ▶️ [Watch the update demo (mp4)](assets/update.mp4) — `/plugin update` then `/reload-plugins` inside Claude Code.
 
-## Dashboard
-
-```text
-/cli-dispatch:dashboard
-```
-
-A **local web dashboard** over data that already lives on disk. It lists active
-Claude Code CLI sessions (all projects, **busy** ones pinned on top); click a session to see
-its **flow** (messages / tool calls / results), the **subagents** it spawned, and click a
-subagent to drill into *its* flow (nested by spawn depth). A second panel shows the
-cli-dispatch **worker** delegations (DeepSeek / Antigravity / Codex / OpenCode / Copilot) with their state + flow.
-Busy sessions auto-refresh.
-
-It reads `~/.claude/projects/**` (Claude Code transcripts), `~/.claude/sessions/*.json` (live
-busy/idle), and `~/.cache/cli-dispatch/sessions/**` (workers). Notes:
-- **The only long-running process the plugin starts.** It binds `127.0.0.1` only, is
-  read-**mostly**: it reads data already on disk, plus three narrowly-scoped write paths that
-  each require an Origin + Host + custom-header check — the **Config** editor (below), stale-session
-  cleanup, and an opt-in **human-takeover** action on a worker's detail view that attaches to
-  already-owned worker sessions only (kill the headless process, attach a PTY terminal). No
-  general shell, no arbitrary command. Stop the dashboard with the printed `kill <pid>` (or
-  Ctrl-C if you run `cli-dispatch-dashboard` yourself in a terminal).
-- The Claude Code on-disk transcript format is internal and may change across versions; the
-  dashboard renders unknown shapes defensively.
-- The Workers overview reports **how many worker tokens were offloaded from Anthropic** — worded *offloaded*, not *saved*, because which tokens skipped the Anthropic account is measurable while a saving is a counterfactual. The deterministic-runner subset is called out separately (zero Anthropic supervision by construction), and the number carries its own caveats: how many sessions report no usage at all (making the total a floor) and how many came from a mid-run snapshot. `/cli-dispatch:gain` adds the legacy babysitter cost that offsets it.
-- Each backend group leads with an **auth** line that answers the question the key badge cannot: three of the five backends normally have no key in the config at all and sign in through their own CLI, so the view combines both sources — `✓ key in config`, `✓ logged in (ChatGPT)`, `✓ logged in (gh)`, or `✗ not logged in` with the command that fixes it. Probes are non-interactive, time-limited, and their output never leaves the server (Copilot's probe prints a token, which is discarded in place). A probe that cannot run reads `could not check`, never a red cross. Antigravity has no auth subcommand at all, so it reports that plainly and falls back to run history.
-- A **Config** tab edits the cli-dispatch config file right in the browser. Secret fields (API keys) are write-only — never echoed back once saved — and shown with a masked preview (e.g. `sk-e78f...ea1b`, first 6 + last 4 chars) so you can confirm which key is set without exposing it. Non-secret fields like `*_MODEL` and `*_MODELS` can be viewed and edited directly.
-- Sessions/subagents show per-session token usage and which model ran them. Token counts captured
-  mid-run (a killed or interrupted worker) are labelled as partial rather than shown as totals.
-- **Deterministic-runner results are first class.** A worker launched via
-  [`/cli-dispatch:run`](#deterministic-runner-cli-dispatchrun--no-llm-babysitter) writes a
-  `verdict.json`, and the dashboard reads it: the worker row gets a `⚙RUN` marker plus a
-  verify ✓/✗ badge with its exit code and the change size, and the detail view adds the verify
-  commands and output tail, the changed files with their git status (separating paths that were
-  already dirty before the worker started), the branch/base/worktree, and a link to the diff.
-  A verify failure is shown on its own axis from the worker's state, because "the worker finished
-  but the check failed" and "the worker died" are different outcomes.
-
 ## Statusline badge
 
 `scripts/cli-dispatch-statusline.sh` is a statusline **fragment**: a combining
@@ -183,7 +141,6 @@ You use cli-dispatch **from inside Claude Code** — two ways:
 | Command | What it does |
 |---------|--------------|
 | `/cli-dispatch:setup` | Pick backend(s) + install + config skeleton + smoke test |
-| `/cli-dispatch:dashboard` | Open the local web dashboard — Claude Code sessions → flow → subagents → flow, + worker panel |
 | `/cli-dispatch:ds-run <task>` | Delegate a task to **DeepSeek** (session-tracked; worktree isolation for repo tasks) |
 | `/cli-dispatch:ag-run <task>` | Delegate a task to **Antigravity (Gemini)** (same workflow) |
 | `/cli-dispatch:cx-run <task>` | Delegate a task to **Codex (OpenAI)** (real read-only sandbox; same session layout) |
@@ -214,14 +171,13 @@ You use cli-dispatch **from inside Claude Code** — two ways:
 
 All used from inside Claude Code (`/cli-dispatch:ds-run <task>`, `/cli-dispatch:cx-run`, `/cli-dispatch:ag-run`, `/cli-dispatch:oc-run`, `/cli-dispatch:cp-run`, or "do <task> with deepseek/codex/gemini/opencode/copilot"):
 
-- **Five worker backends, one hub** — **DeepSeek** (`ds-*`), **Antigravity / Gemini** (`ag-*`), **Codex / OpenAI** (`cx-*`), **OpenCode / OpenRouter** (`oc-*`), **GitHub Copilot** (`cp-*`). Pick any (or all) at setup; all five write the **same session layout**, so `sessions`, `watch`, `clean`, the balance commands, and the dashboard work across every backend.
+- **Five worker backends, one hub** — **DeepSeek** (`ds-*`), **Antigravity / Gemini** (`ag-*`), **Codex / OpenAI** (`cx-*`), **OpenCode / OpenRouter** (`oc-*`), **GitHub Copilot** (`cp-*`). Pick any (or all) at setup; all five write the **same session layout**, so `sessions`, `watch`, `clean`, and the balance commands work across every backend.
 - **Delegate & verify** — the worker generates/implements; Claude Code watches live and verifies the output. Conversation context is not shared → the task must be **self-contained**. The worker = doer, you = reviewer/merge owner.
 - **Session tracking (live watch + resume)** — work is not an opaque background process; each run writes a session dir (status / progress / transcript / meta + the full prompt) and is observable and resumable. → [Session tracking](#session-tracking-live-watch--resume)
 - **Isolation & read-only** — real repo tasks run in a throwaway git worktree, diff left uncommitted; Codex's `--read-only` additionally activates a kernel-enforced no-writes sandbox. → [Security and data](#security-and-data)
 - **Deterministic runner, no LLM babysitter (`/cli-dispatch:run`)** — the only delegation path: launches a worker, isolates real repo changes in a worktree, blocks until done, and gates on a machine-checkable `--verify` command — zero Anthropic tokens spent on orchestration. For judgment-heavy work with no verify command, the escalation path is the same runner (or a plain `*-agent` CLI) — you read the compact verdict + diff yourself and follow up with `/cli-dispatch:resume` if needed. → [Deterministic runner](#deterministic-runner-cli-dispatchrun--no-llm-babysitter)
 - **Session-start policy injection (optional)** — a `SessionStart` hook auto-injects a compact delegation policy (deterministic-runner routing, escalation path, issue-filing reminder) into every session's context, configured once at `/cli-dispatch:setup`. Opt-in, default off, zero token cost when disabled. → [Session-start policy injection](#session-start-policy-injection-optional)
 - **Statusline badge (optional)** — a cyan `[CD]` badge with yellow per-backend counts for this Claude Code session's live workers. → [Statusline badge](#statusline-badge)
-- **Web dashboard** — a local view: Claude Code sessions → flow → subagents → flow, plus a worker panel with each run's verify result and diff, cost/model visibility, and a Config editor. → [Dashboard](#dashboard)
 - **Native usage / quota** — `/cli-dispatch:balance` (all five at once) or a per-backend `*-balance`; reverse-engineered from each CLI's own local data where available, **no third-party tools**. Copilot is explicitly not CLI-queryable. → [Usage & quota](#usage--quota--native-no-third-party-tool)
 - **Housekeeping** — `/cli-dispatch:clean` prunes stale (`running`-but-dead) worker dirs; `/cli-dispatch:clean-schedule` automates it daily via launchd / cron / Scheduled Tasks.
 - **Safety net & isolation** — a hung/runaway worker is auto-killed (with its child processes) at a runtime or idle limit, going `state: error`; workers do not inherit your `~/.claude` MCP servers (playwright, etc.).
@@ -240,7 +196,7 @@ Session directory: `${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<id>/`
 | `progress.log` | Terse human-readable stream (`▸ Edit foo.ts`, `✓ / ✗`, truncated text) |
 | `transcript.jsonl` | Raw stream-json (resume/audit; not read while watching) |
 | `meta.json` | Prompt preview, cwd, branch, model, start/end |
-| `prompt.txt` | The **full** task prompt (untruncated; shown pinned atop the worker's dashboard page) |
+| `prompt.txt` | The **full** task prompt (untruncated) |
 
 **Cost-aware watching:** progress is tracked only from the small `status.json` (`/cli-dispatch:watch <id>` or `/cli-dispatch:wait <id>`); the raw transcript is not read, not tailed in a tight loop — because every read by the orchestrator spends tokens.
 
@@ -344,10 +300,10 @@ On native Windows (if you're not using WSL) the PowerShell variants kick in. **D
 - `/cli-dispatch:setup` → runs `install.ps1 -Backends <deepseek,codex|all>` (default `deepseek`):
   - **DeepSeek**: `claude-ds.ps1` + `claude-ds-stream.ps1` + `ds-agent.ps1` and `.cmd` shims into `~/.local/bin`, parser (`ds-stream-parse.mjs`) into `~/.local/share/cli-dispatch`.
   - **Codex**: `cx-stream.ps1` + `cx-agent.ps1` + `.cmd` shims and parser (`cx-stream-parse.mjs`). Auth: `codex login` (or `CODEX_API_KEY` in the config). Real `-s read-only` sandbox included.
-  - The dashboard is always installed; the config is written to `~/.config/cli-dispatch/config`.
+  - The config is written to `~/.config/cli-dispatch/config`.
   - Add `-InstallMissing` to have `install.ps1` attempt auto-installing a missing worker CLI (npm, or a vendor fallback) and re-check with `Get-Command`, falling back to the existing warning on failure — opt-in, default off; auth is never automated.
 - Repo tasks (worktree runs) need **bash** — WSL or Git Bash. `cli-dispatch-run.ps1` invokes the `.sh` worktree runner through it and refuses to start without it. The PowerShell twins (`ds-worktree-run.ps1` / `cx-worktree-run.ps1`) were removed in 4.6.0: nothing ever selected them, so they could only drift out of sync with the bash originals they mirrored.
-- Everything else — generation, sessions, watch, kill, gain, the dashboard — is native PowerShell and needs no bash.
+- Everything else — generation, sessions, watch, kill, gain — is native PowerShell and needs no bash.
 
 Requirements: PowerShell 5.1+ or pwsh 7+; `claude` for DeepSeek, `codex` for Codex, on PATH.
 
@@ -369,7 +325,7 @@ For a full cleanup, in order: (1) remove the plugin, (2) delete the wrapper + co
 # macOS / Linux / WSL / Git Bash
 rm -f  ~/.local/bin/claude-ds ~/.local/bin/claude-ds-stream ~/.local/bin/ds-agent
 rm -f  ~/.local/bin/{ag,cx,oc,cp}-agent ~/.local/bin/{ag,cx,oc,cp}-stream
-rm -f  ~/.local/bin/cli-dispatch-{run,wait,clean,gain,dashboard}
+rm -f  ~/.local/bin/cli-dispatch-{run,wait,clean,gain}
 rm -f  ~/.local/bin/{ds,cx}-worktree-run.* ~/.local/bin/stream-utils.sh ~/.local/bin/version-check.sh
 rm -rf ~/.local/share/cli-dispatch ~/.local/share/claude-ds   # engines/parsers (also legacy path)
 rm -rf ~/.cache/cli-dispatch ~/.cache/claude-ds               # session records (also legacy path)
@@ -400,8 +356,8 @@ git worktree prune         # clean up dead records
 
 - **Sandbox posture per backend:** only Codex's `--read-only` is a kernel-enforced OS sandbox (macOS Seatbelt / Linux bwrap+seccomp) — a genuine no-writes guarantee, no worktree required for pure analysis. DeepSeek's `--read-only` is a tool-layer restriction only. Antigravity, OpenCode, and Copilot have **no sandbox at all**. For everything else, isolate real repo work in a git worktree — agentic mode doesn't touch the main checkout/other branches; reviewing the diff (build/test) and merging is **up to you**.
 - **Keys never leave your machine:** any key lives in `~/.config/cli-dispatch/config` (0600, outside the repo) and is **never committed**. The plugin/skill never writes a key anywhere; you add it. (Codex and Antigravity normally use their own OAuth sign-in — no key in the config at all.)
-- **Data egress:** the **prompt and code you give a worker are sent to that backend's provider** — DeepSeek, Google (Gemini/Antigravity), OpenAI (Codex), OpenRouter/OpenCode, or GitHub Copilot. Use each only if you accept that. The dashboard and `*-balance` commands are local/read-only and send nothing extra on your behalf.
-- **Finished sessions are capped automatically:** every worker run prunes the session root down to the newest **100 finished** sessions before it starts. This is deletion, so the limits are worth knowing: a session that is still `running` or `human-controlled` is never removed no matter how old, a session that never wrote a state at all is left alone (only `/cli-dispatch:clean` has the idle-time evidence to judge it), and any `verdict.json` / `verdict-diff.patch` is copied into `sessions/verdict-archive/` before its directory goes. Change the cap with `CLI_DISPATCH_MAX_SESSIONS=<n>`; set it to `0` to turn pruning off entirely. This is a floor, not a replacement for `/cli-dispatch:clean` — the cap does not detect stale or dead sessions.
+- **Data egress:** the **prompt and code you give a worker are sent to that backend's provider** — DeepSeek, Google (Gemini/Antigravity), OpenAI (Codex), OpenRouter/OpenCode, or GitHub Copilot. Use each only if you accept that. The `*-balance` commands are local/read-only and send nothing extra on your behalf.
+- **Finished sessions are capped automatically:** every worker run prunes the session root down to the newest **100 finished** sessions before it starts. This is deletion, so the limits are worth knowing: a session that is still `running` is never removed no matter how old, a session that never wrote a state at all is left alone (only `/cli-dispatch:clean` has the idle-time evidence to judge it), and any `verdict.json` / `verdict-diff.patch` is copied into `sessions/verdict-archive/` before its directory goes. Change the cap with `CLI_DISPATCH_MAX_SESSIONS=<n>`; set it to `0` to turn pruning off entirely. This is a floor, not a replacement for `/cli-dispatch:clean` — the cap does not detect stale or dead sessions.
 - **GitHub CLI (`gh`) auth forwarding:** on macOS, `gh` keeps its token in the system Keychain, which sandboxed workers (Codex's `workspace-write`, DeepSeek, agy, OpenCode, Copilot) can't reach — so delegated `gh issue`/`gh pr`/`gh api` calls silently fail. When you're logged in (`gh auth token` succeeds) and haven't set `GH_TOKEN`/`GITHUB_TOKEN` yourself, the runners **export your `gh` token into the worker as `GH_TOKEN`** so its `gh` calls authenticate. Copilot also uses that token path unless `COPILOT_GITHUB_TOKEN` is set explicitly. The token can carry broad scopes (`repo`, `workflow`, even `delete_repo`) and travels into the worker sandbox / provider context — **opt out** by setting `CLI_DISPATCH_NO_GH_TOKEN=1`. `/cli-dispatch:doctor` reports the current state.
 
 ## Architectural role

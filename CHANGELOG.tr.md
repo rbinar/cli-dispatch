@@ -7,6 +7,31 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [5.0.0] — 2026-10-05
+
+### Kaldırıldı
+
+- **BREAKING: yerel web dashboard'u ve insan devralma (human takeover) özelliği kaldırıldı.**
+  Dashboard ve yalnızca ona hizmet eden her şey silindi:
+  - `/cli-dispatch:dashboard` ile `cli-dispatch-dashboard` binary'si (bash + `.ps1`); sunucu,
+    sayfa, yardımcı, pty-host ve `takeover-cmd` motorları ve paketlenmiş xterm dosyaları.
+  - İnsan devralma: `human-controlled` oturum durumu (`status.json.state` artık dört değerli:
+    `running | done | error | killed`), `parse-utils.mjs` içindeki devralma yardımcıları,
+    geçiş sentinel dosyası, stream wrapper'larındaki human-controlled korumaları ve
+    `cli-dispatch-clean`'in `--takeover-stale-mins` bayrağı ile devralma temizleme adımı.
+  - `/cli-dispatch:help` içindeki dashboard satırı, policy-inject'in çekirdek wrapper
+    yoklaması, README bölümleri ve `dashboard` eklenti anahtar kelimesi.
+- **Yükseltme temizliği:** `install.sh` ve `install.ps1` artık daha önce kurulmuş dashboard
+  dosyalarını `~/.local/bin` ve `~/.local/share/cli-dispatch/` altından (`vendor/` dahil)
+  siliyor; yükseltmeden sonra `/cli-dispatch:setup`'ı yeniden çalıştırmak arkada bir şey bırakmıyor.
+- Hâlâ `human-controlled` yazan eski oturum dizinlerine tolerans gösteriliyor:
+  `cli-dispatch-wait`, `/cli-dispatch:kill` ve budama bunları bitmiş sayıyor; `cli-dispatch-clean`
+  ise `status.json`'ları bayatladığında bunları ölü bir `running` oturumu gibi temizliyor.
+  Runner'ın 4 numaralı çıkış kodu
+  ("human control requested") artık oluşamaz.
+- Özellik ileride yeniden ele alınabilir; şimdilik worker'lar, runner, `sessions`/`watch`/`gain`
+  komutları ve `[CD]` statusline değişmedi.
+
 ## [4.28.0] — 2026-10-05
 
 ### Düzeltildi

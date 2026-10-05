@@ -9,8 +9,7 @@ Worker sessions live under `~/.cache/cli-dispatch/sessions/<id>/`. A worker that
 before it finalized (Ctrl-C, the parent CLI closed mid-run, crash, watchdog kill, or a codex/
 OpenCode/Copilot provisional `cx-<ts>-<pid>`/`oc-<ts>-<pid>`/`cp-<ts>-<pid>` dir that never relocated to its
 thread-id/session-id) leaves `status.json`
-stuck at `state:"running"` forever — it shows up as **stale** in `/cli-dispatch:sessions` and
-the dashboard, and never gets removed. This command finds and (with `--remove`) deletes them.
+stuck at `state:"running"` forever — it shows up as **stale** in `/cli-dispatch:sessions`, and never gets removed. This command finds and (with `--remove`) deletes them.
 
 It also sweeps **leftover worktree artifacts**: real-repo-changing delegations (via
 `/cli-dispatch:run` — the deterministic runner — or a plain `*-agent` CLI) are isolated in a
@@ -25,7 +24,7 @@ stale window ⇒ dead. **Default is a dry-run** (lists only); pass `--remove` to
 - `--remove` — actually delete (default: dry-run, just list). Applies to both the session
   cleanup and the worktree sweep.
 - `--stale-secs N` — idle window before a `running` session dir counts as stale (default
-  `600` = 10 min; deliberately larger than the dashboard's 90 s so a live-but-quiet turn is
+  `600` = 10 min; deliberately larger than the statusline's 90 s so a live-but-quiet turn is
   never deleted).
 - `--older-than DAYS` — ALSO prune finished (`done`/`error`) session dirs whose
   `meta.startedAt` is older than DAYS. Omit to leave all finished sessions alone.
@@ -349,5 +348,5 @@ if ($Remove) {
 ```
 
 Run the dry-run first, show the user the list, and only re-run with `--remove` once they
-confirm. After removal, `/cli-dispatch:sessions` and the dashboard will no longer show the
+confirm. After removal, `/cli-dispatch:sessions` will no longer show the
 stale "running" entries.

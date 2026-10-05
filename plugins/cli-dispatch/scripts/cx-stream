@@ -262,17 +262,15 @@ else
 fi
 SESSION_DIR="$SESSIONS_ROOT/$SESSION_ID"
 mkdir -p "$SESSION_DIR"
-# Persist THIS wrapper's own pid ($$, NOT CODEX_PID) as the worker-tree root. A dashboard
-# takeover needs to kill the ENTIRE headless writer tree before spawning the interactive PTY
-# — not just codex: the parser (cx-stream-parse.mjs, running in a process substitution below)
-# and this wrapper are also direct children of $$, and each holds its own status.json writer
-# (the parser does a final blind overwrite on codex-stdout EOF; this wrapper's post-wait
-# finalize block reconciles/relocates the session dir). Killing codex alone leaves those
-# writers alive to clobber a "human-controlled" record right after the takeover. worker.pid
-# is $$'s pid; the dashboard tree-kills it (pgrep -P recursion, mirroring kill_worker in
-# stream-utils.sh) so codex, the parser, AND this wrapper all die before the human takes the
-# wheel. A stale worker.pid in a finished session is harmless — the dashboard only acts on it
-# while status.json state is "running".
+# Persist THIS wrapper's own pid ($$, NOT CODEX_PID) as the worker-tree root. 
+# /cli-dispatch:kill needs to kill the ENTIRE headless writer tree — not just codex: the
+# parser (cx-stream-parse.mjs, running in a process substitution below) and this wrapper are
+# also direct children of $$, and each holds its own status.json writer (the parser does a
+# final blind overwrite on codex-stdout EOF; this wrapper's post-wait finalize block
+# reconciles/relocates the session dir). worker.pid is $$'s pid; kill tree-kills it (pgrep -P
+# recursion, mirroring kill_worker in stream-utils.sh) so codex, the parser, AND this wrapper
+# all die. A stale worker.pid in a finished session is harmless — kill only acts on it while
+# status.json state is "running".
 printf '%s' "$$" > "$SESSION_DIR/worker.pid" 2>/dev/null || true
 printf '%s' "$PROMPT" > "$SESSION_DIR/prompt.txt" 2>/dev/null || true
 BRANCH="$(git -C "$CWD" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
@@ -318,17 +316,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# On an EXTERNAL SIGINT/SIGTERM — a dashboard takeover-kill of this headless worker tree, or a
+# On an EXTERNAL SIGINT/SIGTERM — a /cli-dispatch:kill of this headless worker tree, or a
 # user Ctrl-C — the post-`wait` reconcile block below never runs (the wrapper is blocked in
 # `wait` when the signal arrives), so status.json is left at whatever the parser last wrote —
 # "running", or a blind "done" the parser writes on codex-stdout EOF — NEVER recorded as the
 # abnormal termination it was. Force the record to "error" with the real signal exit code
 # (130 INT / 143 TERM). `trap - INT TERM` at the top is the re-entry guard (also stops a second
 # signal from double-firing); the EXIT trap still runs cleanup once more (idempotent) after the
-# exit below. Takeover-safety: killWorkerTree TERMs this WHOLE tree (wrapper + codex + parser)
-# and WAITS for it to die (then SIGKILLs) BEFORE the takeover PTY writes state:"human-controlled"
-# — so either our error-write lands and is then overwritten by the PTY, or we are killed before
-# reconciling and the PTY sets the record; either way we cannot clobber a human-controlled record.
+# exit below.
 handle_interrupt() {
   local sig="$1" rc="$2"
   trap - INT TERM
@@ -339,7 +334,7 @@ handle_interrupt() {
   # status.json, so reconciling only once PARSER_DONE exists guarantees our "error" is written
   # LAST and is not clobbered by the parser's "done" (this is the exact ordering the normal
   # post-`wait` block relies on). If the parser was already signalled dead (Ctrl-C to the
-  # process group, or a dashboard tree-kill), PARSER_DONE never arrives and we fall through
+  # process group, or a tree-kill), PARSER_DONE never arrives and we fall through
   # after the bound and reconcile anyway.
   [ -n "${CODEX_PID:-}" ] && kill_tree "$CODEX_PID" -TERM 2>/dev/null || true
   for _ in $(seq 1 30); do [ -e "${PARSER_DONE:-/nonexistent}" ] && break; sleep 0.1; done
@@ -357,7 +352,7 @@ trap 'handle_interrupt INT 130' INT
 trap 'handle_interrupt TERM 143' TERM
 
 # For the session record only: when no model was requested anywhere, surface codex's own
-# config default (~/.codex/config.toml `model = "..."`) so the dashboard can show the model
+# config default (~/.codex/config.toml `model = "..."`) so the session record shows the model
 # actually used. NOT added to CODEX_ARGS — codex applies this default itself, and its JSON
 # stream carries no model field to learn it from.
 META_MODEL=""
@@ -367,7 +362,7 @@ fi
 
 # Same reasoning for the effort/thinking-level label: when --effort wasn't passed, codex
 # still applies its own config default (~/.codex/config.toml `model_reasoning_effort = "..."`)
-# — without this, the dashboard silently shows no thinking level even though one was in
+# — without this, the session record silently shows no thinking level even though one was in
 # effect, which reads as "no reasoning applied" when a real (default) level was used.
 META_EFFORT=""
 if [ -z "$EFFORT" ]; then
@@ -418,21 +413,6 @@ for _ in $(seq 1 100); do
   [ -e "$PARSER_DONE" ] && break
   sleep 0.1
 done
-
-# ---- human-controlled guard (defense-in-depth) ----
-# If a human already took over this session, the dashboard killed the WHOLE worker tree
-# (via worker.pid, see above) and spawned an interactive PTY that now owns status.json,
-# writing state:"human-controlled". Normally that tree-kill reaps this wrapper before it
-# ever reaches here — but if the kill raced or somehow missed us, this guard stops the
-# finalize logic below from clobbering the dashboard's record: no reconcile_session_error
-# (would rewrite state=error), no surface_status_error, no relocate_session_dir (would move
-# the dir out from under the dashboard mid-takeover). Exit 0 so the caller sees a clean
-# exit; the EXIT trap (cleanup) still runs.
-TAKEOVER_STATE="$(json_field "$SESSION_DIR/status.json" state || true)"
-if [ "$TAKEOVER_STATE" = "human-controlled" ]; then
-  echo "cx-stream: session taken over by a human — leaving record to the dashboard." >&2
-  exit 0
-fi
 
 if [ -f "$SESSION_DIR/.timeout" ]; then
   TIMEOUT_REASON="$(cat "$SESSION_DIR/.timeout" 2>/dev/null || true)"
