@@ -386,6 +386,10 @@ if (entryPath && import.meta.url === pathToFileURL(entryRealPath).href) {
       const metaJson = readJson(metaPath)
       const changedFilesJson = readJson(changedFilesPath)
       const verifyResults = verifyPath ? readJson(verifyPath) : null
+      // The dir name is the session's real id. cx-stream renames its provisional dir
+      // (cx-<epoch>-<pid>) to codex's thread id but status.json keeps the provisional
+      // sessionId, which would hand /cli-dispatch:resume a session that no longer exists.
+      statusJson.sessionId = path.basename(path.resolve(sessionDir)) || statusJson.sessionId
 
       const result = buildVerdict({
         statusJson,

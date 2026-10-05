@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [5.2.2] — 2026-10-05
+
+### Fixed
+
+- **`verdict.json` names the session that actually exists.** The Codex, OpenCode and Copilot
+  streams start in a provisional dir (`cx-`/`oc-`/`cp-<epoch>-<pid>`) and rename it to the CLI's
+  own session id when the run finishes, but
+  `status.json` keeps the provisional `sessionId`, and the verdict copied it. So the summary that
+  `/cli-dispatch:run` and the `cli-dispatch:runner` agent print showed a session id with no
+  directory behind it, and `/cli-dispatch:resume <id>` could not find it. `build-verdict` now takes
+  the id from the session dir name. Found in container end-to-end runs (Codex, then OpenCode
+  and Copilot).
+  Test in `verdict-writer.test.mjs`.
+- **Setup and the installer name `copilot login --device-code` for Copilot.** Without `gh` and
+  without a system credential store (a container, headless Linux) the in-app `/login` kept the
+  token in memory only, so `cp-agent` found none; the CLI command writes it to
+  `~/.copilot/config.json`. Verified in the container: token persisted, `cp-agent` answered.
+- **OpenCode accepts `OC_MODEL` with or without the `openrouter/` prefix.** oc-stream always
+  prepended it, so a slug copied from `opencode models openrouter` (which prints
+  `openrouter/deepseek/deepseek-v4-flash`) reached opencode as `openrouter/openrouter/…` and every
+  turn died with "Unexpected server error". Found in the container; both spellings now reach
+  opencode with one prefix. Test: `oc-model-prefix.test.mjs`.
+
 ## [5.2.1] — 2026-10-05
 
 ### Fixed

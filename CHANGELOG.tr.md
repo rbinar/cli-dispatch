@@ -7,6 +7,28 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [5.2.2] — 2026-10-05
+
+### Düzeltildi
+
+- **`verdict.json` gerçekten var olan session'ın adını veriyor.** Codex, OpenCode ve Copilot
+  stream'leri geçici bir dizinde (`cx-`/`oc-`/`cp-<epoch>-<pid>`) başlıyor ve koşu bitince dizini
+  CLI'ın kendi session id'siyle yeniden adlandırıyor; ancak `status.json` geçici `sessionId`'yi tutmaya devam ediyordu, verdict de onu
+  kopyalıyordu. Sonuçta `/cli-dispatch:run`'ın ve `cli-dispatch:runner` agent'ının bastığı
+  özet, arkasında dizini olmayan bir session id gösteriyordu ve `/cli-dispatch:resume <id>` onu
+  bulamıyordu. `build-verdict` artık id'yi session dizininin adından alıyor. Container'daki uçtan uca
+  koşularda bulundu (önce Codex, sonra OpenCode ve Copilot). Test: `verdict-writer.test.mjs`.
+- **Setup ve installer, Copilot için `copilot login --device-code`'u da öneriyor.** `gh` ve
+  sistem credential store'u olmayan ortamlarda (container, headless Linux) uygulama içi `/login`
+  token'ı yalnızca bellekte tutuyordu ve `cp-agent` token bulamıyordu; CLI komutu ise token'ı
+  `~/.copilot/config.json` dosyasına yazıyor. Container'da doğrulandı: token kalıcı oldu,
+  `cp-agent` yanıt verdi.
+- **OpenCode, `OC_MODEL`'i `openrouter/` önekiyle de öneksiz de kabul ediyor.** oc-stream öneki
+  her zaman ekliyordu; `opencode models openrouter` çıktısından kopyalanan bir model adı
+  (`openrouter/deepseek/deepseek-v4-flash`) opencode'a `openrouter/openrouter/…` olarak gidiyor ve
+  her tur "Unexpected server error" ile düşüyordu. Container'da bulundu; iki yazım da artık
+  opencode'a tek önekle ulaşıyor. Test: `oc-model-prefix.test.mjs`.
+
 ## [5.2.1] — 2026-10-05
 
 ### Düzeltildi

@@ -404,3 +404,22 @@ test('mark-worktree-removed CLI: exits 0 whether or not the write lands', () => 
   assert.equal(noArgs.status, 1)
   assert.match(noArgs.stderr, /mark-worktree-removed/)
 })
+
+test('build-verdict takes sessionId from the session dir name, not a stale status.json copy', () => {
+  // Found end to end: cx-stream starts in a provisional dir (cx-<epoch>-<pid>) and renames it to
+  // codex's thread id, but status.json keeps the provisional sessionId. The verdict — and the
+  // summary the runner agent returns — then named a session that no longer exists, so
+  // /cli-dispatch:resume <id> could not find it.
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cli-dispatch-relocated-'))
+  const dir = path.join(root, '01a10b70-c679-7161-b19f-dffd8c0240e4')
+  fs.mkdirSync(dir)
+  const status = path.join(dir, 'status.json'); const meta = path.join(dir, 'meta.json'); const changed = path.join(dir, 'changed-files.json')
+  fs.writeFileSync(status, JSON.stringify({ sessionId: 'cx-1791193302-6507', backend: 'codex', state: 'done' }))
+  fs.writeFileSync(meta, JSON.stringify({ sessionId: 'cx-1791193302-6507', backend: 'codex', cwd: root }))
+  fs.writeFileSync(changed, JSON.stringify({ files: [], diffstat: '' }))
+  try {
+    const r = spawnSync(process.execPath, [WRITER_PATH, 'build-verdict', dir, status, meta, changed, 'false'], { encoding: 'utf8' })
+    assert.equal(r.status, 0, r.stderr)
+    assert.equal(JSON.parse(r.stdout).sessionId, '01a10b70-c679-7161-b19f-dffd8c0240e4')
+  } finally { fs.rmSync(root, { recursive: true, force: true }) }
+})
