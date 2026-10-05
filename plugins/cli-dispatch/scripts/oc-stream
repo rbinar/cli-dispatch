@@ -161,7 +161,7 @@ RESUME=0
 # then we run in a TEMP session dir; the parser captures the id and we relocate to the
 # canonical dir (same pattern as cx-stream's thread-id relocation).
 SESSIONS_ROOT="$(resolve_sessions_root)"
-mkdir -p "$SESSIONS_ROOT"
+require_writable_sessions_root "$SESSIONS_ROOT"
 if [ "$RESUME" -eq 1 ]; then
   SESSION_ID="$RESUME_ID"
 else
@@ -202,13 +202,19 @@ DONEFILE="$SESSION_DIR/.oc.done"; rm -f "$DONEFILE" "$SESSION_DIR/.timeout"
 # targets the right process and `wait` yields opencode's TRUE exit code; process substitution
 # uses an anonymous pipe so EOF is delivered cleanly, unlike a FIFO).
 PARSER_DONE="$(mktemp -u -t oc-pdone-XXXXXX)"
+# opencode's stdout reaches the parser through a named pipe read by `cat` (see launch below):
+# bash process substitution needs /dev/fd, which managed sandboxes forbid (#171).
+PARSER_FIFO_DIR="$(mktemp -d -t oc-fifo-XXXXXX)"
+mkfifo "$PARSER_FIFO_DIR/out"
 
 # Clean up ALL temp files + reap the watchdog (and the opencode worker) on ANY exit path —
 # normal, error, or signal (Ctrl-C) — so nothing leaks and the watchdog can't outlive us.
 cleanup() {
   [ -n "${WATCHDOG_PID:-}" ] && kill "$WATCHDOG_PID" 2>/dev/null || true
   [ -n "${OC_PID:-}" ] && kill -TERM "$OC_PID" 2>/dev/null || true
+  [ -n "${PARSER_PID:-}" ] && kill_tree "$PARSER_PID" -TERM 2>/dev/null || true
   rm -f "$PARSER_OUT" "$PARSER_DONE" 2>/dev/null || true
+  [ -n "${PARSER_FIFO_DIR:-}" ] && rm -rf "$PARSER_FIFO_DIR" 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -266,7 +272,10 @@ fi
 # opencode's stdout → parser (process substitution); opencode's stderr passes through to our
 # stderr. No stdin redirect needed (unlike codex's prompt-as-arg gotcha) — but redirect from
 # /dev/null anyway for parity/safety, since opencode is not expected to read stdin either.
-opencode "${OC_ARGS[@]}" </dev/null > >(
+# The parser is started FIRST (a background `cat FIFO | node` group) so the FIFO has a reader;
+# opencode is then a DIRECT background job writing to the FIFO, so `$!` is opencode's real pid.
+# `cat` (not node) opens the FIFO: libuv reopens a FIFO stdin O_RDWR and never sees EOF.
+( cat "$PARSER_FIFO_DIR/out" | \
   OC_SESSION_DIR="$SESSION_DIR" \
   OC_PROMPT_PREVIEW="$(printf '%.120s' "$PROMPT")" \
   OC_CWD="$CWD" \
@@ -277,6 +286,8 @@ opencode "${OC_ARGS[@]}" </dev/null > >(
     node "$PARSER" > "$PARSER_OUT"
   touch "$PARSER_DONE"
 ) &
+PARSER_PID=$!
+opencode "${OC_ARGS[@]}" </dev/null > "$PARSER_FIFO_DIR/out" &
 OC_PID=$!
 
 # The watchdog watches opencode itself for liveness and TARGETS the real opencode pid for the kill.

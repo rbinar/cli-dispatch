@@ -359,6 +359,10 @@ if [ "$DETACH" -eq 1 ]; then
   # `session`, `summary.txt` and `exit` there; `cli-dispatch-wait --run <id>` blocks on it.
   ROOT="${CLI_DISPATCH_SESSIONS_DIR:-${CLAUDE_DS_SESSIONS_DIR:-}}"
   [ -n "$ROOT" ] || { _c="${XDG_CACHE_HOME:-$HOME/.cache}"; ROOT="$_c/cli-dispatch/sessions"; [ -d "$ROOT" ] || [ ! -d "$_c/claude-ds/sessions" ] || ROOT="$_c/claude-ds/sessions"; }
+if ! { mkdir -p "$ROOT" 2>/dev/null && : > "$ROOT/.write-probe-$$" 2>/dev/null && rm -f "$ROOT/.write-probe-$$"; }; then
+  echo "cli-dispatch: session root $ROOT is not writable (managed sandbox?). Set CLI_DISPATCH_SESSIONS_DIR to a writable directory, e.g. CLI_DISPATCH_SESSIONS_DIR=${TMPDIR:-/tmp}/cli-dispatch-sessions" >&2
+  exit 5
+fi
   RUN_ID="run-$(date +%s)-$$"
   RUN_DIR="$ROOT/.runs/$RUN_ID"
   mkdir -p "$RUN_DIR"
@@ -435,6 +439,10 @@ esac
 
 ROOT="${CLI_DISPATCH_SESSIONS_DIR:-${CLAUDE_DS_SESSIONS_DIR:-}}"
 [ -n "$ROOT" ] || { _c="${XDG_CACHE_HOME:-$HOME/.cache}"; ROOT="$_c/cli-dispatch/sessions"; [ -d "$ROOT" ] || [ ! -d "$_c/claude-ds/sessions" ] || ROOT="$_c/claude-ds/sessions"; }
+if ! { mkdir -p "$ROOT" 2>/dev/null && : > "$ROOT/.write-probe-$$" 2>/dev/null && rm -f "$ROOT/.write-probe-$$"; }; then
+  echo "cli-dispatch: session root $ROOT is not writable (managed sandbox?). Set CLI_DISPATCH_SESSIONS_DIR to a writable directory, e.g. CLI_DISPATCH_SESSIONS_DIR=${TMPDIR:-/tmp}/cli-dispatch-sessions" >&2
+  exit 5
+fi
 SESSIONS_ROOT="$ROOT"
 
 resolve_node_and_verdict_writer
@@ -723,8 +731,19 @@ if [ "${#VERIFY[@]}" -gt 0 ]; then
   # which buildVerdict maps to `exitCode: 0` — i.e. an unreadable verify file would be
   # reported as a PASS. An unknown verify result must never read as success, so synthesize
   # an explicit failure instead.
+  # #172: the worktree is the WHOLE repo; when --cwd named a package subdirectory, verify
+  # runs in the same relative subdirectory. If the session cwd is already a subdirectory
+  # (in-place mode records --cwd itself), it already is the right place — do not nest again.
+  VERIFY_DIR="$WORKTREE_PATH"
+  if [ -d "$WORKTREE_PATH" ] && [ -d "$CWD" ]; then
+    _WT_PREFIX="$(git -C "$WORKTREE_PATH" rev-parse --show-prefix 2>/dev/null || true)"
+    _CWD_PREFIX="$(git -C "$CWD" rev-parse --show-prefix 2>/dev/null || true)"
+    if [ -z "$_WT_PREFIX" ] && [ -n "$_CWD_PREFIX" ] && [ -d "$WORKTREE_PATH/$_CWD_PREFIX" ]; then
+      VERIFY_DIR="$WORKTREE_PATH/${_CWD_PREFIX%/}"
+    fi
+  fi
   set +e
-  "$NODE_BIN" "$VERDICT_WRITER" run-verify "$WORKTREE_PATH" "$VERIFY_TIMEOUT_MS" 40 "${VERIFY[@]}" > "$VERIFY_RESULTS_PATH"
+  "$NODE_BIN" "$VERDICT_WRITER" run-verify "$VERIFY_DIR" "$VERIFY_TIMEOUT_MS" 40 "${VERIFY[@]}" > "$VERIFY_RESULTS_PATH"
   RUN_VERIFY_EXIT=$?
   set -e
   if [ "$RUN_VERIFY_EXIT" -ne 0 ] || [ ! -s "$VERIFY_RESULTS_PATH" ]; then

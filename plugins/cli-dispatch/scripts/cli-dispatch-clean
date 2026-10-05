@@ -74,6 +74,11 @@ if [ "$SKIP_WORKTREES" -ne 1 ]; then
   sweep_wt_dir() {
     local base="$1" wt gitdir_line src_repo git_out git_rc
     [ -d "$base" ] || return 0
+    # Candidate list via a temp file, not `< <(find ...)`: process substitution needs /dev/fd,
+    # which managed sandboxes forbid (#171).
+    local wt_list
+    wt_list="$(mktemp -t cd-wt-list-XXXXXX)"
+    find "$base" -mindepth 1 -maxdepth 1 -type d -name '*-wt-*' -mtime +"$WT_DAYS" -print0 > "$wt_list" 2>/dev/null || true
     while IFS= read -r -d '' wt; do
       [ -d "$wt" ] || continue
       WT_FOUND=$((WT_FOUND + 1))
@@ -117,7 +122,8 @@ if [ "$SKIP_WORKTREES" -ne 1 ]; then
           esac
         fi
       fi
-    done < <(find "$base" -mindepth 1 -maxdepth 1 -type d -name '*-wt-*' -mtime +"$WT_DAYS" -print0 2>/dev/null)
+    done < "$wt_list"
+    rm -f "$wt_list"
   }
 
   wtlog "worktree artifact sweep (pattern *-wt-*, older than ${WT_DAYS}d):"
@@ -135,4 +141,5 @@ if [ "$SKIP_WORKTREES" -ne 1 ]; then
   fi
 fi
 
-exec node "$ENGINE" "${ENGINE_ARGS[@]}"
+# `${arr[@]+…}`: bash 3.2 (macOS /bin/bash, which launchd uses) treats an empty array as unbound under set -u.
+exec node "$ENGINE" "${ENGINE_ARGS[@]+"${ENGINE_ARGS[@]}"}"

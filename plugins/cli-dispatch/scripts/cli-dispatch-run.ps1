@@ -116,6 +116,17 @@ else {
   if ((Test-Path $newRoot) -or (-not (Test-Path $oldRoot))) { $newRoot } else { $oldRoot }
 }
 
+$sessionsProbe = Join-Path $SessionsRoot ".write-probe-$PID"
+try {
+  New-Item -ItemType Directory -Force -Path $SessionsRoot -ErrorAction Stop | Out-Null
+  New-Item -ItemType File -Force -Path $sessionsProbe -ErrorAction Stop | Out-Null
+  Remove-Item -Force $sessionsProbe -ErrorAction SilentlyContinue
+} catch {
+  $tmpHint = if ($env:TEMP) { $env:TEMP } else { [System.IO.Path]::GetTempPath() }
+  [Console]::Error.WriteLine("cli-dispatch: session root $SessionsRoot is not writable (managed sandbox?). Set CLI_DISPATCH_SESSIONS_DIR to a writable directory, e.g. CLI_DISPATCH_SESSIONS_DIR=$tmpHint\cli-dispatch-sessions")
+  exit 5
+}
+
 $NodeBin = if ($env:CLI_DISPATCH_NODE) { $env:CLI_DISPATCH_NODE } else { Join-Path $HOME '.local/share/cli-dispatch/node' }
 if (-not (Test-Path $NodeBin)) { $NodeBin = 'node' }
 if (-not (Get-Command $NodeBin -ErrorAction SilentlyContinue)) {
@@ -569,7 +580,16 @@ honest empty `command` is more useful than a confident one that was never execut
 
   $verifyResultsPath = ''
   if ($Verify.Count -gt 0) {
-    $verifyResult = Invoke-Verify -Commands $Verify -Worktree $WorktreePath -TimeoutMs ($VerifyTimeout * 1000) -TailLines 40
+    # #172: run verify in the same relative subdirectory --cwd pointed at (see the bash twin).
+    $verifyDir = $WorktreePath
+    if ($WorktreePath -and $Cwd -and (Test-Path $WorktreePath) -and (Test-Path $Cwd)) {
+      $wtPrefix = "$(git -C $WorktreePath rev-parse --show-prefix 2>$null)".Trim()
+      $cwdPrefix = "$(git -C $Cwd rev-parse --show-prefix 2>$null)".Trim().TrimEnd('/')
+      if ((-not $wtPrefix) -and $cwdPrefix -and (Test-Path (Join-Path $WorktreePath $cwdPrefix))) {
+        $verifyDir = Join-Path $WorktreePath $cwdPrefix
+      }
+    }
+    $verifyResult = Invoke-Verify -Commands $Verify -Worktree $verifyDir -TimeoutMs ($VerifyTimeout * 1000) -TailLines 40
     $verifyResultsPath = Join-Path $env:TEMP ([IO.Path]::GetRandomFileName())
     $script:TempFiles.Add($verifyResultsPath)
     $verifyResult | ConvertTo-Json -Depth 8 -Compress | Set-Content -Path $verifyResultsPath -NoNewline

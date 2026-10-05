@@ -159,7 +159,7 @@ RESUME=0
 # then we run in a TEMP session dir; the parser captures the id and we relocate to the
 # canonical dir (same pattern as cx-stream's thread-id relocation).
 SESSIONS_ROOT="$(resolve_sessions_root)"
-mkdir -p "$SESSIONS_ROOT"
+require_writable_sessions_root "$SESSIONS_ROOT"
 if [ "$RESUME" -eq 1 ]; then
   SESSION_ID="$RESUME_ID"
 else

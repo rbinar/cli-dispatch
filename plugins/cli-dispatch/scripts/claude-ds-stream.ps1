@@ -254,6 +254,7 @@ if ([string]::IsNullOrWhiteSpace($parser) -or -not (Test-Path $parser)) {
 
 # ---- parse arguments ----
 $cwd = (Get-Location).Path
+$cwdExplicit = $false
 $resumeId = ""
 $prompt = $null
 $readOnly = 0
@@ -279,11 +280,13 @@ while ($i -lt $argc) {
     '^--cwd$' {
       Need-Val '--cwd' $i $argc
       $cwd = $args[$i + 1]
+      $cwdExplicit = $true
       $i += 2
       continue
     }
     '^--cwd=(.*)$' {
       $cwd = $matches[1]
+      $cwdExplicit = $true
       $i += 1
       continue
     }
@@ -394,6 +397,21 @@ if (-not [string]::IsNullOrWhiteSpace($resumeId)) {
   $sid = [guid]::NewGuid().ToString()
 }
 $sessionDir = Join-Path $sessionsRoot $sid
+# Claude Code stores conversations per project directory, so a resume must run where the
+# session ran (#162). An explicit --cwd still wins; otherwise take meta.json's cwd.
+if ($resume -eq 1 -and -not $cwdExplicit) {
+  $metaCwd = ""
+  try {
+    $metaObj = Get-Content -Raw -Path (Join-Path $sessionDir 'meta.json') -ErrorAction Stop | ConvertFrom-Json
+    if ($metaObj.cwd -is [string]) { $metaCwd = $metaObj.cwd }
+  } catch { }
+  if ($metaCwd -and (Test-Path -LiteralPath $metaCwd -PathType Container)) {
+    $cwd = $metaCwd
+  } else {
+    $was = if ($metaCwd) { "`"$metaCwd`" (missing)" } else { "`"unknown`"" }
+    [Console]::Error.WriteLine("claude-ds-stream: warning - session $sid originally ran in $was; resuming from $cwd may not find the conversation.")
+  }
+}
 New-Item -ItemType Directory -Force -Path $sessionDir | Out-Null
 # worker.pid = the wrapper's own PID, matching bash (printf '%s' "$$" > worker.pid) —
 # /cli-dispatch:kill kills the tree from this. Best-effort: the script-block pipeline cannot

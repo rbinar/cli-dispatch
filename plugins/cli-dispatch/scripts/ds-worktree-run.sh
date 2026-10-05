@@ -66,8 +66,18 @@ STREAM="$(command -v claude-ds-stream 2>/dev/null || true)"
 # exist in the worktree are linked; parents are created for packages that have no tracked
 # files of their own. `git ls-files --directory` stops at the first ignored dir on each
 # path, so a node_modules tree is one candidate, never thousands.
+# Dependencies mirror mode — CLI_DISPATCH_NODE_MODULES (issue #160):
+#   unset | link  symlink each source node_modules into the worktree (default; cheap).
+#   copy          real directory trees of hard-linked files (`cp -al`, falling back to `cp -a`
+#                 when hard links fail, e.g. across filesystems). Use this for Next.js /
+#                 Turbopack, which rejects a symlinked node_modules pointing outside the root.
+#                 Cleanup removes exactly the copies this run made.
+#   none          do not mirror node_modules at all.
+NM_COPIES=""
 _link_node_modules() {
-  local top rel nm cands
+  local top rel nm cands mode
+  mode="${CLI_DISPATCH_NODE_MODULES:-link}"
+  [ "$mode" = "none" ] && return 0
   top="$(git -C "$REPO" rev-parse --show-toplevel 2>/dev/null || true)"
   [ -n "$top" ] || top="$REPO"
   rel="$(git -C "$REPO" rev-parse --show-prefix 2>/dev/null || true)"; rel="${rel%/}"
@@ -79,10 +89,22 @@ _link_node_modules() {
     [ -d "$top/$nm" ] || continue
     [ -e "$WT/$nm" ] && continue
     mkdir -p "$(dirname "$WT/$nm")" 2>/dev/null || true
-    ln -s "$top/$nm" "$WT/$nm" 2>/dev/null || true
+    if [ "$mode" = "copy" ]; then
+      NM_COPIES="${NM_COPIES}${nm}"$'\n'
+      cp -al "$top/$nm" "$WT/$nm" 2>/dev/null || { rm -rf "$WT/$nm"; cp -a "$top/$nm" "$WT/$nm" 2>/dev/null || true; }
+    else
+      ln -s "$top/$nm" "$WT/$nm" 2>/dev/null || true
+    fi
   done <<<"$cands"
 }
-_unlink_node_modules() { find "$WT" -name node_modules -type l -delete 2>/dev/null || true; }
+_unlink_node_modules() {
+  local nm
+  find "$WT" -name node_modules -type l -delete 2>/dev/null || true
+  while IFS= read -r nm; do
+    [ -n "$nm" ] || continue
+    [ -L "$WT/$nm" ] || rm -rf "$WT/$nm" 2>/dev/null || true
+  done <<<"$NM_COPIES"
+}
 # --- in-place mode (issues #108 / #109) ----------------------------------------------
 # If $REPO is ALREADY a linked worktree, the caller opened it for this job on purpose.
 # Nesting a second worktree there puts the worker's cwd in /tmp while the brief's absolute
@@ -193,7 +215,13 @@ if [ -z "$GUARD_REPO" ]; then
   exit 0
 fi
 POST_STATUS="$(git -C "$GUARD_REPO" status --short 2>/dev/null || true)"
-NEW_DIRT="$(comm -13 <(printf '%s\n' "$PRE_STATUS" | sort) <(printf '%s\n' "$POST_STATUS" | sort) | grep -v '^$' || true)"
+# comm needs two files; temp files (not <(...) process substitution, which needs /dev/fd and
+# is forbidden in managed sandboxes, #171).
+_PRE_F="$(mktemp -t wt-pre-XXXXXX)"; _POST_F="$(mktemp -t wt-post-XXXXXX)"
+printf '%s\n' "$PRE_STATUS" | sort > "$_PRE_F"
+printf '%s\n' "$POST_STATUS" | sort > "$_POST_F"
+NEW_DIRT="$(comm -13 "$_PRE_F" "$_POST_F" | grep -v '^$' || true)"
+rm -f "$_PRE_F" "$_POST_F"
 if [ -z "$NEW_DIRT" ]; then
   echo ">>> post-check OK: no new changes in $GUARD_REPO"
   exit 0

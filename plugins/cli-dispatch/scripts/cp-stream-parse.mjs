@@ -242,8 +242,10 @@ function handleTool(type, ev, body) {
   } else if (/error|fail/i.test(statusStr)) {
     const result = asObj(body.result)
     const msg = firstString(st.error?.message, st.error, result.error?.message, result.error, body.error?.message, body.error, body.message) ?? 'tool error'
-    errorText = String(msg)
-    appendProgress(`✗ ${toolName}: ${clip(errorText, 160)}`)
+    // Tool-level failure: visible, but NOT a turn failure (#182) — the worker may carry on.
+    status.toolErrors = (status.toolErrors ?? 0) + 1
+    status.lastToolError = { tool: toolName, message: clip(String(msg), 300) }
+    appendProgress(`✗ ${toolName}: ${clip(String(msg), 160)}`)
   } else {
     appendProgress(`▸ ${toolName}`)
   }
@@ -354,8 +356,8 @@ function finalize(code) {
   const onDiskStatus = readJsonFile(statusFile)
   const reconciledTerminal = TERMINAL_STATES.has(onDiskStatus.state) && onDiskStatus.state !== 'done'
 
-  // errorText is AUTHORITATIVE (mirrors cx-stream-parse.mjs's finalize logic): a reported
-  // tool-state error or top-level error event means the turn failed even if the copilot
+  // errorText is AUTHORITATIVE (mirrors cx-stream-parse.mjs's finalize logic): a top-level
+  // error event means the turn failed even if the copilot
   // process exited 0. Only a clean run with no errorText is "done".
   if (reconciledTerminal) {
     status.state = onDiskStatus.state

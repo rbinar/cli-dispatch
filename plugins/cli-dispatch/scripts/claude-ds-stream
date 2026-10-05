@@ -62,6 +62,7 @@ fi
 
 # ---- parse arguments ----
 CWD="$(pwd)"
+CWD_EXPLICIT=0
 RESUME_ID=""
 PROMPT=""
 HAVE_PROMPT=0
@@ -76,8 +77,8 @@ PASS_ARGS=()
 need_val() { [ "$2" -ge 2 ] || { echo "claude-ds-stream: $1 requires a value." >&2; exit 1; }; }
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --cwd)        need_val --cwd "$#";    CWD="$2"; shift 2;;
-    --cwd=*)      CWD="${1#*=}"; shift;;
+    --cwd)        need_val --cwd "$#";    CWD="$2"; CWD_EXPLICIT=1; shift 2;;
+    --cwd=*)      CWD="${1#*=}"; CWD_EXPLICIT=1; shift;;
     --resume)     need_val --resume "$#"; RESUME_ID="$2"; shift 2;;
     --resume=*)   RESUME_ID="${1#*=}"; shift;;
     -p|--prompt)  need_val "$1" "$#";     PROMPT="$2"; HAVE_PROMPT=1; shift 2;;
@@ -113,6 +114,7 @@ case "$IDLE_TIMEOUT" in ''|*[!0-9]*) IDLE_TIMEOUT=0;; esac
 # ---- prepare the session directory ----
 # Sessions root: cli-dispatch cache, with legacy claude-ds fallback (env wins).
 SESSIONS_ROOT="$(resolve_sessions_root)"
+require_writable_sessions_root "$SESSIONS_ROOT"
 RESUME=0
 if [ -n "$RESUME_ID" ]; then
   SID="$RESUME_ID"
@@ -123,6 +125,16 @@ else
   [ -z "$SID" ] && SID="$(date +%s)-$$-$RANDOM"
 fi
 SESSION_DIR="$SESSIONS_ROOT/$SID"
+# Claude Code stores conversations per project directory, so a resume must run where the
+# session ran (#162). An explicit --cwd still wins; otherwise take meta.json's cwd.
+if [ "$RESUME" -eq 1 ] && [ "$CWD_EXPLICIT" -eq 0 ]; then
+  META_CWD="$(node -e 'try{const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).cwd;if(typeof c==="string")process.stdout.write(c)}catch{}' "$SESSION_DIR/meta.json" 2>/dev/null || true)"
+  if [ -n "$META_CWD" ] && [ -d "$META_CWD" ]; then
+    CWD="$META_CWD"
+  else
+    echo "claude-ds-stream: warning — session $SID originally ran in \"${META_CWD:-unknown}\"${META_CWD:+ (missing)}; resuming from $CWD may not find the conversation." >&2
+  fi
+fi
 mkdir -p "$SESSION_DIR"
 # Persist THIS wrapper's own pid ($$, NOT $CPID of the backgrounded claude process) as the
 # worker-tree root. /cli-dispatch:kill must kill the ENTIRE headless writer tree — the
@@ -239,7 +251,7 @@ cleanup() {
   [ -n "${WATCHDOG_PID:-}" ] && kill_tree "$WATCHDOG_PID" -TERM 2>/dev/null || true
   _pid="$(cat "$PIDFILE" 2>/dev/null || true)"
   [ -n "$_pid" ] && kill_worker "$_pid" 2>/dev/null || true
-  rm -f "${PARSER_DONE:-}" 2>/dev/null || true
+  rm -f "${PARSER_DONE:-}" "${PROMPT_TMP:-}" 2>/dev/null || true
   [ -n "${EMPTY_MCP_CONFIG:-}" ] && rm -f "$EMPTY_MCP_CONFIG" 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -276,6 +288,10 @@ fi
 # substitution so variadic flags can't swallow it AND claude can be backgrounded with a
 # captured PID for the watchdog). Subshell exits with claude's exit code.
 PARSER_DONE="$(mktemp -u -t ds-pdone-XXXXXX)"
+# The prompt goes to claude's stdin from a temp file: process substitution needs /dev/fd,
+# which managed sandboxes forbid (#171). Removed by cleanup().
+PROMPT_TMP="$(mktemp -t ds-prompt-XXXXXX)"
+printf '%s' "$PROMPT" > "$PROMPT_TMP"
 set +e
 ( cd "$CWD" || exit 127
   env \
@@ -287,7 +303,7 @@ set +e
     ANTHROPIC_DEFAULT_HAIKU_MODEL="${DS_FLASH_MODEL:-deepseek-v4-flash}" \
     CLAUDE_CODE_SUBAGENT_MODEL="${DS_FLASH_MODEL:-deepseek-v4-flash}" \
     ${THINK:+MAX_THINKING_TOKENS="$THINK"} \
-    claude "${CLAUDE_ARGS[@]}" < <(printf '%s' "$PROMPT") &
+    claude "${CLAUDE_ARGS[@]}" < "$PROMPT_TMP" &
   CPID=$!
   echo "$CPID" > "$PIDFILE"
   wait "$CPID" ) \

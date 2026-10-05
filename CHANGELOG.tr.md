@@ -7,6 +7,58 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [5.5.0] — 2026-10-06
+
+Açık issue'ların hepsini kapatıyor: #160, #162, #165, #171, #172, #182. Her düzeltmenin eski
+kodda başarısız olan bir testi var; backend düzeltmeleri ayrıca temiz bir Debian container'ında
+canlı olarak koşuldu.
+
+### Eklendi
+
+- **Worktree runner'ları için `CLI_DISPATCH_NODE_MODULES=copy|none`** (#160). Varsayılan
+  (`link`) kaynak checkout'un `node_modules`'unu hâlâ symlink olarak bağlıyor; Next.js/Turbopack
+  bu symlink'i reddediyor ("points out of the filesystem root"). `copy`, hard link'li dosyalardan
+  oluşan gerçek dizin ağaçları kuruyor (`cp -al`; hard link mümkün olmadığında, örneğin macOS'un
+  `cp`'sinde ya da dosya sistemleri arasında, tam `cp -a`) ve temizlikte yalnızca bu kopyaları
+  siliyor; `none` hiçbir şey bağlamıyor.
+
+### Düzeltildi
+
+- **Antigravity Linux'ta bozuk bir brief alıyordu ve konuşma keşfi başarısız oluyordu** (#165).
+  util-linux `script -c` komutu `$SHELL` ile, o yoksa `/bin/sh` ile çalıştırıyor; Debian/Ubuntu'da
+  bu dash. ag-stream komutu bash'in `printf %q`'suyla kuruyordu; bu da çok satırlı/UTF-8 bir
+  prompt'u `$'…'` olarak alıntılıyor. Dash bunu düz metin olarak aldı, agy
+  `"$line1\nline2 \342\200\224…"` aldı ve ag-stream kendi prompt'unu eşleştiremedi. Artık her
+  zaman bash kullanılıyor. Container'daki bir Antigravity delegasyonu, agy değişikliği yapmış
+  olduğu (verify geçtiği) halde başarısız olunca bulundu.
+- **Açıkça istenen ama agy'nin listelemediği model artık hemen hata veriyor** (#165): model adını
+  ve listedeki ilk slug'ları gösteren çıkış 4, `errorKind: "model"` taşıyan bir `model-fail-*`
+  session'ı ve başlatma yok. `AG_ALLOW_UNLISTED_MODEL=1` eski uyar-ve-başlat davranışını geri
+  getiriyor.
+- **`--verify`, `--cwd`'nin gösterdiği paket alt dizininde koşuyor** (#172); worktree kökünde
+  değil. Worktree, in-place ve `--resume` koşularında. Bash ve `.ps1`.
+- **Başarısız bir araç çağrısı artık bitmiş bir Copilot koşusunu `error` yapmıyor** (#182).
+  Araç düzeyindeki hatalar (reddedilen bir yol, worker'ın sonra düzelttiği başarısız bir test)
+  `status.toolErrors` / `status.lastToolError` olarak kaydediliyor; session'ı yalnızca tur
+  düzeyinde bir hata başarısız sayıyor.
+- **`ds-agent --resume` konuşmayı buluyor** (#162). Claude Code konuşmaları proje dizinine göre
+  saklıyor; `--cwd` verilmeyen bir resume artık `meta.json`'daki session dizininde çalışıyor
+  (açıkça verilen `--cwd` yine önceliklidir). Bash ve `.ps1`.
+- **Managed sandbox'lar** (#171):
+  - Hiçbir çalışma zamanı script'i artık process substitution kullanmıyor (orada `/dev/fd`
+    yasak; cx-stream'i worker turundan önce düşürüyordu). cx-stream ve oc-stream parser'a `cat`
+    ile okunan bir named pipe üzerinden ulaşıyor, claude-ds-stream prompt'u geçici bir dosyayla
+    veriyor, worktree runner'ları ve `cli-dispatch-clean` geçici dosya kullanıyor. Çıkış kodları,
+    kill ve parser'ın tamamlanması değişmedi. Test: `no-process-substitution.test.mjs`.
+  - Yazılamayan bir session kökü artık her giriş noktasını tek ve uygulanabilir bir satırla ve
+    çıkış 5 ile durduruyor (`CLI_DISPATCH_SESSIONS_DIR'i yazılabilir bir dizine ayarla`);
+    dağınık yazma hataları yerine.
+- **cx-stream, `~/.codex/config.toml` olmayan temiz bir codex kurulumunda sessizce ölüyordu**
+  (model ve effort varsayılanlarını okumak, worker başlamadan önce `set -e`/`pipefail` altında
+  başarısız oluyordu).
+- **`cli-dispatch-clean` macOS'un bash 3.2'sinde başarısız oluyordu** — zamanlanmış temizliği
+  `launchd` bu kabukla çalıştırıyor — argümansız çağrıldığında (`set -u` altında boş dizi).
+
 ## [5.4.0] — 2026-10-05
 
 Temiz bir container'da Claude Code'a gerçek bir iş verilerek bulundu: `TASKS.md` içeren küçük
