@@ -27,16 +27,18 @@ BRIEF="$(mktemp)"
 cat > "$BRIEF" <<'CDBRIEF'
 <the brief, verbatim>
 CDBRIEF
-cli-dispatch-run --detach --backend <backend> --cwd '<cwd>' --prompt-file "$BRIEF" --verify '<cmd>' --model <slug> --fix-attempts 1
+cli-dispatch-run --detach --backend <backend> --cwd '<cwd>' --prompt-file "$BRIEF" --verify '<cmd>' --fix-attempts 1
 ```
 
-   - Include one `--verify '<cmd>'` per `verify:` line; omit `--verify` and `--model` when the header has none.
+   - Include one `--verify '<cmd>'` per `verify:` line; omit `--verify` when the header has none.
+   - Add `--model '<value>'` only when the header has a `model:` line, with exactly that value.
+     Never put your own model name there — it is not the worker's model.
    - Put verify commands in single quotes; a literal single quote inside one is written `'\''`.
    - If the brief contains a line that is exactly `CDBRIEF`, use a different heredoc delimiter (still quoted).
    - If `cli-dispatch-run` is not on PATH, call it as `bash "$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/resolve-plugin-root.sh" "${CLAUDE_PLUGIN_ROOT}")/scripts/cli-dispatch-run"` instead (same arguments).
    - The call prints `run: <id>`. Read the id from that line.
 
-2. Block on the run: `cli-dispatch-wait --run <id> --timeout 570`, with the Bash tool timeout set to 600000. If it exits 2 (still running), call it again. Make at most 6 `cli-dispatch-wait` calls in total; after that return the run id and "still running — wait with: cli-dispatch-wait --run <id>".
+2. Block on the run: `cli-dispatch-wait --run <id> --timeout 570`, with the Bash tool timeout set to 600000. Only if it exits 124 (and says the run is still going) call it again; any other exit code means the run is finished — its output is the result, whatever the code. Make at most 6 `cli-dispatch-wait` calls in total; after that return the run id and "still running — wait with: cli-dispatch-wait --run <id>".
 
 3. Your final message is the stdout of the last `cli-dispatch-wait` call, character for character —
    nothing before it, nothing after it, no summary, no rewording. The orchestrator parses those

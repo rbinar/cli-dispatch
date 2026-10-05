@@ -7,6 +7,24 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [5.3.2] — 2026-10-05
+
+### Düzeltildi
+
+Temiz bir container'da plugin'i kaldırıp 5.3.1'i GitHub'dan kurarak, `/cli-dispatch:setup`'ı
+çalıştırıp ardından her backend için bir `cli-dispatch:runner` delegasyonu koşarak bulundu.
+
+- **`cli-dispatch-wait --run` zaman aşımında 2 değil 124 ile çıkıyor.** Biten bir koşu kendi çıkış
+  kodunu olduğu gibi geçiriyor ve runner "worker başarısız" için 2 kullanıyor; dolayısıyla worker'ı
+  ölmüş ama bitmiş bir koşu zaman aşımıyla birebir aynı görünüyordu. 2'de yeniden beklemesi
+  söylenen agent, bitmiş koşuları çağrı sınırına kadar bekledi (beş koşunun ikisinde 2 yerine 6
+  komut). Agent artık yalnızca 124'te yeniden bekliyor.
+- **Runner agent'ı artık worker modeli uydurmuyor.** Başlatma şablonunda `--model <slug>`
+  duruyordu; başlıkta `model:` satırı yokken haiku buraya kendi id'sini (`claude-haiku-4-5-…`)
+  yazdı, agy bilinmeyen bir model aldı, konuşma oluşturmadı ve koşu #165'teki konuşma keşfi
+  hatasıyla düştü. Şablondan `--model` çıkarıldı; agent bunu yalnızca başlıkta `model:` satırı
+  varsa ve tam o değerle ekliyor.
+
 ## [5.3.1] — 2026-10-05
 
 ### Değişti

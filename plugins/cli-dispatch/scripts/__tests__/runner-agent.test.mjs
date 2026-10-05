@@ -99,7 +99,9 @@ test('wait --run passes a failing verify through as the runner exit code', () =>
   } finally { f.cleanup() }
 })
 
-test('wait --run exits 2 on timeout while the run is still going', () => {
+// 124, not 2 (5.3.2): runner exit 2 means "worker failed", so a timeout code of 2 made a
+// FINISHED run look still-running and the agent re-waited it until its call cap.
+test('wait --run exits 124 on timeout while the run is still going', () => {
   const f = fixture()
   try {
     const runDir = path.join(f.root, '.runs', 'still-running')
@@ -107,8 +109,23 @@ test('wait --run exits 2 on timeout while the run is still going', () => {
     fs.writeFileSync(path.join(runDir, 'pid'), String(process.pid))
     const t0 = Date.now()
     const w = run(WAIT, ['--run', 'still-running', '--timeout', '1'], f.env)
-    assert.equal(w.status, 2, w.stdout + w.stderr)
+    assert.equal(w.status, 124, w.stdout + w.stderr)
+    assert.match(w.stdout + w.stderr, /still going/)
     assert.ok(Date.now() - t0 < 15000)
+  } finally { f.cleanup() }
+})
+
+test('wait --run passes a finished run\'s exit 2 through and does not call it still going', () => {
+  const f = fixture()
+  try {
+    const runDir = path.join(f.root, '.runs', 'finished-2')
+    fs.mkdirSync(runDir, { recursive: true })
+    fs.writeFileSync(path.join(runDir, 'summary.txt'), 'exit: 2  session: s  state: error  verify: pass\n')
+    fs.writeFileSync(path.join(runDir, 'exit'), '2\n')
+    const w = run(WAIT, ['--run', 'finished-2', '--timeout', '5'], f.env)
+    assert.equal(w.status, 2)
+    assert.match(w.stdout, /^exit: 2/)
+    assert.doesNotMatch(w.stdout + w.stderr, /still going/)
   } finally { f.cleanup() }
 })
 
@@ -181,6 +198,11 @@ test('agents/runner.md is a thin haiku forwarder with only Bash', () => {
   // Found end to end: haiku ran a third command (cat the patch) and returned a prose summary,
   // so the orchestrator lost the session id, verify line and patch path.
   assert.match(body, /Run no other command/)
+  // Found end to end (5.3.1): with `--model <slug>` in the template and no model: header, haiku
+  // filled in its own id (claude-haiku-…), agy got an unknown model and created no conversation.
+  assert.doesNotMatch(body.slice(body.indexOf('```bash'), body.indexOf('```', body.indexOf('```bash') + 7)), /--model/)
+  assert.match(body, /only when the header has a `model:` line/)
+  assert.match(body, /exits 124/)
   assert.match(body, /character for character/)
 })
 

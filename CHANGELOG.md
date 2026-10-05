@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [5.3.2] — 2026-10-05
+
+### Fixed
+
+Found by uninstalling the plugin in a clean container, installing 5.3.1 from GitHub, running
+`/cli-dispatch:setup`, then one `cli-dispatch:runner` delegation per backend.
+
+- **`cli-dispatch-wait --run` times out with 124, not 2.** A finished run passes its own exit code
+  through, and the runner uses 2 for "worker failed" — so a finished run with a dead worker read
+  exactly like a timeout. The agent, told to re-wait on 2, waited on finished runs until its call
+  cap (6 commands instead of 2 in two of five runs). The agent now re-waits only on 124.
+- **The runner agent no longer invents a worker model.** Its launch template showed
+  `--model <slug>`; with no `model:` header haiku filled in its own id
+  (`claude-haiku-4-5-…`), agy got an unknown model, created no conversation, and the run failed
+  with the conversation-discovery error of #165. The template drops `--model`; the agent adds it
+  only when the header has a `model:` line, with exactly that value.
+
 ## [5.3.1] — 2026-10-05
 
 ### Changed
