@@ -161,7 +161,7 @@ test('missing-block repair: deleting only GEMINI_API_KEY= line then re-running a
     }
 
     // Remove only the GEMINI_API_KEY= line, leaving the rest of the antigravity block's
-    // comments/other vars (AG_MODEL, AG_MODELS) in place -- simulates a user manually deleting
+    // comments/other vars (AG_MODEL) in place -- simulates a user manually deleting
     // just the key line.
     const before = fs.readFileSync(cfg, 'utf8')
     const stripped = before.split('\n').filter((l) => !/^GEMINI_API_KEY=/.test(l)).join('\n')

@@ -38,10 +38,14 @@ cli-dispatch-run --detach --backend <backend> --cwd '<cwd>' --prompt-file "$BRIE
 
 2. Block on the run: `cli-dispatch-wait --run <id> --timeout 570`, with the Bash tool timeout set to 600000. If it exits 2 (still running), call it again. Make at most 6 `cli-dispatch-wait` calls in total; after that return the run id and "still running — wait with: cli-dispatch-wait --run <id>".
 
-3. Return the final output of `cli-dispatch-wait` verbatim — nothing before it, nothing after it.
+3. Your final message is the stdout of the last `cli-dispatch-wait` call, character for character —
+   nothing before it, nothing after it, no summary, no rewording. The orchestrator parses those
+   lines (session id, verify result, patch path); a prose summary loses them.
 
 ## Rules
 
+- Run no other command. The launch call and `cli-dispatch-wait` are the only commands you may
+  run — not `cat`, `ls`, `git`, not the patch, not the verdict, not to "check" the result.
 - Never read files, grep, diff, or cat transcripts or the verdict. Never summarize or interpret the output.
 - Never fix or retry the task yourself; retries on a verify failure already happen inside the runner (`--fix-attempts 1`).
 - Never pass a model override for yourself and never change the `--fix-attempts` value.

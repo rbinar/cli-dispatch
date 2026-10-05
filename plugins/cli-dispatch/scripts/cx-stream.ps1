@@ -314,7 +314,9 @@ if (-not [string]::IsNullOrEmpty($resumeId)) {
 try { $cwd = (Resolve-Path -LiteralPath $cwd -ErrorAction Stop).Path } catch { Write-Error "cx-stream: bad --cwd"; exit 1 }
 
 # ---- resolve the sandbox mode (explicit --sandbox wins; then --read-only; default workspace-write) ----
-$sandboxMode = "workspace-write"
+# CX_SANDBOX (env wins over config) replaces only the default — see cx-stream (bash). --read-only still wins.
+$cxSandbox = if ($env:CX_SANDBOX) { $env:CX_SANDBOX } elseif ($cfg.ContainsKey("CX_SANDBOX")) { $cfg["CX_SANDBOX"] } else { "" }
+$sandboxMode = if ($cxSandbox) { $cxSandbox } else { "workspace-write" }
 if ($readOnly -eq 1) { $sandboxMode = "read-only" }
 if (-not [string]::IsNullOrEmpty($sandbox)) { $sandboxMode = $sandbox }
 
