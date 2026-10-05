@@ -7,6 +7,45 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [5.2.0] — 2026-10-05
+
+### Eklendi
+
+- **İnce bir `cli-dispatch:runner` subagent'ı (`agents/runner.md`, haiku, yalnız Bash) yeniden
+  varsayılan delegasyon yolu.** Orkestratör `Agent(subagent_type: "cli-dispatch:runner")` çağırır;
+  prompt'u `backend:` / `cwd:` / `verify:` başlığı, bir `---` satırı ve kendi başına yeterli bir
+  brief'ten oluşur. Agent, kompakt verdict'i olduğu gibi geri döndürür.
+  - 4.0.0'da (#114) kaldırılan babysitter'dan farkı: o beş `*-runner` agent'ı run başına ~62 tur
+    harcıyordu (polling, diff okuma, verify'ı kendileri çalıştırma) ve işçinin kendi çıktısının
+    ~9 katı Anthropic token'ı tüketiyordu. Bu agent yalnızca yönlendirir, yaklaşık 3-4 turda:
+    tek bir Bash çağrısı brief'i bir dosyaya yazar (tırnaklı heredoc) ve
+    `cli-dispatch-run --detach`'i başlatır; ardından `cli-dispatch-wait --run <id>` ile bekler ve
+    çıktıyı döndürür. Verdict'i, diff'i ya da transcript'leri asla okumaz; sonucu yine
+    orkestratör kendisi yeniden ölçer.
+  - `cli-dispatch-run --detach` runner'ı `nohup` altında `<sessions-root>/.runs/<id>/` içine
+    (`pid`, `log`, `session`, `summary.txt`, `exit`) yeniden başlatır ve hemen `run: <id>` basar;
+    böylece Bash aracının 10 dakikalık tavanını aşan bir run artık verdict'siz öldürülmez.
+    `summary.txt` ve ardından `exit`, her çıkış yolunda bir EXIT trap'inden bu sırayla yazılır.
+  - `cli-dispatch-wait --run <id> [--timeout SECS]` o run'ı sessizce bekler, özetini basar ve
+    run'ın çıkış koduyla çıkar (zaman aşımında 2; çağıran tekrar bekleyebilir).
+  - `cli-dispatch-run --fix-attempts N` (varsayılan 0, davranış değişmez) verify FAIL'ini shell'de
+    yeniden dener: işçiyi worktree'sinde, başarısız komutlar ve verify kuyruğuyla resume eder,
+    yeniden doğrular ve döngüyü sürdürür; `verdict.json` `fixAttempts: {used, max}` kaydeder.
+    Agent `--fix-attempts 1` geçer, kendi başına asla yeniden denemez.
+  - `cli-dispatch-run-summary.sh`, `/cli-dispatch:run` içinden çıkarılan özet yazıcısıdır; komut
+    ve ayrık run onu paylaşır (`install.sh` onu `~/.local/share/cli-dispatch/` altına kopyalar).
+  - `--detach` ve `--run` yalnızca bash'tedir (`.ps1` ikizi yok), tıpkı `*-worktree-run.sh`
+    runner'ları gibi.
+  - **Yükseltmeden sonra `/cli-dispatch:setup`'ı yeniden çalıştır:** `~/.local/bin` altındaki
+    `cli-dispatch-run` / `cli-dispatch-wait`, `--detach` / `--run` desteği gelmeden önceki
+    sürümlerdir ve plugin güncellemesi bunları hiçbir zaman yeniden kurmaz.
+- SessionStart politikası artık delegasyonu agent'a yönlendiriyor (babysitter'ı topyekûn
+  yasaklamıyor: bir işçiyi izleyen *başka* her LLM subagent'ını yasaklıyor). `drift-report`,
+  `cli-dispatch:runner` başlatmasını yönlendirilmemiş subagent olarak değil runner kullanımı
+  olarak sayar; `gain` agent'ın tur sayısını ve Anthropic çıktısını kendi satırında raporlar
+  (LEGACY bölümü 4.0.0 öncesi babysitter'lar için kalır). `cli-dispatch-clean`, `.runs` gibi
+  nokta-dizinlerini yok sayar.
+
 ## [5.1.0] — 2026-10-05
 
 ### Değişti

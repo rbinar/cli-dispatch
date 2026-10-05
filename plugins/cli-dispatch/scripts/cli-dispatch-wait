@@ -5,11 +5,14 @@
 # below prints NOTHING while polling (zero token cost); it only prints a compact summary
 # once the session finishes (or the optional --timeout is hit).
 #   cli-dispatch-wait <session-id> [--timeout SECS] [--poll SECS]
+#   cli-dispatch-wait --run <run-id> [--timeout SECS]     (bash-only; see cli-dispatch-run --detach)
 # Exit codes: 0 done, 1 error/killed/bad-args/no-such-session, 2 timeout.
+# --run mode exits with the detached run's own exit code (its `exit` file), or 2 on timeout.
 set -euo pipefail
 
 usage() {
   echo "usage: cli-dispatch-wait <session-id> [--timeout SECS] [--poll SECS]"
+  echo "       cli-dispatch-wait --run <run-id> [--timeout SECS]"
   echo "tip:   /cli-dispatch:sessions  to list session ids"
 }
 
@@ -24,6 +27,40 @@ case "$1" in
     exit 0
     ;;
 esac
+
+if [ "$1" = "--run" ]; then
+  # Block on a run started with `cli-dispatch-run --detach`: poll silently for <root>/.runs/<id>/exit
+  # (written last, after summary.txt), print the summary, exit with the run's own exit code.
+  RUN_ID="${2:-}"
+  [ -n "$RUN_ID" ] || { usage; exit 1; }
+  shift 2
+  RUN_TIMEOUT=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --timeout) RUN_TIMEOUT="${2:-0}"; shift 2 ;;
+      *)         usage; exit 1 ;;
+    esac
+  done
+  ROOT="${CLI_DISPATCH_SESSIONS_DIR:-${CLAUDE_DS_SESSIONS_DIR:-}}"
+  [ -n "$ROOT" ] || { _c="${XDG_CACHE_HOME:-$HOME/.cache}"; ROOT="$_c/cli-dispatch/sessions"; [ -d "$ROOT" ] || [ ! -d "$_c/claude-ds/sessions" ] || ROOT="$_c/claude-ds/sessions"; }
+  RUN_DIR="$ROOT/.runs/$RUN_ID"
+  if [ ! -d "$RUN_DIR" ]; then
+    echo "cli-dispatch-wait: no such run: $RUN_ID (looked in $ROOT/.runs)"
+    exit 1
+  fi
+  RUN_START=$(date +%s)
+  while [ ! -f "$RUN_DIR/exit" ]; do
+    if [ "$RUN_TIMEOUT" -gt 0 ] && [ $(( $(date +%s) - RUN_START )) -ge "$RUN_TIMEOUT" ]; then
+      echo "run $RUN_ID is still going — wait again with: cli-dispatch-wait --run $RUN_ID"
+      exit 2
+    fi
+    sleep 2
+  done
+  cat "$RUN_DIR/summary.txt" 2>/dev/null || true
+  RUN_RC="$(tr -d '[:space:]' < "$RUN_DIR/exit")"
+  case "$RUN_RC" in ''|*[!0-9]*) exit 1 ;; esac
+  exit "$RUN_RC"
+fi
 
 SID="$1"; shift
 

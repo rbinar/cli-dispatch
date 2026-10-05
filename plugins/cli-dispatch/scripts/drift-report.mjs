@@ -273,12 +273,25 @@ function countRunnerBashToolUses(text) {
   return n
 }
 
+// Agent tool_use whose input names the 5.2.0 `cli-dispatch:runner` agent: that IS the policy's
+// delegation path, so it counts as runner adoption rather than as an unrouted subagent spawn.
+function countRunnerAgentSpawns(text) {
+  let n = 0
+  const re = /"name"\s*:\s*"Agent"/g
+  let m
+  while ((m = re.exec(text))) {
+    if (/"subagent_type"\s*:\s*"cli-dispatch:runner"/.test(lineAt(text, m.index))) n++
+  }
+  return n
+}
+
 export function analyzeTranscriptText(text) {
+  const runnerAgentSpawns = countRunnerAgentSpawns(text)
   return {
     policyInjected: text.includes(POLICY_NEEDLE),
-    agentSpawns: countMatches(text, /"name"\s*:\s*"Agent"/g),
+    agentSpawns: countMatches(text, /"name"\s*:\s*"Agent"/g) - runnerAgentSpawns,
     inlineEdits: countMatches(text, /"name"\s*:\s*"(?:Edit|Write)"/g),
-    runnerInvocations: countRunnerBashToolUses(text),
+    runnerInvocations: countRunnerBashToolUses(text) + runnerAgentSpawns,
   }
 }
 

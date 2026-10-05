@@ -294,6 +294,8 @@ export function buildVerdict({ statusJson, metaJson, changedFilesJson, verifyRes
     // affects exitCode; an absent or empty diff remains the separate, non-trivial case.
     trivial: isTrivialDiffstat(changedFiles.diffstat),
     worktreeRemoved: false,
+    // Only when --fix-attempts asked for retries; absent keeps the plain verdict shape.
+    ...(worktreeInfo.fixAttempts ? { fixAttempts: worktreeInfo.fixAttempts } : {}),
     startedAt: meta.startedAt,
     endedAt: new Date().toISOString(),
   }
@@ -394,6 +396,9 @@ if (entryPath && import.meta.url === pathToFileURL(entryRealPath).href) {
           sessionDir,
           worktree: metaJson.cwd,
           timeoutExpired: parseBoolean(timeoutExpired),
+          fixAttempts: Number(process.env.CLI_DISPATCH_FIX_MAX) > 0
+            ? { used: Number(process.env.CLI_DISPATCH_FIX_USED) || 0, max: Number(process.env.CLI_DISPATCH_FIX_MAX) }
+            : undefined,
         },
       })
 

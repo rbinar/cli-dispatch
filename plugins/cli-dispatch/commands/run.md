@@ -1,5 +1,5 @@
 ---
-description: Delegate a task to a worker via the deterministic runner (no LLM babysitter) and print the verdict summary
+description: Delegate a task to a worker via the deterministic runner (direct, zero LLM tokens) and print the verdict summary
 argument-hint: <backend> "<prompt>" [--verify '<cmd>'] [--cleanup-if-clean] [more cli-dispatch-run flags]
 allowed-tools: Bash
 ---
@@ -7,8 +7,10 @@ allowed-tools: Bash
 # Run cli-dispatch worker: $ARGUMENTS
 
 Launch a worker via `cli-dispatch-run` (the deterministic no-LLM runner from 3.34.0)
-and print a compact verdict summary — no babysitter, zero LLM tokens spent on orchestration.
-Best for mechanical delegations with a machine-checkable `--verify` command.
+and print a compact verdict summary — zero LLM tokens spent on orchestration. This is the
+direct path; the default path from an orchestrator is the thin `cli-dispatch:runner` agent,
+which wraps the same runner (detached + blocking wait) so a long run survives the Bash tool's
+10-minute ceiling. Best for mechanical delegations with a machine-checkable `--verify` command.
 
 ```bash
 # $ARGUMENTS is substituted TEXTUALLY into this script before bash parses it, so the
@@ -56,31 +58,15 @@ SESSION_DIR=""
 for d in $(ls -dt "$SESSIONS_ROOT"/*/ 2>/dev/null | head -5); do
   [ -f "$d/verdict.json" ] && { SESSION_DIR="${d%/}"; break; }
 done
-if [ -n "$SESSION_DIR" ]; then
-  node -e '
-    const {readFileSync} = require("fs");
-    const exit = process.argv[2];
-    let v;
-    try { v = JSON.parse(readFileSync(process.argv[1], "utf8")) }
-    catch (e) { console.log("exit: " + exit + "  (verdict.json unreadable: " + e.message + ")"); process.exit(0) }
-    if (v.error) { console.log("exit: " + exit + "  verdict error: " + v.error); process.exit(0) }
-    const verify = v.verify ? (v.verify.exitCode === 0 ? "pass" : "FAIL (exit " + v.verify.exitCode + ")") : "n/a";
-    const diff = v.diffstat || (v.changedFiles ? v.changedFiles.length + " file(s)" : "n/a");
-    console.log("exit: " + exit + "  session: " + (v.sessionId || "?") + "  state: " + (v.state || "?") + "  verify: " + verify);
-    console.log("diff: " + String(diff).trim());
-    if (v.stranded) console.log("STRANDED changes in worktree: " + v.worktree);
-    console.log("patch: " + (v.diffPatchPath || "n/a"));
-  ' "$SESSION_DIR/verdict.json" "$RC"
-else
-  echo "exit: $RC  (no verdict.json found)"
-fi
+# The summary script ships in the plugin (not installed to ~/.local), so it matches this command.
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/cli-dispatch-run-summary.sh" "${SESSION_DIR:+$SESSION_DIR/verdict.json}" "$RC"
 exit $RC
 ```
 
 Exit codes: `0` success (verify passed or no verify requested); non-zero (`2`–`5`) = launch /
 timeout / verify / worker failure — `verdict.json` carries details.
 
-- Deterministic runner — zero LLM babysitter tokens; use for mechanical delegations with a
+- Deterministic runner — zero LLM tokens; use for mechanical delegations with a
   machine-checkable verify command.
 - Continue afterwards: `/cli-dispatch:resume <session-id> "<follow-up>"` (auto-detects backend).
 

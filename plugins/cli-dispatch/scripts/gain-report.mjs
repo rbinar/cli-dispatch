@@ -55,6 +55,11 @@ export const RUNNER_RE=/(?:^|[;&|(]\s*|\s)(?:claude-ds(?:-stream)?|ds-agent|ds-w
 // purpose is historical accounting. Deterministic runs are counted separately, from verdict.json.
 export const PINNED_RUNNER_MODEL_RE=/haiku/i
 
+// The 5.2.0 `cli-dispatch:runner` agent (a thin forwarder, NOT the retired babysitters): its
+// only Bash calls are a detached `cli-dispatch-run` and a blocking `cli-dispatch-wait --run`.
+// Checked before RUNNER_RE because its heredoc'd brief may name a wrapper CLI in passing.
+export const THIN_RUNNER_RE=/cli-dispatch-run\b[^\n]*--detach|cli-dispatch-wait\s+--run\b/
+
 // Real polling signal: a Bash command that reads a session status.json directly.
 // cli-dispatch-wait blocks inside a single Bash call (1 assistant turn), so a
 // command that uses it is NOT a hot-loop poll even though it names status.json.
@@ -80,7 +85,7 @@ export function backendFromCommand(cmd){
 // the report needs. Pure: no I/O.
 export function analyzeAgentEvents(objs){
   const models=new Map()
-  let isRunner=false, assistantTurns=0, statusPolls=0, backend=null
+  let isRunner=false, isThinRunner=false, assistantTurns=0, statusPolls=0, backend=null
   for(const obj of (Array.isArray(objs)?objs:[])){
     const msg=messageFor(obj)
     if(!msg) continue
@@ -88,6 +93,7 @@ export function analyzeAgentEvents(objs){
       for(const c of msg.content){
         if(c&&c.type==='tool_use'&&c.name==='Bash'&&c.input&&typeof c.input.command==='string'){
           const cmd=c.input.command
+          if(!isThinRunner&&THIN_RUNNER_RE.test(cmd)) isThinRunner=true
           if(!isRunner&&RUNNER_RE.test(cmd)) isRunner=true
           if(!backend){ const b=backendFromCommand(cmd); if(b) backend=b }
           if(isStatusPollCommand(cmd)) statusPolls++
@@ -107,7 +113,7 @@ export function analyzeAgentEvents(objs){
     d.cacheW+=num(u.cache_creation_input_tokens)||0
     d.cacheR+=num(u.cache_read_input_tokens)||0
   }
-  return {models,isRunner,backend,assistantTurns,statusPolls}
+  return {models,isRunner,isThinRunner,backend,assistantTurns,statusPolls}
 }
 
 // Compute the babysitter/worker ratio from per-runner records.
@@ -244,8 +250,15 @@ async function runMain(){
   let otherAgents=0, otherOutput=0
   let runnerTurnsTotal=0, runnerAgents=0
   const runnerRecords=[]
+  let thinAgents=0, thinTurns=0, thinOutput=0
   for(const fp of agentFiles){
-    const {models:fileModels,isRunner,backend,assistantTurns,statusPolls}=analyzeAgentEvents(await readAgentObjs(fp))
+    const {models:fileModels,isRunner,isThinRunner,backend,assistantTurns,statusPolls}=analyzeAgentEvents(await readAgentObjs(fp))
+    if(isThinRunner){
+      thinAgents++
+      thinTurns+=assistantTurns
+      for(const [,data] of fileModels) thinOutput+=data.output
+      continue
+    }
     if(!isRunner){
       let sawModel=false
       for(const [,data] of fileModels){ otherOutput+=data.output; sawModel=true }
@@ -388,6 +401,10 @@ async function runMain(){
     if(blindBackends.length) console.log(`ratio caveat: ${blindBackends.join(', ')} sessions report no usage — worker output is zero for these; their runner babysitting is excluded from the numerator`)
     console.log(`avg babysitter turns/runner: ${avgTurns.toFixed(2)}`)
     console.log(`${heavyPollers} runners read status.json directly >${POLL_THRESHOLD}× (bypassing cli-dispatch-wait)`)
+  }
+  if(thinAgents>0){
+    console.log('')
+    console.log(`runner agent (cli-dispatch:runner): ${thinAgents} agents  |  avg turns ${(thinTurns/thinAgents).toFixed(2)}  |  Anthropic output ${fmt(thinOutput)}`)
   }
   if(otherAgents>0){
     console.log(`other (non-runner) subagents: ${otherAgents} agents, output ${fmt(otherOutput)} — excluded from ratio`)

@@ -6,7 +6,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   cat <<'USAGE' >&2
-usage: cli-dispatch-run --backend <ds|ag|cx|oc|cp> --cwd <repo> [--prompt <text> | --prompt-file <path>] [--branch <name>] [--model <slug>] [--effort low|medium|high] [--verify <cmd>] [--verify-timeout SECS] [--timeout SECS] [--resume <session-id>] [--cleanup-if-clean]
+usage: cli-dispatch-run --backend <ds|ag|cx|oc|cp> --cwd <repo> [--prompt <text> | --prompt-file <path>] [--branch <name>] [--model <slug>] [--effort low|medium|high] [--verify <cmd>] [--verify-timeout SECS] [--timeout SECS] [--resume <session-id>] [--cleanup-if-clean] [--fix-attempts N] [--detach]
+  --fix-attempts N  on a verify FAIL, resume the worker up to N times with the verify tail, re-verify (default 0)
+  --detach          return at once with "run: <id>"; block on it with: cli-dispatch-wait --run <id> (bash-only)
 USAGE
 }
 
@@ -180,11 +182,81 @@ build_and_write_verdict() {
     exit 5
   fi
   printf '%s\n' "$VERDICT_JSON" > "$SESSION_DIR/verdict.json"
+  # --fix-attempts: a verify FAIL (exit 1) with attempts left hands control back to the retry
+  # loop instead of finishing; nothing below (advisory, cleanup, exit) runs for that round.
+  if [ "$FIX_MAX" -gt 0 ] && [ "$FIX_USED" -lt "$FIX_MAX" ] && [ "$BUILD_EXIT" -eq 1 ]; then
+    RETRY_FIX=1
+    return 0
+  fi
   print_trivial_advisory
   cleanup_worktree_if_requested "$WORKTREE_PATH" "$BUILD_EXIT"
   exit "$BUILD_EXIT"
 }
-trap cleanup_tmp EXIT INT TERM
+
+# Detached child (--detach re-exec): the waiter polls <run-dir>/exit, so on EVERY exit path
+# write summary.txt first and exit last (tmp + mv, so neither is ever seen half-written).
+write_run_result() {
+  local rc="$1" d="$CLI_DISPATCH_RUN_DIR" summ="" vp="" cand
+  for cand in "$SCRIPT_DIR/cli-dispatch-run-summary.sh" "$HOME/.local/share/cli-dispatch/cli-dispatch-run-summary.sh"; do
+    if [ -f "$cand" ]; then summ="$cand"; break; fi
+  done
+  if [ -n "${SESSION_DIR:-}" ] && [ -f "$SESSION_DIR/verdict.json" ]; then vp="$SESSION_DIR/verdict.json"; fi
+  if [ -n "$summ" ]; then
+    CLI_DISPATCH_NODE="${NODE_BIN:-node}" bash "$summ" "$vp" "$rc" > "$d/summary.txt.tmp" 2>&1 || true
+  else
+    echo "exit: $rc" > "$d/summary.txt.tmp"
+  fi
+  mv "$d/summary.txt.tmp" "$d/summary.txt" || true
+  printf '%s\n' "$rc" > "$d/exit.tmp" && mv "$d/exit.tmp" "$d/exit" || true
+}
+
+on_exit() {
+  local rc=$?
+  cleanup_tmp
+  if [ -n "${CLI_DISPATCH_RUN_DIR:-}" ]; then write_run_result "$rc"; fi
+  return 0
+}
+
+# --fix-attempts: resume the worker (same commands as commands/resume.md) in the run's
+# worktree with a mechanical follow-up built from the last verdict. Never fatal: a failing
+# resume still falls through to the re-verify, and the verdict stands.
+run_fix_resume() {
+  local dir="$WORKTREE_PATH" fix_prompt kv
+  [ -d "$dir" ] || dir="$CWD"
+  fix_prompt="$("$NODE_BIN" -e '
+    const fs = require("fs");
+    let v = {};
+    try { v = JSON.parse(fs.readFileSync(process.argv[1], "utf8")) } catch {}
+    const ver = v.verify || {};
+    const cmds = Array.isArray(ver.commands) ? ver.commands : [];
+    const lines = cmds.map((c, i) => "- " + c + "  ->  " + (ver.failedAt === i ? "FAILED, exit " + ver.exitCode : (ver.failedAt != null && i > ver.failedAt ? "not run" : "passed")));
+    const tail = String(ver.tail || "").split("\n").slice(-40).join("\n");
+    console.log("[cli-dispatch] The verify command(s) failed after your last turn.\n\nVerify commands, in order (the chain stops at the first failure):\n" + lines.join("\n") + "\n\nLast lines of the failing output:\n" + tail + "\n\nFix the cause of this failure. Do not widen scope. Do not change the semantics of any existing test. Stop when done.");
+  ' "$SESSION_DIR/verdict.json" 2>/dev/null)" || fix_prompt=""
+  [ -n "$fix_prompt" ] || fix_prompt="[cli-dispatch] The verify command(s) failed after your last turn: ${VERIFY[*]}. Fix the cause, do not widen scope, do not change the semantics of existing tests. Stop when done."
+  echo "cli-dispatch-run: verify FAILED — fix attempt $FIX_USED/$FIX_MAX: resuming $SESSION_ID in $dir" >&2
+  set +e
+  (
+    cd "$dir" || exit 1
+    if [ "${#WORKTREE_BASE_VARS[@]}" -gt 0 ]; then
+      for kv in "${WORKTREE_BASE_VARS[@]}"; do export "$kv"; done
+    fi
+    case "$BACKEND" in
+      ds) claude-ds-stream --resume "$SESSION_ID" -p "$fix_prompt" ;;
+      ag) ag-agent --resume "$SESSION_ID" "$fix_prompt" ;;
+      cx) cx-agent --resume "$SESSION_ID" "$fix_prompt" ;;
+      oc) oc-agent --resume "$SESSION_ID" "$fix_prompt" ;;
+      cp) cp-agent --resume "$SESSION_ID" "$fix_prompt" ;;
+    esac
+  ) </dev/null
+  local resume_rc=$?
+  set -e
+  [ "$resume_rc" -eq 0 ] || echo "cli-dispatch-run: fix-attempt resume exited $resume_rc — re-verifying anyway" >&2
+  return 0
+}
+
+trap cleanup_tmp INT TERM
+trap on_exit EXIT
 
 BACKEND=""
 CWD=""
@@ -204,6 +276,11 @@ TEST_SESSION_DIR=""
 CLEANUP_IF_CLEAN=0
 IN_PLACE_RUN=0
 TEMP_FILES=()
+DETACH=0
+FIX_MAX=0
+FIX_USED=0
+RETRY_FIX=0
+ORIG_ARGS=("$@")
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -219,6 +296,11 @@ while [ "$#" -gt 0 ]; do
     --timeout) need_val --timeout "$#"; TIMEOUT="$2"; shift 2;;
     --resume) need_val --resume "$#"; RESUME="$2"; shift 2;;
     --cleanup-if-clean) CLEANUP_IF_CLEAN=1; shift;;
+    --detach) DETACH=1; shift;;
+    --fix-attempts)
+      need_val --fix-attempts "$#"
+      case "$2" in ''|*[!0-9]*) echo "cli-dispatch-run: --fix-attempts must be a non-negative integer" >&2; exit 5;; esac
+      FIX_MAX="$2"; shift 2;;
     --_test-cleanup)
       # Takes TWO values (worktree + exit code) — need_val only proves one is present,
       # and under `set -u` a short call would abort on $3 with "unbound variable".
@@ -253,6 +335,26 @@ while [ "$#" -gt 0 ]; do
     *) echo "cli-dispatch-run: unknown arg: $1" >&2; usage; exit 5;;
   esac
 done
+
+if [ "$DETACH" -eq 1 ]; then
+  # Re-exec ourselves minus --detach under nohup (no setsid on macOS), output to <run>/log,
+  # and return at once: a run longer than the Bash tool's 10-minute ceiling is not killed
+  # with the caller. The child learns its run dir from CLI_DISPATCH_RUN_DIR and records
+  # `session`, `summary.txt` and `exit` there; `cli-dispatch-wait --run <id>` blocks on it.
+  ROOT="${CLI_DISPATCH_SESSIONS_DIR:-${CLAUDE_DS_SESSIONS_DIR:-}}"
+  [ -n "$ROOT" ] || { _c="${XDG_CACHE_HOME:-$HOME/.cache}"; ROOT="$_c/cli-dispatch/sessions"; [ -d "$ROOT" ] || [ ! -d "$_c/claude-ds/sessions" ] || ROOT="$_c/claude-ds/sessions"; }
+  RUN_ID="run-$(date +%s)-$$"
+  RUN_DIR="$ROOT/.runs/$RUN_ID"
+  mkdir -p "$RUN_DIR"
+  CHILD_ARGS=()
+  for _a in "${ORIG_ARGS[@]}"; do
+    [ "$_a" = "--detach" ] || CHILD_ARGS+=("$_a")
+  done
+  CLI_DISPATCH_RUN_DIR="$RUN_DIR" nohup bash "$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")" "${CHILD_ARGS[@]}" </dev/null >"$RUN_DIR/log" 2>&1 &
+  echo "$!" > "$RUN_DIR/pid"
+  echo "run: $RUN_ID"
+  exit 0
+fi
 
 if [ "$TEST_MODE" -eq 1 ]; then
   # Only when the test asked for the bookkeeping half: SESSION_DIR is what
@@ -383,6 +485,7 @@ if [ -n "$RESUME" ]; then
     echo "cli-dispatch-run: no such session: $SESSION_ID" >&2
     exit 5
   fi
+  if [ -n "${CLI_DISPATCH_RUN_DIR:-}" ]; then printf '%s\n' "$SESSION_ID" > "$CLI_DISPATCH_RUN_DIR/session"; fi
 else
   # Build the brief the worker actually sees: caller text + the standing cwd contract.
   # The caller's own --prompt-file is never modified in place; we always write a copy.
@@ -494,6 +597,8 @@ WORKER_REPORT
     exit 5
   fi
 
+  if [ -n "${CLI_DISPATCH_RUN_DIR:-}" ]; then printf '%s\n' "$(basename "$SESSION_ID")" > "$CLI_DISPATCH_RUN_DIR/session"; fi
+
   SESSION_DIR="$SESSION_ID"
   if [ "${SESSION_DIR#/}" = "$SESSION_DIR" ]; then
     SESSION_DIR="$SESSIONS_ROOT/$SESSION_DIR"
@@ -514,6 +619,9 @@ WORKTREE_PATH="$(read_json_field "$META_PATH" cwd)"
 [ -n "$WORKTREE_PATH" ] || WORKTREE_PATH="$CWD"
 
 SECS_ELAPSED=0
+while :; do
+RETRY_FIX=0
+export CLI_DISPATCH_FIX_MAX="$FIX_MAX" CLI_DISPATCH_FIX_USED="$FIX_USED"
 while :; do
   set +e
   CLI_DISPATCH_NODE="$NODE_BIN" "$SCRIPT_DIR/cli-dispatch-wait" "$SESSION_ID" --timeout 30
@@ -577,3 +685,8 @@ if [ "${#VERIFY[@]}" -gt 0 ]; then
 fi
 
 build_and_write_verdict
+
+# Reached only when build_and_write_verdict handed back a fixable verify FAIL.
+FIX_USED=$((FIX_USED + 1))
+run_fix_resume
+done

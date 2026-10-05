@@ -60,11 +60,11 @@ test('3. enabled:true -> routing + escalation + issue sentences, starts with the
     ctx.includes("behavior-changing decisions stay in the orchestrator's brief"),
     'must keep behavior-changing decisions in the orchestrator brief'
   )
-  assert.ok(ctx.includes('ZERO LLM babysitter tokens'), 'must state the zero-babysitter-token routing')
+  assert.ok(ctx.includes('cli-dispatch:runner'), 'must route delegation to the runner agent')
   assert.ok(ctx.includes('/cli-dispatch:resume'), 'must name the escalation follow-up path')
   assert.ok(
-    ctx.includes('never spawn an LLM babysitter subagent'),
-    'must forbid spawning babysitter subagents'
+    ctx.includes('Do not spawn any other LLM subagent to watch a worker'),
+    'must forbid spawning other babysitter subagents'
   )
   assert.ok(
     ctx.includes('github.com/rbinar/cli-dispatch/issues'),
