@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [5.3.1] — 2026-10-05
+
+### Changed
+
+- **README slimmed to a front page; the detail moved to `docs/`.** `README.md` is now a short
+  front page (what it is, install, the backend requirements table, setup, delegating, updating,
+  and a documentation index). Everything else — the command table, the deterministic runner,
+  session tracking, policy injection, the statusline badge, usage and quota, the installed CLIs,
+  Windows, uninstall, and security and data — lives in `docs/*.md`, with Turkish twins of the
+  same file names in `docs/tr/` (`README.tr.md` is slimmed the same way). Docs only; nothing was
+  removed.
+
 ## [5.3.0] — 2026-10-05
 
 ### Changed

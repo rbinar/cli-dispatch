@@ -18,7 +18,7 @@ This document covers only the terminal-runnable commands. Three DeepSeek executa
 | `cli-dispatch-clean` | Prunes stale (`running`-but-dead) session dirs and leftover worktree artifacts. |
 | `cli-dispatch-gain` | Reports worker token totals per backend. |
 
-See [README.md](README.md) for `cli-dispatch-run`'s full flag set and the escalation path.
+See [docs/runner.md](docs/runner.md) for `cli-dispatch-run`'s full flag set and the escalation path.
 
 ## How it works
 
