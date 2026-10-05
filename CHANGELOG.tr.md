@@ -7,6 +7,43 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [5.4.0] — 2026-10-05
+
+Temiz bir container'da Claude Code'a gerçek bir iş verilerek bulundu: `TASKS.md` içeren küçük
+bir Node projesi, yalnızca "her görevi tamamla, her birini ayrı commit'le" talimatıyla;
+delegasyondan hiç söz edilmeden.
+
+### Değişti
+
+- **SessionStart politikası artık varsayılan olarak delege etmeyi söylüyor ve inline için
+  somut bir tavan koyuyor.** Tek eşik "önemsiz tek dosyalık düzeltmeler inline kalır" iken, test
+  ekleyen çok dosyalı özellikler iki turda da inline yapıldı ve hiçbir şey delege edilmedi.
+  Politika artık şunu söylüyor: test ekleyen ya da değiştiren veya birden fazla dosyaya dokunan iş
+  `cli-dispatch:runner` agent'ına gider; inline yalnızca tek dosyada ~20 satırlık bir düzeltme
+  yapılır. Aynı ifade setup'ın statik CLAUDE.md bloğunda ve `docs/runner.md`'de de var.
+  Değişiklikten sonra ölçüldü: iki görev de DeepSeek'e paralel delege edildi, agent'ların her biri
+  iki komut çalıştırdı, iki patch de uygulanıp commit'lendi, testler yeşil.
+
+### Düzeltildi
+
+- **Worker artık yeniden delege etmiyor.** DeepSeek worker'ı kendisi de bir Claude Code oturumu
+  olduğundan bu plugin'i yükledi, politikayı aldı ve görevini runner agent'ına devretti; koşular
+  iç içe geçti ve kendi worktree'si boş kaldı. Her worker stream'i artık `CLI_DISPATCH_WORKER=1`
+  export ediyor (bash'te `stream-utils.sh` üzerinden, ayrıca `.ps1` ikizlerinde); SessionStart
+  hook'u orada hiçbir şey enjekte etmiyor ve `cli-dispatch-run` başlamayı reddediyor (çıkış 5).
+- **Ayrık bir koşunun sonucu artık başka bir süreç tarafından ezilemiyor.** İç içe başlayan
+  launcher dış koşunun `CLI_DISPATCH_RUN_DIR`'ini miras aldı ve EXIT trap'i, dış worker hâlâ
+  çalışırken DIŞ koşuya "exit 0, verdict yok" yazdı. Ayrık çocuk artık run dizinini ortamdan
+  çıkarıyor, böylece başlattığı hiçbir şey onu miras almıyor; `--detach` launcher'ı da hiçbir zaman
+  sonuç yazmıyor.
+- **`verdict-diff.patch` yeni dosyaları içeriyor ve temiz uygulanıyor.** Patch `git diff HEAD`
+  ile üretiliyordu ve bu komut izlenmeyen dosyaları hiç göstermez; yalnızca dosya ekleyen bir
+  worker uygulanacak hiçbir şey içermeyen bir patch üretiyordu (`No valid patches in input`) ve
+  orkestratör dosyaları worktree'den elle kopyaladı. Diff artık geçici bir index'ten geliyor
+  (worker'ın kendi index'ine dokunulmuyor) ve yeni, değişen ve silinen dosyaları taşıyor;
+  `worker-report.json` ile worktree'deki `node_modules` bağlantıları dışarıda kalıyor. Bash ve
+  `.ps1`. Test: `verdict-patch.test.mjs`.
+
 ## [5.3.2] — 2026-10-05
 
 ### Düzeltildi

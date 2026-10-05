@@ -285,6 +285,10 @@ diff the guards — not only the happy path.
 
 ## Non-obvious constraints
 
+- Workers run with `CLI_DISPATCH_WORKER=1` (exported by `stream-utils.sh` and the `.ps1`
+  streams). A worker can itself be a Claude Code session with this plugin loaded (DeepSeek runs
+  `claude`), so the SessionStart hook stays silent there and `cli-dispatch-run` refuses to start —
+  without this a worker delegated its own task again (5.4.0). Keep the marker in any new stream.
 - `launchd`/`cron` (used by `/cli-dispatch:clean-schedule`) run jobs with a minimal PATH
   and no shell rc sourced — any script invoked by a scheduled job cannot assume `node`
   installed via nvm/Homebrew/volta/asdf is on PATH. `cli-dispatch-clean` probes common

@@ -3,6 +3,9 @@
 # Runs claude with the DeepSeek env in stream-json format and pipes stdout into
 # ds-stream-parse.mjs. The parser is shared across backends.
 $ErrorActionPreference = "Stop"
+# Mark the worker (mirrors stream-utils.sh): keeps the SessionStart policy out of it and makes
+# cli-dispatch-run refuse nested delegation from inside it.
+$env:CLI_DISPATCH_WORKER = '1'
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 

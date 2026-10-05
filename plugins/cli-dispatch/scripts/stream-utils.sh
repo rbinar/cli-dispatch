@@ -7,6 +7,12 @@
 # Usage:
 #   . "$(dirname "${BASH_SOURCE[0]}")/stream-utils.sh"
 
+# Every worker stream sources this file, so the worker CLI and everything it spawns run with
+# CLI_DISPATCH_WORKER=1. A worker that is itself a Claude Code session (DeepSeek runs `claude`)
+# loads this plugin too: the marker keeps the SessionStart policy out of it and makes
+# cli-dispatch-run refuse nested delegation.
+export CLI_DISPATCH_WORKER=1
+
 # ---- cross-platform mtime ----
 mtime_of() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null; }
 
