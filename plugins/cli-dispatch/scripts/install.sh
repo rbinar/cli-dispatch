@@ -427,25 +427,21 @@ POL
   echo "Created policy.json (injection ENABLED) -> $POLICY_FILE"
 fi
 
-# Auto-open the config so the user can paste a key — triggered whenever the config was just
+# Open the one-shot setup form so the user can enter keys — triggered whenever the config was just
 # created OR at least one backend block was added this run (CFG_CREATED/CFG_CHANGED), AND we
 # are in an interactive terminal. A Claude-mediated Bash tool has no TTY, so it auto-selects
-# non-interactive and the editor is NEVER opened — only the path is printed.
-# Override the opener via CLI_DISPATCH_EDITOR (legacy CLAUDE_DS_EDITOR still honored), e.g. ="code".
+# non-interactive and the form is NEVER opened — only the path is printed (setup.md runs the
+# form itself). The form blocks until saved or timed out; its exit code never fails the install.
+# An explicit CLI_DISPATCH_EDITOR (legacy CLAUDE_DS_EDITOR still honored), e.g. ="code", wins.
 if [ "$NONINTERACTIVE" -eq 1 ] || [ ! -t 0 ]; then INTERACTIVE=0; else INTERACTIVE=1; fi
 _EDITOR="${CLI_DISPATCH_EDITOR:-${CLAUDE_DS_EDITOR:-}}"
 if [ "$INTERACTIVE" -eq 1 ] && { [ "$CFG_CREATED" -eq 1 ] || [ "$CFG_CHANGED" -eq 1 ]; }; then
   if [ -n "$_EDITOR" ]; then
     "$_EDITOR" "$CONFIG" >/dev/null 2>&1 && echo "Opened config in \$CLI_DISPATCH_EDITOR -> add your key, then save." || true
-  elif command -v open >/dev/null 2>&1; then            # macOS
-    { open -e "$CONFIG" >/dev/null 2>&1 || open -t "$CONFIG" >/dev/null 2>&1; } && echo "Opened config in editor -> add your key, then save." || true
-  elif command -v xdg-open >/dev/null 2>&1; then         # Linux
-    xdg-open "$CONFIG" >/dev/null 2>&1 && echo "Opened config in editor -> add your key, then save." || true
-  elif grep -qi microsoft /proc/version 2>/dev/null && command -v explorer.exe >/dev/null 2>&1; then  # WSL
-    explorer.exe "$(wslpath -w "$CONFIG" 2>/dev/null)" >/dev/null 2>&1 && echo "Opened config in editor -> add your key, then save." || true
+  elif command -v node >/dev/null 2>&1; then
+    node "$SCRIPT_DIR/setup-form.mjs" --config "$CONFIG" --backends "$BACKENDS" || true
   else
-    # No GUI opener available — never launch a TUI editor (nano/vim would hang the Bash tool).
-    echo "No GUI editor found — edit manually: \$EDITOR $CONFIG (or nano/vim)"
+    echo "node not found — edit manually: $CONFIG"
   fi
 else
   echo "Config: $CONFIG (edit to add your keys)"

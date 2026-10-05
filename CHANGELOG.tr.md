@@ -7,6 +7,34 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [5.1.0] — 2026-10-05
+
+### Değişti
+
+- **Setup, API key ve model adlarını config'i Notepad/TextEdit/`xdg-open` ile açmak yerine
+  tek kullanımlık yerel bir web formunda topluyor.** Yeni `scripts/setup-form.mjs` (yalnızca
+  Node yerleşikleri) `127.0.0.1` üzerinde rastgele bir portta, çalıştırmaya özel bir token'ın
+  arkasında küçük bir form sunar, tarayıcıyı açar, gönderilen değerleri
+  `~/.config/cli-dispatch/config` dosyasına yazar ve kapanır. `install.sh`/`install.ps1`
+  etkileşimli kurulumda formu başlatır; `/cli-dispatch:setup` onu arka plan görevi olarak
+  çalıştırıp adresi gösterir. OpenCode modeli de artık bir form alanı olduğundan setup bunu
+  ayrıca sormuyor.
+  - Key'ler Claude'dan geçmez: tarayıcıdan form sürecine, oradan config dosyasına gider.
+    Gizli alanlar hiç önceden doldurulmaz ve geri yansıtılmaz (yalnızca "set / not set"
+    rozeti); boş bırakılan gizli alan mevcut değeri korur.
+  - Güvenlik modeli: yalnızca loopback'e bağlanır, URL yolunda çalıştırmaya özel token vardır,
+    `Host`/`Origin` formun portuyla loopback olmalıdır (DNS rebinding), katı CSP uygulanır;
+    yalnızca `"`, `$`, backtick ve ters eğik çizgi içermeyen yazdırılabilir ASCII kabul edilir
+    (config bash tarafından source edildiği için; izin listesi kullanılıyor, çünkü JS satır
+    çapaları U+2028'i satır sonu sayarken bash saymaz) ve reddedilen değer hiçbir şey yazdırmaz.
+    Bilinmeyen alan adları yok sayılır, bir key'in her ataması yeniden yazılır (bash sonuncuyu
+    kullanır), symlink'li config bağlantının hedefine yazılır, yazma atomiktir ve dosya modu
+    0600'dür; sunucu tek kayıttan sonra kapanır (`--timeout` dolarsa, varsayılan 600 sn,
+    çıkış kodu 2).
+  - `CLI_DISPATCH_EDITOR` (eski `CLAUDE_DS_EDITOR`) tanımlıysa form yerine o editör açılır.
+    Form plugin dizininden çalışır, `~/.local` altına kurulmaz; Node olduğu için `.ps1` ikizi
+    yoktur.
+
 ## [5.0.0] — 2026-10-05
 
 ### Kaldırıldı

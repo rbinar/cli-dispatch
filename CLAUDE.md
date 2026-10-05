@@ -36,7 +36,9 @@ Everything the plugin installs lives under `plugins/cli-dispatch/`:
   pre-execution scripts (`cli-dispatch-status.sh` + its `.ps1` twin, `cli-dispatch-doctor.sh`,
   `cli-dispatch-balance.sh`, `cli-dispatch-clean-schedule.sh`) likewise run from the plugin
   cache and are **not** installed, so they can never go stale relative to the plugin — do
-  not add them to `install.sh`. Bash/PowerShell
+  not add them to `install.sh`. `setup-form.mjs` (the one-shot browser form for keys and model
+  names) follows the same rule — `install.sh`/`install.ps1`/`setup.md` run it from the plugin
+  dir — and being node it has no `.ps1` twin. Bash/PowerShell
   wrappers around Node engines (`*-stream-parse.mjs` parsers, `verdict-writer.mjs`,
   `gain-report.mjs`, `drift-report.mjs`, `cli-dispatch-clean.mjs`).
   `install.sh`/`install.ps1` copy these into `~/.local/bin` (wrappers) and
