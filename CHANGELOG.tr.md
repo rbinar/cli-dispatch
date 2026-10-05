@@ -7,6 +7,55 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [5.2.1] — 2026-10-05
+
+### Düzeltildi
+
+Gerçek akışı uçtan uca koşarak bulundu: hem host'ta headless bir oturumda, hem de yayımlanmış
+5.2.0'ı GitHub'dan temiz bir Docker container'ına kurarak (`/cli-dispatch:setup`, SessionStart
+hook'u, ardından `cli-dispatch:runner` üzerinden delegasyonlar).
+
+- **`install.sh` başarılı olduğunda 0 ile çıkıyor.** Son satırları `[ "$WANT_X" -eq 1 ] && echo
+  …` biçimindeydi; Copilot'u seçmeyen her kurulum 1 koduyla bitiyordu. Setup bunu hata sanıp
+  PATH'i suçladı ve kullanıcıdan zaten doğru olan PATH'i düzeltmesini istedi. `install.ps1` de
+  artık `exit 0` ile bitiyor (setup formu gibi bir native çağrı `$LASTEXITCODE`'u değiştirmiş
+  olabilir). Test: `install-exit.test.mjs`.
+- **Setup'ın backend sorusu `AskUserQuestion`'a sığıyor.** Beş backend tek soruda soruluyordu;
+  araç en fazla dört seçeneğe izin verdiği için ilk çağrı reddedildi ve ikinci deneme
+  kullanıcıya "none" yazdırdı. Artık tek çağrıda iki soru var — login ile çalışanlar
+  (Antigravity, Codex, Copilot) ve key isteyenler (OpenCode, DeepSeek) — ikisinde de "Hiçbiri"
+  seçeneği bulunuyor.
+- **Setup'ın statik CLAUDE.md policy bloğu ve kapanış özeti `cli-dispatch:runner` agent'ını
+  gösteriyor**; babysitter'ı yasaklayıp yalnız `/cli-dispatch:run`'ı önermiyor. Özetteki her
+  "yapılması gereken" satırı installer'ın gerçekten bastığı çıktıya dayanmak zorunda. Setup
+  ayrıca key formunu kullanıcının tarayıcısının erişemeyeceği yerde (container ya da uzak
+  oturum) başlatmıyor ve seçilen tüm backend'ler login ile çalışıyorsa formu hiç açmıyor.
+  Test: `setup-doc.test.mjs`.
+- **SessionStart politikası orkestratöre agent'ı `run_in_background: true` ile ve `model`
+  parametresi vermeden çağırmasını söylüyor.** Canlı bir koşu `model: "sonnet"` geçti; bu,
+  agent'ın frontmatter'daki `model: haiku` değerini eziyor (#95 sızıntısı). Ayrıca agent'ı ön
+  planda bekledi.
+- **Runner agent'ı yalnızca iki komutunu çalıştırabilir ve son `cli-dispatch-wait` çıktısını
+  karakteri karakterine döndürmek zorunda.** Container'daki iki koşudan birinde haiku ayrıca
+  patch'i `cat` ile okuyup düz yazı bir özet döndürdü; session id, verify satırı ve patch yolu
+  kayboldu.
+- **`CX_SANDBOX` (config ya da env) Codex'in varsayılan sandbox modunu değiştiriyor.** Docker
+  container'ında codex'in bubblewrap sandbox'ı namespace oluşturamıyor; worker'ın her komutu,
+  `pwd` bile, hata verdi ve hiçbir şey değişmedi, başka bir mod seçmenin de yolu yoktu. Orada
+  `CX_SANDBOX="danger-full-access"` kullan (izolasyon sınırı container'dır); `--read-only` yine
+  önceliklidir. Bash ve `.ps1`. Test: `cx-sandbox-env.test.mjs`.
+
+### Değişti
+
+- **Setup formu claude.dev paletini ve stilini izliyor** (sıcak koyu `#141413`, ince kenarlar,
+  keskin köşeler, mono büyük harfli etiketler, `#d97757` vurgu; açık mod karşılığı).
+- **Form artık `*_MODELS` alanlarını göstermiyor, yeni config şablonları da bunları yazmıyor.**
+  O aday listelerinden seçim yapan LLM babysitter'lar 4.0.0'da kaldırıldığından beri onları
+  hiçbir şey okumuyor; kalan alanın etiketi "Default model". Mevcut config satırlarına
+  dokunulmuyor (zararsızlar).
+- **Form bölümleri `--backends` hangi sırayla verilirse verilsin Antigravity, Codex, Copilot,
+  OpenCode, DeepSeek sırasıyla geliyor.**
+
 ## [5.2.0] — 2026-10-05
 
 ### Eklendi

@@ -94,10 +94,6 @@ GEMINI_API_KEY=""
 # Override per-call with `ag-agent --model "<name>"`. Run `agy models` for the live list
 # (it prints slugs as of agy 1.1.8; older builds printed display names).
 AG_MODEL=""
-# Optional comma-separated candidate model list — when set, the delegating agent
-# picks the best fit from this list (same reasoning as an orchestrator-provided inline
-# list). Leave empty to use only the single AG_MODEL default above.
-AG_MODELS=""
 BLOCK
 )
       ;;
@@ -116,14 +112,13 @@ CODEX_API_KEY=""
 # and gpt-5.3-codex-spark remain available. gpt-5.2/gpt-5.3-codex have dropped.
 # Example: CX_MODEL="gpt-5.6-luna"
 CX_MODEL=""
-# Optional comma-separated candidate model list — when set, the delegating agent
-# picks the best fit from this list (same reasoning as an orchestrator-provided inline
-# list). Leave empty to use only the single CX_MODEL default above.
-CX_MODELS=""
 # Sandbox: default workspace-write (files can be written in --cwd).
 # Pass cx-agent --read-only for a REAL OS-level no-writes guarantee (macOS Seatbelt /
 # Linux bwrap+seccomp) — kernel-enforced, unlike other backends.
 # Or pass --sandbox <mode> for other codex sandbox modes.
+# Inside a Docker container codex's own Linux sandbox cannot start (bwrap: "No permissions
+# to create a new namespace"); there set CX_SANDBOX="danger-full-access" — the container is
+# the isolation boundary. CX_SANDBOX replaces only the default; --read-only still wins.
 BLOCK
 )
       ;;
@@ -138,10 +133,6 @@ OPENROUTER_API_KEY=""
 # List live models with: OPENROUTER_API_KEY=<key> opencode models openrouter
 # Free-tier example: google/gemma-4-31b-it:free
 OC_MODEL=""
-# Optional comma-separated candidate model list — when set, the delegating agent
-# picks the best fit from this list (same reasoning as an orchestrator-provided inline
-# list). Leave empty to use only the single OC_MODEL default above.
-OC_MODELS=""
 # No sandbox: --auto approves all permissions (required for headless use, not a
 # safety opt-in). Use --cwd + a git worktree for a no-writes guarantee.
 BLOCK
@@ -159,10 +150,6 @@ COPILOT_GITHUB_TOKEN=""
 # Default model slug for the copilot worker. Blank = copilot's own default.
 # Examples: claude-sonnet-4.6, gpt-5.4, auto. Override per-call with `cp-agent --model <slug>`.
 CP_MODEL=""
-# Optional comma-separated candidate model list — when set, the delegating agent
-# picks the best fit from this list (same reasoning as an orchestrator-provided inline
-# list). Leave empty to use only the single CP_MODEL default above.
-CP_MODELS=""
 # No sandbox: --allow-all-tools --no-ask-user enables headless use, not a safety opt-in.
 # Use --cwd + a git worktree for a no-writes guarantee.
 BLOCK
@@ -484,3 +471,6 @@ echo "Done."
 [ "$WANT_CX" -eq 1 ] && echo "  Codex:       run 'codex login' (or set CODEX_API_KEY), then test: cx-agent --read-only -q 'Reply with exactly: OK'"
 [ "$WANT_OC" -eq 1 ] && echo "  OpenCode:    add your OPENROUTER_API_KEY to $CONFIG, then test: oc-agent -q 'Reply with exactly: OK'"
 [ "$WANT_CP" -eq 1 ] && echo "  Copilot:     run 'gh auth login' (or set COPILOT_GITHUB_TOKEN/GH_TOKEN), ensure Copilot subscription, then test: cp-agent -q 'Reply with exactly: OK'"
+# The `[ … ] && echo` lines above leave a failed test as the script's status when the last
+# backend was not chosen; a completed install must still exit 0 (setup reads the exit code).
+exit 0

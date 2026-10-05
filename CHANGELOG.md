@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [5.2.1] — 2026-10-05
+
+### Fixed
+
+Found by running the real flow end to end — a headless session on the host and the published
+5.2.0 installed from GitHub into a clean Docker container (`/cli-dispatch:setup`, the
+SessionStart hook, then delegations through `cli-dispatch:runner`).
+
+- **`install.sh` exits 0 when it succeeds.** Its last lines were `[ "$WANT_X" -eq 1 ] && echo
+  …`, so any install that did not pick Copilot ended with status 1. Setup read that as a failure,
+  blamed PATH, and told the user to fix a PATH that was already correct. `install.ps1` also ends
+  with `exit 0` now (a native call such as the setup form could leave `$LASTEXITCODE` set).
+  Test: `install-exit.test.mjs`.
+- **The setup backend question fits `AskUserQuestion`.** It asked for five backends in one
+  question; the tool allows four options, so the first call was rejected and the retry made the
+  user type "none". It is now two questions in one call — login CLIs (Antigravity, Codex,
+  Copilot) and key CLIs (OpenCode, DeepSeek) — each with a "None of these" option.
+- **Setup's static CLAUDE.md policy block and closing summary point at the `cli-dispatch:runner`
+  agent** instead of banning a babysitter and recommending only `/cli-dispatch:run`; the summary
+  must base any "action needed" line on what the installer printed. Setup also no longer starts
+  the key form where the user's browser cannot reach it (a container or remote session) and
+  skips it when every chosen backend signs in by login. Test: `setup-doc.test.mjs`.
+- **The SessionStart policy tells the orchestrator to call the agent with `run_in_background:
+  true` and no `model` parameter.** A live run passed `model: "sonnet"`, which overrides the
+  agent's `model: haiku` frontmatter (the #95 leak), and blocked on the agent in the foreground.
+- **The runner agent may run only its two commands and must return the last
+  `cli-dispatch-wait` output character for character.** In one of two container runs haiku also
+  ran `cat` on the patch and returned a prose summary, losing the session id, verify line and
+  patch path.
+- **`CX_SANDBOX` (config or env) replaces the Codex default sandbox mode.** In a Docker container
+  codex's bubblewrap sandbox cannot create a namespace, so every worker command — even `pwd` —
+  failed and nothing changed; there was no way to choose another mode. Set
+  `CX_SANDBOX="danger-full-access"` there (the container is the isolation boundary);
+  `--read-only` still wins. Bash and `.ps1`. Test: `cx-sandbox-env.test.mjs`.
+
+### Changed
+
+- **The setup form follows the claude.dev palette and style** (warm dark `#141413`, hairline
+  borders, square corners, mono uppercase labels, `#d97757` accent; light-mode counterpart).
+- **The form no longer offers `*_MODELS`, and new config templates no longer write them.**
+  Nothing has read those candidate lists since the LLM babysitters that picked from them were
+  removed in 4.0.0; the remaining field is labelled "Default model". Existing config lines are
+  left alone (harmless).
+- **Form sections are ordered Antigravity, Codex, Copilot, OpenCode, DeepSeek** whatever order
+  `--backends` lists them in.
+
 ## [5.2.0] — 2026-10-05
 
 ### Added

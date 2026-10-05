@@ -134,7 +134,7 @@ export function buildPolicyContext(policyJson) {
 
   const parts = []
   parts.push(
-    `Route delegations by auditability, not reflex. Work with a machine-checkable check belongs on the deterministic runner — including exploratory work, as long as behavior-changing decisions stay in the orchestrator's brief. Delegate with Agent(subagent_type: "cli-dispatch:runner"): prompt = "backend: <ds|ag|cx|oc|cp>", "cwd: <abs path>", "verify: <cmd>", a "---" line, then a self-contained brief; it returns the compact verdict (retries a failing verify once). /cli-dispatch:run stays for direct use. Trivial single-file surgical fixes stay inline.`
+    `Route delegations by auditability, not reflex. Work with a machine-checkable check belongs on the deterministic runner — including exploratory work, as long as behavior-changing decisions stay in the orchestrator's brief. Delegate with Agent(subagent_type: "cli-dispatch:runner", run_in_background: true), NO model parameter (it is pinned to haiku): prompt = "backend: <ds|ag|cx|oc|cp>", "cwd: <abs path>", "verify: <cmd>", "---", brief. It returns the verdict (retries a failing verify once); apply the worktree patch yourself. /cli-dispatch:run stays for direct use. Trivial single-file fixes stay inline.`
   )
   // Sessions have vetoed the runner by quoting the first half of the
   // never-delegate-verification rule and dropping the remedy: "--verify only says
@@ -144,11 +144,11 @@ export function buildPolicyContext(policyJson) {
     `--verify proving less than you need is a reason to re-measure after, never a reason to keep the work inline. Send it, then verify it yourself: re-run the old code, diff output and exit code, read the test diff.`
   )
   parts.push(
-    `Still FAIL, or no verify? Escalate yourself: read verdict + diff, follow up with /cli-dispatch:resume. Do not spawn any other LLM subagent to watch a worker (babysitting cost ~9x worker output).`
+    `Still FAIL, or no verify? Escalate yourself: read verdict + diff, follow up with /cli-dispatch:resume. Do not spawn any other LLM subagent to watch a worker.`
   )
   if (issueReminder) {
     parts.push(
-      `Hit a friction point or bug in cli-dispatch itself? File an issue at https://github.com/rbinar/cli-dispatch/issues.`
+      `Bug or friction in cli-dispatch itself? File an issue at https://github.com/rbinar/cli-dispatch/issues.`
     )
   }
 

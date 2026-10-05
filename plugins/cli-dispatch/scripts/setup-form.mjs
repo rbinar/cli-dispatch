@@ -27,27 +27,27 @@ const BACKENDS = {
   deepseek: {
     title: 'DeepSeek',
     note: 'API key from <b>platform.deepseek.com</b> (API keys).',
-    fields: [['DEEPSEEK_API_KEY', 'API key', true], ['DS_MODEL', 'Model', false], ['DS_FLASH_MODEL', 'Flash model', false]],
+    fields: [['DEEPSEEK_API_KEY', 'API key', true], ['DS_MODEL', 'Default model', false], ['DS_FLASH_MODEL', 'Flash model', false]],
   },
   antigravity: {
     title: 'Antigravity (Gemini)',
     note: 'Sign in with Google via <code>agy</code>; the key is optional.',
-    fields: [['GEMINI_API_KEY', 'API key', true], ['AG_MODEL', 'Model', false], ['AG_MODELS', 'Models', false]],
+    fields: [['GEMINI_API_KEY', 'API key', true], ['AG_MODEL', 'Default model', false]],
   },
   codex: {
     title: 'Codex',
     note: 'Run <code>codex login</code> (preferred); the key is optional.',
-    fields: [['CODEX_API_KEY', 'API key', true], ['CX_MODEL', 'Model', false], ['CX_MODELS', 'Models', false]],
+    fields: [['CODEX_API_KEY', 'API key', true], ['CX_MODEL', 'Default model', false]],
   },
   opencode: {
     title: 'OpenCode (OpenRouter)',
     note: 'API key from <b>openrouter.ai/keys</b>.',
-    fields: [['OPENROUTER_API_KEY', 'API key', true], ['OC_MODEL', 'Model', false], ['OC_MODELS', 'Models', false]],
+    fields: [['OPENROUTER_API_KEY', 'API key', true], ['OC_MODEL', 'Default model', false]],
   },
   copilot: {
     title: 'GitHub Copilot',
     note: 'The <code>gh auth</code> token is reused automatically; the token is optional.',
-    fields: [['COPILOT_GITHUB_TOKEN', 'Token', true], ['CP_MODEL', 'Model', false], ['CP_MODELS', 'Models', false]],
+    fields: [['COPILOT_GITHUB_TOKEN', 'Token', true], ['CP_MODEL', 'Default model', false]],
   },
 }
 
@@ -69,6 +69,9 @@ if (!args.config || !names.length || names.some((n) => !BACKENDS[n]) || !(args.t
   console.error('usage: setup-form.mjs --config <path> --backends <deepseek,antigravity,codex,opencode,copilot|all> [--timeout SECS] [--no-open]')
   process.exit(1)
 }
+// Display order: the login-first backends on top, the paste-a-key ones (OpenCode, DeepSeek) last.
+const ORDER = ['antigravity', 'codex', 'copilot', 'opencode', 'deepseek']
+const shown = ORDER.filter((n) => names.includes(n))
 const FIELDS = new Map() // key -> { secret }
 for (const n of names) for (const [key, , secret] of BACKENDS[n].fields) FIELDS.set(key, { secret })
 
@@ -92,29 +95,43 @@ function currentValue(text, key) {
   return v
 }
 
-const CSS = `:root{color-scheme:light dark;--bg:#fff;--fg:#1d1d1f;--mut:#6e6e73;--bd:#d2d2d7;--ac:#0a64d6}
-@media(prefers-color-scheme:dark){:root{--bg:#1c1c1e;--fg:#f5f5f7;--mut:#a1a1a6;--bd:#3a3a3c;--ac:#4c9aff}}
-body{font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--fg);max-width:34rem;margin:2rem auto;padding:0 1rem}
-fieldset{border:1px solid var(--bd);border-radius:8px;margin:1rem 0;padding:.5rem 1rem 1rem}
-legend{font-weight:600;padding:0 .4rem}.note{color:var(--mut);font-size:13px;margin:.2rem 0 .6rem}
-label{display:block;margin-top:.6rem;font-size:13px}input{width:100%;box-sizing:border-box;padding:.4rem;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--fg);font:inherit}
-.badge{font-size:12px;color:var(--mut)}button{background:var(--ac);color:#fff;border:0;border-radius:6px;padding:.5rem 1.2rem;font:inherit;cursor:pointer}.err{color:#c62828}`
+const CSS = `:root{color-scheme:dark;--bg:#141413;--panel:#1a1a18;--fg:#faf9f5;--tx:#b0aea5;--mut:#87867f;--line:rgba(250,249,245,.09);--box:rgba(250,249,245,.16);--chip:rgba(250,249,245,.05);--ac:#d97757;--on-ac:#141413;--err:#e5786d;
+--sans:"Anthropic Sans",-apple-system,"Helvetica Neue",system-ui,sans-serif;--mono:"Anthropic Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+@media(prefers-color-scheme:light){:root{color-scheme:light;--bg:#faf9f5;--panel:#f0eee6;--fg:#141413;--tx:#3d3d3a;--mut:#73726c;--line:rgba(20,20,19,.1);--box:rgba(20,20,19,.2);--chip:rgba(20,20,19,.04);--err:#b5402f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.6 var(--sans)}
+main{max-width:40rem;margin:0 auto;padding:3rem 1rem 4rem}
+.eyebrow,legend,.k,.badge,button{font-family:var(--mono)}
+.eyebrow{font-size:11px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
+h1{color:var(--fg);font-weight:500;font-size:1.75rem;line-height:1.25;margin:.5rem 0 .5rem}
+fieldset{border:1px solid var(--line);background:var(--panel);margin:1.5rem 0;padding:1rem 1.25rem 1.25rem;min-width:0}
+legend{padding:0 .5rem;font-size:11px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--fg)}
+.note{color:var(--mut);font-size:14px;margin:.25rem 0 .5rem}
+.note b,.note code{font-family:var(--mono);font-weight:400;font-size:.92em;color:var(--fg);background:var(--chip);border:1px solid var(--line);padding:0 .3em}
+label{display:block;margin-top:1rem;font-size:14px;color:var(--fg)}
+.k{color:var(--mut);font-size:12px;margin-left:.4rem}
+.badge{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);border:1px solid var(--box);padding:0 .35em;margin-left:.4rem}
+.badge.set{color:var(--ac);border-color:var(--ac)}
+.hint{display:block;color:var(--mut);font-size:12px}
+input{display:block;width:100%;margin-top:.4rem;padding:.6rem .75rem;border:1px solid var(--box);border-radius:0;background:var(--bg);color:var(--fg);font:14px var(--mono)}
+input:focus{outline:none;border-color:var(--ac)}
+button{margin-top:.5rem;background:var(--ac);color:var(--on-ac);border:0;border-radius:0;padding:.75rem 1.5rem;font-size:12px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
+button:hover{filter:brightness(1.08)}.err{color:var(--err)}`
 
-const page = (title, body) => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${CSS}</style></head><body>${body}</body></html>`
+const page = (title, body) => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${CSS}</style></head><body><main>${body}</main></body></html>`
 
 function renderForm(text) {
-  const sections = names.map((n) => {
+  const sections = shown.map((n) => {
     const b = BACKENDS[n]
     const rows = b.fields.map(([key, label, secret]) => {
       const cur = currentValue(text, key)
       if (secret) {
-        return `<label>${esc(label)} (${key}) <span class="badge">${cur ? 'set' : 'not set'} — leave empty to keep</span><input type="password" name="${key}" value="" autocomplete="new-password"></label>`
+        return `<label>${esc(label)}<span class="k">${key}</span><span class="badge${cur ? ' set' : ''}">${cur ? 'set' : 'not set'}</span><span class="hint">Leave empty to keep the current value.</span><input type="password" name="${key}" value="" autocomplete="new-password"></label>`
       }
-      return `<label>${esc(label)} (${key})<input type="text" name="${key}" value="${esc(cur)}" autocomplete="off"></label>`
+      return `<label>${esc(label)}<span class="k">${key}</span><input type="text" name="${key}" value="${esc(cur)}" autocomplete="off"></label>`
     }).join('')
     return `<fieldset><legend>${esc(b.title)}</legend><div class="note">${b.note}</div>${rows}</fieldset>`
   }).join('')
-  return page('cli-dispatch setup', `<h1>cli-dispatch setup</h1><p class="note">Values are written to your local config file only. This page works once.</p><form method="post" action="save">${sections}<button type="submit">Save</button></form>`)
+  return page('cli-dispatch setup', `<div class="eyebrow">cli-dispatch · setup</div><h1>Worker keys and models</h1><p class="note">Values are written to your local config file only. This page works once.</p><form method="post" action="save">${sections}<button type="submit">Save</button></form>`)
 }
 
 // Replace EVERY line assigning KEY (keeping any indent/export prefix) — bash keeps the last
@@ -203,7 +220,7 @@ const server = http.createServer((req, res) => {
     try { writeConfig(applyValues(readConfig(), values)) } catch (e) {
       return send(res, 500, page('Error', `<p class="err">Could not write the config: ${esc(e.message)}</p>`))
     }
-    send(res, 200, page('Saved', '<h1>Saved</h1><p>You can close this tab.</p>'))
+    send(res, 200, page('Saved', '<div class="eyebrow">cli-dispatch · setup</div><h1>Saved</h1><p class="note">You can close this tab.</p>'))
     res.on('finish', () => { server.close(); process.exit(0) })
   })
 })

@@ -26,17 +26,20 @@ Follow these steps:
    command -v copilot >/dev/null 2>&1 && echo "copilot: found ($(copilot --version 2>/dev/null))" || echo "copilot: MISSING"
    ```
 
-2. **Ask the user which backend(s) to install** with `AskUserQuestion` (header: "Backends",
-   multiSelect). Offer: **DeepSeek**, **Antigravity (Gemini)**, **Codex (OpenAI)**,
-   **OpenCode (OpenRouter)**, **GitHub Copilot**. In the option descriptions, note which underlying CLI each
-   needs and whether it was found in step 1 (e.g. if `codex` is MISSING, say it can be
-   installed after). For OpenCode, note it needs an OpenRouter API key (paste-yourself, no
-   OAuth) and that if `opencode` was MISSING in step 1, it can be installed after. For
-   Copilot, note it needs an active GitHub Copilot subscription plus `gh auth login` or
-   `COPILOT_GITHUB_TOKEN`/`GH_TOKEN`. Map the
-   (possibly multiple) answers to a comma-list: DeepSeek→`deepseek`, Antigravity→`antigravity`,
-   Codex→`codex`, OpenCode→`opencode`, Copilot→`copilot` (e.g. all five → `deepseek,antigravity,codex,opencode,copilot`,
-   also accepted as `all`).
+2. **Ask the user which backend(s) to install** with ONE `AskUserQuestion` call carrying TWO
+   multiSelect questions — the tool allows at most 4 options per question, so the five backends
+   never fit in one:
+   - Question 1 (header "Login CLIs"): **Antigravity (Gemini)**, **Codex (OpenAI)**,
+     **GitHub Copilot**, **None of these**.
+   - Question 2 (header "Key CLIs"): **OpenCode (OpenRouter)**, **DeepSeek**, **None of these**.
+   In the option descriptions, note which underlying CLI each needs and whether it was found in
+   step 1 (e.g. if `codex` is MISSING, say it can be installed after). OpenCode needs an
+   OpenRouter API key (paste-yourself, no OAuth); Copilot needs an active GitHub Copilot
+   subscription plus `gh auth login` or `COPILOT_GITHUB_TOKEN`/`GH_TOKEN`; DeepSeek needs a
+   DeepSeek API key. Ignore "None of these" when combining the answers, and map the rest to a
+   comma-list: DeepSeek→`deepseek`, Antigravity→`antigravity`, Codex→`codex`,
+   OpenCode→`opencode`, Copilot→`copilot` (all five → `all`). If both questions come back
+   "None of these", stop: nothing to install.
 
 3. **Cross-reference step 2's picks against step 1's detection, and offer to auto-install any missing CLI(s):**
    - Map each backend chosen in step 2 to the underlying CLI step 1 checked: DeepSeek→`claude`,
@@ -134,6 +137,12 @@ Follow these steps:
      field too — do not ask for it yourself). Antigravity, Codex and Copilot keys are optional
      there (see their bullets below).
      **You (Claude) must NEVER write/paste the API key** — only the user enters it, in the form.
+     **The form listens on `127.0.0.1` of the machine it runs on.** If that is not the user's
+     machine — a Docker container without that port published, a remote/SSH or cloud session —
+     their browser cannot reach it: do not start it there. Tell the user the config path and
+     the exact `KEY=""` lines to fill in themselves instead (still never paste a key yourself).
+     Skip the form entirely when every chosen backend authenticates by login (Antigravity,
+     Codex, Copilot) and the user has no key to add.
    - **Antigravity** — normally needs no key: the user signs in once by running `agy`
      interactively (Google). For headless/CI, they can set `GEMINI_API_KEY` in the config
      instead. If `agy` was MISSING in step 1, share the install command the installer printed.
@@ -259,13 +268,15 @@ Follow these steps:
 
    - **Trivial single-file surgical fixes** — do them inline; delegation overhead exceeds
      the work itself.
-   - **Mechanical work with a machine-checkable check** — the deterministic runner:
-     `/cli-dispatch:run <backend> "<task>" --verify '<cmd>'` launches the worker, runs the
-     verify command, and prints a verdict, spending ZERO LLM babysitter tokens.
-   - **No verify command, or verify failed** — escalate yourself: read the verdict + diff
-     directly and follow up with `/cli-dispatch:resume`. Never spawn an LLM subagent to
-     babysit a worker (the `*-runner` subagents were retired in 4.0.0 — babysitting measured
-     ~9x the worker's own output in Anthropic tokens).
+   - **Work with a machine-checkable check** — delegate through the thin runner agent:
+     `Agent(subagent_type: "cli-dispatch:runner", run_in_background: true)` with NO `model`
+     parameter (it is pinned to haiku). Its prompt is a `backend:` / `cwd:` / `verify:` header,
+     a `---` line, then a self-contained brief. It returns the compact verdict and retries a
+     failing verify once; the changes stay in the worker's worktree for you to apply.
+     `/cli-dispatch:run <backend> "<task>" --verify '<cmd>'` does the same without the agent.
+   - **Afterwards, verify it yourself** — re-run the check, read the diff. Still failing, or
+     no verify command — follow up with `/cli-dispatch:resume`. Never spawn any other LLM
+     subagent to watch a worker.
 
    **If a delegated worker's output needs a follow-up** (an edit didn't persist, wrong scope,
    a constraint was violated, a small correction is needed) — continue with
@@ -292,3 +303,10 @@ Follow these steps:
    CLAUDE.md file), the injection status (enabled/skipped), whether the old
    orchestration-priority block was migrated, and surface any double-injection warning. If the
    user skipped everything, say so and make no changes.
+
+8. **Close with a short summary**: which backends are installed and signed in, what still
+   needs the user (a key to add, a sign-in), and how to delegate — through the
+   `cli-dispatch:runner` agent by default (`/cli-dispatch:run` for direct use), with
+   `/cli-dispatch:doctor` to check the install. Base any "action needed" line on what the
+   installer actually printed (e.g. its `WARNING: … is not in PATH` line), never on a guess
+   about why a command failed.

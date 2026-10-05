@@ -86,6 +86,8 @@ test('prints a loopback URL carrying a random token and serves the form there', 
     assert.doesNotMatch(res.body, /sk-existing-ds/)
     // Non-secret values are prefilled so the user sees what is configured.
     assert.match(res.body, /deepseek-v4-pro/)
+    // *_MODELS (a candidate list only the pre-4.0.0 LLM babysitters ever read) is not offered.
+    assert.doesNotMatch(res.body, /_MODELS"/)
     // Only the selected backends are offered.
     assert.doesNotMatch(res.body, /name="CODEX_API_KEY"/)
   } finally { s.cleanup() }
@@ -244,5 +246,17 @@ test('the page lets the browser send its real Origin on the form POST', async ()
     const ok = await request({ port, method: 'POST', pathname: `/${token}/save`, headers: { Origin: `http://127.0.0.1:${port}` }, body: form({ DS_MODEL: 'x' }) })
     assert.equal(ok.status, 200)
     assert.equal(await s.exited, 0)
+  } finally { s.cleanup() }
+})
+
+test('sections are ordered with OpenCode and DeepSeek last, whatever order --backends lists them in', async () => {
+  const s = start({ backends: 'deepseek,opencode,antigravity,copilot,codex' })
+  try {
+    const { port, token } = await s.ready
+    const { body } = await request({ port, pathname: `/${token}/` })
+    const at = (key) => body.indexOf(`name="${key}"`)
+    const order = ['GEMINI_API_KEY', 'CODEX_API_KEY', 'COPILOT_GITHUB_TOKEN', 'OPENROUTER_API_KEY', 'DEEPSEEK_API_KEY'].map(at)
+    assert.ok(order.every((i) => i >= 0), 'every selected backend is shown')
+    assert.deepEqual([...order].sort((a, b) => a - b), order)
   } finally { s.cleanup() }
 })

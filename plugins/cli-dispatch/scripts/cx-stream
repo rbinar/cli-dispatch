@@ -194,7 +194,10 @@ PREEXISTING_DIRTY="$(snapshot_dirty_paths "$CWD")"
 # Default to workspace-write for normal agentic work. --read-only is a REAL codex sandbox
 # (verified: codex honors -s read-only), so honor it as a genuine no-writes guarantee
 # (unlike the agy backend, which has no tool-level write-deny). An explicit --sandbox wins.
-SANDBOX_MODE="workspace-write"
+# CX_SANDBOX (config or env) replaces only the DEFAULT: inside a Docker container codex's own
+# bubblewrap sandbox cannot create a namespace, so every command fails; there the container is
+# the isolation boundary and CX_SANDBOX=danger-full-access is the way out. --read-only still wins.
+SANDBOX_MODE="${CX_SANDBOX:-workspace-write}"
 [ "$READ_ONLY" -eq 1 ] && SANDBOX_MODE="read-only"
 [ -n "$SANDBOX" ] && SANDBOX_MODE="$SANDBOX"
 

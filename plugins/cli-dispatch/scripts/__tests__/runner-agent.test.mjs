@@ -178,6 +178,10 @@ test('agents/runner.md is a thin haiku forwarder with only Bash', () => {
   assert.match(body, /cli-dispatch-wait --run/)
   assert.match(body, /--fix-attempts 1/)
   assert.match(body, /<<'CDBRIEF'/, 'the brief goes through a quoted heredoc, never shell-interpolated')
+  // Found end to end: haiku ran a third command (cat the patch) and returned a prose summary,
+  // so the orchestrator lost the session id, verify line and patch path.
+  assert.match(body, /Run no other command/)
+  assert.match(body, /character for character/)
 })
 
 test('drift: delegating through the runner agent counts as runner adoption, not as drift', () => {
@@ -194,4 +198,8 @@ test('policy routes delegation to the runner agent and no longer forbids a babys
   assert.match(ctx, /cli-dispatch:runner/)
   assert.doesNotMatch(ctx, /never spawn an LLM babysitter/)
   assert.match(ctx, /verify it yourself/, 'the re-measure rule stays')
+  // Found in a live headless run: the orchestrator passed model: "sonnet", which overrides the
+  // agent's haiku frontmatter, and blocked on the agent in the foreground.
+  assert.match(ctx, /NO model parameter/)
+  assert.match(ctx, /run_in_background: true/)
 })
