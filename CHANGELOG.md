@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [5.2.0] — 2026-10-05
+
+### Added
+
+- **A thin `cli-dispatch:runner` subagent (`agents/runner.md`, haiku, Bash-only) is the default
+  delegation path again.** The orchestrator calls `Agent(subagent_type: "cli-dispatch:runner")`
+  with a `backend:` / `cwd:` / `verify:` header, a `---` line and a self-contained brief; the
+  agent returns the compact verdict verbatim.
+  - Why it is not the babysitter that 4.0.0 (#114) retired: those five `*-runner` agents took
+    ~62 turns per run (polling, reading diffs, running verify themselves) and cost ~9x the
+    worker's own output in Anthropic tokens. This one only forwards, in about 3-4 turns: one Bash
+    call writes the brief to a file (quoted heredoc) and starts `cli-dispatch-run --detach`, then
+    blocks on `cli-dispatch-wait --run <id>` and returns the output. It never reads the verdict,
+    diff or transcripts; the orchestrator still re-measures the result itself.
+  - `cli-dispatch-run --detach` re-launches the runner under `nohup` into
+    `<sessions-root>/.runs/<id>/` (`pid`, `log`, `session`, `summary.txt`, `exit`) and returns
+    `run: <id>` at once, so a run longer than the Bash tool's 10-minute ceiling is no longer
+    killed without a verdict. `summary.txt` then `exit` are written from an EXIT trap on every
+    exit path, in that order.
+  - `cli-dispatch-wait --run <id> [--timeout SECS]` silently blocks on that run, prints its
+    summary and exits with the run's exit code (2 on timeout, so the caller can wait again).
+  - `cli-dispatch-run --fix-attempts N` (default 0, unchanged behavior) retries a verify FAIL in
+    shell: it resumes the worker in its worktree with the failing commands and the verify tail,
+    re-verifies, and loops; `verdict.json` records `fixAttempts: {used, max}`. The agent passes
+    `--fix-attempts 1` and never retries by itself.
+  - `cli-dispatch-run-summary.sh` is the summary printer extracted from `/cli-dispatch:run`; the
+    command and the detached run share it (`install.sh` copies it to
+    `~/.local/share/cli-dispatch/`).
+  - `--detach` and `--run` are bash-only (no `.ps1` twin), like the `*-worktree-run.sh` runners.
+  - **After upgrading, re-run `/cli-dispatch:setup`:** the `cli-dispatch-run` / `cli-dispatch-wait`
+    already in `~/.local/bin` predate `--detach` / `--run`, and a plugin update never reinstalls them.
+- The SessionStart policy now routes delegation to the agent (and no longer forbids a
+  babysitter outright: it forbids any *other* LLM subagent watching a worker). `drift-report`
+  counts a `cli-dispatch:runner` spawn as runner adoption, not as an unrouted subagent, and
+  `gain` reports the agent's turns and Anthropic output on its own line (the LEGACY section
+  stays for pre-4.0.0 babysitters). `cli-dispatch-clean` ignores dot-directories such as `.runs`.
+
 ## [5.1.0] — 2026-10-05
 
 ### Changed

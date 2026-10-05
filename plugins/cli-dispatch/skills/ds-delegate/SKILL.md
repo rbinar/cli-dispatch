@@ -62,18 +62,26 @@ Session directory: `${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<id>/`
 - `transcript.jsonl` — raw stream-json (resume/audit; **NOT read while polling**)
 - `meta.json` — prompt preview, cwd, branch, model, start/end
 
-## The deterministic runner (`/cli-dispatch:run`) — no LLM babysitter
-There is no `ds-runner` subagent anymore — running/monitoring/isolating/verifying a DeepSeek
-delegation inside its own LLM sub-context measured at ~9x the worker's own output in Anthropic
-tokens for zero quality gain, which defeated the point of delegating at all (issue #114). For
-mechanical work with a machine-checkable verify command, route it through the deterministic
-runner instead:
+## The deterministic runner — `cli-dispatch:runner` agent (default) and `/cli-dispatch:run` (direct)
+Delegation runs through `cli-dispatch-run`: it launches the worker, isolates repo work in a git
+worktree, blocks until it finishes, runs `--verify` itself and writes a compact verdict. All of
+that is plain shell. An LLM *watching* a worker is what measured ~9x the worker's own output in
+Anthropic tokens (issue #114, ~62 turns per run), so the default path is a **thin forwarder**, not
+a babysitter. For mechanical work with a machine-checkable verify command:
+```
+Agent(subagent_type: "cli-dispatch:runner", prompt:
+  "backend: ds\ncwd: /abs/path\nverify: <cmd>\n---\n<self-contained brief>")
+```
+The agent (haiku, Bash-only) writes the brief to a file, starts the runner with `--detach` (so a
+run longer than the Bash tool's 10-minute ceiling is not killed), blocks on
+`cli-dispatch-wait --run <id>` and returns the compact verdict verbatim — about 3-4 turns. A
+failing verify is retried once inside the runner (`--fix-attempts 1`), never by the agent. Then
+verify the result yourself.
+
+For direct use (no agent, zero LLM tokens, you background it yourself):
 ```
 /cli-dispatch:run ds "<self-contained task>" --verify '<cmd>'
 ```
-`cli-dispatch-run` launches DeepSeek, isolates repo work in a git worktree, blocks until it
-finishes (or times out), runs `--verify`, and prints a compact verdict — zero LLM tokens spent
-on orchestration.
 
 **Escalation path** (judgment-heavy work, no verify command): call `ds-agent` directly (or
 still go through `/cli-dispatch:run` without `--verify`), then read the compact result and the
@@ -184,9 +192,9 @@ rule applies (`--cwd <worktree>`, review the diff yourself) — for Antigravity,
 Copilot, worktree isolation is the *only* safety boundary, since none of the three has any
 OS- or tool-level write-deny.
 
-**Delegation path (all four):** there is no `ag-/cx-/oc-/cp-runner` subagent anymore — use
-`/cli-dispatch:run <backend> "<task>" --verify '<cmd>'` for mechanical work, or the escalation
-path (call the `*-agent` CLI directly and verify the result yourself) for judgment-heavy work.
+**Delegation path (all four):** use `Agent(subagent_type: "cli-dispatch:runner")` with
+`backend: ag|cx|oc|cp` for mechanical work (or `/cli-dispatch:run <backend> "<task>" --verify '<cmd>'`
+directly), or the escalation path (call the `*-agent` CLI directly and verify the result yourself) for judgment-heavy work.
 
 ## Triviality gate
 
@@ -220,7 +228,7 @@ Don't trust any output until verified.
 - `/cli-dispatch:cx-run <task>` — delegate to the **Codex (OpenAI)** worker (real read-only sandbox; same workflow).
 - `/cli-dispatch:oc-run <task>` — delegate to the **OpenCode (OpenRouter)** worker (no sandbox — worktree isolation only; same workflow).
 - `/cli-dispatch:cp-run <task>` — delegate to the **GitHub Copilot** worker (no sandbox — worktree isolation only; same workflow).
-- `/cli-dispatch:run <backend> "<task>" --verify '<cmd>'` — the deterministic runner: launch + worktree-isolate + block + verify, zero LLM babysitter tokens. The primary way to delegate mechanical work.
+- `/cli-dispatch:run <backend> "<task>" --verify '<cmd>'` — the deterministic runner: launch + worktree-isolate + block + verify, zero LLM tokens. The direct path; the default from an orchestrator is the `cli-dispatch:runner` agent (see above).
 - `/cli-dispatch:sessions` — list past/active sessions (all backends; shows a `backend` column). Per-backend: `ds-sessions` / `ag-sessions` / `cx-sessions` / `oc-sessions` / `cp-sessions`.
 - `/cli-dispatch:watch <id>` — show a session's compact live status (cost-conscious).
 - `/cli-dispatch:wait <id>` — block until a session reaches a terminal state (or times out), then print a compact summary; one blocking call instead of polling `watch`.
@@ -235,6 +243,6 @@ Don't trust any output until verified.
 - `/cli-dispatch:ag-balance` — Antigravity quota (% left per model + plan), via the local language-server `GetUserStatus` RPC (needs the Antigravity server running).
 - `/cli-dispatch:oc-balance` — OpenCode / OpenRouter credits.
 - `/cli-dispatch:cp-balance` — Copilot usage note (not queryable from the CLI; use GitHub Billing).
-- `/cli-dispatch:gain` — worker token totals by backend, plus Anthropic babysitting cost from legacy runner-subagent sessions.
+- `/cli-dispatch:gain` — worker token totals by backend, plus Anthropic cost of the `cli-dispatch:runner` agent and of legacy runner-subagent sessions.
 - `/cli-dispatch:doctor` — health check for all backends (PATH, keys, CLI auth ✓/✗).
 - `/cli-dispatch:help` — one-screen command reference.

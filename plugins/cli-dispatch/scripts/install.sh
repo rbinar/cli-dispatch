@@ -272,6 +272,9 @@ echo "Installed gain reporter -> cli-dispatch-gain (engine -> $LIBEXEC_DIR/gain-
 echo "▶ cli-dispatch-run…"
 install -m 0755 "$SCRIPT_DIR/cli-dispatch-run" "$BIN_DIR/cli-dispatch-run"
 install -m 0644 "$SCRIPT_DIR/verdict-writer.mjs" "$LIBEXEC_DIR/verdict-writer.mjs"
+# The detached run's summary.txt is rendered by this script; it is not a binary (no PATH entry),
+# the installed runner finds it in the libexec dir like verdict-writer.mjs.
+install -m 0755 "$SCRIPT_DIR/cli-dispatch-run-summary.sh" "$LIBEXEC_DIR/cli-dispatch-run-summary.sh"
 # cli-dispatch-run resolves its per-backend worktree runners next to itself ($BIN_DIR) —
 # they must ship with it or every non-installed backend fails with "backend runner not found".
 for wr in ds-worktree-run.sh ag-worktree-run.sh cx-worktree-run.sh oc-worktree-run.sh cp-worktree-run.sh; do

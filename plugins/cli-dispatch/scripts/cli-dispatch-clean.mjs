@@ -56,7 +56,7 @@ const stale = [], old = []
 let kept = 0
 let patchCandidates = 0
 for (const d of fs.readdirSync(root)) {
-  if (d === 'verdict-archive') continue
+  if (d === 'verdict-archive' || d.startsWith('.')) continue // .runs etc.: bookkeeping, not sessions
   const dir = path.join(root, d)
   try { if (!fs.statSync(dir).isDirectory()) continue } catch { continue }
   const statusFile = path.join(dir, 'status.json')

@@ -9,9 +9,10 @@ no build step, no bundler). It ships slash commands, a SessionStart hook, a skil
 standalone CLI scripts that let Claude Code delegate work to five external "worker" CLIs —
 DeepSeek (via `claude` pointed at DeepSeek's API), Antigravity/Gemini (`agy`), OpenAI Codex
 (`codex`), OpenCode (`opencode`, via OpenRouter), and GitHub Copilot (`copilot`) — since
-Claude Code's built-in subagent tool only supports Anthropic models. It ships **no subagent
-definitions**: the five `agents/*-runner.md` babysitters were deleted in 4.0.0 (see
-"The deterministic runner + escalation path" below).
+Claude Code's built-in subagent tool only supports Anthropic models. It ships **one thin
+subagent**, `agents/runner.md` (`cli-dispatch:runner`, haiku, Bash-only — a forwarder, see "The
+deterministic runner + escalation path" below); the five `agents/*-runner.md` LLM babysitters
+were deleted in 4.0.0.
 
 Everything the plugin installs lives under `plugins/cli-dispatch/`:
 - `commands/*.md` — slash commands (`/cli-dispatch:*`). Each is markdown with a fenced
@@ -30,7 +31,10 @@ Everything the plugin installs lives under `plugins/cli-dispatch/`:
 - `scripts/` — the actual installed CLIs. Per-backend: `ds-agent`, `ag-agent`, `cx-agent`,
   `oc-agent`, `cp-agent` + their `*-stream` siblings and `*-worktree-run.sh` runners.
   Backend-agnostic: `cli-dispatch-run` (the deterministic runner — the delegation path),
-  `cli-dispatch-wait`, `cli-dispatch-clean`, `cli-dispatch-gain`,
+  `cli-dispatch-wait`, `cli-dispatch-clean`, `cli-dispatch-gain`, `cli-dispatch-run-summary.sh` (the
+  compact verdict summary shared by `/cli-dispatch:run` and a detached run's `summary.txt`;
+  unlike the pre-execution scripts below, `install.sh` DOES copy it — to
+  `~/.local/share/cli-dispatch/`, not PATH — because the installed runner needs it),
   and `cli-dispatch-statusline.sh` (the `[CD]` statusline fragment — bash-only by design,
   glob-loaded from the plugin cache rather than installed to `~/.local/bin`). The
   pre-execution scripts (`cli-dispatch-status.sh` + its `.ps1` twin, `cli-dispatch-doctor.sh`,
@@ -132,9 +136,23 @@ is no machine-checkable verify (or verify fails), the *orchestrator* escalates: 
 compact verdict + diff directly and follows up with `/cli-dispatch:resume`. The plugin used
 to ship five LLM `*-runner` babysitter subagents for this instead; they were retired in
 4.0.0 (issue #114) after `gain` measured their transcripts at ~9x the workers' own output in
-Anthropic tokens. `gain`'s babysitter/worker ratio and the `cli-dispatch-wait` blocking
-primitive remain for accounting of legacy sessions and for any consumer that must block on
-a session reaching a terminal state.
+Anthropic tokens (~62 turns per run: polling, reading diffs, running verify themselves).
+
+**The thin `cli-dispatch:runner` agent (5.2.0).** `agents/runner.md` (haiku, `tools: Bash`) is
+the default delegation path from an orchestrator, modelled on codex-plugin-cc's `codex-rescue`:
+a forwarder, not a babysitter. It makes ONE Bash call that writes the brief to a file and runs
+`cli-dispatch-run --detach … --fix-attempts 1`, then blocks on `cli-dispatch-wait --run <id>`
+(re-calling on exit 2, capped) and returns the output verbatim — ~3-4 turns vs ~62. It is cheap
+because every mechanical step lives in shell: `--detach` re-execs the runner under `nohup`
+into `<sessions-root>/.runs/<id>/` (`pid`, `log`, `session`, then `summary.txt` and last `exit`,
+written from an EXIT trap so a waiter that sees `exit` can always read the summary — the
+Bash tool's 10-minute ceiling no longer kills a long run), and `--fix-attempts N` retries a
+verify FAIL in shell (resume the worker in its worktree with the verify tail, re-verify;
+`verdict.json` carries `fixAttempts: {used, max}`). The agent never reads the verdict, diff or
+transcripts, so the orchestrator still re-measures the result itself. `/cli-dispatch:run`
+stays for direct use. `gain` reports this agent's turns/output on its own line (recognised by
+its `--detach` / `wait --run` Bash calls); the "LEGACY" section is still only the pre-4.0.0
+babysitters, and `cli-dispatch-wait` still blocks on a single session for any consumer.
 
 **The worker evidence record.** `cli-dispatch-run` appends a standing instruction (opt out with
 `CLI_DISPATCH_NO_WORKER_REPORT=1`) asking the worker to write `worker-report.json` —
@@ -240,6 +258,11 @@ bash script and a `.ps1` twin for native Windows, installed by `install.sh` and
 `install.ps1` respectively — keep both in sync when changing one. Antigravity, OpenCode,
 and GitHub Copilot backends are Unix-only (macOS/Linux/WSL) for now; only DeepSeek and
 Codex run natively on Windows.
+
+`cli-dispatch-run --detach` and `cli-dispatch-wait --run` are bash-only and have **no `.ps1`
+counterpart**: the detached-run machinery serves the `cli-dispatch:runner` agent, and
+`cli-dispatch-run.ps1` already needs bash for repo tasks (same reasoning as the next
+paragraph — do not "restore parity").
 
 The `*-worktree-run.sh` runners are **outside** the pairing rule as of 4.6.0: they are bash-only
 on every platform. `ds-worktree-run.ps1`/`cx-worktree-run.ps1` used to exist and were deleted

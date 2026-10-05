@@ -11,6 +11,7 @@ import {
   analyzeAgentEvents,
   computeBabysitRatio,
   RUNNER_RE,
+  THIN_RUNNER_RE,
   PINNED_RUNNER_MODEL_RE,
 } from '../gain-report.mjs'
 
@@ -184,4 +185,24 @@ test('gain report keeps the trivial delegation count for session fixtures', () =
     fs.rmSync(root, { recursive: true, force: true })
     fs.rmSync(fakeHome, { recursive: true, force: true })
   }
+})
+
+// --- 5.2.0: the thin `cli-dispatch:runner` agent is recognised, and is not a legacy babysitter ---
+test('analyzeAgentEvents: thin runner agent (detached run + wait --run) is flagged isThinRunner', () => {
+  const r = analyzeAgentEvents([
+    {message:{role:'assistant', content:[
+      {type:'tool_use', name:'Bash', input:{command:"cat > /tmp/b <<'CDBRIEF'\nuse ds-agent for this\nCDBRIEF\ncli-dispatch-run --detach --backend ds --cwd /r --prompt-file /tmp/b --fix-attempts 1"}},
+    ], usage:{output_tokens:7, input_tokens:1}, model:'claude-haiku-4-5-20251001'}},
+    {message:{role:'assistant', content:[
+      {type:'tool_use', name:'Bash', input:{command:'cli-dispatch-wait --run run-1-2 --timeout 570'}},
+    ]}},
+  ])
+  assert.equal(r.isThinRunner, true)
+  assert.equal(r.assistantTurns, 2)
+  assert.equal(r.models.get('claude-haiku-4-5-20251001').output, 7)
+  assert.ok(THIN_RUNNER_RE.test('bash /x/scripts/cli-dispatch-run --detach --backend cx'))
+})
+test('analyzeAgentEvents: legacy runner and plain session wait are not thin runners', () => {
+  assert.equal(analyzeAgentEvents([{message:{role:'assistant', content:[{type:'tool_use', name:'Bash', input:{command:'ds-agent --prompt x'}}]}}]).isThinRunner, false)
+  assert.equal(analyzeAgentEvents([{message:{role:'assistant', content:[{type:'tool_use', name:'Bash', input:{command:'cli-dispatch-wait abc --timeout 600'}}]}}]).isThinRunner, false)
 })
