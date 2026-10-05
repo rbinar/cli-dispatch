@@ -459,9 +459,13 @@ honest empty `command` is more useful than a confident one that was never execut
       $script:InPlaceRun = $true
     }
 
+    # Issue #167 (mirrors the bash runner): a failed worker turn may still have left finished
+    # work, so continue to wait -> verify -> verdict when the session can be found.
+    $workerExit = 0
     if ($runRc -ne 0) {
       Write-Host (Get-Content -Raw $stderrFile)
-      exit $runRc
+      Write-Host "cli-dispatch-run: worktree runner failed (code $runRc) - verifying whatever it left"
+      $workerExit = $runRc
     }
 
     $sessionId = $null
@@ -481,11 +485,29 @@ honest empty `command` is more useful than a confident one that was never execut
 
     if (-not $sessionId) {
       Write-Host 'cli-dispatch-run: failed to discover session id'
+      if ($workerExit -ne 0) { exit $workerExit }
       exit 5
     }
 
     $SessionDir = Join-Path $SessionsRoot $sessionId
     $SessionId = $sessionId
+
+    if ($workerExit -ne 0) {
+      $env:CLI_DISPATCH_WORKER_EXIT = "$workerExit"
+      # The runner has exited, so a status still saying "running" would block the wait forever.
+      $statusFile = Join-Path $SessionDir 'status.json'
+      if ((Read-JsonField -Path $statusFile -Key 'state') -eq 'running') {
+        try {
+          $st = Get-Content -Raw $statusFile | ConvertFrom-Json
+          $st.state = 'error'
+          if (-not $st.PSObject.Properties['error'] -or -not $st.error) {
+            $st | Add-Member -NotePropertyName error -NotePropertyValue "worker runner exited $workerExit with the session still running" -Force
+          }
+          $st | ConvertTo-Json -Depth 20 | Set-Content -Path "$statusFile.tmp" -Encoding UTF8
+          Move-Item -Force "$statusFile.tmp" $statusFile
+        } catch { }
+      }
+    }
   }
 
   $StatusPath = Join-Path $SessionDir 'status.json'

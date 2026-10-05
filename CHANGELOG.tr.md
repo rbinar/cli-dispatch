@@ -7,6 +7,23 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [5.3.0] — 2026-10-05
+
+### Değişti
+
+- **Başarısız sayılan bir worker turu artık verify'ı ve verdict'i atlatmıyor** (issue #167).
+  Worktree runner sıfırdan farklı bir kodla çıktığında `cli-dispatch-run` hemen duruyordu:
+  `--verify` koşmuyor, `verdict.json` yazılmıyordu. Oysa worker çoğu zaman işi bitirmiş oluyordu
+  (cx'in "writing outside of the project" reddi, codex'in "skills context budget" uyarısı,
+  düzenlemelerden sonra gelen bir agy keşif hatası). Bitmiş iş ile hiç yapılmamış iş aynı
+  görünüyordu. Runner artık session'ı bulabildiği sürece normal bekle → verify → verdict yoluna
+  devam ediyor ve runner'ın kendi çıkış kodunu `verdict.workerExit` olarak kaydediyor. Verdict'in
+  `exitCode`'u 0-5 sözleşmesini koruyor (`error` ile biten worker yine 2), böylece çağıran taraf
+  "işi yapıp öldü" ile "hiçbir şey yapmadan öldü" durumunu `verify.exitCode` ve diff'le ayırt
+  ediyor. Runner çıktıktan sonra `status.json`'u hâlâ `running` diyen bir session önce `error`
+  olarak kapatılıyor, böylece bekleme asılı kalamıyor. Session bulunamazsa runner eskisi gibi
+  worker'ın koduyla çıkıyor. Bash ve `.ps1`. Test: `worker-death-verdict.test.mjs`.
+
 ## [5.2.2] — 2026-10-05
 
 ### Düzeltildi

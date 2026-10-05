@@ -119,7 +119,9 @@ run — regardless of backend — creates `~/.cache/cli-dispatch/sessions/<id>/`
   also writes a `{schemaVersion, error, sessionId, exitCode}` shape when `build-verdict` throws
   (there `exitCode` is a node exit status, so treating it as the contract value can report a
   crash as a pass), and `stranded: true` is the EXPECTED outcome of a successful run — the
-  runner never commits, so uncommitted changes mean the worker did its job.
+  runner never commits, so uncommitted changes mean the worker did its job. A `workerExit` field
+  (5.3.0, #167) means the worker runner exited non-zero yet the run still went through verify —
+  read `verify.exitCode` and the diff to tell "died after doing the work" from "did nothing".
 
 Each backend's `*-stream-parse.mjs` (`ds-`, `cx-`, `cp-`, `oc-`, plus
 `ag-transcript-parse.mjs` for Antigravity) reads that backend's native JSONL event stream
