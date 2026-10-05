@@ -257,7 +257,7 @@ fi
 # The thread/session id is only known once codex emits thread.started. Until then we run in a
 # TEMP session dir; the parser captures the thread id and we relocate to the canonical dir.
 SESSIONS_ROOT="$(resolve_sessions_root)"
-mkdir -p "$SESSIONS_ROOT"
+require_writable_sessions_root "$SESSIONS_ROOT"
 if [ "$RESUME" -eq 1 ]; then
   SESSION_ID="$RESUME_ID"
 else
@@ -309,13 +309,19 @@ DONEFILE="$SESSION_DIR/.cx.done"; rm -f "$DONEFILE" "$SESSION_DIR/.timeout"
 # touches PARSER_DONE so we can synchronize on it (a process-substitution child isn't a job we
 # can `wait` on directly).
 PARSER_DONE="$(mktemp -u -t cx-pdone-XXXXXX)"
+# codex's stdout reaches the parser through a named pipe read by `cat` (see launch below):
+# bash process substitution needs /dev/fd, which managed sandboxes forbid (#171).
+PARSER_FIFO_DIR="$(mktemp -d -t cx-fifo-XXXXXX)"
+mkfifo "$PARSER_FIFO_DIR/out"
 
 # Clean up ALL temp files + reap the watchdog (and the codex worker) on ANY exit path —
 # normal, error, or signal (Ctrl-C) — so nothing leaks and the watchdog can't outlive us.
 cleanup() {
   [ -n "${WATCHDOG_PID:-}" ] && kill "$WATCHDOG_PID" 2>/dev/null || true
   [ -n "${CODEX_PID:-}" ] && kill -TERM "$CODEX_PID" 2>/dev/null || true
+  [ -n "${PARSER_PID:-}" ] && kill_tree "$PARSER_PID" -TERM 2>/dev/null || true
   rm -f "$OUTFILE" "$PARSER_OUT" "$PARSER_DONE" 2>/dev/null || true
+  [ -n "${PARSER_FIFO_DIR:-}" ] && rm -rf "$PARSER_FIFO_DIR" 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -360,7 +366,9 @@ trap 'handle_interrupt TERM 143' TERM
 # stream carries no model field to learn it from.
 META_MODEL=""
 if [ -z "$MODEL" ]; then
-  META_MODEL="$(sed -n 's/^model *= *"\(.*\)".*/\1/p' "${CODEX_HOME:-$HOME/.codex}/config.toml" 2>/dev/null | head -1)"
+  # `|| true`: a fresh codex install has no config.toml; under set -e/pipefail the failed sed
+  # used to kill this script silently before the worker ever started.
+  META_MODEL="$(sed -n 's/^model *= *"\(.*\)".*/\1/p' "${CODEX_HOME:-$HOME/.codex}/config.toml" 2>/dev/null | head -1 || true)"
 fi
 
 # Same reasoning for the effort/thinking-level label: when --effort wasn't passed, codex
@@ -369,7 +377,7 @@ fi
 # effect, which reads as "no reasoning applied" when a real (default) level was used.
 META_EFFORT=""
 if [ -z "$EFFORT" ]; then
-  META_EFFORT="$(sed -n 's/^model_reasoning_effort *= *"\(.*\)".*/\1/p' "${CODEX_HOME:-$HOME/.codex}/config.toml" 2>/dev/null | head -1)"
+  META_EFFORT="$(sed -n 's/^model_reasoning_effort *= *"\(.*\)".*/\1/p' "${CODEX_HOME:-$HOME/.codex}/config.toml" 2>/dev/null | head -1 || true)"
 fi
 EFFECTIVE_EFFORT="${EFFORT:-$META_EFFORT}"
 
@@ -377,7 +385,10 @@ EFFECTIVE_EFFORT="${EFFORT:-$META_EFFORT}"
 # Prompt-as-arg → redirect stdin from /dev/null (the documented gotcha; without it codex blocks
 # on "Reading additional input from stdin..."). The `{ node ...; touch DONE; }` wrapper lets us
 # detect when the parser has fully drained + written status.json.
-codex "${CODEX_ARGS[@]}" </dev/null > >(
+# The parser is started FIRST (a background `cat FIFO | node` group) so the FIFO has a reader;
+# codex is then a DIRECT background job writing to the FIFO, so `$!` is codex's real pid.
+# `cat` (not node) opens the FIFO: libuv reopens a FIFO stdin O_RDWR and never sees EOF.
+( cat "$PARSER_FIFO_DIR/out" | \
   CX_SESSION_DIR="$SESSION_DIR" \
   CX_PROMPT_PREVIEW="$(printf '%.120s' "$PROMPT")" \
   CX_CWD="$CWD" \
@@ -388,6 +399,8 @@ codex "${CODEX_ARGS[@]}" </dev/null > >(
     node "$PARSER" > "$PARSER_OUT"
   touch "$PARSER_DONE"
 ) &
+PARSER_PID=$!
+codex "${CODEX_ARGS[@]}" </dev/null > "$PARSER_FIFO_DIR/out" &
 CODEX_PID=$!
 
 # The watchdog watches codex itself for liveness and TARGETS the real codex pid for the kill.

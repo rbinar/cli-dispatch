@@ -116,6 +116,10 @@ case "$IDLE_TIMEOUT" in ''|*[!0-9]*) IDLE_TIMEOUT=0;; esac
 # Make CWD absolute (last_conversations.json keys are absolute paths).
 CWD="$(cd "$CWD" 2>/dev/null && pwd)" || { echo "ag-stream: bad --cwd" >&2; exit 1; }
 
+# Fail fast before agy is launched: the session dir is only created after the run, so an
+# unwritable root would otherwise surface as scattered secondary errors.
+require_writable_sessions_root "$(resolve_sessions_root)"
+
 # Snapshot dirty/untracked paths in $CWD BEFORE the worker runs, so write_diff_artifacts
 # (called after agy finishes, below) can exclude pre-existing dirt from the reported
 # changed-files list — see snapshot_dirty_paths in stream-utils.sh.
@@ -210,6 +214,7 @@ pick_model_for_effort() {
 # `agy models` prints slugs as of 1.1.8. With --model, preserve the caller's
 # format while replacing any existing effort suffix; without it, pick the first
 # listed model at that effort (falling back to the known default family).
+MODEL_EXPLICIT=0; [ -n "$MODEL" ] && MODEL_EXPLICIT=1
 if [ -n "$EFFORT" ]; then
   case "$(printf '%s' "$EFFORT" | tr '[:upper:]' '[:lower:]')" in
     low) SUF="Low";; medium) SUF="Medium";; high) SUF="High";;
@@ -227,6 +232,31 @@ fi
 # agy accepts either a display name or a slug; `agy models` prints slugs as of 1.1.8.
 # The warning fires only when the model matches nothing in either format.
 if [ -n "$MODEL" ]; then
+  if ! model_listed "$MODEL" && [ "${AG_ALLOW_UNLISTED_MODEL:-0}" != "1" ] && [ "$MODEL_EXPLICIT" -eq 1 ]; then
+    # Fail fast (#165): with an unlisted model agy creates no conversation and the run would
+    # die later with a confusing discovery error. AG_ALLOW_UNLISTED_MODEL=1 restores the warning.
+    # Only an explicitly requested model counts; one derived by --effort alone is exempt.
+    LISTED_SLUGS="$(agy models 2>/dev/null | head -5 | while IFS= read -r l; do printf '%s ' "${l%%$'\t'*}"; done)"
+    MODEL_ERR="model \"$MODEL\" is not listed by \`agy models\` (listed: ${LISTED_SLUGS}...). Set AG_ALLOW_UNLISTED_MODEL=1 to launch anyway."
+    echo "ag-stream: $MODEL_ERR" >&2
+    MF_ROOT="$(resolve_sessions_root)"
+    MF_DIR="$MF_ROOT/model-fail-$(date +%Y%m%d%H%M%S)-$((1000 + RANDOM % 9000))"
+    mkdir -p "$MF_DIR" 2>/dev/null || true
+    printf '%s' "$PROMPT" > "$MF_DIR/prompt.txt" 2>/dev/null || true
+    MF_DIR="$MF_DIR" MF_CWD="$CWD" MF_MODEL="$MODEL" MF_ERR="$MODEL_ERR" \
+    MF_BRANCH="$(git -C "$CWD" rev-parse --abbrev-ref HEAD 2>/dev/null || true)" \
+    MF_PROMPT="$(printf '%.120s' "$PROMPT")" node --input-type=module -e '
+      import { writeFileSync } from "node:fs"
+      import path from "node:path"
+      const e = process.env, dir = e.MF_DIR, now = new Date().toISOString(), sId = path.basename(dir)
+      const status = { sessionId: sId, backend: "antigravity", convId: "", state: "error", error: e.MF_ERR, errorKind: "model", lastTool: null, toolCounts: {}, events: 0, startedAt: now, lastActivityAt: now, finalResultPreview: "", usage: null }
+      const meta = { sessionId: sId, backend: "antigravity", convId: "", promptPreview: e.MF_PROMPT || "", cwd: e.MF_CWD || "", branch: e.MF_BRANCH || "", model: e.MF_MODEL || "", startedAt: now, endedAt: now, exitCode: 4, state: "error", error: e.MF_ERR, errorKind: "model" }
+      try { writeFileSync(path.join(dir, "status.json"), JSON.stringify(status, null, 2) + "\n") } catch {}
+      try { writeFileSync(path.join(dir, "meta.json"), JSON.stringify(meta, null, 2) + "\n") } catch {}
+    ' 2>/dev/null || true
+    echo "  dir:    $MF_DIR" >&2
+    exit 4
+  fi
   if ! model_listed "$MODEL"; then
     echo "ag-stream: warning — model \"$MODEL\" is not listed by \`agy models\`; agy will" >&2
     echo "  silently use its default. Run \`agy models\` for listed slugs; display names with" >&2
@@ -274,8 +304,12 @@ run_agy_bg() { # backgrounds agy under a pty, writes its PID to $PIDFILE
       ( cd "$CWD" && exec script -q /dev/null agy "${AGY_ARGS[@]}" ) >/dev/null 2>&1 &
       ;;
     *) # Linux/util-linux: command must be a single -c string; -e propagates exit code.
+      # util-linux script runs the -c string with $SHELL (or /bin/sh when unset). `printf %q`
+      # quotes multi-line/UTF-8 args as bash $'...', which dash (/bin/sh on Debian/Ubuntu) takes
+      # literally: agy received "$line1\nline2 \342\200\224…", and conversation discovery could
+      # not match the prompt (#165). Always hand that bash-quoted string to bash.
       local q="" a; for a in agy "${AGY_ARGS[@]}"; do q+="$(printf '%q ' "$a")"; done
-      ( cd "$CWD" && exec script -qec "$q" /dev/null ) >/dev/null 2>&1 &
+      ( cd "$CWD" && SHELL="$(command -v bash)" exec script -qec "$q" /dev/null ) >/dev/null 2>&1 &
       ;;
   esac
   echo $! > "$PIDFILE"

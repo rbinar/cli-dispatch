@@ -98,8 +98,11 @@ if [ -L "$CWD/node_modules" ]; then readlink "$CWD/node_modules" > "${out}/root-
 if [ -L "$CWD/packages/core/node_modules" ]; then readlink "$CWD/packages/core/node_modules" > "${out}/core-link.txt"; fi
 [ -e "$CWD/packages/bare/node_modules" ] && printf 'yes' > "${out}/bare-exists.txt"
 [ -e "$CWD/dist" ] && printf 'yes' > "${out}/dist-exists.txt"
+if [ -d "$CWD/node_modules" ] && [ ! -L "$CWD/node_modules" ]; then printf 'dir' > "${out}/root-kind.txt"; fi
+[ -f "$CWD/node_modules/.bin/vitest" ] && printf 'yes' > "${out}/root-vitest.txt"
+[ -e "$CWD/node_modules" ] && printf 'yes' > "${out}/root-exists.txt"
 echo "claude-ds session: stub-session" >&2
-exit 0
+exit "\${STUB_EXIT:-0}"
 `
   for (const n of ['claude-ds-stream', 'cx-stream', 'ag-stream', 'oc-stream', 'cp-stream']) {
     const p = path.join(bin, n)
@@ -109,13 +112,13 @@ exit 0
   return { bin, out }
 }
 
-function runRunner(script, cwdArg) {
+function runRunner(script, cwdArg, extraEnv = {}) {
   const { bin, out } = mkStubStream()
   const briefFile = path.join(mkdtemp('cd-nm-brief-'), 'brief.txt')
   fs.writeFileSync(briefFile, 'do the thing')
   const res = spawnSync('bash', [path.join(SCRIPTS_DIR, script), cwdArg, `test-${script.replace(/\W/g, '-')}`, briefFile], {
     encoding: 'utf8',
-    env: { ...process.env, ...GIT_ENV, PATH: `${bin}${path.delimiter}${process.env.PATH}` },
+    env: { ...process.env, ...GIT_ENV, ...extraEnv, PATH: `${bin}${path.delimiter}${process.env.PATH}` },
   })
   if (res.error) throw res.error
   const read = (f) => (fs.existsSync(path.join(out, f)) ? fs.readFileSync(path.join(out, f), 'utf8').trim() : null)
@@ -130,6 +133,9 @@ function runRunner(script, cwdArg) {
     coreLink: read('core-link.txt'),
     bareExists: read('bare-exists.txt'),
     distExists: read('dist-exists.txt'),
+    rootKind: read('root-kind.txt'),
+    rootVitest: read('root-vitest.txt'),
+    rootExists: read('root-exists.txt'),
   }
 }
 
@@ -172,5 +178,47 @@ test('#158 — a repo with no node_modules at all: no links, no error', () => {
     assert.equal(r.status, 0, `${script} exited ${r.status}:\n${r.output}`)
     assert.equal(r.rootLink, null, `${script}: no source node_modules → no root link`)
     assert.equal(r.coreLink, null, `${script}: no source node_modules → no package link`)
+  }
+})
+
+// ---- #160: CLI_DISPATCH_NODE_MODULES=copy|none (Turbopack rejects a symlinked node_modules) ----
+
+test('#160 — CLI_DISPATCH_NODE_MODULES=copy: worktree node_modules is a REAL directory with the package files', () => {
+  const repo = mkMonorepo()
+  for (const script of RUNNERS) {
+    const r = runRunner(script, repo, { CLI_DISPATCH_NODE_MODULES: 'copy' })
+    assert.equal(r.status, 0, `${script} exited ${r.status}:\n${r.output}`)
+    assert.equal(r.rootKind, 'dir', `${script}: node_modules must be a real directory, not a symlink`)
+    assert.equal(r.rootLink, null, `${script}: no root symlink in copy mode`)
+    assert.equal(r.coreLink, null, `${script}: no package symlink in copy mode`)
+    assert.equal(r.rootVitest, 'yes', `${script}: copied tree must contain .bin/vitest`)
+    assert.ok(fs.existsSync(path.join(r.workerCwd, 'packages', 'core', 'node_modules', 'localdep', 'index.js')),
+      `${script}: package-local node_modules must be copied too`)
+    assert.equal(fs.lstatSync(path.join(r.workerCwd, 'packages', 'core', 'node_modules')).isSymbolicLink(), false)
+  }
+})
+
+test('#160 — copy mode: the runner cleanup removes the copy and leaves the SOURCE node_modules intact', () => {
+  const repo = mkMonorepo()
+  for (const script of RUNNERS) {
+    // A failing worker trips the runner's ERR trap, which is its cleanup path.
+    const r = runRunner(script, repo, { CLI_DISPATCH_NODE_MODULES: 'copy', STUB_EXIT: '3' })
+    assert.notEqual(r.status, 0, `${script}: stub failure must propagate`)
+    assert.equal(r.rootKind, 'dir', `${script}: worker saw a real directory`)
+    assert.equal(fs.existsSync(path.join(r.workerCwd, 'node_modules')), false, `${script}: copied node_modules must be removed by cleanup`)
+    assert.equal(fs.existsSync(path.join(r.workerCwd, 'packages', 'core', 'node_modules')), false, `${script}: copied package node_modules must be removed`)
+    assert.equal(fs.readFileSync(path.join(repo, 'node_modules', '.bin', 'vitest'), 'utf8'), '#!/bin/sh\necho hoisted-vitest\n', `${script}: source vitest intact`)
+    assert.ok(fs.existsSync(path.join(repo, 'packages', 'core', 'node_modules', 'localdep', 'index.js')), `${script}: source package deps intact`)
+  }
+})
+
+test('#160 — CLI_DISPATCH_NODE_MODULES=none: nothing is mirrored', () => {
+  const repo = mkMonorepo()
+  for (const script of RUNNERS) {
+    const r = runRunner(script, repo, { CLI_DISPATCH_NODE_MODULES: 'none' })
+    assert.equal(r.status, 0, `${script} exited ${r.status}:\n${r.output}`)
+    assert.equal(r.rootExists, null, `${script}: no node_modules in the worktree`)
+    assert.equal(r.coreLink, null, `${script}: no package node_modules in the worktree`)
+    assert.equal(fs.existsSync(path.join(r.workerCwd, 'packages', 'core', 'node_modules')), false)
   }
 })

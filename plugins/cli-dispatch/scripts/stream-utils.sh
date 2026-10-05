@@ -320,6 +320,20 @@ resolve_sessions_root() {
   printf '%s' "$root"
 }
 
+# require_writable_sessions_root <root> — fail fast (exit 5) when the session root cannot be
+# created or written (e.g. a managed sandbox that only allows writes to the workspace). Every
+# consumer must agree on ONE root, so this never falls back to another directory.
+require_writable_sessions_root() {
+  local root="$1" probe
+  probe="$root/.write-probe-$$"
+  if mkdir -p "$root" 2>/dev/null && : > "$probe" 2>/dev/null; then
+    rm -f "$probe" 2>/dev/null || true
+    return 0
+  fi
+  echo "cli-dispatch: session root $root is not writable (managed sandbox?). Set CLI_DISPATCH_SESSIONS_DIR to a writable directory, e.g. CLI_DISPATCH_SESSIONS_DIR=\${TMPDIR:-/tmp}/cli-dispatch-sessions" >&2
+  exit 5
+}
+
 # ---- JSON helpers ----
 
 # json_field <file> <key> — print the top-level string field <key> from the JSON in <file>,

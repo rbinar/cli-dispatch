@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [5.5.0] — 2026-10-06
+
+Closes every open issue: #160, #162, #165, #171, #172, #182. Each fix has a test that failed on
+the old code; the backend fixes were also run live in a clean Debian container.
+
+### Added
+
+- **`CLI_DISPATCH_NODE_MODULES=copy|none` for the worktree runners** (#160). The default (`link`)
+  still symlinks the source checkout's `node_modules`; Next.js/Turbopack rejects that symlink
+  ("points out of the filesystem root"). `copy` makes real directory trees of hard-linked files
+  (`cp -al`; a full `cp -a` where hard links are unavailable, e.g. macOS's `cp` or across
+  filesystems) and removes exactly those copies at cleanup; `none` mirrors nothing.
+
+### Fixed
+
+- **Antigravity on Linux received a corrupted brief, and conversation discovery failed**
+  (#165). util-linux `script -c` runs its command with `$SHELL`, or `/bin/sh` — dash on
+  Debian/Ubuntu. ag-stream built that command with bash's `printf %q`, which quotes a
+  multi-line/UTF-8 prompt as `$'…'`; dash took it literally, so agy got `"$line1\nline2
+  \342\200\224…"` and ag-stream could not match its own prompt. The launch now always uses
+  bash. Found because an Antigravity delegation in the container failed even though agy had made
+  the change (verify passed).
+- **An explicitly requested agy model that agy does not list now fails fast** (#165): exit 4
+  with the model name and the first listed slugs, a `model-fail-*` session with
+  `errorKind: "model"`, and no launch. `AG_ALLOW_UNLISTED_MODEL=1` restores the old
+  warn-and-launch.
+- **`--verify` runs in the package subdirectory `--cwd` named** (#172), not at the worktree
+  root, in worktree, in-place and `--resume` runs. Bash and `.ps1`.
+- **A failed tool call no longer marks a finished Copilot run as `error`** (#182). Tool-level
+  failures (a denied path, a failing test the worker then fixes) are recorded as
+  `status.toolErrors` / `status.lastToolError`; only a turn-level error fails the session.
+- **`ds-agent --resume` finds the conversation** (#162). Claude Code stores conversations per
+  project directory; a resume without `--cwd` now runs in the session's own directory from
+  `meta.json` (an explicit `--cwd` still wins). Bash and `.ps1`.
+- **Managed sandboxes** (#171):
+  - No runtime script uses process substitution any more (`/dev/fd` is forbidden there; it
+    killed cx-stream before the worker turn). cx-stream and oc-stream reach the parser through a
+    named pipe read by `cat`, claude-ds-stream passes the prompt through a temp file, the worktree
+    runners and `cli-dispatch-clean` use temp files. Exit codes, kill and parser completion are
+    unchanged. Test: `no-process-substitution.test.mjs`.
+  - An unwritable session root now stops every entry point with one actionable line and exit 5
+    (`set CLI_DISPATCH_SESSIONS_DIR to a writable directory`) instead of scattered write errors.
+- **cx-stream died silently on a fresh codex install** with no `~/.codex/config.toml` (reading
+  the model and effort defaults failed under `set -e`/`pipefail` before the worker started).
+- **`cli-dispatch-clean` failed under macOS's bash 3.2** — the shell `launchd` uses for the
+  scheduled clean — when given no arguments (an empty array under `set -u`).
+
 ## [5.4.0] — 2026-10-05
 
 Found by giving Claude Code real work in a clean container — a small Node project with a

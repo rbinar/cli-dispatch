@@ -303,3 +303,35 @@ test('cp-stream-parse: finalize does not overwrite a reconciled killed state', a
 
   rmSync(testDir, { recursive: true, force: true })
 })
+
+// Issue #182: a tool-level failure (denied path, failing command the worker then fixes)
+// is normal mid-turn and must not fail the session; only turn-level failures do.
+test('cp-stream-parse: a failed tool call followed by success still ends done, with lastToolError', async () => {
+  const events = [
+    { type: 'tool.execution_start', sessionId: 'sess-123', data: { toolCallId: 't1', toolName: 'bash', arguments: { command: 'find / -iname calc.js' } } },
+    { type: 'tool.execution_complete', data: { toolCallId: 't1', success: false, error: { message: 'Permission denied and could not request permission from user' } } },
+    { type: 'tool.execution_start', data: { toolCallId: 't2', toolName: 'edit', arguments: { path: 'calc.js' } } },
+    { type: 'tool.execution_complete', data: { toolCallId: 't2', success: true } },
+    { type: 'assistant.message', data: { content: 'Fixed calc.js.' } }
+  ]
+  const result = await runParser(events)
+  assert.equal(result.code, 0)
+  const status = JSON.parse(readFileSync(path.join(testDir, 'status.json'), 'utf8'))
+  assert.equal(status.state, 'done')
+  assert.equal(status.toolErrors, 1)
+  assert.equal(status.lastToolError.tool, 'bash')
+  assert.match(status.lastToolError.message, /Permission denied/)
+  rmSync(testDir, { recursive: true, force: true })
+})
+
+test('cp-stream-parse: a top-level error event still ends error', async () => {
+  const events = [
+    { type: 'assistant.message', sessionId: 'sess-123', data: { content: 'partial' } },
+    { type: 'session.error', data: { message: 'turn blew up' } }
+  ]
+  const result = await runParser(events)
+  const status = JSON.parse(readFileSync(path.join(testDir, 'status.json'), 'utf8'))
+  assert.equal(status.state, 'error')
+  assert.match(String(status.error), /turn blew up/)
+  rmSync(testDir, { recursive: true, force: true })
+})

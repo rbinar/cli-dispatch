@@ -285,6 +285,13 @@ diff the guards — not only the happy path.
 
 ## Non-obvious constraints
 
+- No bash process substitution (`<(…)` / `>(…)`) in runtime scripts: it needs `/dev/fd`, which
+  managed sandboxes forbid (#171). Use a pipe, a here-string or a `mktemp` file; a named pipe read
+  by `cat` when node must read a live stream (libuv reopens a FIFO stdin and never sees EOF).
+  `no-process-substitution.test.mjs` enforces it.
+- On Linux, `script -c` runs its command string with `$SHELL`, or `/bin/sh` (dash on
+  Debian/Ubuntu). A string built with bash's `printf %q` must be run with
+  `SHELL="$(command -v bash)"`, or multi-line/UTF-8 arguments arrive mangled (#165).
 - Workers run with `CLI_DISPATCH_WORKER=1` (exported by `stream-utils.sh` and the `.ps1`
   streams). A worker can itself be a Claude Code session with this plugin loaded (DeepSeek runs
   `claude`), so the SessionStart hook stays silent there and `cli-dispatch-run` refuses to start —
