@@ -7,7 +7,8 @@
 #   cli-dispatch-wait <session-id> [--timeout SECS] [--poll SECS]
 #   cli-dispatch-wait --run <run-id> [--timeout SECS]     (bash-only; see cli-dispatch-run --detach)
 # Exit codes: 0 done, 1 error/killed/bad-args/no-such-session, 2 timeout.
-# --run mode exits with the detached run's own exit code (its `exit` file), or 2 on timeout.
+# --run mode exits with the detached run's own exit code (its `exit` file), or 124 on timeout —
+# not 2, which the run itself uses for "worker failed" (a finished run must never read as running).
 set -euo pipefail
 
 usage() {
@@ -52,7 +53,7 @@ if [ "$1" = "--run" ]; then
   while [ ! -f "$RUN_DIR/exit" ]; do
     if [ "$RUN_TIMEOUT" -gt 0 ] && [ $(( $(date +%s) - RUN_START )) -ge "$RUN_TIMEOUT" ]; then
       echo "run $RUN_ID is still going — wait again with: cli-dispatch-wait --run $RUN_ID"
-      exit 2
+      exit 124
     fi
     sleep 2
   done
