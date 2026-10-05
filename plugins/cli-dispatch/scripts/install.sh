@@ -470,7 +470,7 @@ echo "Done."
 [ "$WANT_AG" -eq 1 ] && echo "  Antigravity: sign in with 'agy' (or set GEMINI_API_KEY), then test: ag-agent -q 'Reply with exactly: OK'"
 [ "$WANT_CX" -eq 1 ] && echo "  Codex:       run 'codex login' (or set CODEX_API_KEY), then test: cx-agent --read-only -q 'Reply with exactly: OK'"
 [ "$WANT_OC" -eq 1 ] && echo "  OpenCode:    add your OPENROUTER_API_KEY to $CONFIG, then test: oc-agent -q 'Reply with exactly: OK'"
-[ "$WANT_CP" -eq 1 ] && echo "  Copilot:     run 'gh auth login' (or set COPILOT_GITHUB_TOKEN/GH_TOKEN), ensure Copilot subscription, then test: cp-agent -q 'Reply with exactly: OK'"
+[ "$WANT_CP" -eq 1 ] && echo "  Copilot:     run 'gh auth login' or 'copilot login --device-code' (or set COPILOT_GITHUB_TOKEN/GH_TOKEN), ensure Copilot subscription, then test: cp-agent -q 'Reply with exactly: OK'"
 # The `[ … ] && echo` lines above leave a failed test as the script's status when the last
 # backend was not chosen; a completed install must still exit 0 (setup reads the exit code).
 exit 0

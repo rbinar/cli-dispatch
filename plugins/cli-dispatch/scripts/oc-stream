@@ -146,7 +146,9 @@ fi
 # original session's directory can take much longer (full-history replay) — always pass the
 # same --cwd used to create the session when resuming it.
 OC_ARGS=(run --format json --auto --dir "$CWD")
-[ -n "$MODEL" ] && OC_ARGS+=(--model "openrouter/$MODEL")
+# `opencode models openrouter` prints slugs WITH the provider prefix; accept both spellings so a
+# copied slug does not become openrouter/openrouter/… ("Unexpected server error" on every turn).
+[ -n "$MODEL" ] && OC_ARGS+=(--model "openrouter/${MODEL#openrouter/}")
 [ -n "$OC_RESUME_ID" ] && OC_ARGS+=(--session "$OC_RESUME_ID" --continue)
 [ "${#PASS_ARGS[@]}" -gt 0 ] && OC_ARGS+=("${PASS_ARGS[@]}")
 OC_ARGS+=("$PROMPT")
@@ -183,7 +185,7 @@ BRANCH="$(git -C "$CWD" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
 echo "oc-stream → OpenCode (OpenRouter) worker" >&2
 echo "  cwd:     $CWD" >&2
 echo "  sandbox: none — git-worktree isolation is the only safety boundary" >&2
-[ -n "$MODEL" ] && echo "  model:   openrouter/$MODEL" >&2
+[ -n "$MODEL" ] && echo "  model:   openrouter/${MODEL#openrouter/}" >&2
 [ "$RESUME" -eq 1 ] && echo "  resume:  $RESUME_ID" >&2
 echo "  dir:     $SESSION_DIR" >&2
 echo "  status:  $SESSION_DIR/status.json" >&2

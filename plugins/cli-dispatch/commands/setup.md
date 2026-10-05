@@ -35,7 +35,7 @@ Follow these steps:
    In the option descriptions, note which underlying CLI each needs and whether it was found in
    step 1 (e.g. if `codex` is MISSING, say it can be installed after). OpenCode needs an
    OpenRouter API key (paste-yourself, no OAuth); Copilot needs an active GitHub Copilot
-   subscription plus `gh auth login` or `COPILOT_GITHUB_TOKEN`/`GH_TOKEN`; DeepSeek needs a
+   subscription plus `gh auth login`, `copilot login --device-code` or `COPILOT_GITHUB_TOKEN`; DeepSeek needs a
    DeepSeek API key. Ignore "None of these" when combining the answers, and map the rest to a
    comma-list: DeepSeek→`deepseek`, Antigravity→`antigravity`, Codex→`codex`,
    OpenCode→`opencode`, Copilot→`copilot` (all five → `all`). If both questions come back
@@ -153,7 +153,12 @@ Follow these steps:
    - **GitHub Copilot** — requires an active GitHub Copilot subscription. Auth uses
      `COPILOT_GITHUB_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN`; cli-dispatch automatically reuses
      `gh auth token` as `GH_TOKEN` when available, so `gh auth login` is the normal path.
-     For headless/CI, set `COPILOT_GITHUB_TOKEN` in the config or environment. Do **not**
+     Without `gh`, have the user run `copilot login --device-code` in a shell: with no
+     system credential store (a container, headless Linux) it writes the token to
+     `~/.copilot/config.json`, whereas the in-app `/login` there kept it in memory only and the
+     worker found no token. For headless/CI, set `COPILOT_GITHUB_TOKEN` in the config or
+     environment (a fine-grained PAT with "Copilot Requests"; classic `ghp_` tokens are not
+     accepted). Do **not**
      treat Copilot like a paste-a-raw-key backend for the auto-open-editor prompt.
 
 6. **Optional smoke test** (only for backends the user enabled), as a background task:
