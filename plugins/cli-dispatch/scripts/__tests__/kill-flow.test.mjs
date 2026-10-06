@@ -43,8 +43,13 @@ function extractBashBlock(mdPath) {
 }
 
 const killScriptDir = mkdtemp('cli-dispatch-killmd-')
-const killScriptPath = path.join(killScriptDir, 'kill-block.sh')
-fs.writeFileSync(killScriptPath, extractBashBlock(KILL_MD))
+const PLUGIN_ROOT = path.resolve(SELF_DIR, '..', '..')
+// Claude Code pastes the arguments into the fence text before bash runs it; do the same.
+const killScriptFor = (sid) => {
+  const p = path.join(killScriptDir, `kill-block-${Math.random().toString(36).slice(2)}.sh`)
+  fs.writeFileSync(p, extractBashBlock(KILL_MD).split('$ARGUMENTS').join(sid).split('${CLAUDE_PLUGIN_ROOT}').join(PLUGIN_ROOT))
+  return p
+}
 
 after(() => { rmrf(killScriptDir) })
 
@@ -52,8 +57,8 @@ after(() => { rmrf(killScriptDir) })
 // $ARGUMENTS, session root via CLI_DISPATCH_SESSIONS_DIR ----
 function runKillScript({ sid, sessionsRoot, extraEnv = {} }) {
   return new Promise((resolve, reject) => {
-    const proc = spawn('bash', [killScriptPath], {
-      env: { ...process.env, ARGUMENTS: sid, CLI_DISPATCH_SESSIONS_DIR: sessionsRoot, ...extraEnv },
+    const proc = spawn('bash', [killScriptFor(sid)], {
+      env: { ...process.env, CLI_DISPATCH_SESSIONS_DIR: sessionsRoot, ...extraEnv },
     })
     let stdout = ''
     let stderr = ''
@@ -83,7 +88,7 @@ function getChildPids(pid) {
 // Test 0: sanity — the extracted fence is syntactically valid bash on its own
 // ============================================================================
 test('kill.md bash fence: extracted script passes `bash -n` syntax check', () => {
-  assert.doesNotThrow(() => execSync(`bash -n "${killScriptPath}"`, { stdio: 'pipe' }))
+  assert.doesNotThrow(() => execSync(`bash -n "${killScriptFor('some-session-id')}"`, { stdio: 'pipe' }))
 })
 
 // ============================================================================

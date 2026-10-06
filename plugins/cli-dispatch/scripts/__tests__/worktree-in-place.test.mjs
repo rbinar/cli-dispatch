@@ -174,7 +174,7 @@ test('#108 — writes into the target worktree are NOT reported as a leak', () =
 test('#108 — in-place mode still guards the MAIN checkout against real leaks', () => {
   const { main, wt } = mkRepoWithLinkedWorktree()
   const r = runRunner('ds-worktree-run.sh', { repo: wt, env: { STUB_WRITE_TO: main } })
-  assert.equal(r.status, 1, `a write into the main checkout must still fail:\n${r.output}`)
+  assert.equal(r.status, 7, `a write into the main checkout must still fail (7 = leak):\n${r.output}`)
   assert.ok(r.output.includes('post-check FAIL'), r.output)
   assert.ok(r.output.includes(main), r.output)
 })
@@ -244,7 +244,7 @@ test('the leak patch is written to the temp dir, not next to the guarded repo', 
   const { main, wt } = mkRepoWithLinkedWorktree()
   const mainParent = path.dirname(main)
   const r = runRunner('ds-worktree-run.sh', { repo: wt, env: { STUB_WRITE_TO: main } })
-  assert.equal(r.status, 1, r.output)
+  assert.equal(r.status, 7, r.output)
   const strays = fs.readdirSync(mainParent).filter((f) => f.startsWith('leaked-changes-'))
   assert.deepEqual(strays, [], `patch must not be dropped into ${mainParent}`)
   const m = r.output.match(/patch saved: (\S+)/)
@@ -422,7 +422,7 @@ for (const [backend, script] of ALL_RUNNERS) {
     // STUB_WRITE_TO points the stub at the repo it was NOT given — a real leak.
     const r = runRunner(script, { repo, env: { STUB_WRITE_TO: repo } })
     assert.ok(r.output.includes('post-check FAIL'), `${backend}: leak not reported\n${r.output}`)
-    assert.equal(r.status, 1, `${backend}: a leak must exit non-zero`)
+    assert.equal(r.status, 7, `${backend}: a leak exits 7 (6.1.0: distinct from other worker failures)`)
     assert.ok(/patch saved:/.test(r.output), `${backend}: the recovery patch must be reported`)
   })
 

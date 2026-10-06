@@ -78,7 +78,7 @@ if [ "$SKIP_WORKTREES" -ne 1 ]; then
     # which managed sandboxes forbid (#171).
     local wt_list
     wt_list="$(mktemp -t cd-wt-list-XXXXXX)"
-    find "$base" -mindepth 1 -maxdepth 1 -type d -name '*-wt-*' -mtime +"$WT_DAYS" -print0 > "$wt_list" 2>/dev/null || true
+    find "$base" -mindepth 1 -maxdepth 1 -type d \( -name 'ds-wt-*' -o -name 'ag-wt-*' -o -name 'cx-wt-*' -o -name 'oc-wt-*' -o -name 'cp-wt-*' \) -mtime +"$WT_DAYS" -print0 > "$wt_list" 2>/dev/null || true
     while IFS= read -r -d '' wt; do
       [ -d "$wt" ] || continue
       WT_FOUND=$((WT_FOUND + 1))
@@ -87,8 +87,22 @@ if [ "$SKIP_WORKTREES" -ne 1 ]; then
         WT_SKIPPED=$((WT_SKIPPED + 1))
         continue
       fi
+      # Only a real LINKED worktree: `.git` must be a regular file pointing into
+      # */.git/worktrees/*. Any other dir (a planted clone, a stranger's checkout) is skipped
+      # BEFORE git runs in it. fsmonitor off: repo config must never execute from here.
+      gitdir_line=""
+      if [ -f "$wt/.git" ] && [ ! -L "$wt/.git" ]; then
+        gitdir_line="$(sed -n 's/^gitdir: //p' "$wt/.git" 2>/dev/null | head -1)"
+      fi
+      case "$gitdir_line" in
+        */.git/worktrees/*) ;;
+        *)
+          wtlog "  SKIP (git status failed — not a valid worktree?) $wt"
+          WT_SKIPPED=$((WT_SKIPPED + 1))
+          continue ;;
+      esac
       git_rc=0
-      git_out="$("$GIT_BIN" -C "$wt" status --porcelain 2>/dev/null)" || git_rc=$?
+      git_out="$("$GIT_BIN" -c core.fsmonitor=false -C "$wt" status --porcelain 2>/dev/null)" || git_rc=$?
       if [ "$git_rc" -ne 0 ]; then
         wtlog "  SKIP (git status failed — not a valid worktree?) $wt"
         WT_SKIPPED=$((WT_SKIPPED + 1))
@@ -103,20 +117,14 @@ if [ "$SKIP_WORKTREES" -ne 1 ]; then
       if [ "$REMOVE" -eq 1 ]; then
         # Resolve the source repo from the worktree's ".git" file BEFORE removing it, so
         # `git worktree prune` can run against it afterward — best-effort only.
-        src_repo=""
-        if [ -f "$wt/.git" ]; then
-          gitdir_line="$(sed -n 's/^gitdir: //p' "$wt/.git" 2>/dev/null | head -1)"
-          case "$gitdir_line" in
-            */.git/worktrees/*) src_repo="${gitdir_line%/.git/worktrees/*}";;
-          esac
-        fi
+        src_repo="${gitdir_line%/.git/worktrees/*}"
         rm -rf "$wt"
         WT_REMOVED=$((WT_REMOVED + 1))
         if [ -n "$src_repo" ] && [ -d "$src_repo" ]; then
           case " $PRUNED_REPOS " in
             *" $src_repo "*) ;;
             *)
-              "$GIT_BIN" -C "$src_repo" worktree prune >/dev/null 2>&1 || true
+              "$GIT_BIN" -c core.fsmonitor=false -C "$src_repo" worktree prune >/dev/null 2>&1 || true
               PRUNED_REPOS="$PRUNED_REPOS $src_repo"
               ;;
           esac
@@ -126,7 +134,7 @@ if [ "$SKIP_WORKTREES" -ne 1 ]; then
     rm -f "$wt_list"
   }
 
-  wtlog "worktree artifact sweep (pattern *-wt-*, older than ${WT_DAYS}d):"
+  wtlog "worktree artifact sweep (pattern (ds|ag|cx|oc|cp)-wt-*, older than ${WT_DAYS}d):"
   sweep_wt_dir "/tmp"
   if [ -n "${TMPDIR:-}" ] && [ "${TMPDIR%/}" != "/tmp" ]; then
     sweep_wt_dir "${TMPDIR%/}"

@@ -20,6 +20,8 @@ NODE_BIN="${CLI_DISPATCH_NODE:-node}"
   const diff = v.diffstat || (v.changedFiles ? v.changedFiles.length + " file(s)" : "n/a");
   console.log("exit: " + exit + "  session: " + (v.sessionId || "?") + "  state: " + (v.state || "?") + "  verify: " + verify);
   console.log("diff: " + String(diff).trim());
+  if (v.leak) console.log("LEAK: the worker wrote outside its worktree — see the runner log");
+  if (v.workerExit) console.log("worker exit: " + v.workerExit);
   if (v.fixAttempts) console.log("fix attempts: " + v.fixAttempts.used + "/" + v.fixAttempts.max);
   if (v.stranded) console.log("STRANDED changes in worktree: " + v.worktree);
   console.log("patch: " + (v.diffPatchPath || "n/a"));

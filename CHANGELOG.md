@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [6.1.0] — 2026-10-07
+
+Security fixes from a code audit. Each one was reproduced against 6.0.5 and has a test that fails
+without the fix.
+
+### Security
+
+- **Command arguments no longer run as shell code.** Claude Code pastes a slash command's
+  arguments into its bash block as text, so backticks and `$( )` in a prompt executed:
+  ``/cli-dispatch:resume <id> don't run `git reset --hard` `` would have run it, and a model
+  invoking `/cli-dispatch:run` with a brief built from an issue could be steered the same way.
+  `run`, `ask`, `resume`, `kill`, `watch`, `gain` and `clean` now read their arguments through a
+  quoted heredoc and split them with a small tokenizer (`scripts/cli-dispatch-args.mjs`) that
+  honours quotes and expands nothing. Prompts reach the worker byte for byte.
+- **`doctor`, `sessions` and `balance` no longer pass arguments to their pre-executed line.** That
+  line runs before the model sees anything, so `/cli-dispatch:sessions ds; touch x` created `x`
+  (confirmed in the sandbox container). The scripts now always report every backend and the model
+  shows only the one you named.
+- **`clean --schedule` validates `--older-than` and `--time`** before writing a crontab line, plist
+  or Scheduled Task. They were written as-is and cron runs that line through `sh`, so a crafted
+  value became a daily command.
+- **The worktree sweep only touches real cli-dispatch worktrees.** It considered any `*-wt-*`
+  directory under `/tmp` and `$TMPDIR` and ran `git status` in it, so a planted repo with
+  `core.fsmonitor` ran a command outside a worker's sandbox, and a personal clone with that name
+  could be deleted. Now only `(ds|ag|cx|oc|cp)-wt-*` directories whose `.git` file points into a
+  repo's `.git/worktrees/` are considered, and git runs with `core.fsmonitor=false`.
+- **A failing `git status` no longer counts as a clean worktree.** `--cleanup-if-clean` would then
+  fall back to `rm -rf` on a worktree git could not read.
+- Docs: the `gh` token forwarding note in [Security and data](docs/security.md) now says a
+  prompt-injected worker can use or send the token, and how to opt out.
+
+### Fixed
+
+- **A worker that wrote outside its worktree no longer passes.** Since 5.3.0 (#167) the leak
+  guard's failure was treated like any worker error, so the run went on to verify and could
+  report `exit 0 / verify: pass`. The worktree runners now exit 7 on a leak; the run records
+  `leak: true`, exits 2 and the summary prints a `LEAK:` line (and `worker exit: N` when the
+  worker failed).
+
 ## [6.0.5] — 2026-10-06
 
 Two problems found while recording the Codex example in the sandbox container.

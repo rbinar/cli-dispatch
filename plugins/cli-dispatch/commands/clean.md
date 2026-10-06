@@ -9,15 +9,13 @@ allowed-tools: Bash
 Worker sessions live under `~/.cache/cli-dispatch/sessions/<id>/`. A worker that was killed
 before it finalized (Ctrl-C, the parent CLI closed mid-run, crash, watchdog kill, or a codex/
 OpenCode/Copilot provisional `cx-<ts>-<pid>`/`oc-<ts>-<pid>`/`cp-<ts>-<pid>` dir that never relocated to its
-thread-id/session-id) leaves `status.json`
-stuck at `state:"running"` forever — it shows up as **stale** in `/cli-dispatch:sessions`, and never gets removed. This command finds and (with `--remove`) deletes them.
+thread-id/session-id) leaves `status.json` stuck at `state:"running"` forever — it shows up as
+**stale** in `/cli-dispatch:sessions`, and never gets removed. This command finds and (with `--remove`) deletes them.
 
 It also sweeps **leftover worktree artifacts**: real-repo-changing delegations (via
-`/cli-dispatch:run` — the deterministic runner — or a plain `*-agent` CLI) are isolated in a
-git worktree named `<backend>-wt-*` (`ds-wt-*`, `ag-wt-*`, `cx-wt-*`, `oc-wt-*`, `cp-wt-*`)
-under `/tmp` / `$TMPDIR` (`$env:TEMP` on Windows). A delegation that crashes or is killed
-before its own cleanup leaves that worktree behind forever; this sweep finds and (with
-`--remove`) deletes those too.
+`/cli-dispatch:run` — the deterministic runner — or a plain `*-agent` CLI) are isolated in a git worktree named `<backend>-wt-*` (`ds-wt-*`, `ag-wt-*`, `cx-wt-*`, `oc-wt-*`, `cp-wt-*`)
+under `/tmp` / `$TMPDIR` (`$env:TEMP` on Windows). A delegation that crashes or is killed before
+its own cleanup leaves that worktree behind forever; this sweep finds and (with `--remove`) deletes those too.
 
 **Detection** = `status.json` mtime: `state:"running"` with no write for longer than the
 stale window ⇒ dead. **Default is a dry-run** (lists only); pass `--remove` to delete.
@@ -39,14 +37,11 @@ stale window ⇒ dead. **Default is a dry-run** (lists only); pass `--remove` to
   sweep (used by the scheduled auto-clean).
 
 A genuinely-running worker (recent `status.json` write) is NEVER touched. A worktree with
-uncommitted changes (`git status --porcelain` non-empty) is NEVER touched either — it is
-reported as `DIRTY (skipped, uncommitted changes)` so you can rescue it by hand. A `*-wt-*`
-dir that isn't a valid git worktree (broken/missing `.git`) is also left alone and reported as
-`SKIP (git status failed — not a valid worktree?)`. After deleting a worktree, if its source
-repo can be resolved from the worktree's `.git` gitdir pointer, `git worktree prune` is run
-against that source repo (best-effort — silently skipped if the source repo no longer exists
-or can't be resolved) so the source repo's own `git worktree list` doesn't keep a dangling
-administrative entry.
+uncommitted changes is NEVER touched either — it is reported as `DIRTY (skipped, uncommitted
+changes)` so you can rescue it by hand. Only `<backend>-wt-*` dirs whose `.git` is a file pointing
+into a repo's `.git/worktrees/` are considered; any other dir is left alone and reported as
+`SKIP (git status failed — not a valid worktree?)`. After deleting a worktree, `git worktree
+prune` is run (best-effort) against its source repo so it keeps no dangling administrative entry.
 
 ## `--schedule` — daily auto-clean
 
@@ -59,15 +54,17 @@ only). The job logs to `~/.cache/cli-dispatch/clean.log`. `--schedule` alone is 
 On native Windows the PowerShell block below registers a Scheduled Task instead.
 
 ```bash
-ARGS=""; SCHED=0
-for a in $ARGUMENTS; do
-  if [ "$SCHED" = 1 ]; then ARGS="$ARGS $a"; elif [ "$a" = "--schedule" ]; then SCHED=1; fi
-done
+# The user's text is pasted in before bash parses it: quoted heredoc + a tokenizer that expands nothing.
+IFS= read -r -d '' ARGS_RAW <<'CLI_DISPATCH_ARGS_EOF_9f2c' || true
+$ARGUMENTS
+CLI_DISPATCH_ARGS_EOF_9f2c
+_AF="$(mktemp)"; printf '%s' "$ARGS_RAW" | node "${CLAUDE_PLUGIN_ROOT}/scripts/cli-dispatch-args.mjs" > "$_AF" || { rm -f "$_AF"; exit 2; }
+set --; while IFS= read -r -d '' a; do set -- "$@" "$a"; done < "$_AF"; rm -f "$_AF"
+SCHED=0; REST=()
+for a in "$@"; do [ "$SCHED" = 1 ] && REST+=("$a"); [ "$a" = "--schedule" ] && SCHED=1; done
 if [ "$SCHED" = 1 ]; then
-  set -- $ARGS
-  bash "${CLAUDE_PLUGIN_ROOT}/scripts/cli-dispatch-clean-schedule.sh" "$@"
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/cli-dispatch-clean-schedule.sh" ${REST[@]+"${REST[@]}"}
 else
-  set -- $ARGUMENTS
   if command -v cli-dispatch-clean >/dev/null 2>&1; then
     cli-dispatch-clean "$@"
   else
@@ -79,7 +76,10 @@ fi
 **Native Windows only** (`--schedule` → Scheduled Task; otherwise the `cli-dispatch-clean.ps1` that `install.ps1` installs):
 
 ```powershell
-$a = @("$ARGUMENTS".Trim() -split '\s+' | Where-Object { $_ })
+$raw = @'
+$ARGUMENTS
+'@
+$a = @($raw.Trim() -split '\s+' | Where-Object { $_ })
 $i = [array]::IndexOf($a, '--schedule')
 if ($i -ge 0) { $rest = @($a | Select-Object -Skip ($i + 1))
   & "$env:CLAUDE_PLUGIN_ROOT/scripts/cli-dispatch-clean-schedule.ps1" @rest }

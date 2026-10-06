@@ -31,7 +31,8 @@ is_worktree_clean() {
 
   [ -n "$worktree" ] || return 1
   [ -d "$worktree" ] || return 1
-  status_out="$(git -C "$worktree" status --short 2>/dev/null || true)"
+  # A failing git is never "clean": the caller falls back to rm -rf for a clean one.
+  status_out="$(git -C "$worktree" status --short 2>/dev/null)" || return 1
   [ -z "$status_out" ]
 }
 
@@ -642,6 +643,8 @@ WORKER_REPORT
 
   if [ "$WORKER_EXIT" -ne 0 ]; then
     export CLI_DISPATCH_WORKER_EXIT="$WORKER_EXIT"
+    # 7 is the worktree runners' leak-guard code: the worker wrote outside its worktree.
+    [ "$WORKER_EXIT" -ne 7 ] || export CLI_DISPATCH_LEAK=1
     # The runner has exited, so the worker is gone: a status still saying "running" would make
     # the wait below block forever. Settle it as an error.
     if [ "$(read_json_field "$SESSION_DIR/status.json" state)" = "running" ]; then

@@ -263,11 +263,13 @@ export function buildVerdict({ statusJson, metaJson, changedFilesJson, verifyRes
     : null
 
   const worktree = worktreeInfo.worktree || meta.cwd || ''
-  const exitCode = mapExitCode({
+  const mappedExit = mapExitCode({
     state,
     verify,
     timeoutExpired: Boolean(worktreeInfo.timeoutExpired),
   })
+  // A leak (worker wrote outside its worktree) is a worker error even when verify passed.
+  const exitCode = worktreeInfo.leak && mappedExit === 0 ? 2 : mappedExit
 
   const verdict = {
     schemaVersion: 1,
@@ -298,6 +300,8 @@ export function buildVerdict({ statusJson, metaJson, changedFilesJson, verifyRes
     ...(worktreeInfo.fixAttempts ? { fixAttempts: worktreeInfo.fixAttempts } : {}),
     // #167: the worker runner's own non-zero exit, kept apart from the 0-5 contract exitCode.
     ...(worktreeInfo.workerExit ? { workerExit: worktreeInfo.workerExit } : {}),
+    // The leak guard's exit 7 from the worktree runner: the worker wrote outside its worktree.
+    ...(worktreeInfo.leak ? { leak: true } : {}),
     startedAt: meta.startedAt,
     endedAt: new Date().toISOString(),
   }
@@ -403,6 +407,7 @@ if (entryPath && import.meta.url === pathToFileURL(entryRealPath).href) {
           worktree: metaJson.cwd,
           timeoutExpired: parseBoolean(timeoutExpired),
           workerExit: Number(process.env.CLI_DISPATCH_WORKER_EXIT) || 0,
+          leak: process.env.CLI_DISPATCH_LEAK === '1',
           fixAttempts: Number(process.env.CLI_DISPATCH_FIX_MAX) > 0
             ? { used: Number(process.env.CLI_DISPATCH_FIX_USED) || 0, max: Number(process.env.CLI_DISPATCH_FIX_MAX) }
             : undefined,

@@ -338,7 +338,9 @@ for (const target of TARGETS) {
   // constructible here: deleting a linked worktree's main repo breaks `git status` inside the
   // worktree itself, which routes into the SKIP branch before the rm/prune logic is reached.
   // ==========================================================================
-  test(`[${T}] --remove: deletion succeeds silently (no crash) when there is no linked source repo to prune`, async () => {
+  // 6.1.0 (audit finding: a planted or personal *-wt-* clone was rm -rf'd and git ran inside it):
+  // a standalone repo is not a cli-dispatch worktree, so it is skipped without running git.
+  test(`[${T}] --remove: a standalone clean repo named *-wt-* is skipped, not deleted`, async () => {
     const { work, fakeTmpRoot, tmpdirRoot, sessionsDir } = newFixture()
     try {
       const standaloneDir = path.join(fakeTmpRoot, uniq('ds-wt-standalone'))
@@ -351,10 +353,9 @@ for (const target of TARGETS) {
 
       const res = await runClean(target, { fakeTmpRoot, tmpdirRoot, sessionsDir, args: ['--remove'] })
 
-      assert.equal(res.code, 0, `expected exit 0 (no crash even though there's nothing to prune against); stderr: ${res.stderr}`)
-      assert.equal(res.stderr, '', 'no stderr output expected from the silent best-effort prune skip')
-      assert.match(res.stdout, /removed 1 worktree\(s\), skipped 0 dirty, 0 unreadable\./)
-      assert.equal(fs.existsSync(standaloneDir), false, 'the clean, stale, standalone repo should still be deleted')
+      assert.equal(res.code, 0, `expected exit 0 (no crash); stderr: ${res.stderr}`)
+      assert.match(res.stdout, /removed 0 worktree\(s\), skipped 0 dirty, 1 unreadable\./)
+      assert.equal(fs.existsSync(standaloneDir), true, 'a standalone repo may hold unpushed work; it must never be deleted')
     } finally {
       rmrf(work)
     }

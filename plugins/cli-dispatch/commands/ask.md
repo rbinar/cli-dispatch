@@ -15,9 +15,13 @@ Run it as a **background task** (a worker can take minutes), then continue the s
 `/cli-dispatch:resume <id> <follow-up>`. Progress: `/cli-dispatch:watch <id>`.
 
 ```bash
-# $ARGUMENTS is substituted TEXTUALLY before bash parses it, so the user's quoting survives —
-# do NOT wrap this in eval (nested double quotes would split the prompt).
-set -- $ARGUMENTS
+# The user's text is pasted in before bash parses it, so it is kept in a quoted heredoc and split
+# by a tokenizer that expands nothing. (`read`, not $(cat): bash 3.2 mis-parses a lone quote in $( ).)
+IFS= read -r -d '' ARGS_RAW <<'CLI_DISPATCH_ARGS_EOF_9f2c' || true
+$ARGUMENTS
+CLI_DISPATCH_ARGS_EOF_9f2c
+_AF="$(mktemp)"; printf '%s' "$ARGS_RAW" | node "${CLAUDE_PLUGIN_ROOT}/scripts/cli-dispatch-args.mjs" > "$_AF" || { rm -f "$_AF"; exit 2; }
+set --; while IFS= read -r -d '' a; do set -- "$@" "$a"; done < "$_AF"; rm -f "$_AF"
 BACKEND="${1:-}"; PROMPT="${2:-}"; shift 2 2>/dev/null || true
 case "$BACKEND" in
   ds) AGENT=ds-agent; SAFE=(--read-only) ;;
