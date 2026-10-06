@@ -213,7 +213,9 @@ function Test-WorktreeClean {
   if (-not $Worktree) { return $false }
   if (-not (Test-Path $Worktree)) { return $false }
   try {
-    $status = git -C $Worktree status --short
+    $status = git -C $Worktree status --short 2>$null
+    # A failing git is never "clean" (the caller falls back to Remove-Item for a clean one).
+    if ($LASTEXITCODE -ne 0) { return $false }
     return [string]::IsNullOrWhiteSpace($status)
   } catch {
     return $false
@@ -511,6 +513,8 @@ honest empty `command` is more useful than a confident one that was never execut
 
     if ($workerExit -ne 0) {
       $env:CLI_DISPATCH_WORKER_EXIT = "$workerExit"
+      # 7 is the worktree runners' leak-guard code: the worker wrote outside its worktree.
+      if ($workerExit -eq 7) { $env:CLI_DISPATCH_LEAK = '1' }
       # The runner has exited, so a status still saying "running" would block the wait forever.
       $statusFile = Join-Path $SessionDir 'status.json'
       if ((Read-JsonField -Path $statusFile -Key 'state') -eq 'running') {

@@ -20,6 +20,13 @@ while [ "$#" -gt 0 ]; do case "$1" in
   --older-than) OLDER="$2"; shift 2;;
   *) shift;; esac; done
 
+# Both values end up in a crontab line / plist / task command — refuse anything else.
+case "$OLDER" in ''|*[!0-9]*) [ -z "$OLDER" ] || { echo "cli-dispatch-clean-schedule: --older-than must be a whole number of days" >&2; exit 2; } ;; esac
+case "$TIME" in
+  [0-9]:[0-5][0-9]|[01][0-9]:[0-5][0-9]|2[0-3]:[0-5][0-9]) ;;
+  *) echo "cli-dispatch-clean-schedule: --time must be HH:MM (00:00-23:59)" >&2; exit 2 ;;
+esac
+
 BIN="$(command -v cli-dispatch-clean || echo "$HOME/.local/bin/cli-dispatch-clean")"
 HH="${TIME%%:*}"; MM="${TIME##*:}"; HH="${HH#0}"; MM="${MM#0}"; HH="${HH:-0}"; MM="${MM:-0}"
 LOG="$HOME/.cache/cli-dispatch/clean.log"; mkdir -p "$(dirname "$LOG")"

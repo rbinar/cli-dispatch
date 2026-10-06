@@ -4,9 +4,9 @@ argument-hint: "[ds|ag|cx|oc|cp]"
 allowed-tools: Bash
 ---
 
-!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/cli-dispatch-balance.sh" $ARGUMENTS`
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/cli-dispatch-balance.sh"`
 
-The report above already ran — do NOT run it again. With no argument it covers every
+The report above already ran — do NOT run it again. If the user named a backend ($ARGUMENTS — ds|deepseek, ag|antigravity, cx|codex, oc|opencode, cp|copilot), show only that backend's section; otherwise show everything. With no argument it covers every
 backend; `ds`/`ag`/`cx`/`oc`/`cp` (or the long name) limits it to one.
 
 Summarize one headline number per `==` section and nothing more:

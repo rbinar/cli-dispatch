@@ -9,7 +9,14 @@ allowed-tools: Bash
 Send SIGTERM to the worker process for session `$ARGUMENTS` and mark it as `killed`.
 
 ```bash
-SID="$ARGUMENTS"
+# The user's text is pasted in before bash parses it, so it is kept in a quoted heredoc and split
+# by a tokenizer that expands nothing. (`read`, not $(cat): bash 3.2 mis-parses a lone quote in $( ).)
+IFS= read -r -d '' ARGS_RAW <<'CLI_DISPATCH_ARGS_EOF_9f2c' || true
+$ARGUMENTS
+CLI_DISPATCH_ARGS_EOF_9f2c
+_AF="$(mktemp)"; printf '%s' "$ARGS_RAW" | node "${CLAUDE_PLUGIN_ROOT}/scripts/cli-dispatch-args.mjs" > "$_AF" || { rm -f "$_AF"; exit 2; }
+set --; while IFS= read -r -d '' a; do set -- "$@" "$a"; done < "$_AF"; rm -f "$_AF"
+SID="${1:-}"
 if [ -z "$SID" ]; then echo "usage: /cli-dispatch:kill <session-id>  (use /cli-dispatch:sessions to list)"; exit 1; fi
 
 ROOT="${CLI_DISPATCH_SESSIONS_DIR:-${CLAUDE_DS_SESSIONS_DIR:-}}"

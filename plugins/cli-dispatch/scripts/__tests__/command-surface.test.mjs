@@ -97,8 +97,11 @@ test('no shipped file or doc points at a removed command', () => {
 
 // ---- doctor [backend] (absorbed status + the five *-status) ---------------------------------
 
-test('doctor pre-executes with the plugin root and the user argument', () => {
-  assert.match(preExec('doctor'), /cli-dispatch-doctor\.sh"?\s+"\$\{CLAUDE_PLUGIN_ROOT\}"\s+\$ARGUMENTS\s*$/)
+test('doctor pre-executes with the plugin root only; the backend filter is the model\'s', () => {
+  // 6.1.0: $ARGUMENTS in a `!` line ran before the model saw it (`doctor cx; touch x`), so the
+  // script reports every backend and the model narrows to the one the user named.
+  assert.match(preExec('doctor'), /cli-dispatch-doctor\.sh"?\s+"\$\{CLAUDE_PLUGIN_ROOT\}"\s*$/)
+  assert.match(md('doctor').slice(md('doctor').indexOf('\n!`') + 3).replace(/^[^\n]*\n/, ''), /\$ARGUMENTS/, 'the prose tells the model which backend was asked for')
 })
 
 test('doctor with no backend reports every backend', () => {
@@ -139,9 +142,10 @@ test('doctor shows the configured model (from status)', () => {
 
 // ---- sessions [backend] / balance [backend] -------------------------------------------------
 
-test('sessions and balance pass the user argument to their script', () => {
-  assert.match(preExec('sessions'), /cli-dispatch-sessions\.sh"?\s+\$ARGUMENTS\s*$/)
-  assert.match(preExec('balance'), /cli-dispatch-balance\.sh"?\s+\$ARGUMENTS\s*$/)
+test('sessions and balance pre-execute without user arguments', () => {
+  assert.match(preExec('sessions'), /cli-dispatch-sessions\.sh"?\s*$/)
+  assert.match(preExec('balance'), /cli-dispatch-balance\.sh"?\s*$/)
+  for (const n of ['sessions', 'balance']) assert.match(md(n).split('\n').filter((l) => !l.startsWith('!`')).join('\n'), /\$ARGUMENTS/, `${n}: prose names the requested backend`)
 })
 
 test('sessions accepts a short or long backend slug', () => {
@@ -231,6 +235,7 @@ function fakePluginRoot() {
     fs.writeFileSync(path.join(root, 'scripts', s), `#!/usr/bin/env bash\necho "PLUGIN ${s}"\nfor a in "$@"; do echo "ARG[$a]"; done\n`)
     fs.chmodSync(path.join(root, 'scripts', s), 0o755)
   }
+  fs.copyFileSync(path.join(SCRIPTS, 'cli-dispatch-args.mjs'), path.join(root, 'scripts', 'cli-dispatch-args.mjs'))
   return root
 }
 

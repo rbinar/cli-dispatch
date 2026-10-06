@@ -246,4 +246,4 @@ echo ">>>   If those changes are yours, re-run with CLI_DISPATCH_ALLOW_CONCURREN
 echo ">>> patch saved: $PATCH_FILE" >&2
 echo ">>> the worker's own output is UNAFFECTED and still in the worktree: $WT" >&2
 printf '%s\n' "$NEW_DIRT" >&2
-exit 1
+exit 7  # 7 = "leak": the worker wrote outside its worktree (cli-dispatch-run reads it)

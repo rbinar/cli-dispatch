@@ -4,12 +4,11 @@ argument-hint: "[ds|ag|cx|oc|cp]"
 allowed-tools: Bash
 ---
 
-!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/cli-dispatch-doctor.sh" "${CLAUDE_PLUGIN_ROOT}" $ARGUMENTS`
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/cli-dispatch-doctor.sh" "${CLAUDE_PLUGIN_ROOT}"`
 
-The health check above already ran — do NOT run it again.
+The health check above already ran — do NOT run it again. If the user named a backend ($ARGUMENTS — ds|deepseek, ag|antigravity, cx|codex, oc|opencode, cp|copilot), show only that backend's section; otherwise show everything.
 
-Present it to the user as-is, grouped by the `──` section headings. An optional backend
-argument (`ds`, `ag`, `cx`, `oc`, `cp`, or the long name) limits the report to that backend. `✓` = OK,
+Present it to the user as-is, grouped by the `──` section headings. `✓` = OK,
 `✗` = action needed. Keep it compact; add no prose beyond what the report says.
 The report never prints a key VALUE, only whether one is set — keep it that way.
 

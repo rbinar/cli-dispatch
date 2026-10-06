@@ -95,7 +95,7 @@ if (-not $skipWorktrees) {
 
   # Only $env:TEMP is swept on Windows — there is no Unix-style shared /tmp to also check.
   $tmpRoot = $env:TEMP
-  Write-WtLog "worktree artifact sweep (pattern *-wt-*, older than ${wtDays}d):"
+  Write-WtLog "worktree artifact sweep (pattern (ds|ag|cx|oc|cp)-wt-*, older than ${wtDays}d):"
   $wtFound = 0; $wtDirty = 0; $wtRemoved = 0; $wtSkipped = 0
   $prunedRepos = @()
 
@@ -105,7 +105,7 @@ if (-not $skipWorktrees) {
     # worktrees a full day earlier than the bash sweep on the same flags.
     $cutoff = (Get-Date).AddDays(-($wtDays + 1))
     $candidates = Get-ChildItem -Path $tmpRoot -Directory -Filter "*-wt-*" -ErrorAction SilentlyContinue |
-      Where-Object { $_.LastWriteTime -lt $cutoff }
+      Where-Object { $_.Name -match '^(ds|ag|cx|oc|cp)-wt-' -and $_.LastWriteTime -lt $cutoff }
     foreach ($wt in $candidates) {
       $wtFound++
       if (-not $gitBin) {
@@ -113,7 +113,20 @@ if (-not $skipWorktrees) {
         $wtSkipped++
         continue
       }
-      $statusOut = & $gitBin -C $wt.FullName status --porcelain 2>$null
+      # Only a real LINKED worktree: `.git` must be a regular file whose gitdir: line points into
+      # */.git/worktrees/*. Anything else is skipped BEFORE git runs in it.
+      $wtGitFile = Join-Path $wt.FullName ".git"
+      $wtGitdir = $null
+      if ((Test-Path -LiteralPath $wtGitFile -PathType Leaf) -and -not ((Get-Item -LiteralPath $wtGitFile -Force).Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+        try { $wtGitdir = (Get-Content -Raw -LiteralPath $wtGitFile) -split "`r?`n" | Where-Object { $_ -match '^gitdir:\s*(.+)$' } | Select-Object -First 1 } catch {}
+      }
+      if (-not ($wtGitdir -and ($wtGitdir -replace '\\', '/') -match '/\.git/worktrees/')) {
+        Write-WtLog "  SKIP (git status failed - not a valid worktree?) $($wt.FullName)"
+        $wtSkipped++
+        continue
+      }
+      # fsmonitor off: repo config must never execute from here.
+      $statusOut = & $gitBin -c core.fsmonitor=false -C $wt.FullName status --porcelain 2>$null
       if ($LASTEXITCODE -ne 0) {
         Write-WtLog "  SKIP (git status failed - not a valid worktree?) $($wt.FullName)"
         $wtSkipped++
@@ -144,7 +157,7 @@ if (-not $skipWorktrees) {
         Remove-Item -Recurse -Force $wt.FullName
         $wtRemoved++
         if ($srcRepo -and (Test-Path $srcRepo) -and ($prunedRepos -notcontains $srcRepo)) {
-          try { & $gitBin -C $srcRepo worktree prune 2>$null | Out-Null } catch {}
+          try { & $gitBin -c core.fsmonitor=false -C $srcRepo worktree prune 2>$null | Out-Null } catch {}
           $prunedRepos += $srcRepo
         }
       }

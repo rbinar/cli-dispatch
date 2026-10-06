@@ -295,6 +295,13 @@ diff the guards — not only the happy path.
 - A subagent's result reaches its caller only through a `SubagentHandback` call (Claude Code
   2.1.289+); text after it is dropped. `agents/runner.md` therefore says the handback `message` is
   the `cli-dispatch-wait` stdout verbatim, or haiku hands back its own summary (6.0.5).
+- A slash command's `$ARGUMENTS` is pasted into its bash fence as TEXT before bash parses it.
+  Never let bash see it unquoted: fences read it through a quoted heredoc and split it with
+  `scripts/cli-dispatch-args.mjs`, and `!` pre-execution lines never contain it (they run before
+  the model sees anything). Don't write the placeholder in a fence comment either: it gets pasted
+  there too. `security-wave1.test.mjs` pins this (6.1.0).
+- The `*-worktree-run.sh` leak guard exits 7 (worker wrote outside its worktree); `cli-dispatch-run`
+  turns that into `verdict.leak: true` and exit 2 even when verify passes.
 - Portable mtime is `stat -c %Y f 2>/dev/null || stat -f %m f`, GNU form FIRST: GNU `stat -f`
   prints filesystem info to stdout before failing, so a BSD-first chain hands the caller junk on
   Linux (it silently disabled the watchdog until 6.0.1). `mtime-gnu-stat.test.mjs` pins it.

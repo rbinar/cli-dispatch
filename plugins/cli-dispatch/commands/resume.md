@@ -11,10 +11,19 @@ Usage: `/cli-dispatch:resume <session-id> <follow-up prompt>`
 Auto-detects backend (DeepSeek / Antigravity / Codex / OpenCode / Copilot) from the session's `status.json`.
 
 ```bash
-ARGS="$ARGUMENTS"
-SID="${ARGS%% *}"
-PROMPT="${ARGS#* }"
-if [ -z "$SID" ] || [ "$SID" = "$ARGS" ] || [ -z "$PROMPT" ]; then
+# The user's text is pasted into this script before bash parses it (never mention the
+# placeholder in a comment: it would be pasted there too). A quoted heredoc keeps it unexpanded,
+# so the follow-up reaches the worker byte-for-byte as ONE argument. `read`, not $(cat): bash 3.2
+# mis-parses a lone quote inside $( ).
+IFS= read -r -d '' ARGS <<'CLI_DISPATCH_ARGS_EOF_9f2c' || true
+$ARGUMENTS
+CLI_DISPATCH_ARGS_EOF_9f2c
+ARGS="${ARGS%$'\n'}"
+ARGS="${ARGS#"${ARGS%%[![:space:]]*}"}"
+SID="${ARGS%%[[:space:]]*}"
+PROMPT="${ARGS#"$SID"}"
+PROMPT="${PROMPT#"${PROMPT%%[![:space:]]*}"}"
+if [ -z "$SID" ] || [ -z "$PROMPT" ]; then
   echo "usage: /cli-dispatch:resume <session-id> <follow-up prompt>"
   echo "tip:   /cli-dispatch:sessions  to list session ids"
   exit 1
@@ -40,7 +49,7 @@ process.stdout.write(b||'deepseek');
 " 2>/dev/null)
 
 echo "session: $SID  backend: $BACKEND"
-echo "prompt:  $PROMPT"
+printf 'prompt:  %s\n' "$PROMPT"
 echo ""
 
 case "$BACKEND" in

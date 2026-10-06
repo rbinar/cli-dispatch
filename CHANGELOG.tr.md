@@ -7,6 +7,48 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [6.1.0] — 2026-10-07
+
+Bir kod denetiminden çıkan güvenlik düzeltmeleri. Her biri 6.0.5'e karşı yeniden üretildi ve
+düzeltme olmadan düşen bir testi var.
+
+### Güvenlik
+
+- **Komut argümanları artık shell kodu olarak çalışmıyor.** Claude Code bir slash komutun
+  argümanlarını bash bloğuna metin olarak yapıştırır; bu yüzden prompt'taki ters tırnaklar ve
+  `$( )` çalışıyordu: ``/cli-dispatch:resume <id> don't run `git reset --hard` `` bu komutu
+  çalıştırırdı, bir issue'dan kurulan brief'le `/cli-dispatch:run` çağıran bir model de aynı
+  şekilde yönlendirilebilirdi. `run`, `ask`, `resume`, `kill`, `watch`, `gain` ve `clean` artık
+  argümanlarını tırnaklı bir heredoc ile okuyor ve tırnaklara uyan, hiçbir şeyi genişletmeyen
+  küçük bir ayrıştırıcıyla (`scripts/cli-dispatch-args.mjs`) bölüyor. Prompt worker'a birebir
+  ulaşıyor.
+- **`doctor`, `sessions` ve `balance` ön-çalıştırma satırlarına artık argüman geçirmiyor.** O satır
+  model hiçbir şey görmeden çalışır; `/cli-dispatch:sessions ds; touch x`, `x`'i oluşturuyordu
+  (sandbox container'ında doğrulandı). Script'ler artık her zaman bütün backend'leri raporluyor,
+  model yalnız senin andığını gösteriyor.
+- **`clean --schedule`, `--older-than` ve `--time` değerlerini** crontab satırı, plist ya da
+  Scheduled Task yazmadan önce doğruluyor. Değerler olduğu gibi yazılıyordu ve cron o satırı
+  `sh` ile çalıştırır; hazırlanmış bir değer her gün çalışan bir komuta dönüşüyordu.
+- **Worktree taraması yalnız gerçek cli-dispatch worktree'lerine dokunuyor.** `/tmp` ve `$TMPDIR`
+  altındaki her `*-wt-*` dizinini ele alıp içinde `git status` çalıştırıyordu; `core.fsmonitor`
+  ayarlı, oraya bırakılmış bir repo bir worker'ın sandbox'ı dışında komut çalıştırabiliyor, bu
+  adı taşıyan kişisel bir klon silinebiliyordu. Artık yalnız `.git` dosyası bir repo'nun
+  `.git/worktrees/` dizinini gösteren `(ds|ag|cx|oc|cp)-wt-*` dizinleri ele alınıyor ve git
+  `core.fsmonitor=false` ile çalışıyor.
+- **Başarısız bir `git status` artık temiz worktree sayılmıyor.** `--cleanup-if-clean` bu durumda
+  git'in okuyamadığı bir worktree için `rm -rf`'e düşüyordu.
+- Doküman: [Güvenlik ve veri](docs/tr/security.md)'deki `gh` token aktarımı notu artık prompt
+  enjeksiyonuyla yönlendirilen bir worker'ın token'ı kullanabileceğini ya da gönderebileceğini ve
+  nasıl kapatılacağını söylüyor.
+
+### Düzeltildi
+
+- **Worktree'si dışına yazan bir worker artık geçmiyor.** 5.3.0'dan (#167) beri leak guard'ın
+  hatası sıradan bir worker hatası gibi ele alınıyordu; run verify'a devam edip
+  `exit 0 / verify: pass` raporlayabiliyordu. Worktree runner'ları artık sızıntıda 7 ile çıkıyor;
+  run `leak: true` kaydediyor, 2 ile çıkıyor ve özet bir `LEAK:` satırı basıyor (worker hata
+  verdiyse `worker exit: N` satırı da).
+
 ## [6.0.5] — 2026-10-06
 
 Codex örneği sandbox container'ında kaydedilirken bulunan iki sorun.

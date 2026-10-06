@@ -9,6 +9,8 @@ for ($i = 0; $i -lt $args.Count; $i++) { switch ($args[$i]) {
   { $_ -in 'install','status','uninstall' } { $action = $_ }
   '--time' { $time = $args[++$i] }
   '--older-than' { $older = $args[++$i] } } }
+if ($older -and $older -notmatch '^\d+$') { [Console]::Error.WriteLine('cli-dispatch-clean-schedule: --older-than must be a whole number of days'); exit 2 }
+if ($time -notmatch '^([01]?\d|2[0-3]):[0-5]\d$') { [Console]::Error.WriteLine('cli-dispatch-clean-schedule: --time must be HH:MM (00:00-23:59)'); exit 2 }
 $name = 'cli-dispatch-clean'
 $bin = (Get-Command cli-dispatch-clean.cmd -ErrorAction SilentlyContinue).Source
 if (-not $bin) { $bin = Join-Path $HOME '.local/bin/cli-dispatch-clean.cmd' }

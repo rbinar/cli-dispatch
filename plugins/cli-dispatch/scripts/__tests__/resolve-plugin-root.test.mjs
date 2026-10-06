@@ -145,6 +145,7 @@ function runWithoutRunnerOnPath(name, { withPluginCopy }) {
   fs.mkdirSync(path.join(root, '.claude-plugin'), { recursive: true })
   fs.writeFileSync(path.join(root, '.claude-plugin', 'plugin.json'), JSON.stringify({ version: '4.18.0' }))
   fs.copyFileSync(RESOLVER, path.join(scripts, 'resolve-plugin-root.sh'))
+  fs.copyFileSync(path.join(scriptsDir, 'cli-dispatch-args.mjs'), path.join(scripts, 'cli-dispatch-args.mjs'))
   if (withPluginCopy) {
     fs.writeFileSync(
       path.join(scripts, 'cli-dispatch-run'),
@@ -157,7 +158,9 @@ function runWithoutRunnerOnPath(name, { withPluginCopy }) {
     cwd: root,
     env: {
       ...process.env,
-      PATH: '/usr/bin:/bin:/usr/sbin:/sbin',
+      // node is a plugin prerequisite (the fence's argument tokenizer runs on it); what this
+      // PATH must lack is ~/.local/bin.
+      PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin:/usr/sbin:/sbin`,
       CLI_DISPATCH_PLUGIN_CACHE_DIR: path.join(root, 'empty-cache'),
     },
     encoding: 'utf8',

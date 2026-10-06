@@ -13,10 +13,13 @@ which wraps the same runner (detached + blocking wait) so a long run survives th
 10-minute ceiling. Best for mechanical delegations with a machine-checkable `--verify` command.
 
 ```bash
-# $ARGUMENTS is substituted TEXTUALLY into this script before bash parses it, so the
-# user's quoting survives as real shell quoting — do NOT wrap this in eval (nested
-# double quotes would split the prompt). Verified with a stub-binary harness.
-set -- $ARGUMENTS
+# The user's text is pasted in before bash parses it, so it is kept in a quoted heredoc and split
+# by a tokenizer that expands nothing. (`read`, not $(cat): bash 3.2 mis-parses a lone quote in $( ).)
+IFS= read -r -d '' ARGS_RAW <<'CLI_DISPATCH_ARGS_EOF_9f2c' || true
+$ARGUMENTS
+CLI_DISPATCH_ARGS_EOF_9f2c
+_AF="$(mktemp)"; printf '%s' "$ARGS_RAW" | node "${CLAUDE_PLUGIN_ROOT}/scripts/cli-dispatch-args.mjs" > "$_AF" || { rm -f "$_AF"; exit 2; }
+set --; while IFS= read -r -d '' a; do set -- "$@" "$a"; done < "$_AF"; rm -f "$_AF"
 BACKEND="${1:-}"; PROMPT="${2:-}"; shift 2 2>/dev/null || true
 case "$BACKEND" in ds|ag|cx|oc|cp) ;; *)
   echo "usage: /cli-dispatch:run <backend> \"<prompt>\" [--verify '<cmd>'] [--cleanup-if-clean] [more flags]"
