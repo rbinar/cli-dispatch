@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [6.0.2] — 2026-10-06
+
+### Changed
+
+- **README rewritten as a short front page** (81 → 64 lines, EN and TR): what it is, the demo,
+  four install commands, three ways to use it, update, and a one-line docs index. The backend
+  table, Windows and sandbox notes now live only in [docs/install.md](docs/install.md) and
+  [docs/security.md](docs/security.md).
+- **New demo video** (`assets/demo.gif`, plus `assets/demo.mp4`): install → setup → doctor → ask →
+  delegating by just asking Claude → `/cli-dispatch:run` → sessions and resume → gain and clean →
+  help. Every terminal line is real output captured in a clean Debian container
+  (`assets/demo-src/capture.sh`); the video is built with Remotion from
+  `assets/demo-src/remotion/`.
+- `/cli-dispatch:help`: the `clean` row no longer runs into the box's right border.
+
 ## [6.0.1] — 2026-10-06
 
 Two Linux bugs found by running the full suite and every command inside a clean Debian container.

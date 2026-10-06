@@ -1,16 +1,16 @@
 # cli-dispatch
 
-> 🌐 **Diller:** **Türkçe** · [English](README.md)
+> 🌐 **Diller:** [English](README.md) · **Türkçe**
 
-**DeepSeek, Gemini, OpenAI Codex, OpenCode'u (OpenRouter üzerinden) veya GitHub Copilot'ı Claude Code içinden delege işçi olarak kullan.** Claude Code'un yerleşik subagent aracı yalnızca Anthropic modellerini destekler — cli-dispatch, mevcut `claude` oturumundan bu beş backend'e görev delege edebilmen için taşınabilir wrapper'lar kurar. Delegasyon deterministik bir runner (düz shell, sıfır LLM token'ı) ve ince bir haiku `cli-dispatch:runner` agent'ı üzerinden yürür; işi işçi yapar, Claude Code yalnızca inceler.
+**Claude Code'un işini DeepSeek, Gemini (Antigravity), OpenAI Codex, OpenCode (OpenRouter) ya da GitHub Copilot'a devret.** Claude Code'un kendi subagent'ları yalnız Anthropic modellerini çalıştırır; cli-dispatch bu beş CLI'ı `claude` oturumunun içinden worker olarak çalıştırır. Deterministik runner her işi bir git worktree'de izole eder, verify komutunu çalıştırır ve kısa bir sonuç döndürür: işi worker yapar, Claude Code gözden geçirir.
 
-> 📝 **Yazı:** [cli-dispatch: Claude'a patron, DeepSeek'e işçi rolü veren bir plugin](https://medium.com/@rbinar/cli-dispatch-claudea-patron-deepseek-e-i%CC%87%C5%9F%C3%A7i-rol%C3%BC-veren-bir-plugin-b232803581fc) — Medium
+![cli-dispatch demosu: kurulum, setup, doctor, ask, delegasyon, run, sessions ve resume, gain ve clean — tüm çıktılar temiz bir Debian container'ında kaydedildi](assets/demo.gif)
 
-![cli-dispatch demo — projende Claude Code başlat, sonra: install, /cli-dispatch:setup, deterministik /cli-dispatch:run ile delege et, kullanımı gör](assets/demo.gif)
+▶️ [Video olarak izle (mp4)](assets/demo.mp4) · 📝 [Yazı (Medium)](https://medium.com/@rbinar/cli-dispatch-claudea-patron-deepseek-e-i%CC%87%C5%9F%C3%A7i-rol%C3%BC-veren-bir-plugin-b232803581fc)
 
 ## Kurulum
 
-> ⚠️ Bunlar **slash komutudur**: **Claude Code CLI'ın içinde** (önce `claude` yaz), tek tek ve sırayla çalıştır. Ayrıntılar, ön koşullar ve sorun giderme: [Kurulum](docs/tr/install.md).
+Bunları Claude Code içinde (önce `claude` yaz) sırayla, tek tek çalıştır:
 
 ```text
 /plugin marketplace add rbinar/cli-dispatch
@@ -19,63 +19,46 @@
 /cli-dispatch:setup
 ```
 
-| Backend | CLI (kurulum) | Auth | Model seçimi |
-|---|---|---|---|
-| **DeepSeek** | `claude` (zaten kurulu) | Config'te `DEEPSEEK_API_KEY` ([edin](https://platform.deepseek.com/api_keys)) | `DS_MODEL` / `DS_FLASH_MODEL` |
-| **Antigravity (Gemini)** | `agy` — `curl -fsSL https://antigravity.google/cli/install.sh \| bash` (+ `script`, `node`) | Google girişi (bir kez `agy` çalıştır) veya `GEMINI_API_KEY` | `--model "<ad>"` / `AG_MODEL` — liste: `agy models` |
-| **Codex (OpenAI)** | `codex` ≥ 0.142.3 — `npm i -g @openai/codex`, `brew install --cask codex` veya `curl -fsSL https://chatgpt.com/codex/install.sh \| sh` (+ `node`) | `codex login` (ChatGPT/OAuth) veya `CODEX_API_KEY`/`OPENAI_API_KEY` | `--model <ad>` / `CX_MODEL` — liste: codex içinde `/model` |
-| **OpenCode (OpenRouter)** | `opencode` — `npm i -g opencode-ai` (+ `node`) | `OPENROUTER_API_KEY` ([edin](https://openrouter.ai/keys)), sen yapıştırırsın | `--model <bare-slug>` / `OC_MODEL` — liste: `opencode models openrouter` |
-| **GitHub Copilot** | `copilot` — `npm i -g @github/copilot`, `brew install --cask copilot-cli` veya `curl -fsSL https://gh.io/copilot-install \| bash` (+ `node` 22+) | `COPILOT_GITHUB_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN` (mümkünse `gh auth token`'ı kullanır) ya da `copilot login --device-code`; aktif Copilot aboneliği gerekir | `--model <slug>` / `CP_MODEL`; `--effort low\|medium\|high` |
+Setup hangi backend'leri istediğini sorar ve wrapper'larını kurar. API key'leri yerel bir tarayıcı formuna girersin; Claude'dan hiç geçmezler. Sonucu `/cli-dispatch:doctor` ile kontrol et. Backend başına CLI, giriş ve model ayrıntıları: [Kurulum](docs/tr/install.md).
 
-Native Windows: yalnızca DeepSeek ve Codex — diğer üçü WSL altında kur (bkz. [Windows](docs/tr/windows.md)). Sandbox: yalnızca Codex'in `--read-only`'si kernel-zorunlu bir OS sandbox'ıdır — gerisi worktree izolasyonu gerektirir (bkz. [Güvenlik ve veri](docs/tr/security.md)).
+## Kullanım
 
-## Kurulum sihirbazı (setup)
-
-`/cli-dispatch:setup` hangi backend('ler)i kuracağını sorar (DeepSeek, Antigravity, Codex, OpenCode, Copilot ya da hepsi); eksik bir CLI'ı `--install-missing` ile otomatik kurabilir — yalnızca senin onayından sonra, auth'u asla otomatikleştirmez. DeepSeek ve OpenCode için tarayıcında tek kullanımlık yerel bir web formu açar; key ve model adlarını oraya yazarsın, değerler doğrudan `~/.config/cli-dispatch/config` dosyasına gider, Claude'dan geçmez. Son adım isteğe bağlı olarak bir delegasyon tercihi yazar ve [oturum-başı politika enjeksiyonunu](docs/tr/policy-injection.md) açar. Tam anlatım: [Kurulum](docs/tr/install.md).
-
-## Delege etme
-
-Orkestratörden varsayılan yol ince runner agent'ıdır: deterministik runner'ı ayrık başlatır, bitene kadar bloklar, başarısız verify'ı bir kez yeniden dener ve kompakt bir verdict döndürür.
+**Sadece iste.** Claude işi `cli-dispatch:runner` agent'ına verir; agent worker'ı çalıştırır, sonucu doğrular ve incelemen için bir yama döndürür:
 
 ```text
-Agent(subagent_type: "cli-dispatch:runner", prompt: "backend: ds\ncwd: /mutlak/yol\nverify: <cmd>\n---\n<kendi başına yeterli brief>")
+add() in math.mjs is broken. Delegate the fix to DeepSeek, verify with node --test.
 ```
 
-Doğrudan (sıfır LLM token'ı; arka plana almayı sen yaparsın):
+**Kendin çalıştır.** Orkestrasyona LLM token'ı harcanmaz:
 
 ```text
-/cli-dispatch:run <backend> "<görev>" --verify '<cmd>'
+/cli-dispatch:run cx "Fix add() in math.mjs" --verify 'node --test'
 ```
 
-Geriye kompakt bir verdict gelir; gerçek repo değişiklikleri izole bir git worktree'de commit'siz kalır, incelemeden sonra patch'i sen uygularsın. Repo değişikliği olmayan basit, tek-atışlık sorular için `/cli-dispatch:ask <backend> "<prompt>"` kullanılır. Devamı: [Deterministik runner](docs/tr/runner.md), [Komutlar](docs/tr/commands.md).
+**Tek seferlik soru sor.** Salt-okunur, repo değişmez:
 
-> ⚠️ **Varsayılan mod bir sandbox değildir.** İşçiler dosya yazabilir ve bash çalıştırabilir — gerçek repo işini worktree'de izole et ([Güvenlik ve veri](docs/tr/security.md)).
+```text
+/cli-dispatch:ask ds "Explain what this regex matches: ^\d{3}-\d{4}$"
+```
+
+Backend'ler: `ds` DeepSeek · `ag` Antigravity · `cx` Codex · `oc` OpenCode · `cp` Copilot. 12 komutun listesi `/cli-dispatch:help`'te, ayrıntılar [Komutlar](docs/tr/commands.md)'da.
+
+> ⚠️ Worker'lar dosya yazabilir ve komut çalıştırabilir. Gerçek repo işi, yamayı sen uygulayana kadar bir git worktree'de kalır ([Güvenlik ve veri](docs/tr/security.md)).
 
 ## Güncelleme
 
 ```text
 /plugin update cli-dispatch
 /reload-plugins
+/cli-dispatch:setup
 ```
 
-`/plugin update` yalnızca komutları ve skill'leri yeniler; bir wrapper'ı değiştiren güncellemeden sonra `~/.local/bin`'deki wrapper'ları yeniden kurmak için bir kez `/cli-dispatch:setup` çalıştır. `/cli-dispatch:doctor` ile doğrula. Bkz. [Kurulum](docs/tr/install.md#güncelleme).
+Setup'ı yeniden çalıştırmak `~/.local/bin`'deki wrapper'ları tazeler; `/plugin update` onlara dokunmaz.
 
 ## Dokümantasyon
 
-- [Kurulum](docs/tr/install.md) — ön koşullar, adım adım kurulum, setup ve config, güncelleme
-- [Komutlar](docs/tr/commands.md) — tüm slash komutları
-- [Deterministik runner](docs/tr/runner.md) — runner agent'ı, `/cli-dispatch:run`, escalation yolu
-- [Session takibi](docs/tr/sessions.md) — canlı izleme, resume, session dizini
-- [Oturum-başı politika enjeksiyonu](docs/tr/policy-injection.md) — opsiyonel delegasyon politikası hook'u
-- [Statusline rozeti](docs/tr/statusline.md) — `[CD]` statusline fragment'ı
-- [Kullanım & kota](docs/tr/quota.md) — backend başına native bakiye ve rate limit kontrolü
-- [Özellikler ve mimari](docs/tr/features.md) — özellik özeti ve mimari rol
-- [Kaputun altı](docs/tr/internals.md) — kurulan CLI'lar ve doğrudan terminal kullanımı
-- [Windows](docs/tr/windows.md) — native PowerShell desteği
-- [Güvenlik ve veri](docs/tr/security.md) — sandbox durumu, key'ler, veri egress, budama
-- [Kaldırma](docs/tr/uninstall.md) — tam temizlik
-- [Terminal referansı](TERMINAL.md) ve [CHANGELOG](CHANGELOG.tr.md)
+[Kurulum](docs/tr/install.md) · [Komutlar](docs/tr/commands.md) · [Deterministik runner](docs/tr/runner.md) · [Oturumlar](docs/tr/sessions.md) · [Politika enjeksiyonu](docs/tr/policy-injection.md) · [Statusline](docs/tr/statusline.md) · [Kullanım ve kota](docs/tr/quota.md) · [Özellikler](docs/tr/features.md) · [İç yapı](docs/tr/internals.md) · [Windows](docs/tr/windows.md) · [Güvenlik](docs/tr/security.md) · [Kaldırma](docs/tr/uninstall.md) · [Terminal referansı](TERMINAL.md) · [Değişiklik günlüğü](CHANGELOG.md)
 
 ## Lisans
 
-MIT — bkz. [LICENSE](LICENSE).
+MIT, bkz. [LICENSE](LICENSE).

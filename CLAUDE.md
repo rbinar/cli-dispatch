@@ -5,7 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this repo is
 
 `cli-dispatch` is a Claude Code **plugin** (not an npm package — there is no `package.json`,
-no build step, no bundler). It ships slash commands, a SessionStart hook, a skill, and
+no build step, no bundler; the one `package.json` in the repo is `assets/demo-src/remotion/`, the
+demo video source, which ships nothing). It ships slash commands, a SessionStart hook, a skill, and
 standalone CLI scripts that let Claude Code delegate work to five external "worker" CLIs —
 DeepSeek (via `claude` pointed at DeepSeek's API), Antigravity/Gemini (`agy`), OpenAI Codex
 (`codex`), OpenCode (`opencode`, via OpenRouter), and GitHub Copilot (`copilot`) — since

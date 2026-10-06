@@ -7,6 +7,20 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [6.0.2] — 2026-10-06
+
+### Değişti
+
+- **README kısa bir giriş sayfası olarak yeniden yazıldı** (81 → 64 satır, EN ve TR): ne olduğu,
+  demo, dört kurulum komutu, üç kullanım yolu, güncelleme ve tek satırlık doküman dizini. Backend
+  tablosu, Windows ve sandbox notları artık yalnız [docs/install.md](docs/install.md) ve
+  [docs/security.md](docs/security.md)'de.
+- **Yeni demo videosu** (`assets/demo.gif` ve `assets/demo.mp4`): kurulum → setup → doctor → ask →
+  Claude'a sadece söyleyerek delegasyon → `/cli-dispatch:run` → sessions ve resume → gain ve clean →
+  help. Her terminal satırı temiz bir Debian container'ında yakalanmış gerçek çıktıdır
+  (`assets/demo-src/capture.sh`); video `assets/demo-src/remotion/` içinden Remotion ile üretilir.
+- `/cli-dispatch:help`: `clean` satırı artık kutunun sağ kenarına taşmıyor.
+
 ## [6.0.1] — 2026-10-06
 
 Temiz bir Debian container'ında tam suite ve her komut çalıştırılırken bulunan iki Linux hatası.
