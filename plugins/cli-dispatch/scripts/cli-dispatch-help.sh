@@ -27,7 +27,7 @@ cat <<'HELP'
 │  USAGE & HOUSEKEEPING                                                        │
 │    /cli-dispatch:balance [be]   Usage / credits (all backends, or one)       │
 │    /cli-dispatch:gain           Token totals; --drift for delegation drift   │
-│    /cli-dispatch:clean          Remove old sessions; --schedule for daily run│
+│    /cli-dispatch:clean          Remove old sessions; --schedule: daily job   │
 │    /cli-dispatch:help           This reference                               │
 │                                                                              │
 │  [be] = ds|ag|cx|oc|cp (or deepseek|antigravity|codex|opencode|copilot)      │
