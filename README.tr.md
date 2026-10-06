@@ -29,6 +29,8 @@ Setup hangi backend'leri istediğini sorar ve wrapper'larını kurar. API key'le
 add() in math.mjs is broken. Delegate the fix to DeepSeek, verify with node --test.
 ```
 
+▶️ Uçtan uca örnek ([mp4](videos/cx-delegation-harness.mp4)): Claude düşen bir testi Codex'e devreder, `cli-dispatch:runner` agent'ını açıp ona gönderilen prompt'u birebir görürsün, Claude da doğrulanmış yamayı uygular. Bir sandbox container'ında canlı kaydedildi.
+
 **Kendin çalıştır.** Orkestrasyona LLM token'ı harcanmaz:
 
 ```text

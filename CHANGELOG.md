@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [6.0.4] — 2026-10-06
+
+### Added
+
+- **End-to-end example video** (`videos/cx-delegation-harness.mp4`), linked from both READMEs: a
+  real Claude Code session in the sandbox container delegates a failing Turkish-letters test to
+  Codex, the `cli-dispatch:runner` agent is opened to show the exact prompt it was sent
+  (`backend:` / `cwd:` / `verify:` header plus the brief), and Claude applies the verified patch
+  and re-runs the tests (2 pass, 0 fail). Recorded with Claude in Chrome.
+
 ## [6.0.3] — 2026-10-06
 
 ### Changed
