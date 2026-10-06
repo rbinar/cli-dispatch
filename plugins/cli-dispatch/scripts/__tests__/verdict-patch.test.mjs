@@ -45,6 +45,10 @@ test('verdict-diff.patch applies to the base commit with new, modified and delet
     const clone = path.join(dir, 'clone')
     execSync(`git clone -q "${wt}" "${clone}"`)
     const patch = path.join(s, 'verdict-diff.patch')
+    // A pure diff: the `git status --short` lines it used to start with listed the WORKTREE's
+    // files, and an orchestrator that printed the patch next to its own `git status` read them as
+    // changes in its own repo (seen twice end to end).
+    assert.match(fs.readFileSync(patch, 'utf8'), /^diff --git /)
     const ap = spawnSync('git', ['apply', patch], { cwd: clone, encoding: 'utf8' })
     assert.equal(ap.status, 0, `git apply failed: ${ap.stderr}\n${fs.readFileSync(patch, 'utf8')}`)
     assert.equal(fs.readFileSync(path.join(clone, 'keep.txt'), 'utf8'), 'a\nb\n')

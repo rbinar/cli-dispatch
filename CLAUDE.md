@@ -292,6 +292,9 @@ diff the guards — not only the happy path.
   managed sandboxes forbid (#171). Use a pipe, a here-string or a `mktemp` file; a named pipe read
   by `cat` when node must read a live stream (libuv reopens a FIFO stdin and never sees EOF).
   `no-process-substitution.test.mjs` enforces it.
+- A subagent's result reaches its caller only through a `SubagentHandback` call (Claude Code
+  2.1.289+); text after it is dropped. `agents/runner.md` therefore says the handback `message` is
+  the `cli-dispatch-wait` stdout verbatim, or haiku hands back its own summary (6.0.5).
 - Portable mtime is `stat -c %Y f 2>/dev/null || stat -f %m f`, GNU form FIRST: GNU `stat -f`
   prints filesystem info to stdout before failing, so a BSD-first chain hands the caller junk on
   Linux (it silently disabled the watchdog until 6.0.1). `mtime-gnu-stat.test.mjs` pins it.

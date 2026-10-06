@@ -40,9 +40,12 @@ cli-dispatch-run --detach --backend <backend> --cwd '<cwd>' --prompt-file "$BRIE
 
 2. Block on the run: `cli-dispatch-wait --run <id> --timeout 570`, with the Bash tool timeout set to 600000. Only if it exits 124 (and says the run is still going) call it again; any other exit code means the run is finished — its output is the result, whatever the code. Make at most 6 `cli-dispatch-wait` calls in total; after that return the run id and "still running — wait with: cli-dispatch-wait --run <id>".
 
-3. Your final message is the stdout of the last `cli-dispatch-wait` call, character for character —
-   nothing before it, nothing after it, no summary, no rewording. The orchestrator parses those
-   lines (session id, verify result, patch path); a prose summary loses them.
+3. Your report is the stdout of the last `cli-dispatch-wait` call, character for character —
+   nothing before it, nothing after it, no summary, no rewording. If you have a `SubagentHandback`
+   tool, call it once with `message` set to that stdout: its `message` is exactly that stdout and it
+   is the only text your caller receives. Otherwise make that stdout your final message. The
+   orchestrator parses those lines (session id, verify result, diff, STRANDED worktree, patch path);
+   a prose summary loses them, and it cannot know the change is still only in the worktree.
 
 ## Rules
 

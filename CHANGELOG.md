@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [6.0.5] — 2026-10-06
+
+Two problems found while recording the Codex example in the sandbox container.
+
+### Fixed
+
+- **The `cli-dispatch:runner` agent's result reached Claude as a prose summary.** Claude Code
+  2.1.289 delivers a subagent's result only through a `SubagentHandback` call; plain text at the end
+  is dropped. `agents/runner.md` asked for a final message, so haiku put its own summary into the
+  handback: the `diff:`, `fix attempts:` and `STRANDED changes in worktree:` lines never arrived, and
+  Claude was told the repo file "has been updated" while the change was still only in the worktree.
+  The agent now passes the `cli-dispatch-wait` output, character for character, as the handback
+  `message`. Verified live: the handback is the exact five-line summary.
+- **`verdict-diff.patch` no longer starts with `git status` lines.** They listed the worktree's
+  files (including `worker-report.json`, which the diff itself excludes), and an orchestrator that
+  printed the patch next to its own `git status` read them as changes in its own repo; two separate
+  sessions were misled this way. The patch is now a pure diff (bash runner and `.ps1` twin).
+
+### Changed
+
+- `videos/cx-delegation-harness.mp4` is now a real screen recording with a visible cursor, made
+  with the fixes above in place, instead of a sequence of screenshots.
+
 ## [6.0.4] — 2026-10-06
 
 ### Added
