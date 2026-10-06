@@ -7,6 +7,16 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [6.0.4] — 2026-10-06
+
+### Eklendi
+
+- **Uçtan uca örnek video** (`videos/cx-delegation-harness.mp4`), iki README'den de linkli: sandbox
+  container'ındaki gerçek bir Claude Code oturumu, Türkçe harflerle ilgili düşen bir testi Codex'e
+  devreder; `cli-dispatch:runner` agent'ı açılıp ona gönderilen prompt birebir gösterilir
+  (`backend:` / `cwd:` / `verify:` başlığı ve brief); Claude doğrulanmış yamayı uygular ve testleri
+  yeniden çalıştırır (2 geçti, 0 hata). Claude in Chrome ile kaydedildi.
+
 ## [6.0.3] — 2026-10-06
 
 ### Değişti

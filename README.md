@@ -29,6 +29,8 @@ Setup asks which backends you want and installs their wrappers. API keys go into
 add() in math.mjs is broken. Delegate the fix to DeepSeek, verify with node --test.
 ```
 
+▶️ End-to-end example ([mp4](videos/cx-delegation-harness.mp4)): Claude hands a failing test to Codex, you open the `cli-dispatch:runner` agent to see the exact prompt it was given, and Claude applies the verified patch. Recorded live in a sandbox container.
+
 **Run it yourself.** No LLM tokens are spent on orchestration:
 
 ```text
