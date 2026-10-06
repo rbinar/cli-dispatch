@@ -702,12 +702,13 @@ DIFF_PATCH_PATH="$SESSION_DIR/verdict-diff.patch"
 # Worktree may already be gone (e.g. --cleanup-if-clean then --resume) — under
 # `set -e` an unguarded `git -C` would exit 128 and kill the run before verdict.json
 # is written. Guard it and fall through to an empty diff like the PS1 twin does.
-# The status lines are a human summary (git apply skips them). The diff comes from a throwaway
-# index so it carries NEW files too — `git diff HEAD` never shows untracked files, so a worker that
-# only added files used to leave nothing to apply — without touching the worker's own index. The
-# runner's worker-report.json and the node_modules links the worktree runners add never ship.
+# A pure diff, no `git status` header: those lines named the worktree's files, and an orchestrator
+# that printed the patch beside its own `git status` read them as changes in its own repo. The diff
+# comes from a throwaway index so it carries NEW files too (`git diff HEAD` never shows untracked
+# files, so a worker that only added files used to leave nothing to apply) without touching the
+# worker's own index. The runner's worker-report.json and the node_modules links the worktree
+# runners add never ship.
 if [ -n "$WORKTREE_PATH" ] && [ -d "$WORKTREE_PATH" ]; then
-  git -C "$WORKTREE_PATH" status --short --untracked-files=all > "$DIFF_PATCH_PATH"
   PATCH_INDEX="$(mktemp)"
   TEMP_FILES+=("$PATCH_INDEX")
   if GIT_INDEX_FILE="$PATCH_INDEX" git -C "$WORKTREE_PATH" read-tree HEAD 2>/dev/null &&

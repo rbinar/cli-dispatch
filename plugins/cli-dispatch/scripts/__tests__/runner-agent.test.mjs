@@ -204,6 +204,11 @@ test('agents/runner.md is a thin haiku forwarder with only Bash', () => {
   assert.match(body, /only when the header has a `model:` line/)
   assert.match(body, /exits 124/)
   assert.match(body, /character for character/)
+  // Found end to end (6.0.4): Claude Code 2.1.289 delivers a subagent's result only through a
+  // SubagentHandback call, so haiku put a prose summary there; the diff/STRANDED lines never
+  // reached the orchestrator and it was told the repo file "has been updated".
+  assert.match(body, /SubagentHandback/)
+  assert.match(body, /`message` is exactly that stdout/)
 })
 
 test('drift: delegating through the runner agent counts as runner adoption, not as drift', () => {

@@ -558,11 +558,11 @@ honest empty `command` is more useful than a confident one that was never execut
   }
 
   $diffPatchPath = Join-Path $SessionDir 'verdict-diff.patch'
-  Set-Content -Path $diffPatchPath -Value ''
+  Set-Content -Path $diffPatchPath -Value '' -NoNewline
   if ($WorktreePath -and (Test-Path $WorktreePath)) {
-    git -C $WorktreePath status --short --untracked-files=all > $diffPatchPath
-    # Mirrors the bash runner: diff from a throwaway index so NEW files are in the patch, without
-    # touching the worker's index; worker-report.json and node_modules links never ship.
+    # Mirrors the bash runner: a pure diff (no status header) from a throwaway index so NEW files
+    # are in the patch, without touching the worker's index; worker-report.json and node_modules
+    # links never ship.
     $patchIndex = [IO.Path]::GetTempFileName()
     $script:TempFiles.Add($patchIndex)
     $prevIndex = $env:GIT_INDEX_FILE

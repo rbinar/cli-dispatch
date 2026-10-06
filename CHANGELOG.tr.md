@@ -7,6 +7,29 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [6.0.5] — 2026-10-06
+
+Codex örneği sandbox container'ında kaydedilirken bulunan iki sorun.
+
+### Düzeltildi
+
+- **`cli-dispatch:runner` agent'ının sonucu Claude'a düzyazı özet olarak ulaşıyordu.** Claude Code
+  2.1.289 bir subagent'ın sonucunu yalnız `SubagentHandback` çağrısıyla iletiyor; sondaki düz metin
+  düşüyor. `agents/runner.md` son mesaj istediği için haiku handback'e kendi özetini koydu: `diff:`,
+  `fix attempts:` ve `STRANDED changes in worktree:` satırları hiç ulaşmadı ve değişiklik yalnız
+  worktree'deyken Claude'a repo dosyasının "güncellendiği" söylendi. Agent artık
+  `cli-dispatch-wait` çıktısını handback `message`'ı olarak birebir iletiyor. Canlı doğrulandı:
+  handback tam olarak beş satırlık özet.
+- **`verdict-diff.patch` artık `git status` satırlarıyla başlamıyor.** Bu satırlar worktree'nin
+  dosyalarını listeliyordu (diff'in kendisinin dışarıda bıraktığı `worker-report.json` dahil); patch'i
+  kendi `git status`'unun yanında basan bir orkestratör bunları kendi repo'sundaki değişiklik sandı,
+  iki ayrı oturum bu yüzden yanıldı. Patch artık saf bir diff (bash runner ve `.ps1` ikizi).
+
+### Değişti
+
+- `videos/cx-delegation-harness.mp4` artık ekran görüntüsü dizisi değil, görünür imleçli gerçek bir
+  ekran kaydı; yukarıdaki düzeltmeler uygulanmış haliyle kaydedildi.
+
 ## [6.0.4] — 2026-10-06
 
 ### Eklendi
