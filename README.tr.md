@@ -6,7 +6,7 @@
 
 > 📝 **Yazı:** [cli-dispatch: Claude'a patron, DeepSeek'e işçi rolü veren bir plugin](https://medium.com/@rbinar/cli-dispatch-claudea-patron-deepseek-e-i%CC%87%C5%9F%C3%A7i-rol%C3%BC-veren-bir-plugin-b232803581fc) — Medium
 
-![cli-dispatch demo — projende Claude Code başlat, sonra: install, /cli-dispatch:setup, /cli-dispatch:ds-run ve deterministik /cli-dispatch:run ile delege et, kullanımı gör](assets/demo.gif)
+![cli-dispatch demo — projende Claude Code başlat, sonra: install, /cli-dispatch:setup, deterministik /cli-dispatch:run ile delege et, kullanımı gör](assets/demo.gif)
 
 ## Kurulum
 
@@ -47,7 +47,7 @@ Doğrudan (sıfır LLM token'ı; arka plana almayı sen yaparsın):
 /cli-dispatch:run <backend> "<görev>" --verify '<cmd>'
 ```
 
-Geriye kompakt bir verdict gelir; gerçek repo değişiklikleri izole bir git worktree'de commit'siz kalır, incelemeden sonra patch'i sen uygularsın. Basit, tek-atışlık işler için backend başına `/cli-dispatch:ds-run` / `ag-run` / `cx-run` / `oc-run` / `cp-run` kullanılır. Devamı: [Deterministik runner](docs/tr/runner.md), [Komutlar](docs/tr/commands.md).
+Geriye kompakt bir verdict gelir; gerçek repo değişiklikleri izole bir git worktree'de commit'siz kalır, incelemeden sonra patch'i sen uygularsın. Repo değişikliği olmayan basit, tek-atışlık sorular için `/cli-dispatch:ask <backend> "<prompt>"` kullanılır. Devamı: [Deterministik runner](docs/tr/runner.md), [Komutlar](docs/tr/commands.md).
 
 > ⚠️ **Varsayılan mod bir sandbox değildir.** İşçiler dosya yazabilir ve bash çalıştırabilir — gerçek repo işini worktree'de izole et ([Güvenlik ve veri](docs/tr/security.md)).
 
@@ -58,7 +58,7 @@ Geriye kompakt bir verdict gelir; gerçek repo değişiklikleri izole bir git wo
 /reload-plugins
 ```
 
-`/plugin update` yalnızca komutları ve skill'leri yeniler; bir wrapper'ı değiştiren güncellemeden sonra `~/.local/bin`'deki wrapper'ları yeniden kurmak için bir kez `/cli-dispatch:setup` çalıştır. `/cli-dispatch:status` ile doğrula. Bkz. [Kurulum](docs/tr/install.md#güncelleme).
+`/plugin update` yalnızca komutları ve skill'leri yeniler; bir wrapper'ı değiştiren güncellemeden sonra `~/.local/bin`'deki wrapper'ları yeniden kurmak için bir kez `/cli-dispatch:setup` çalıştır. `/cli-dispatch:doctor` ile doğrula. Bkz. [Kurulum](docs/tr/install.md#güncelleme).
 
 ## Dokümantasyon
 

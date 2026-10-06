@@ -178,7 +178,7 @@ test('11. no wrapper and no plugin copy -> exit 1, cause + fix + per-backend fal
   assert.equal(res.status, 1)
   assert.match(res.stdout, /upgraded the plugin/, 'must name the likely cause')
   assert.match(res.stdout, /\/cli-dispatch:setup/, 'must name the fix')
-  assert.match(res.stdout, /\/cli-dispatch:ds-run/, 'must keep the per-backend fallback suggestion')
+  assert.match(res.stdout, /ds-agent directly/, 'must keep the per-backend fallback suggestion')
 })
 
 // ============================================================================

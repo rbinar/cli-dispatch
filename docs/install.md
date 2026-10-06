@@ -29,7 +29,7 @@ Run the commands **one at a time, in order** — don't paste them all at once. S
 
 **Step 3 — Enable the plugin:**
 
-The install output says `Run /reload-plugins to apply`. This step is required for the commands (`/cli-dispatch:ds-*`) to be recognized:
+The install output says `Run /reload-plugins to apply`. This step is required for the commands (`/cli-dispatch:*`) to be recognized:
 
 ```text
 /reload-plugins
@@ -80,7 +80,7 @@ Update the plugin from inside Claude Code, then reload (run one at a time):
 ```
 
 `/plugin update` fetches the newest version from the marketplace; `/reload-plugins` applies it
-to the running session (without a full restart). Verify with `/cli-dispatch:status`.
+to the running session (without a full restart). Verify with `/cli-dispatch:doctor`.
 
 > ℹ️ `/plugin update` refreshes the **commands/skills** only — it does **not** reinstall the
 > worker wrappers in `~/.local/bin`. After an update that changes a wrapper, re-run

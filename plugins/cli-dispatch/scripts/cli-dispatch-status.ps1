@@ -1,13 +1,13 @@
 # Installation status for cli-dispatch on native Windows.
 #
-# Twin of cli-dispatch-status.sh. Runs from the plugin cache, not ~/.local/bin.
+# Twin of cli-dispatch-doctor.sh. Runs from the plugin cache, not ~/.local/bin.
 # Only DeepSeek and Codex run natively on Windows; the Antigravity, OpenCode and
 # Copilot backends are Unix-only, so they are not probed here.
 #
 # Read-only. Never prints a key VALUE, only whether one is set.
 #
 # Takes the plugin root as an optional first argument, mirroring the bash twin's
-# $1 — the env var alone is not reliable (see cli-dispatch-status.sh's header).
+# $1 — the env var alone is not reliable (see cli-dispatch-doctor.sh's header).
 
 param([string]$PluginRoot = $env:CLAUDE_PLUGIN_ROOT)
 

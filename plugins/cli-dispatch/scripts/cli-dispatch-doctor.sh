@@ -3,7 +3,10 @@
 #
 # Runs straight from the plugin cache via commands/doctor.md's `!` pre-execution
 # block — it is NOT installed into ~/.local/bin, so it never goes stale relative
-# to the plugin (same arrangement as cli-dispatch-status.sh).
+# to the plugin (same arrangement as cli-dispatch-balance.sh).
+#
+# Usage: cli-dispatch-doctor.sh <pluginRoot> [ds|ag|cx|oc|cp | deepseek|antigravity|codex|opencode|copilot]
+# With a backend, only that backend's section is printed (shared sections stay).
 #
 # $1 = plugin root. Claude Code interpolates ${CLAUDE_PLUGIN_ROOT} into the `!`
 # command string but does NOT export it into the subprocess, so the hooks.json
@@ -12,6 +15,16 @@
 # Read-only. Never prints a key VALUE, only whether one is set.
 
 _PLUGIN_ROOT="${1:-${CLAUDE_PLUGIN_ROOT:-}}"
+case "${2:-}" in
+  "") _B="" ;;
+  ds|deepseek) _B=ds ;;
+  ag|antigravity) _B=ag ;;
+  cx|codex) _B=cx ;;
+  oc|opencode) _B=oc ;;
+  cp|copilot) _B=cp ;;
+  *) echo "Usage: cli-dispatch-doctor.sh <pluginRoot> [ds|ag|cx|oc|cp|deepseek|antigravity|codex|opencode|copilot]" >&2; exit 2 ;;
+esac
+want() { [ -z "$_B" ] || [ "$_B" = "$1" ]; }
 
 ok()  { echo "  ✓ $*"; }
 bad() { echo "  ✗ $*"; }
@@ -20,16 +33,38 @@ chk() { command -v "$1" >/dev/null 2>&1 && ok "$1 on PATH ($(command -v "$1"))" 
 CFG="${CLI_DISPATCH_CONFIG:-${CLAUDE_DS_CONFIG:-}}"
 [ -n "$CFG" ] || { CFG="$HOME/.config/cli-dispatch/config"; [ -f "$CFG" ] || { [ -f "$HOME/.config/claude-ds/config" ] && CFG="$HOME/.config/claude-ds/config"; }; }
 
+# Configured model line, printed whether or not the backend's wrapper is installed.
+# $1 = config var name, $2 = what happens when it is unset. Never prints a key.
+model_line() {
+  if [ -f "$CFG" ]; then
+    ( . "$CFG"; v="$(eval "printf %s \"\${$1:-}\"")"
+      [ -n "$v" ] && ok "model: $1=$v" || echo "  – model: $1 not set ($2)" )
+  fi
+}
+ver() { "$1" --version 2>/dev/null </dev/null | head -1; }
+
 # Session-dir root — same resolution order as watch/resume/kill/sessions/gain/clean/wait:
 # CLI_DISPATCH_SESSIONS_DIR env override -> ~/.cache/cli-dispatch/sessions -> legacy claude-ds.
 # Used below only as evidence for a backend that has no auth probe of its own.
 SESS="${CLI_DISPATCH_SESSIONS_DIR:-}"
 [ -n "$SESS" ] || { SESS="${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions"; [ -d "$SESS" ] || SESS="${XDG_CACHE_HOME:-$HOME/.cache}/claude-ds/sessions"; }
 
+# Stale-install check: the copies in ~/.local/bin are not refreshed by a plugin update.
+_PLUGIN_JSON=""; [ -n "$_PLUGIN_ROOT" ] && _PLUGIN_JSON="$_PLUGIN_ROOT/.claude-plugin/plugin.json"
+_IVF="$HOME/.config/cli-dispatch/.installed-version"
+if [ -f "$_IVF" ] && [ -f "$_PLUGIN_JSON" ]; then
+  _IV="$(cat "$_IVF" 2>/dev/null)"
+  _CV="$(grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' "$_PLUGIN_JSON" 2>/dev/null | head -1 | sed 's/.*"\([^"]*\)"[^"]*$/\1/')"
+  if [ -n "$_IV" ] && [ -n "$_CV" ] && [ "$_IV" != "$_CV" ]; then
+    bad "installed copies are stale (installed: $_IV, current: $_CV) — re-run /cli-dispatch:setup"
+  fi
+fi
+
 echo "── Prerequisites ───────────────────────────────────────"
 chk claude
 chk node
 
+if want ds; then
 echo "── DeepSeek ────────────────────────────────────────────"
 chk claude-ds
 chk claude-ds-stream
@@ -40,11 +75,16 @@ else
   bad "config not found ($CFG) — run /cli-dispatch:setup"
 fi
 
+model_line DS_MODEL 'default deepseek-v4-pro'
+fi
+
+if want ag; then
 echo "── Antigravity / Gemini ─── optional ──────────────────"
 if command -v ag-agent >/dev/null 2>&1; then
   ok "ag-agent on PATH"
   chk ag-stream
   chk agy
+  command -v agy >/dev/null 2>&1 && ok "agy version: $(ver agy)"
   command -v script >/dev/null 2>&1 && ok "script (pseudo-tty) found" || bad "script missing (ag backend needs it)"
   # agy has NO auth subcommand, and the only real check spawns `agy -p "ping"` with a 35s cap
   # (ag-stream's preflight) — far too slow here. So report the key honestly and, when there is no
@@ -69,12 +109,16 @@ else
   echo "  – ag-agent not installed (optional — /cli-dispatch:setup to add)"
 fi
 
+model_line AG_MODEL 'agy default used'
+fi
+
+if want cx; then
 echo "── Codex / OpenAI ─────────── optional ─────────────────"
 if command -v cx-agent >/dev/null 2>&1; then
   ok "cx-agent on PATH"
   chk cx-stream
   if command -v codex >/dev/null 2>&1; then
-    ok "codex CLI found"
+    ok "codex CLI found ($(ver codex))"
     [ -f "$CFG" ] && ( . "$CFG"
       if [ -n "${CODEX_API_KEY:-}" ]; then ok "CODEX_API_KEY set"
       elif [ -n "${OPENAI_API_KEY:-}" ]; then ok "OPENAI_API_KEY set"
@@ -98,12 +142,16 @@ else
   echo "  – cx-agent not installed (optional — /cli-dispatch:setup to add)"
 fi
 
+model_line CX_MODEL 'codex default used'
+fi
+
+if want oc; then
 echo "── OpenCode / OpenRouter ──── optional ─────────────────"
 if command -v oc-agent >/dev/null 2>&1; then
   ok "oc-agent on PATH"
   chk oc-stream
   if command -v opencode >/dev/null 2>&1; then
-    ok "opencode CLI found"
+    ok "opencode CLI found ($(ver opencode))"
   else
     bad "opencode CLI missing — npm i -g opencode-ai"
   fi
@@ -112,12 +160,16 @@ else
   echo "  – oc-agent not installed (optional — /cli-dispatch:setup to add)"
 fi
 
+model_line OC_MODEL 'no default — pass --model or set one in the config'
+fi
+
+if want cp; then
 echo "── GitHub Copilot ─────────── optional ─────────────────"
 if command -v cp-agent >/dev/null 2>&1; then
   ok "cp-agent on PATH"
   chk cp-stream
   if command -v copilot >/dev/null 2>&1; then
-    ok "copilot CLI found"
+    ok "copilot CLI found ($(ver copilot))"
   else
     bad "copilot CLI missing — npm i -g @github/copilot  or  brew install --cask copilot-cli"
   fi
@@ -133,6 +185,9 @@ if command -v cp-agent >/dev/null 2>&1; then
   )
 else
   echo "  – cp-agent not installed (optional — /cli-dispatch:setup to add)"
+fi
+
+model_line CP_MODEL 'copilot default used'
 fi
 
 echo "── GitHub CLI (gh) ────────── optional ─────────────────"

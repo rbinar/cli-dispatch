@@ -6,7 +6,7 @@
 
 > 📝 **Write-up (Turkish):** [cli-dispatch: a plugin that makes Claude the boss and DeepSeek the worker](https://medium.com/@rbinar/cli-dispatch-claudea-patron-deepseek-e-i%CC%87%C5%9F%C3%A7i-rol%C3%BC-veren-bir-plugin-b232803581fc) — Medium
 
-![cli-dispatch demo — start Claude Code in your project, then: install, /cli-dispatch:setup, delegate via /cli-dispatch:ds-run and the deterministic /cli-dispatch:run runner, check usage](assets/demo.gif)
+![cli-dispatch demo — start Claude Code in your project, then: install, /cli-dispatch:setup, delegate via the deterministic /cli-dispatch:run runner, check usage](assets/demo.gif)
 
 ## Install
 
@@ -47,7 +47,7 @@ Directly (zero LLM tokens; you background it yourself):
 /cli-dispatch:run <backend> "<task>" --verify '<cmd>'
 ```
 
-You get back a compact verdict; real repo changes stay in an isolated git worktree, uncommitted, and you apply the patch after reviewing it. Use the per-backend `/cli-dispatch:ds-run` / `ag-run` / `cx-run` / `oc-run` / `cp-run` for simple one-shot jobs. More: [Deterministic runner](docs/runner.md), [Commands](docs/commands.md).
+You get back a compact verdict; real repo changes stay in an isolated git worktree, uncommitted, and you apply the patch after reviewing it. Use `/cli-dispatch:ask <backend> "<prompt>"` for simple one-shot questions with no repo changes. More: [Deterministic runner](docs/runner.md), [Commands](docs/commands.md).
 
 > ⚠️ **The default mode is not a sandbox.** Workers can write files and run bash — isolate real repo work in a worktree ([Security and data](docs/security.md)).
 
@@ -58,7 +58,7 @@ You get back a compact verdict; real repo changes stay in an isolated git worktr
 /reload-plugins
 ```
 
-`/plugin update` refreshes commands and skills only; after an update that changes a wrapper, re-run `/cli-dispatch:setup` once to reinstall the wrappers in `~/.local/bin`. Verify with `/cli-dispatch:status`. See [Install](docs/install.md#updating).
+`/plugin update` refreshes commands and skills only; after an update that changes a wrapper, re-run `/cli-dispatch:setup` once to reinstall the wrappers in `~/.local/bin`. Verify with `/cli-dispatch:doctor`. See [Install](docs/install.md#updating).
 
 ## Documentation
 

@@ -2,9 +2,9 @@
 
 [← README](../README.md)
 
-> ℹ️ **Multi-backend delegation hub.** Five worker backends — **DeepSeek** (`/cli-dispatch:ds-*`), **Antigravity/Gemini** (`/cli-dispatch:ag-run`, wrappers `ag-agent`/`ag-stream`), **Codex** (`/cli-dispatch:cx-run`, `cx-agent`/`cx-stream`), **OpenCode** (`/cli-dispatch:oc-run`, `oc-agent`/`oc-stream`), and **GitHub Copilot** (`/cli-dispatch:cp-run`, `cp-agent`/`cp-stream`). Pick which to install at setup. All five write to the same session layout, so `sessions`/`watch` work across all. The DeepSeek wrapper/config paths keep the `claude-ds` name (that backend's name).
+> ℹ️ **Multi-backend delegation hub.** Five worker backends — **DeepSeek** (`ds`), **Antigravity/Gemini** (`ag`, wrappers `ag-agent`/`ag-stream`), **Codex** (`cx`, `cx-agent`/`cx-stream`), **OpenCode** (`oc`, `oc-agent`/`oc-stream`), and **GitHub Copilot** (`cp`, `cp-agent`/`cp-stream`). Pick which to install at setup. All five write to the same session layout, so `sessions`/`watch` work across all. The DeepSeek wrapper/config paths keep the `claude-ds` name (that backend's name).
 
-All used from inside Claude Code (`/cli-dispatch:ds-run <task>`, `/cli-dispatch:cx-run`, `/cli-dispatch:ag-run`, `/cli-dispatch:oc-run`, `/cli-dispatch:cp-run`, or "do <task> with deepseek/codex/gemini/opencode/copilot"):
+All used from inside Claude Code (`/cli-dispatch:run <backend> "<task>"`, `/cli-dispatch:ask <backend> "<prompt>"`, or "do <task> with deepseek/codex/gemini/opencode/copilot"):
 
 - **Five worker backends, one hub** — **DeepSeek** (`ds-*`), **Antigravity / Gemini** (`ag-*`), **Codex / OpenAI** (`cx-*`), **OpenCode / OpenRouter** (`oc-*`), **GitHub Copilot** (`cp-*`). Pick any (or all) at setup; all five write the **same session layout**, so `sessions`, `watch`, `clean`, and the balance commands work across every backend.
 - **Delegate & verify** — the worker generates/implements; Claude Code watches live and verifies the output. Conversation context is not shared → the task must be **self-contained**. The worker = doer, you = reviewer/merge owner.
@@ -14,7 +14,7 @@ All used from inside Claude Code (`/cli-dispatch:ds-run <task>`, `/cli-dispatch:
 - **Session-start policy injection (optional)** — a `SessionStart` hook auto-injects a compact delegation policy (deterministic-runner routing, escalation path, issue-filing reminder) into every session's context, configured once at `/cli-dispatch:setup`. Opt-in, default off, zero token cost when disabled. → [Session-start policy injection](policy-injection.md#session-start-policy-injection-optional)
 - **Statusline badge (optional)** — a cyan `[CD]` badge with yellow per-backend counts for this Claude Code session's live workers. → [Statusline badge](statusline.md#statusline-badge)
 - **Native usage / quota** — `/cli-dispatch:balance` (all five at once) or a per-backend `*-balance`; reverse-engineered from each CLI's own local data where available, **no third-party tools**. Copilot is explicitly not CLI-queryable. → [Usage & quota](quota.md#usage--quota--native-no-third-party-tool)
-- **Housekeeping** — `/cli-dispatch:clean` prunes stale (`running`-but-dead) worker dirs; `/cli-dispatch:clean-schedule` automates it daily via launchd / cron / Scheduled Tasks.
+- **Housekeeping** — `/cli-dispatch:clean` prunes stale (`running`-but-dead) worker dirs; `/cli-dispatch:clean --schedule` automates it daily via launchd / cron / Scheduled Tasks.
 - **Safety net & isolation** — a hung/runaway worker is auto-killed (with its child processes) at a runtime or idle limit, going `state: error`; workers do not inherit your `~/.claude` MCP servers (playwright, etc.).
 
 > ⚠️ **The default mode is not a sandbox.** Workers run agentic → they **can write files / run bash**. Isolate real repo work in a worktree. Full sandbox posture per backend: [Security and data](security.md#security-and-data).

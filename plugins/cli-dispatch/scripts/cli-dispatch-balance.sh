@@ -3,16 +3,17 @@
 #
 # Runs straight from the plugin cache via commands/balance.md's `!` pre-execution
 # block — it is NOT installed into ~/.local/bin, so it never goes stale relative
-# to the plugin (same arrangement as cli-dispatch-status.sh).
+# to the plugin (same arrangement as cli-dispatch-doctor.sh).
 #
 # Read-only, no third-party tools. An unconfigured/offline backend prints a short
 # note instead of failing, so the script always exits 0 with a usable report.
 # NEVER prints a key VALUE — only the balance/quota figures.
 #
-# Usage: cli-dispatch-balance.sh [--backend deepseek|antigravity|codex|opencode|copilot]
+# Usage: cli-dispatch-balance.sh [ds|ag|cx|oc|cp | deepseek|antigravity|codex|opencode|copilot]
+#        cli-dispatch-balance.sh --backend <long slug>
 
 usage() {
-  echo "Usage: cli-dispatch-balance.sh [--backend deepseek|antigravity|codex|opencode|copilot]" >&2
+  echo "Usage: cli-dispatch-balance.sh [ds|ag|cx|oc|cp|deepseek|antigravity|codex|opencode|copilot]" >&2
 }
 
 _BACKEND=""
@@ -32,11 +33,17 @@ while [ "$#" -gt 0 ]; do
       exit 2
       ;;
     *)
-      usage
-      exit 2
+      [ -z "$_BACKEND" ] || { usage; exit 2; }
+      _BACKEND="$1"
+      shift
       ;;
   esac
 done
+
+case "$_BACKEND" in
+  ds) _BACKEND=deepseek ;; ag) _BACKEND=antigravity ;; cx) _BACKEND=codex ;;
+  oc) _BACKEND=opencode ;; cp) _BACKEND=copilot ;;
+esac
 
 case "$_BACKEND" in
   ""|deepseek|antigravity|codex|opencode|copilot) ;;

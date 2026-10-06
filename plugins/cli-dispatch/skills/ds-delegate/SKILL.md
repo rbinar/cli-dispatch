@@ -223,26 +223,14 @@ Don't trust any output until verified.
 
 ## Commands
 - `/cli-dispatch:setup` — install worker backends (DeepSeek / Antigravity / Codex / OpenCode / Copilot); choose at setup + config + smoke test.
-- `/cli-dispatch:ds-run <task>` — delegate to the **DeepSeek** worker (worktree isolation for repo tasks, session-tracked).
-- `/cli-dispatch:ag-run <task>` — delegate to the **Antigravity (Gemini)** worker (same workflow).
-- `/cli-dispatch:cx-run <task>` — delegate to the **Codex (OpenAI)** worker (real read-only sandbox; same workflow).
-- `/cli-dispatch:oc-run <task>` — delegate to the **OpenCode (OpenRouter)** worker (no sandbox — worktree isolation only; same workflow).
-- `/cli-dispatch:cp-run <task>` — delegate to the **GitHub Copilot** worker (no sandbox — worktree isolation only; same workflow).
+- `/cli-dispatch:ask <backend> "<prompt>"` — one-shot question to a worker, no repo changes (`ds`/`cx` run `--read-only`; `ag`/`oc`/`cp` run in a throwaway temp dir). Backend: `ds|deepseek`, `ag|antigravity`, `cx|codex`, `oc|opencode`, `cp|copilot`. For repo work use `run` or the runner agent.
 - `/cli-dispatch:run <backend> "<task>" --verify '<cmd>'` — the deterministic runner: launch + worktree-isolate + block + verify, zero LLM tokens. The direct path; the default from an orchestrator is the `cli-dispatch:runner` agent (see above).
-- `/cli-dispatch:sessions` — list past/active sessions (all backends; shows a `backend` column). Per-backend: `ds-sessions` / `ag-sessions` / `cx-sessions` / `oc-sessions` / `cp-sessions`.
-- `/cli-dispatch:watch <id>` — show a session's compact live status (cost-conscious).
-- `/cli-dispatch:wait <id>` — block until a session reaches a terminal state (or times out), then print a compact summary; one blocking call instead of polling `watch`.
+- `/cli-dispatch:sessions` — list past/active sessions (all backends; shows a `backend` column). Optional backend filter: `/cli-dispatch:sessions <backend>`.
+- `/cli-dispatch:watch <id> [--wait [--timeout S]]` — show a session's compact live status (cost-conscious); `--wait` blocks until a terminal state (or timeout) and prints a compact summary — one blocking call instead of polling.
 - `/cli-dispatch:resume <id> <prompt>` — continue a worker session with a follow-up prompt (auto-detects backend).
 - `/cli-dispatch:kill <id>` — stop a running worker session (SIGTERM + state → killed).
-- `/cli-dispatch:clean` — remove stale worker dirs (a `running` session whose process died before finalize, so `status.json` is stuck). Dry-run by default; `--remove` deletes, `--older-than DAYS` also prunes old finished sessions.
-- `/cli-dispatch:clean-schedule` — register a daily OS-level auto-clean (launchd/cron/Scheduled Tasks) that runs `cli-dispatch-clean --remove` in the background; `status` / `uninstall` actions too.
-- `/cli-dispatch:status` — check installation/key/CLI status for all backends. Per-backend: `ds-status` / `ag-status` / `cx-status` / `oc-status` / `cp-status`.
-- `/cli-dispatch:balance` — aggregate: DeepSeek balance + Antigravity quota + Codex rate limits + OpenCode/OpenRouter credits + Copilot usage note at once.
-- `/cli-dispatch:ds-balance` — show the DeepSeek account balance.
-- `/cli-dispatch:cx-balance` — Codex usage / rate limits (5h + weekly % left), read natively from codex's on-disk session records.
-- `/cli-dispatch:ag-balance` — Antigravity quota (% left per model + plan), via the local language-server `GetUserStatus` RPC (needs the Antigravity server running).
-- `/cli-dispatch:oc-balance` — OpenCode / OpenRouter credits.
-- `/cli-dispatch:cp-balance` — Copilot usage note (not queryable from the CLI; use GitHub Billing).
-- `/cli-dispatch:gain` — worker token totals by backend, plus Anthropic cost of the `cli-dispatch:runner` agent and of legacy runner-subagent sessions.
-- `/cli-dispatch:doctor` — health check for all backends (PATH, keys, CLI auth ✓/✗).
+- `/cli-dispatch:clean` — remove stale worker dirs (a `running` session whose process died before finalize, so `status.json` is stuck). Dry-run by default; `--remove` deletes, `--older-than DAYS` also prunes old finished sessions. `--schedule [install|status|uninstall]` registers/inspects a daily OS-level auto-clean (launchd/cron/Scheduled Tasks) that runs `cli-dispatch-clean --remove`; bare `--schedule` = `status`.
+- `/cli-dispatch:balance [backend]` — DeepSeek balance + Antigravity quota + Codex rate limits + OpenCode/OpenRouter credits + Copilot usage note at once, or one backend.
+- `/cli-dispatch:gain [--drift]` — worker token totals by backend, plus Anthropic cost of the `cli-dispatch:runner` agent and of legacy runner-subagent sessions; `--drift` adds the drift report.
+- `/cli-dispatch:doctor [backend]` — health check (PATH, keys, CLI auth ✓/✗, configured model, stale-install warning).
 - `/cli-dispatch:help` — one-screen command reference.

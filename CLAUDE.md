@@ -21,13 +21,14 @@ Everything the plugin installs lives under `plugins/cli-dispatch/`:
   script** via a leading `` !`bash "${CLAUDE_PLUGIN_ROOT}/scripts/<name>.sh"` `` line:
   embedded shell is paid twice (once as the markdown's input tokens, again as output when
   the model re-emits it verbatim as a Bash tool call), while a `!` line runs before the
-  model sees anything and injects only the output. `status`, `doctor`, `balance` and
-  `clean-schedule` are converted; the rest are not yet. Two traps: `${CLAUDE_PLUGIN_ROOT}`
+  model sees anything and injects only the output. `doctor`, `sessions`, `balance` and
+  `help` are converted; `clean` is a thin call to the installed `cli-dispatch-clean` binary (not
+  pre-executed — it mutates); the rest are not yet. Two traps: `${CLAUDE_PLUGIN_ROOT}`
   is interpolated into the `!` command string but **not** exported into the subprocess, so
-  a script that needs it must take it as an argument (this silently killed `status`'s
+  a script that needs it must take it as an argument (this silently killed `doctor`'s
   staleness check in 4.9.0); and a mutating command must never pre-execute its mutation —
-  `clean-schedule` pre-executes a read-only `status` probe and leaves `install`/`uninstall`
-  to a deliberate follow-up call.
+  `clean --schedule` must not pre-execute `install`/`uninstall` either; those stay a deliberate
+  call.
 - `scripts/` — the actual installed CLIs. Per-backend: `ds-agent`, `ag-agent`, `cx-agent`,
   `oc-agent`, `cp-agent` + their `*-stream` siblings and `*-worktree-run.sh` runners.
   Backend-agnostic: `cli-dispatch-run` (the deterministic runner — the delegation path),
@@ -37,8 +38,9 @@ Everything the plugin installs lives under `plugins/cli-dispatch/`:
   `~/.local/share/cli-dispatch/`, not PATH — because the installed runner needs it),
   and `cli-dispatch-statusline.sh` (the `[CD]` statusline fragment — bash-only by design,
   glob-loaded from the plugin cache rather than installed to `~/.local/bin`). The
-  pre-execution scripts (`cli-dispatch-status.sh` + its `.ps1` twin, `cli-dispatch-doctor.sh`,
-  `cli-dispatch-balance.sh`, `cli-dispatch-clean-schedule.sh`) likewise run from the plugin
+  pre-execution scripts (`cli-dispatch-doctor.sh`, `cli-dispatch-sessions.sh`,
+  `cli-dispatch-balance.sh`, `cli-dispatch-help.sh`, `cli-dispatch-clean-schedule.sh` + its `.ps1` twin; `cli-dispatch-status.ps1`
+  stays only as `doctor`'s native-Windows fallback) likewise run from the plugin
   cache and are **not** installed, so they can never go stale relative to the plugin — do
   not add them to `install.sh`. `setup-form.mjs` (the one-shot browser form for keys and model
   names) follows the same rule — `install.sh`/`install.ps1`/`setup.md` run it from the plugin
@@ -296,7 +298,7 @@ diff the guards — not only the happy path.
   streams). A worker can itself be a Claude Code session with this plugin loaded (DeepSeek runs
   `claude`), so the SessionStart hook stays silent there and `cli-dispatch-run` refuses to start —
   without this a worker delegated its own task again (5.4.0). Keep the marker in any new stream.
-- `launchd`/`cron` (used by `/cli-dispatch:clean-schedule`) run jobs with a minimal PATH
+- `launchd`/`cron` (used by `/cli-dispatch:clean --schedule`) run jobs with a minimal PATH
   and no shell rc sourced — any script invoked by a scheduled job cannot assume `node`
   installed via nvm/Homebrew/volta/asdf is on PATH. `cli-dispatch-clean` probes common
   install locations defensively for this reason; keep that pattern if you add another

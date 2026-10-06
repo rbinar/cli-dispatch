@@ -20,7 +20,7 @@
 #   echo "<prompt>" | cx-stream [--cwd <dir>]
 #
 # Session directory: ${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<thread-id>/ (legacy: claude-ds)
-# (same layout as claude-ds, so /cli-dispatch:ds-watch / ds-sessions work for all backends.)
+# (same layout as claude-ds, so /cli-dispatch:watch / sessions work for all backends.)
 #
 # Auth: codex's own login (`codex login`). Optional CX_MODEL in the config sets --model.
 set -euo pipefail

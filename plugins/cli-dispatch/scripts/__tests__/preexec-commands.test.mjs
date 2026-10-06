@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url'
 
 // Several read-only commands moved their shell out of the command markdown and
 // into a script invoked through the command's `!` pre-execution line (4.9.0 for
-// status, 4.10.0 for the rest). The saving only holds while each markdown stays
+// doctor, 4.10.0 for the rest). The saving only holds while each markdown stays
 // thin AND keeps pointing at a script that actually exists — these tests guard
 // that pair, one table row per converted command.
 
@@ -21,119 +21,21 @@ const withoutFencedPowerShell = (s) => s.replace(/^```powershell[\s\S]*?^```/gmi
 
 const COMMANDS = [
   {
-    name: 'status',
-    script: 'cli-dispatch-status.sh',
-    ps1: 'cli-dispatch-status.ps1',
-    // Was 7615 bytes before extraction. Generous ceilings throughout — these
-    // catch a markdown creeping back toward its old size, not wording edits.
-    maxBytes: 1600,
-    forbidden: [/```bash/, /command -v claude-ds/],
-  },
-  {
-    name: 'ds-status',
-    script: 'cli-dispatch-status.sh',
-    maxBytes: 1000,
-    forbidden: [/```bash/, /command -v claude-ds/],
-  },
-  {
-    name: 'ag-status',
-    script: 'cli-dispatch-status.sh',
-    maxBytes: 1000,
-    forbidden: [/```bash/, /command -v ag-agent/],
-  },
-  {
-    name: 'cx-status',
-    script: 'cli-dispatch-status.sh',
-    maxBytes: 1000,
-    forbidden: [/```bash/, /command -v cx-agent/],
-  },
-  {
-    name: 'oc-status',
-    script: 'cli-dispatch-status.sh',
-    maxBytes: 1000,
-    forbidden: [/```bash/, /command -v oc-agent/],
-  },
-  {
-    name: 'cp-status',
-    script: 'cli-dispatch-status.sh',
-    maxBytes: 1000,
-    forbidden: [/```bash/, /command -v cp-agent/],
-  },
-  {
     name: 'doctor',
     script: 'cli-dispatch-doctor.sh',
-    maxBytes: 1200, // was 9135
+    ps1: 'cli-dispatch-status.ps1',
+    maxBytes: 2400, // was 9135; carries the native-Windows PowerShell fallback since 6.0.0
     forbidden: [/```bash/, /command -v cx-agent/, /codex login status/],
   },
   {
     name: 'balance',
     script: 'cli-dispatch-balance.sh',
-    maxBytes: 2000, // was 6410
+    maxBytes: 3200, // was 6410; carries the per-backend notes + DeepSeek PowerShell fallback since 6.0.0
+    stripFencedPowerShell: true,
     forbidden: [/```bash/, /api\.deepseek\.com/, /openrouter\.ai\/api/],
   },
   {
-    name: 'ds-balance',
-    script: 'cli-dispatch-balance.sh',
-    maxBytes: 1400,
-    stripFencedPowerShell: true,
-    forbidden: [/api\.deepseek\.com/],
-  },
-  {
-    name: 'ag-balance',
-    script: 'cli-dispatch-balance.sh',
-    maxBytes: 1400,
-    forbidden: [/```bash/, /language_server/],
-  },
-  {
-    name: 'cx-balance',
-    script: 'cli-dispatch-balance.sh',
-    maxBytes: 1400,
-    forbidden: [/```bash/, /\.codex/],
-  },
-  {
-    name: 'oc-balance',
-    script: 'cli-dispatch-balance.sh',
-    maxBytes: 1400,
-    forbidden: [/```bash/, /openrouter\.ai\/api/],
-  },
-  {
-    name: 'cp-balance',
-    script: 'cli-dispatch-balance.sh',
-    maxBytes: 1400,
-    forbidden: [/```bash/, /echo "== GitHub Copilot =="/],
-  },
-  {
     name: 'sessions',
-    script: 'cli-dispatch-sessions.sh',
-    maxBytes: 1200,
-    forbidden: [/```bash/, /CLI_DISPATCH_BACKEND_FILTER/],
-  },
-  {
-    name: 'ds-sessions',
-    script: 'cli-dispatch-sessions.sh',
-    maxBytes: 1200,
-    forbidden: [/```bash/, /CLI_DISPATCH_BACKEND_FILTER/],
-  },
-  {
-    name: 'ag-sessions',
-    script: 'cli-dispatch-sessions.sh',
-    maxBytes: 1200,
-    forbidden: [/```bash/, /CLI_DISPATCH_BACKEND_FILTER/],
-  },
-  {
-    name: 'cx-sessions',
-    script: 'cli-dispatch-sessions.sh',
-    maxBytes: 1200,
-    forbidden: [/```bash/, /CLI_DISPATCH_BACKEND_FILTER/],
-  },
-  {
-    name: 'oc-sessions',
-    script: 'cli-dispatch-sessions.sh',
-    maxBytes: 1200,
-    forbidden: [/```bash/, /CLI_DISPATCH_BACKEND_FILTER/],
-  },
-  {
-    name: 'cp-sessions',
     script: 'cli-dispatch-sessions.sh',
     maxBytes: 1200,
     forbidden: [/```bash/, /CLI_DISPATCH_BACKEND_FILTER/],
@@ -143,17 +45,6 @@ const COMMANDS = [
     script: 'cli-dispatch-help.sh',
     maxBytes: 600, // was 3501 — almost all of it was the reference box itself
     forbidden: [/```bash/, /cat <<'HELP'/, /┌─ cli-dispatch/],
-  },
-  {
-    name: 'clean-schedule',
-    script: 'cli-dispatch-clean-schedule.sh',
-    // Keeps a ```bash forwarding line (install/uninstall are deliberate, not
-    // pre-executed) and the native-Windows Scheduled Tasks block, so it lands
-    // higher than the others. Was 5827.
-    maxBytes: 3500,
-    // Match the scheduler CALLS, not the words — the prose deliberately explains
-    // that a bare run must never rewrite a crontab.
-    forbidden: [/launchctl (load|unload|list)/, /crontab -/, /<\?xml/],
   },
 ]
 
@@ -202,11 +93,11 @@ for (const cmd of COMMANDS) {
   }
 }
 
-test('status + doctor pass the plugin root as an argument, not via env', () => {
+test('doctor passes the plugin root as an argument, not via env', () => {
   // Claude Code interpolates ${CLAUDE_PLUGIN_ROOT} into the `!` command string
   // but does NOT export it into the subprocess. Reading only the env var left
   // status's staleness warning silently dead for the whole of 4.9.0.
-  for (const name of ['status', 'doctor']) {
+  for (const name of ['doctor']) {
     const preExec = read(path.join(commandsDir, `${name}.md`)).match(/^!`([^`]+)`/m)[1]
     const args = preExec.match(/\$\{CLAUDE_PLUGIN_ROOT\}/g) || []
     assert.ok(
@@ -214,7 +105,7 @@ test('status + doctor pass the plugin root as an argument, not via env', () => {
       `${name}.md must pass \${CLAUDE_PLUGIN_ROOT} as an argument as well as in the script path`,
     )
   }
-  for (const script of ['cli-dispatch-status.sh', 'cli-dispatch-doctor.sh']) {
+  for (const script of ['cli-dispatch-doctor.sh']) {
     assert.match(
       read(path.join(scriptsDir, script)),
       /\$\{1:-\$\{CLAUDE_PLUGIN_ROOT:-\}\}/,
@@ -223,72 +114,10 @@ test('status + doctor pass the plugin root as an argument, not via env', () => {
   }
 })
 
-test('per-backend session commands pass their backend slug as an argument', () => {
-  const expected = {
-    'ds-sessions': 'deepseek',
-    'ag-sessions': 'antigravity',
-    'cx-sessions': 'codex',
-    'oc-sessions': 'opencode',
-    'cp-sessions': 'copilot',
-  }
-  for (const [name, backend] of Object.entries(expected)) {
-    const preExec = read(path.join(commandsDir, `${name}.md`)).match(/^!`([^`]+)`/m)[1]
-    assert.match(
-      preExec,
-      new RegExp(`cli-dispatch-sessions\\.sh"?\\s+${backend}\\s*$`),
-      `${name}.md must pass ${backend} to cli-dispatch-sessions.sh`,
-    )
-  }
-})
-
-test('per-backend status commands pass their backend slug as a flag', () => {
-  const expected = {
-    'ds-status': 'deepseek',
-    'ag-status': 'antigravity',
-    'cx-status': 'codex',
-    'oc-status': 'opencode',
-    'cp-status': 'copilot',
-  }
-  for (const [name, backend] of Object.entries(expected)) {
-    const preExec = read(path.join(commandsDir, `${name}.md`)).match(/^!`([^`]+)`/m)[1]
-    assert.match(
-      preExec,
-      new RegExp(`cli-dispatch-status\\.sh"?\\s+--backend\\s+${backend}\\s+"?\\$\\{CLAUDE_PLUGIN_ROOT\\}"?\\s*$`),
-      `${name}.md must pass --backend ${backend} to cli-dispatch-status.sh`,
-    )
-  }
-})
-
-test('per-backend balance commands pass their backend slug as a flag', () => {
-  const expected = {
-    'ds-balance': 'deepseek',
-    'ag-balance': 'antigravity',
-    'cx-balance': 'codex',
-    'oc-balance': 'opencode',
-    'cp-balance': 'copilot',
-  }
-  for (const [name, backend] of Object.entries(expected)) {
-    const preExec = read(path.join(commandsDir, `${name}.md`)).match(/^!`([^`]+)`/m)[1]
-    assert.match(
-      preExec,
-      new RegExp(`cli-dispatch-balance\\.sh"?\\s+--backend\\s+${backend}\\s*$`),
-      `${name}.md must pass --backend ${backend} to cli-dispatch-balance.sh`,
-    )
-  }
-})
-
-test('ds-balance keeps native Windows PowerShell but no fenced bash', () => {
-  const markdown = read(path.join(commandsDir, 'ds-balance.md'))
+test('balance keeps the DeepSeek native Windows PowerShell fallback but no fenced bash', () => {
+  const markdown = read(path.join(commandsDir, 'balance.md'))
   assert.match(markdown, /^```powershell$/m)
   assert.doesNotMatch(markdown, /^```bash$/m)
-})
-
-test('clean-schedule pre-executes a read-only status probe, never an install', () => {
-  // This command mutates the OS scheduler. Pre-execution runs before the model
-  // sees anything, so it must never be able to write a plist or rewrite a crontab.
-  const preExec = read(path.join(commandsDir, 'clean-schedule.md')).match(/^!`([^`]+)`/m)[1]
-  assert.match(preExec, /cli-dispatch-clean-schedule\.sh"?\s+status\s*$/)
-  assert.doesNotMatch(preExec, /install|uninstall|\$ARGUMENTS/)
 })
 
 test('cli-dispatch-clean-schedule.sh defaults to status when given no action', () => {
@@ -312,16 +141,6 @@ test('cli-dispatch-doctor.sh probes every backend and never prints a key value',
     assert.match(script, new RegExp(`\\b${wrapper}\\b`), `${wrapper} probe is missing`)
   }
   for (const key of ['DEEPSEEK_API_KEY', 'OPENROUTER_API_KEY', 'CODEX_API_KEY', 'COPILOT_GITHUB_TOKEN']) {
-    assert.doesNotMatch(script, new RegExp(`echo[^\\n]*\\$\\{?${key}`), `${key} value is echoed`)
-  }
-})
-
-test('cli-dispatch-status.sh probes every backend and never prints a key value', () => {
-  const script = read(path.join(scriptsDir, 'cli-dispatch-status.sh'))
-  for (const wrapper of ['claude-ds', 'ag-agent', 'cx-agent', 'oc-agent', 'cp-agent']) {
-    assert.match(script, new RegExp(`command -v ${wrapper}\\b`), `${wrapper} probe is missing`)
-  }
-  for (const key of ['DEEPSEEK_API_KEY', 'OPENROUTER_API_KEY', 'CODEX_API_KEY']) {
     assert.doesNotMatch(script, new RegExp(`echo[^\\n]*\\$\\{?${key}`), `${key} value is echoed`)
   }
 })

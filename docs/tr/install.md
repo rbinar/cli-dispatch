@@ -29,7 +29,7 @@ Komutları **tek tek, sırayla** çalıştır — hepsini aynı anda yapıştır
 
 **3. Adım — Plugin'i etkinleştir:**
 
-Install çıktısı `Run /reload-plugins to apply` der. Komutların (`/cli-dispatch:ds-*`) tanınması için bu adım zorunludur:
+Install çıktısı `Run /reload-plugins to apply` der. Komutların (`/cli-dispatch:*`) tanınması için bu adım zorunludur:
 
 ```text
 /reload-plugins
@@ -80,7 +80,7 @@ Plugin'i Claude Code içinden güncelle, sonra reload et (teker teker çalışt�
 ```
 
 `/plugin update` marketplace'ten en yeni sürümü çeker; `/reload-plugins` çalışan oturuma uygular
-(tam yeniden başlatma olmadan). `/cli-dispatch:status` ile doğrula.
+(tam yeniden başlatma olmadan). `/cli-dispatch:doctor` ile doğrula.
 
 > ℹ️ `/plugin update` yalnızca **komutları/skill'leri** yeniler — `~/.local/bin`'deki worker
 > wrapper'larını **yeniden kurmaz**. Bir wrapper'ı değiştiren bir güncellemeden sonra, wrapper'ları

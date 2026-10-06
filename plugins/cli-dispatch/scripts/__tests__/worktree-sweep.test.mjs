@@ -1,12 +1,7 @@
-// worktree-sweep.test.mjs — unit tests for the worktree-artifact-sweep logic that exists in
-// TWO deliberate copies (see CLAUDE.md on the self-contained-command idiom):
-//   1. plugins/cli-dispatch/scripts/cli-dispatch-clean — the installed bash launcher
-//      (sweep at lines ~42-136, then exec's the session engine cli-dispatch-clean.mjs)
-//   2. plugins/cli-dispatch/commands/clean.md — the /cli-dispatch:clean slash command's
-//      self-contained ```bash fence (same sweep + an inline node heredoc for sessions),
-//      extracted verbatim and executed standalone, following kill-flow.test.mjs precedent.
-// Every scenario below runs against BOTH copies, so a future edit that de-syncs them fails
-// loudly here. This sweep is the destructive-`rm -rf` path: it walks /tmp and $TMPDIR for
+// worktree-sweep.test.mjs — unit tests for the worktree-artifact-sweep logic in
+// plugins/cli-dispatch/scripts/cli-dispatch-clean — the installed bash launcher
+// (sweep, then exec's the session engine cli-dispatch-clean.mjs). Since 6.0.0 clean.md is a
+// thin call to it and no longer embeds a copy. This sweep is the destructive-`rm -rf` path: it walks /tmp and $TMPDIR for
 // stale `*-wt-*` git-worktree leftovers a crashed/killed runner never cleaned up, and with
 // --remove deletes the clean+stale ones, then best-effort `git worktree prune`s the source.
 //
@@ -45,7 +40,6 @@ import { fileURLToPath } from 'node:url'
 
 const SELF_DIR = path.dirname(fileURLToPath(import.meta.url))
 const CLEAN_SCRIPT = path.resolve(SELF_DIR, '..', 'cli-dispatch-clean')
-const CLEAN_MD = path.resolve(SELF_DIR, '..', '..', 'commands', 'clean.md')
 const ENGINE_MJS = path.resolve(SELF_DIR, '..', 'cli-dispatch-clean.mjs')
 
 const mkdtemp = (prefix) => fs.mkdtempSync(path.join(os.tmpdir(), prefix))
@@ -78,27 +72,11 @@ fs.writeFileSync(findShimPath, [
 ].join('\n'))
 fs.chmodSync(findShimPath, 0o755)
 
-// ---- extract the ```bash fence from clean.md verbatim (kill-flow.test.mjs precedent):
-// the fence is self-contained — flags arrive via `ARGS="$*"` (script positional args) and
-// the session root via CLI_DISPATCH_SESSIONS_DIR, both of which we supply the same way the
-// real slash command does. ----
-function extractBashBlock(mdPath) {
-  const content = fs.readFileSync(mdPath, 'utf8')
-  const match = content.match(/```bash\n([\s\S]*?)\n```/)
-  assert.ok(match, `no \`\`\`bash fence found in ${mdPath}`)
-  return match[1]
-}
-
-const fenceDir = mkdtemp('cli-dispatch-wtsweep-fence-')
-const fenceScriptPath = path.join(fenceDir, 'clean-block.sh')
-fs.writeFileSync(fenceScriptPath, extractBashBlock(CLEAN_MD))
-
-after(() => { rmrf(shimDir); rmrf(fenceDir) })
+after(() => { rmrf(shimDir) })
 
 // ---- the two copies of the sweep logic every scenario runs against ----
 const TARGETS = [
   { name: 'scripts/cli-dispatch-clean', scriptPath: CLEAN_SCRIPT },
-  { name: 'clean.md fence', scriptPath: fenceScriptPath },
 ]
 
 // ---- git fixture helpers ----

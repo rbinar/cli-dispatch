@@ -1,11 +1,12 @@
 ---
-description: List cli-dispatch worker sessions (all backends: DeepSeek + Antigravity + Codex + OpenCode + Copilot)
+description: List cli-dispatch worker sessions (all backends, or one)
+argument-hint: "[ds|ag|cx|oc|cp]"
 allowed-tools: Bash
 ---
 
-!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/cli-dispatch-sessions.sh"`
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/cli-dispatch-sessions.sh" $ARGUMENTS`
 
-The session listing above already ran — do NOT run it again. Present it as-is,
+The session listing above already ran — do NOT run it again. Present it as-is (an optional backend argument, short or long name, filters it),
 newest first; the `backend` column shows which worker ran each session.
 Cost-conscious: it reads only `meta.json` + `status.json`; `transcript.jsonl`
 is NEVER read.

@@ -15,7 +15,7 @@
 #   echo "<prompt>" | ag-stream [--cwd <dir>]
 #
 # Session directory: ${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<conv-id>/ (legacy: claude-ds)
-# (same layout as claude-ds, so /cli-dispatch:ds-watch / ds-sessions work for both backends.)
+# (same layout as claude-ds, so /cli-dispatch:watch / sessions work for both backends.)
 #
 # Auth: Google keyring (run `agy` once interactively to sign in) OR a key in the config
 # (GEMINI_API_KEY / ANTIGRAVITY_API_KEY). Optional AG_MODEL in the config sets --model.

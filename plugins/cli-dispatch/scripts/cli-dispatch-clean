@@ -7,14 +7,14 @@
 # (installed share dir → legacy claude-ds → next to this script); the worktree sweep runs
 # directly in this launcher (pure bash — no node dependency, and no session-dir schema
 # involved). Default is a DRY-RUN; pass --remove to delete. Used both by hand and by the
-# scheduled auto-clean (/cli-dispatch:clean-schedule).
+# scheduled auto-clean (/cli-dispatch:clean --schedule).
 #   cli-dispatch-clean [--remove] [--stale-secs N] [--older-than DAYS] [--quiet]
 #                       [--worktree-days N] [--skip-worktrees]
 set -euo pipefail
 
 # launchd/cron run with a minimal PATH (no shell rc sourced) — node installed via a version
 # manager or Homebrew is invisible there even though it resolves fine interactively. This is
-# the #1 cause of the scheduled auto-clean (/cli-dispatch:clean-schedule) silently failing
+# the #1 cause of the scheduled auto-clean (/cli-dispatch:clean --schedule) silently failing
 # every run. Probe common install locations before giving up.
 if ! command -v node >/dev/null 2>&1; then
   for cand in "$HOME/.local/share/fnm/aliases/default/bin" "$HOME/.volta/bin" "$HOME/.asdf/shims" /opt/homebrew/bin /usr/local/bin; do

@@ -10,28 +10,18 @@ cli-dispatch'i **Claude Code'un içinden** kullanırsın — iki yol:
 | Komut | İş |
 |-------|-----|
 | `/cli-dispatch:setup` | Backend(ler) seç + kur + config iskeleti + smoke test |
-| `/cli-dispatch:ds-run <görev>` | Bir görevi **DeepSeek**'e delege et (session-takipli; repo görevinde worktree izolasyonu) |
-| `/cli-dispatch:ag-run <görev>` | Bir görevi **Antigravity (Gemini)**'ye delege et (aynı akış) |
-| `/cli-dispatch:cx-run <görev>` | Bir görevi **Codex (OpenAI)**'e delege et (gerçek read-only sandbox; aynı session düzeni) |
-| `/cli-dispatch:oc-run <görev>` | Bir görevi **OpenCode (OpenRouter)**'a delege et (sandbox yok — yalnızca worktree izolasyonu; aynı session düzeni) |
-| `/cli-dispatch:cp-run <görev>` | Bir görevi **GitHub Copilot**'a delege et (sandbox yok — yalnızca worktree izolasyonu; aynı session düzeni) |
-| `/cli-dispatch:run <backend> "<görev>" --verify '<cmd>'` | Doğrudan çağrılan deterministik delegasyon, sıfır LLM token'ı. Orkestratörden varsayılan yol, aynı runner'ı saran ince `cli-dispatch:runner` agent'ıdır |
-| `/cli-dispatch:sessions` | Geçmiş/aktif session'ları listele (tüm backend'ler; `backend` kolonu) |
-| `/cli-dispatch:ds-sessions` / `ag-sessions` / `cx-sessions` / `oc-sessions` / `cp-sessions` | Aynı liste, yalnızca DeepSeek / Antigravity / Codex / OpenCode / Copilot'a filtreli |
-| `/cli-dispatch:watch <id>` | Bir session'ın canlı durumunu göster (maliyet-odaklı) |
-| `/cli-dispatch:wait <id>` | Session bitene (veya timeout'a) kadar blokla, sonra kompakt bir özet bas — `watch`'ı yoklamak yerine tek bloklayan çağrı |
-| `/cli-dispatch:resume <id> <prompt>` | Bir worker session'a follow-up göndererek devam et (backend otomatik tespit) |
-| `/cli-dispatch:kill <id>` | Çalışan worker session'ı durdur (SIGTERM + state → killed) |
-| `/cli-dispatch:clean` | Stale worker dizinlerini (`running` ama ölü) temizle; varsayılan dry-run, `--remove` ile siler. Silinen session'lardaki `verdict.json` ve `verdict-diff.patch` varsayılan olarak `<sessions-root>/verdict-archive/` altında arşivlenir; vazgeçmek için `--no-preserve-verdicts` geç. |
-| `/cli-dispatch:clean-schedule` | OS zamanlayıcısıyla günlük otomatik temizlik kur (launchd / cron / Scheduled Tasks); `status` / `uninstall` da var |
-| `/cli-dispatch:status` | Tüm backend'ler için kurulum/key/CLI durumunu kontrol et |
-| `/cli-dispatch:ds-status` / `ag-status` / `cx-status` / `oc-status` / `cp-status` | Aynı kontrol, yalnızca DeepSeek / Antigravity / Codex / OpenCode / Copilot kapsamında |
-| `/cli-dispatch:balance` | Toplu — DeepSeek bakiyesi + Antigravity kotası + Codex rate limit + OpenCode kredisi + Copilot kullanım notu, hepsi bir arada |
-| `/cli-dispatch:ds-balance` | DeepSeek hesap bakiyesini göster |
-| `/cli-dispatch:cx-balance` | Codex kullanım / rate limit (5h + haftalık kalan %) — native, codex'in kendi disk session kayıtlarından |
-| `/cli-dispatch:ag-balance` | Antigravity kotası (model başına kalan % + plan) — native, local language-server `GetUserStatus` RPC ile |
-| `/cli-dispatch:oc-balance` | OpenCode'un OpenRouter paid-credit bakiyesini göster (`total_credits - total_usage`) — `:free` modellerin kota API'si yok |
-| `/cli-dispatch:cp-balance` | Copilot kullanım görünürlüğünü açıklar — CLI'dan sorgulanamaz; GitHub Billing kullanılır |
-| `/cli-dispatch:gain` | Backend başına worker token toplamlarını, `cli-dispatch:runner` agent'ının ve legacy runner-subagent session'larının Anthropic maliyetiyle birlikte raporla |
-| `/cli-dispatch:doctor` | Tüm backend'ler için sağlık kontrolü — PATH, API key'ler, CLI auth ✓/✗ |
+| `/cli-dispatch:ask <backend> "<prompt>"` | Bir worker'a tek-atışlık soru/cevap, repo değişikliği yok (`ds`/`cx` `--read-only` koşar; `ag`/`oc`/`cp`'de yazma engeli yok, bu yüzden repo erişimsiz geçici bir dizinde koşarlar). `--model` / `--effort` gibi agent bayrakları prompt'tan önce gelir. Repo işi için `run` veya runner agent'ı |
+| `/cli-dispatch:run <backend> "<task>" --verify '<cmd>'` | Deterministik delegasyon, doğrudan çağrılır — sıfır LLM token. Bir orkestratörden varsayılan, bu runner'ı saran ince `cli-dispatch:runner` agent'ıdır |
+| `/cli-dispatch:sessions [backend]` | Geçmiş/aktif session'ları listele (tüm backend'ler; `backend` sütunu gösterir); isteğe bağlı backend filtresi |
+| `/cli-dispatch:watch <id> [--wait [--timeout S]]` | Bir session'ın canlı durumunu göster (maliyet-odaklı; her backend). `--wait` ile bitene (veya timeout'a) kadar blokla ve kompakt bir özet bas — yoklama yerine tek bloklayan çağrı |
+| `/cli-dispatch:resume <id> <prompt>` | Bir worker session'ına takip prompt'uyla devam et (backend'i otomatik bulur) |
+| `/cli-dispatch:kill <id>` | Çalışan bir worker session'ını durdur (SIGTERM + state → killed) |
+| `/cli-dispatch:clean` | Stale worker dizinlerini sil (`running` ama ölü); varsayılan dry-run, silmek için `--remove`. Silinen session'lar `verdict.json` ve `verdict-diff.patch` dosyalarını varsayılan olarak `<sessions-root>/verdict-archive/` altına arşivler; vazgeçmek için `--no-preserve-verdicts`. `--schedule [install|status|uninstall]` OS zamanlayıcısıyla (launchd / cron / Scheduled Tasks) günlük otomatik temizliği yönetir; yalın `--schedule` = `status` |
+| `/cli-dispatch:doctor [backend]` | Sağlık kontrolü — PATH, API key'ler, CLI auth ✓/✗, backend başına yapılandırılmış model, bayat-kurulum uyarısı; isteğe bağlı backend filtresi |
+| `/cli-dispatch:balance [backend]` | DeepSeek bakiyesi + Antigravity kotası + Codex rate limit'leri + OpenCode kredileri + Copilot kullanım notu; isteğe bağlı backend filtresi (bkz. [Kota](quota.md)) |
+| `/cli-dispatch:gain [--drift]` | Backend başına worker token toplamlarını, `cli-dispatch:runner` agent'ının ve legacy runner-subagent session'larının Anthropic maliyetiyle birlikte raporla; `--drift` drift raporunu ekler |
 | `/cli-dispatch:help` | Tek ekranda komut referans tablosu |
+
+`backend` kısa ya da uzun slug alır: `ds`|`deepseek`, `ag`|`antigravity`, `cx`|`codex`, `oc`|`opencode`, `cp`|`copilot`.
+
+Codex'te `ask` gerçek bir OS read-only sandbox'ı kullanır; DeepSeek `--effort` alır.

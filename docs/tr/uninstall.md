@@ -35,7 +35,7 @@ Remove-Item -Recurse -Force "$HOME\.config\claude-ds" -ErrorAction SilentlyConti
 
 **3. Adım — (Opsiyonel) geçici worktree'leri temizle:**
 
-`/cli-dispatch:ds-run` veya `ds-worktree-run.sh` kullandıysan ayrı git worktree'ler kalmış olabilir. İlgili repoda kontrol et:
+`/cli-dispatch:run` veya `ds-worktree-run.sh` kullandıysan ayrı git worktree'ler kalmış olabilir. İlgili repoda kontrol et:
 
 ```bash
 git worktree list          # claude-ds'in açtığı worktree'leri gör
