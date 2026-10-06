@@ -57,8 +57,9 @@ if [ -d "$ROOT" ]; then
   for _sf in "$ROOT"/*/status.json; do
     [ -f "$_sf" ] || continue
     grep -q '"state"[[:space:]]*:[[:space:]]*"running"' "$_sf" 2>/dev/null || continue
-    # stat is not portable: BSD/macOS uses -f %m, GNU uses -c %Y.
-    _mtime=$(stat -f %m "$_sf" 2>/dev/null || stat -c %Y "$_sf" 2>/dev/null || echo 0)
+    # stat is not portable: BSD/macOS uses -f %m, GNU uses -c %Y. GNU goes first: GNU
+    # `stat -f` prints filesystem info to stdout before failing, which corrupted the value.
+    _mtime=$(stat -c %Y "$_sf" 2>/dev/null || stat -f %m "$_sf" 2>/dev/null || echo 0)
     [ "$_mtime" -gt 0 ] || continue
     [ "$((NOW - _mtime))" -le "$STALE_AFTER" ] || continue
 
