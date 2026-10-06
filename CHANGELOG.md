@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [6.0.0] — 2026-10-06
+
+**BREAKING.** The slash-command surface shrinks from 35 commands to 12: `ask`, `balance`,
+`clean`, `doctor`, `gain`, `help`, `kill`, `resume`, `run`, `sessions`, `setup`, `watch`. The
+per-backend command families were the same command five times over; the backend is now an
+argument (`ds|deepseek`, `ag|antigravity`, `cx|codex`, `oc|opencode`, `cp|copilot`).
+
+| Removed | Replacement |
+|---|---|
+| `ds-status`, `ag-status`, `cx-status`, `oc-status`, `cp-status`, `status` | `/cli-dispatch:doctor [backend]` |
+| `ds-sessions` … `cp-sessions` | `/cli-dispatch:sessions [backend]` |
+| `ds-balance` … `cp-balance` | `/cli-dispatch:balance [backend]` |
+| `ds-run`, `ag-run`, `cx-run`, `oc-run`, `cp-run` | `/cli-dispatch:ask <backend> "<prompt>"` (one-shot, no repo changes); repo work: `/cli-dispatch:run` or the `cli-dispatch:runner` agent |
+| `wait <id>` | `/cli-dispatch:watch <id> --wait [--timeout S]` |
+| `clean-schedule [install\|status\|uninstall]` | `/cli-dispatch:clean --schedule [install\|status\|uninstall]` (bare `--schedule` = status; on native Windows the Scheduled Tasks block moved to `scripts/cli-dispatch-clean-schedule.ps1`, and a bare run no longer installs) |
+| `drift` | `/cli-dispatch:gain --drift` |
+
+### Changed
+
+- **`/cli-dispatch:ask <backend> "<prompt>"` replaces the five `*-run` commands for one-shot jobs.**
+  `ds` and `cx` run with `--read-only` (real read-only modes); `ag`, `oc` and `cp` have no
+  write-deny, so they run in a throwaway temp dir with no repo access. Extra agent flags
+  (`--model`, `--effort`, …) pass through before the prompt.
+- **`doctor` absorbs `status`:** it now also shows the stale-install warning and the configured
+  model per backend. `cli-dispatch-status.sh` is deleted; `cli-dispatch-status.ps1` stays as
+  `doctor`'s native-Windows fallback.
+- **`clean.md` is a thin call to the installed `cli-dispatch-clean` binary** instead of embedding
+  the sweep, so the model no longer re-emits ~300 lines of shell on every `clean`.
+- `sessions`, `balance` and `doctor` take an optional `[backend]` filter.
+
 ## [5.5.0] — 2026-10-06
 
 Closes every open issue: #160, #162, #165, #171, #172, #182. Each fix has a test that failed on

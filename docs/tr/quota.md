@@ -11,11 +11,11 @@ Beşini bir arada görmek için `/cli-dispatch:balance` kullan, ya da backend ba
 | Backend | Komut | Sayı nereden geliyor |
 |---|---|---|
 | **Hepsi** | `/cli-dispatch:balance` | Aşağıdaki beşini bir seferde çalıştırır ve her başlık sayıyı yan yana özetler. |
-| **DeepSeek** | `/cli-dispatch:ds-balance` | DeepSeek'in resmi REST balance API'si (`/user/balance`), `DEEPSEEK_API_KEY` ile. |
-| **Codex** | `/cli-dispatch:cx-balance` | Codex, backend'in rate-limit verisini kendi session kayıtlarına **yazıyor** (`~/.codex/sessions/**/*.jsonl`). Komut en güncel `token_count` kaydının `rate_limits`'ini okur → `primary` (5h) + `secondary` (7d) pencereleri **kalan %** + reset. Ağ yok. |
-| **Antigravity** | `/cli-dispatch:ag-balance` | Local Antigravity **language server** (IDE/`agy`'nin zaten çalıştırdığı) bir Connect-RPC `GetUserStatus` endpoint'i sunar. Komut çalışan `language_server` process'ini bulur, `--csrf_token` arg + dinlenen port'u okur, `GetUserStatus`'a `POST` atar → plan + **model-başına `remainingFraction`** + reset. |
-| **OpenCode** | `/cli-dispatch:oc-balance` | OpenRouter'ın resmi REST endpoint'i (`GET /api/v1/credits`), `OPENROUTER_API_KEY` ile → `total_credits - total_usage` kalan bakiye. **Sadece ücretli-kredi bakiyesi** — `:free` ekli modellerin ayrı, kimliksiz, model-başına rate limiti var, scriptable kota API'si yok. |
-| **GitHub Copilot** | `/cli-dispatch:cp-balance` | `copilot` CLI'dan sorgulanamaz. `/usage` yalnızca Copilot REPL içinde session-kapsamlı ve interaktiftir; gerçek kullanım/limitler için GitHub Billing (https://github.com/settings/billing) kullanılır. |
+| **DeepSeek** | `/cli-dispatch:balance ds` | DeepSeek'in resmi REST balance API'si (`/user/balance`), `DEEPSEEK_API_KEY` ile. |
+| **Codex** | `/cli-dispatch:balance cx` | Codex, backend'in rate-limit verisini kendi session kayıtlarına **yazıyor** (`~/.codex/sessions/**/*.jsonl`). Komut en güncel `token_count` kaydının `rate_limits`'ini okur → `primary` (5h) + `secondary` (7d) pencereleri **kalan %** + reset. Ağ yok. |
+| **Antigravity** | `/cli-dispatch:balance ag` | Local Antigravity **language server** (IDE/`agy`'nin zaten çalıştırdığı) bir Connect-RPC `GetUserStatus` endpoint'i sunar. Komut çalışan `language_server` process'ini bulur, `--csrf_token` arg + dinlenen port'u okur, `GetUserStatus`'a `POST` atar → plan + **model-başına `remainingFraction`** + reset. |
+| **OpenCode** | `/cli-dispatch:balance oc` | OpenRouter'ın resmi REST endpoint'i (`GET /api/v1/credits`), `OPENROUTER_API_KEY` ile → `total_credits - total_usage` kalan bakiye. **Sadece ücretli-kredi bakiyesi** — `:free` ekli modellerin ayrı, kimliksiz, model-başına rate limiti var, scriptable kota API'si yok. |
+| **GitHub Copilot** | `/cli-dispatch:balance cp` | `copilot` CLI'dan sorgulanamaz. `/usage` yalnızca Copilot REPL içinde session-kapsamlı ve interaktiftir; gerçek kullanım/limitler için GitHub Billing (https://github.com/settings/billing) kullanılır. |
 
 Tersine mühendislikle çözülen ikisi nasıl çalışıyor:
 

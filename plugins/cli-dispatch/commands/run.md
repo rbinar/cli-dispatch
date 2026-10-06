@@ -44,7 +44,7 @@ if ! command -v cli-dispatch-run >/dev/null 2>&1; then
     echo "cli-dispatch-run not found on PATH, and no plugin copy is usable."
     echo "If you just upgraded the plugin this is expected: the upgrade never re-runs install.sh."
     echo "Fix: re-run /cli-dispatch:setup (or scripts/install.sh) to reinstall the wrappers."
-    echo "Fallback: use /cli-dispatch:${BACKEND}-run, or call ${BACKEND}-agent directly."
+    echo "Fallback: call ${BACKEND}-agent directly (or /cli-dispatch:ask for a read-only one-shot)."
     exit 1
   fi
 fi

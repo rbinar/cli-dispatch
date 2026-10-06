@@ -1,18 +1,17 @@
 #!/usr/bin/env bash
 # Daily OS-level auto-clean of stale worker dirs: install | status | uninstall.
 # Picks launchd (macOS) or cron (Linux/WSL) from `uname`. Native Windows is not
-# handled here — commands/clean-schedule.md keeps the Scheduled Tasks block.
+# handled here (no Scheduled Tasks support).
 #
-# Runs straight from the plugin cache via commands/clean-schedule.md — it is NOT
-# installed into ~/.local/bin (same arrangement as cli-dispatch-status.sh).
+# Runs straight from the plugin cache via commands/clean.md (--schedule) — it is NOT
+# installed into ~/.local/bin (same arrangement as cli-dispatch-doctor.sh).
 #
 # Usage: cli-dispatch-clean-schedule.sh [install|status|uninstall] [--time HH:MM] [--older-than DAYS]
 #
 # The default action is **status**, not install: this script is reachable from a
-# `!` pre-execution line, which runs before the model sees anything and therefore
-# has no opportunity to confirm. A bare invocation must never write a plist or
-# rewrite a crontab. The COMMAND still documents `install` as its default — the
-# markdown passes it explicitly when the user asked for one.
+# command that forwards user arguments (`/cli-dispatch:clean --schedule`). A bare
+# invocation must never write a plist or rewrite a crontab; installing takes an
+# explicit `install`.
 
 ACTION="status"; TIME="03:00"; OLDER=""
 while [ "$#" -gt 0 ]; do case "$1" in

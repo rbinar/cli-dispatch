@@ -35,7 +35,7 @@ Remove-Item -Recurse -Force "$HOME\.config\claude-ds" -ErrorAction SilentlyConti
 
 **Step 3 — (Optional) clean up temporary worktrees:**
 
-If you used `/cli-dispatch:ds-run` or `ds-worktree-run.sh`, separate git worktrees may remain. Check in the relevant repo:
+If you used `/cli-dispatch:run` or `ds-worktree-run.sh`, separate git worktrees may remain. Check in the relevant repo:
 
 ```bash
 git worktree list          # see worktrees claude-ds opened

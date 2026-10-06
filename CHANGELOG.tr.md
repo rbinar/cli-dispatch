@@ -7,6 +7,36 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [6.0.0] — 2026-10-06
+
+**BREAKING.** Slash komut yüzeyi 35 komuttan 12'ye iniyor: `ask`, `balance`, `clean`, `doctor`,
+`gain`, `help`, `kill`, `resume`, `run`, `sessions`, `setup`, `watch`. Backend başına komut
+aileleri aynı komutun beş kopyasıydı; backend artık bir argüman (`ds|deepseek`,
+`ag|antigravity`, `cx|codex`, `oc|opencode`, `cp|copilot`).
+
+| Kaldırılan | Yerine |
+|---|---|
+| `ds-status`, `ag-status`, `cx-status`, `oc-status`, `cp-status`, `status` | `/cli-dispatch:doctor [backend]` |
+| `ds-sessions` … `cp-sessions` | `/cli-dispatch:sessions [backend]` |
+| `ds-balance` … `cp-balance` | `/cli-dispatch:balance [backend]` |
+| `ds-run`, `ag-run`, `cx-run`, `oc-run`, `cp-run` | `/cli-dispatch:ask <backend> "<prompt>"` (tek-atışlık, repo değişikliği yok); repo işi: `/cli-dispatch:run` veya `cli-dispatch:runner` agent'ı |
+| `wait <id>` | `/cli-dispatch:watch <id> --wait [--timeout S]` |
+| `clean-schedule [install\|status\|uninstall]` | `/cli-dispatch:clean --schedule [install\|status\|uninstall]` (yalın `--schedule` = status; native Windows'taki Scheduled Tasks bloğu `scripts/cli-dispatch-clean-schedule.ps1`'e taşındı, yalın çalıştırma artık kurulum yapmaz) |
+| `drift` | `/cli-dispatch:gain --drift` |
+
+### Değişti
+
+- **Tek-atışlık işlerde `/cli-dispatch:ask <backend> "<prompt>"` beş `*-run` komutunun yerini
+  alıyor.** `ds` ve `cx` `--read-only` ile koşar (gerçek read-only modlar); `ag`, `oc` ve `cp`'de
+  yazma engeli yoktur, bu yüzden repo erişimi olmayan geçici bir dizinde koşarlar. Ek agent
+  bayrakları (`--model`, `--effort`, …) prompt'tan önce aynen geçirilir.
+- **`doctor`, `status`'u içine alıyor:** artık bayat-kurulum uyarısını ve backend başına
+  yapılandırılmış modeli de gösteriyor. `cli-dispatch-status.sh` silindi;
+  `cli-dispatch-status.ps1`, `doctor`'ın native-Windows yedeği olarak kalıyor.
+- **`clean.md`, süpürmeyi içine gömmek yerine kurulu `cli-dispatch-clean` binary'sini çağıran ince
+  bir çağrı oldu;** model artık her `clean`'de ~300 satırlık shell'i yeniden yazmıyor.
+- `sessions`, `balance` ve `doctor` isteğe bağlı `[backend]` filtresi alıyor.
+
 ## [5.5.0] — 2026-10-06
 
 Açık issue'ların hepsini kapatıyor: #160, #162, #165, #171, #172, #182. Her düzeltmenin eski

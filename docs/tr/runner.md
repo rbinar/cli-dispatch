@@ -39,5 +39,5 @@ ile devam edersin.
 
 Varsayılan delege etmektir: test ekleyen ya da değiştiren veya birden fazla dosyaya dokunan iş
 runner agent'ına gider. Yalnızca tek dosyada ~20 satırlık bir düzeltme (sıfır keşif/belirsizlik)
-inline kalır — orada delegasyonun sabit maliyeti işe değmez. Repo değişikliği olmayan basit, tek-atışlık bir iş için düz `/cli-dispatch:ds-run` /
-`ag-run` / `cx-run` / `oc-run` / `cp-run` komutları yeterlidir.
+inline kalır — orada delegasyonun sabit maliyeti işe değmez. Repo değişikliği olmayan basit, tek-atışlık bir iş için `/cli-dispatch:ask <backend> "<prompt>"`
+yeterlidir.
