@@ -31,6 +31,8 @@ add() in math.mjs is broken. Delegate the fix to DeepSeek, verify with node --te
 
 ▶️ Uçtan uca örnek ([mp4](videos/cx-delegation-harness.mp4)): Claude düşen bir testi Codex'e devreder, `cli-dispatch:runner` agent'ını açıp ona gönderilen prompt'u birebir görürsün, Claude da doğrulanmış yamayı uygular. Bir sandbox container'ında canlı kaydedildi.
 
+https://github.com/user-attachments/assets/efc498b1-48d1-4dc5-abcd-7a152d222578
+
 **Kendin çalıştır.** Orkestrasyona LLM token'ı harcanmaz:
 
 ```text
