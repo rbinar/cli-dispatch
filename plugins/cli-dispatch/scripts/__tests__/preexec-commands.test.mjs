@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
-import { readFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { execFileSync, spawnSync } from 'node:child_process'
+import { readFileSync, existsSync, mkdtempSync, rmSync, writeFileSync, chmodSync, readdirSync, symlinkSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -132,6 +132,33 @@ test('cli-dispatch-clean-schedule.sh defaults to status when given no action', (
     assert.doesNotMatch(out, /scheduled daily at/)
   } finally {
     rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test('cli-dispatch-clean-schedule.sh install fails loudly when crontab is missing', () => {
+  // A Debian container without the cron package printed "scheduled daily" and exited 0.
+  const home = mkdtempSync(path.join(os.tmpdir(), 'cd-sched-'))
+  const bin = mkdtempSync(path.join(os.tmpdir(), 'cd-sched-bin-'))
+  try {
+    // Every system tool except crontab (on usrmerge distros /bin IS /usr/bin, so PATH=/bin
+    // alone would still find it), plus a uname that forces the cron branch.
+    for (const dir of ['/usr/bin', '/bin']) {
+      for (const name of readdirSync(dir)) {
+        if (name === 'crontab' || name === 'uname' || existsSync(path.join(bin, name))) continue
+        try { symlinkSync(path.join(dir, name), path.join(bin, name)) } catch {}
+      }
+    }
+    writeFileSync(path.join(bin, 'uname'), '#!/bin/sh\necho Linux\n')
+    chmodSync(path.join(bin, 'uname'), 0o755)
+    const r = spawnSync('/bin/bash', [path.join(scriptsDir, 'cli-dispatch-clean-schedule.sh'), 'install'], {
+      env: { HOME: home, PATH: bin }, encoding: 'utf8',
+    })
+    assert.notEqual(r.status, 0)
+    assert.match(r.stderr, /crontab not found/)
+    assert.doesNotMatch(r.stdout, /scheduled daily at/)
+  } finally {
+    rmSync(home, { recursive: true, force: true })
+    rmSync(bin, { recursive: true, force: true })
   }
 })
 

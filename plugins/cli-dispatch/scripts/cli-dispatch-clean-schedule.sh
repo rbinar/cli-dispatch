@@ -69,6 +69,12 @@ PL
       echo "scheduled daily at $TIME (launchd: $PLIST). Log: $LOG";;
   esac
 else
+  # `... | crontab -` used to fail silently and still print "scheduled" with exit 0 (seen in a
+  # Debian container: no cron package, then a crontab without spool permissions).
+  if [ "$ACTION" != status ] && ! command -v crontab >/dev/null 2>&1; then
+    echo "crontab not found — install cron first (e.g. apt-get install cron), then retry." >&2
+    exit 1
+  fi
   TAG="# cli-dispatch-clean"
   OLDER_ARG=""; [ -n "$OLDER" ] && OLDER_ARG=" --older-than $OLDER"
   LINE="$MM $HH * * * $BIN --remove --quiet$OLDER_ARG >> $LOG 2>&1 $TAG"
@@ -77,9 +83,10 @@ else
     status)
       printf '%s\n' "$EXIST" | grep -F "$TAG" && { echo "--- last log ---"; tail -n 8 "$LOG" 2>/dev/null; } || echo "not scheduled.";;
     uninstall)
-      printf '%s\n' "$EXIST" | grep -vF "$TAG" | crontab - ; echo "removed schedule.";;
+      printf '%s\n' "$EXIST" | grep -vF "$TAG" | crontab - || { echo "crontab update failed — schedule not removed." >&2; exit 1; }
+      echo "removed schedule.";;
     install)
-      { printf '%s\n' "$EXIST" | grep -vF "$TAG"; echo "$LINE"; } | crontab -
+      { printf '%s\n' "$EXIST" | grep -vF "$TAG"; echo "$LINE"; } | crontab - || { echo "crontab update failed — nothing scheduled." >&2; exit 1; }
       echo "scheduled daily at $TIME (cron). Log: $LOG";;
   esac
 fi

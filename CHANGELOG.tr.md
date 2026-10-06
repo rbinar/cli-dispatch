@@ -7,6 +7,25 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [6.0.1] — 2026-10-06
+
+Temiz bir Debian container'ında tam suite ve her komut çalıştırılırken bulunan iki Linux hatası.
+
+### Düzeltildi
+
+- **`--max-runtime` ve `--idle-timeout` Linux'ta hiç uygulanmıyordu.** `mtime_of` önce BSD
+  `stat -f %m`'i deniyordu; GNU `stat -f`, `%m`'i ikinci bir dosya sayıp dosyanın dosya sistemi
+  bilgisini stdout'a basıyor, sonra başarısız oluyor. Böylece `||` yedeğinin epoch değeri bu
+  metne yapışık geliyordu. Watchdog'un `$((now - m))` hesabı söz dizimi hatası verip döngüyü
+  ilk idle kontrolünde bitiriyor, worker'lar çalışma süresi sınırı olmadan kalıyordu. Aynı zincir
+  Linux'ta statusline'ın `▶N` çalışan-worker sayacını da sıfırda tutuyordu. İkisi de artık önce
+  GNU `stat -c %Y`'yi deniyor (BSD `stat -c` başarısız olmadan önce hiçbir şey basmaz). Container
+  koşusu, 8 sn'lik `--max-runtime`'ın uzun bir işi artık 9 sn'de durdurduğunu doğruluyor.
+- **`/cli-dispatch:clean --schedule install`, cron yazılamadığında başarı bildiriyordu.**
+  `crontab` binary'si yokken ya da spool izni olmayan bir crontab'da script yine "scheduled daily"
+  basıp 0 ile çıkıyordu. Artık `crontab` yoksa baştan reddediyor ve kurulum ile kaldırmada
+  `crontab -`'in çıkış kodunu kontrol ediyor.
+
 ## [6.0.0] — 2026-10-06
 
 **BREAKING.** Slash komut yüzeyi 35 komuttan 12'ye iniyor: `ask`, `balance`, `clean`, `doctor`,

@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [6.0.1] — 2026-10-06
+
+Two Linux bugs found by running the full suite and every command inside a clean Debian container.
+
+### Fixed
+
+- **`--max-runtime` and `--idle-timeout` were never enforced on Linux.** `mtime_of` tried the
+  BSD `stat -f %m` first; GNU `stat -f` treats `%m` as a second file, prints the file's
+  filesystem info to stdout and then fails, so the `||` fallback's epoch arrived glued to that
+  text. The watchdog's `$((now - m))` was a syntax error that ended the watchdog loop on its
+  first idle check, leaving workers with no runtime cap. The same chain kept the statusline's
+  `▶N` running-worker counter at zero on Linux. Both now try GNU `stat -c %Y` first (BSD
+  `stat -c` prints nothing before failing). A container run confirms an 8 s `--max-runtime`
+  now stops a long task in 9 s.
+- **`/cli-dispatch:clean --schedule install` reported success when cron could not be written.**
+  With no `crontab` binary, or a crontab without spool permissions, the script still printed
+  "scheduled daily" and exited 0. It now refuses up front when `crontab` is missing and checks
+  `crontab -`'s exit status on install and uninstall.
+
 ## [6.0.0] — 2026-10-06
 
 **BREAKING.** The slash-command surface shrinks from 35 commands to 12: `ask`, `balance`,

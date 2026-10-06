@@ -291,6 +291,9 @@ diff the guards — not only the happy path.
   managed sandboxes forbid (#171). Use a pipe, a here-string or a `mktemp` file; a named pipe read
   by `cat` when node must read a live stream (libuv reopens a FIFO stdin and never sees EOF).
   `no-process-substitution.test.mjs` enforces it.
+- Portable mtime is `stat -c %Y f 2>/dev/null || stat -f %m f`, GNU form FIRST: GNU `stat -f`
+  prints filesystem info to stdout before failing, so a BSD-first chain hands the caller junk on
+  Linux (it silently disabled the watchdog until 6.0.1). `mtime-gnu-stat.test.mjs` pins it.
 - On Linux, `script -c` runs its command string with `$SHELL`, or `/bin/sh` (dash on
   Debian/Ubuntu). A string built with bash's `printf %q` must be run with
   `SHELL="$(command -v bash)"`, or multi-line/UTF-8 arguments arrive mangled (#165).

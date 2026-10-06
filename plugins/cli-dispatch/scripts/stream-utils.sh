@@ -14,7 +14,9 @@
 export CLI_DISPATCH_WORKER=1
 
 # ---- cross-platform mtime ----
-mtime_of() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null; }
+# GNU form first: GNU `stat -f %m` prints filesystem info to stdout before failing, so a
+# BSD-first chain captured that junk on Linux and the watchdog died on the arithmetic.
+mtime_of() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null; }
 
 # ---- process-tree helpers ----
 
