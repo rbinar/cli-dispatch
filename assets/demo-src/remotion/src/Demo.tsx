@@ -2,44 +2,51 @@ import React from 'react';
 import {fade} from '@remotion/transitions/fade';
 import {linearTiming, TransitionSeries} from '@remotion/transitions';
 import {useVideoConfig} from 'remotion';
+import {Lang} from './strings';
 import {FADE} from './theme';
 import {Title, TITLE_FRAMES} from './scenes/Title';
-import {Install, INSTALL_FRAMES} from './scenes/Install';
-import {Doctor, DOCTOR_FRAMES} from './scenes/Doctor';
-import {Ask, ASK_FRAMES} from './scenes/Ask';
-import {Delegate, DELEGATE_FRAMES} from './scenes/Delegate';
-import {Run, RUN_FRAMES} from './scenes/Run';
-import {FollowUp, FOLLOWUP_FRAMES} from './scenes/FollowUp';
-import {Housekeeping, HOUSEKEEPING_FRAMES} from './scenes/Housekeeping';
-import {Help, HELP_FRAMES} from './scenes/Help';
+import {Install, installFrames} from './scenes/Install';
+import {Doctor, doctorFrames} from './scenes/Doctor';
+import {Ask, askFrames} from './scenes/Ask';
+import {Delegate, delegateFrames} from './scenes/Delegate';
+import {Run, runFrames} from './scenes/Run';
+import {FollowUp, followUpFrames} from './scenes/FollowUp';
+import {Housekeeping, housekeepingFrames} from './scenes/Housekeeping';
+import {Help, helpFrames} from './scenes/Help';
 import {Outro, OUTRO_FRAMES} from './scenes/Outro';
 
-export const SCENE_FRAMES = [TITLE_FRAMES, INSTALL_FRAMES, DOCTOR_FRAMES, ASK_FRAMES, DELEGATE_FRAMES, RUN_FRAMES, FOLLOWUP_FRAMES, HOUSEKEEPING_FRAMES, HELP_FRAMES, OUTRO_FRAMES];
-export const DEMO_FRAMES = SCENE_FRAMES.reduce((a, b) => a + b, 0) - FADE * (SCENE_FRAMES.length - 1);
+const sceneFrames = (lang: Lang) => [
+  TITLE_FRAMES, installFrames(lang), doctorFrames(lang), askFrames(lang), delegateFrames(lang),
+  runFrames(lang), followUpFrames(lang), housekeepingFrames(lang), helpFrames(lang), OUTRO_FRAMES,
+];
+export const demoFrames = (lang: Lang) => {
+  const f = sceneFrames(lang);
+  return f.reduce((a, b) => a + b, 0) - FADE * (f.length - 1);
+};
 
-export const Demo: React.FC = () => {
+export const Demo: React.FC<{lang: Lang}> = ({lang}) => {
   const {fps} = useVideoConfig();
   return (
     <TransitionSeries>
-      <TransitionSeries.Sequence name="Title" durationInFrames={TITLE_FRAMES} premountFor={fps}><Title /></TransitionSeries.Sequence>
+      <TransitionSeries.Sequence name="Title" durationInFrames={TITLE_FRAMES} premountFor={fps}><Title lang={lang} /></TransitionSeries.Sequence>
       <TransitionSeries.Transition presentation={fade()} timing={linearTiming({durationInFrames: FADE})} />
-      <TransitionSeries.Sequence name="Install" durationInFrames={INSTALL_FRAMES} premountFor={fps}><Install /></TransitionSeries.Sequence>
+      <TransitionSeries.Sequence name="Install" durationInFrames={installFrames(lang)} premountFor={fps}><Install lang={lang} /></TransitionSeries.Sequence>
       <TransitionSeries.Transition presentation={fade()} timing={linearTiming({durationInFrames: FADE})} />
-      <TransitionSeries.Sequence name="Doctor" durationInFrames={DOCTOR_FRAMES} premountFor={fps}><Doctor /></TransitionSeries.Sequence>
+      <TransitionSeries.Sequence name="Doctor" durationInFrames={doctorFrames(lang)} premountFor={fps}><Doctor lang={lang} /></TransitionSeries.Sequence>
       <TransitionSeries.Transition presentation={fade()} timing={linearTiming({durationInFrames: FADE})} />
-      <TransitionSeries.Sequence name="Ask" durationInFrames={ASK_FRAMES} premountFor={fps}><Ask /></TransitionSeries.Sequence>
+      <TransitionSeries.Sequence name="Ask" durationInFrames={askFrames(lang)} premountFor={fps}><Ask lang={lang} /></TransitionSeries.Sequence>
       <TransitionSeries.Transition presentation={fade()} timing={linearTiming({durationInFrames: FADE})} />
-      <TransitionSeries.Sequence name="Delegate" durationInFrames={DELEGATE_FRAMES} premountFor={fps}><Delegate /></TransitionSeries.Sequence>
+      <TransitionSeries.Sequence name="Delegate" durationInFrames={delegateFrames(lang)} premountFor={fps}><Delegate lang={lang} /></TransitionSeries.Sequence>
       <TransitionSeries.Transition presentation={fade()} timing={linearTiming({durationInFrames: FADE})} />
-      <TransitionSeries.Sequence name="Run" durationInFrames={RUN_FRAMES} premountFor={fps}><Run /></TransitionSeries.Sequence>
+      <TransitionSeries.Sequence name="Run" durationInFrames={runFrames(lang)} premountFor={fps}><Run lang={lang} /></TransitionSeries.Sequence>
       <TransitionSeries.Transition presentation={fade()} timing={linearTiming({durationInFrames: FADE})} />
-      <TransitionSeries.Sequence name="FollowUp" durationInFrames={FOLLOWUP_FRAMES} premountFor={fps}><FollowUp /></TransitionSeries.Sequence>
+      <TransitionSeries.Sequence name="FollowUp" durationInFrames={followUpFrames(lang)} premountFor={fps}><FollowUp lang={lang} /></TransitionSeries.Sequence>
       <TransitionSeries.Transition presentation={fade()} timing={linearTiming({durationInFrames: FADE})} />
-      <TransitionSeries.Sequence name="Housekeeping" durationInFrames={HOUSEKEEPING_FRAMES} premountFor={fps}><Housekeeping /></TransitionSeries.Sequence>
+      <TransitionSeries.Sequence name="Housekeeping" durationInFrames={housekeepingFrames(lang)} premountFor={fps}><Housekeeping lang={lang} /></TransitionSeries.Sequence>
       <TransitionSeries.Transition presentation={fade()} timing={linearTiming({durationInFrames: FADE})} />
-      <TransitionSeries.Sequence name="Help" durationInFrames={HELP_FRAMES} premountFor={fps}><Help /></TransitionSeries.Sequence>
+      <TransitionSeries.Sequence name="Help" durationInFrames={helpFrames(lang)} premountFor={fps}><Help lang={lang} /></TransitionSeries.Sequence>
       <TransitionSeries.Transition presentation={fade()} timing={linearTiming({durationInFrames: FADE})} />
-      <TransitionSeries.Sequence name="Outro" durationInFrames={OUTRO_FRAMES} premountFor={fps}><Outro /></TransitionSeries.Sequence>
+      <TransitionSeries.Sequence name="Outro" durationInFrames={OUTRO_FRAMES} premountFor={fps}><Outro lang={lang} /></TransitionSeries.Sequence>
     </TransitionSeries>
   );
 };

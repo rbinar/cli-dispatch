@@ -6,7 +6,7 @@
 
 ![cli-dispatch demo: install, setup, doctor, ask, delegate, run, sessions and resume, gain and clean — every output recorded in a clean Debian container](assets/demo.gif)
 
-▶️ [Watch it as a video (mp4)](assets/demo.mp4) · 📝 [Write-up (Turkish, Medium)](https://medium.com/@rbinar/cli-dispatch-claudea-patron-deepseek-e-i%CC%87%C5%9F%C3%A7i-rol%C3%BC-veren-bir-plugin-b232803581fc)
+▶️ Video: [English](videos/demo-en.mp4) · [Türkçe](videos/demo-tr.mp4) · 📝 [Write-up (Turkish, Medium)](https://medium.com/@rbinar/cli-dispatch-claudea-patron-deepseek-e-i%CC%87%C5%9F%C3%A7i-rol%C3%BC-veren-bir-plugin-b232803581fc)
 
 ## Install
 

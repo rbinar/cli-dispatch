@@ -2,6 +2,7 @@ import React from 'react';
 import {AbsoluteFill, Easing, interpolate, useCurrentFrame} from 'remotion';
 import {Terminal} from './Terminal';
 import {colors, mono, sans} from './theme';
+import {Lang} from './strings';
 import {Step} from './timing';
 
 // A numbered caption above a terminal replaying real captured output.
@@ -11,11 +12,12 @@ export const TerminalScene: React.FC<{
   subtitle: string;
   steps: readonly Step[];
   fontSize?: number;
-}> = ({step, title, subtitle, steps, fontSize}) => {
+  lang?: Lang;
+}> = ({step, title, subtitle, steps, fontSize, lang = 'en'}) => {
   const frame = useCurrentFrame();
   const enter = interpolate(frame, [0, 14], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.bezier(0.16, 1, 0.3, 1)});
   return (
-    <AbsoluteFill style={{background: colors.bg, padding: '70px 90px 80px', display: 'flex', flexDirection: 'column', gap: 34}}>
+    <AbsoluteFill lang={lang} style={{background: colors.bg, padding: '70px 90px 80px', display: 'flex', flexDirection: 'column', gap: 34}}>
       <div style={{opacity: enter, translate: `0px ${(1 - enter) * 20}px`}}>
         <div style={{fontFamily: mono, fontSize: 30, letterSpacing: 4, color: colors.accent, textTransform: 'uppercase'}}>{step}</div>
         <div style={{display: 'flex', alignItems: 'baseline', gap: 28, marginTop: 6}}>
