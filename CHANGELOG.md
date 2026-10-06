@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [6.0.3] — 2026-10-06
+
+### Changed
+
+- **The demo video now ships in English and Turkish, as MP4 files in `videos/`**
+  (`videos/demo-en.mp4`, `videos/demo-tr.mp4`). `README.tr.md` shows a Turkish GIF
+  (`assets/demo-tr.gif`). Captions are translated, and the two scenes where a person types a
+  prompt (`ask`, delegating by asking Claude) were re-recorded in the container with Turkish
+  prompts, so the Turkish answers on screen are real too. `assets/demo.mp4` moved to
+  `videos/demo-en.mp4`. `assets/demo-src/remotion/render.sh` renders both languages.
+
 ## [6.0.2] — 2026-10-06
 
 ### Changed

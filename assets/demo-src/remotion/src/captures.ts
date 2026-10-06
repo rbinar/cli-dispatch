@@ -158,3 +158,37 @@ export const captures = {
   }
  ]
 } as const;
+
+// Turkish video: the two scenes where a person types a prompt were re-run with Turkish prompts.
+export const capturesTr = {...captures, ask: [
+ {
+  "cmd": "/cli-dispatch:ask cx \"Tek cümleyle: git worktree add ne yapar?\"",
+  "out": [
+   "cx-stream → Codex (OpenAI Codex CLI) worker",
+   "  sandbox: read-only",
+   "",
+   "`git worktree add`, aynı Git deposundan ayrı bir dizinde başka bir dal üzerinde çalışabileceğin",
+   "ek bir çalışma alanı oluşturur."
+  ]
+ }
+], agent: [
+ {
+  "cmd": "math.mjs içindeki add() bozuk. Düzeltmeyi DeepSeek'e devret, node --test ile doğrula, sonra yamayı uygula.",
+  "out": [
+   "- DeepSeek düzeltti; `node --test` doğrulaması geçti.",
+   "- Hata `math.mjs:2` satırındaydı: `return a - b` yerine `a + b` olmalıydı.",
+   "- Yamayı (1 satır) inceleyip uyguladım. Testi kendim de çalıştırdım: 1/1 geçti.",
+   "- Değişiklik commit edilmedi; `math.mjs` değiştirilmiş olarak duruyor.",
+   "- DeepSeek'in çalışma kopyası `/tmp/ds-wt-eqKcLl` hâlâ duruyor; `/cli-dispatch:clean` ile",
+   "  silebilirsiniz."
+  ]
+ },
+ {
+  "cmd": "node --test",
+  "out": [
+   "# tests 1",
+   "# pass 1",
+   "# fail 0"
+  ]
+ }
+]} as const;

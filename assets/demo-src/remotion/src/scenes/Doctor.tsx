@@ -1,15 +1,10 @@
 import React from 'react';
-import {captures} from '../captures';
+import {cap, Lang, t} from '../strings';
 import {TerminalScene} from '../TerminalScene';
 import {sceneDuration} from '../timing';
 
-export const DOCTOR_FRAMES = sceneDuration(captures.doctor, 60);
+export const doctorFrames = (lang: Lang) => sceneDuration(cap(lang).doctor, 60);
 
-export const Doctor: React.FC = () => (
-  <TerminalScene
-    step="02 · Check"
-    title="Doctor"
-    subtitle="health per backend"
-    steps={captures.doctor}
-  />
+export const Doctor: React.FC<{lang: Lang}> = ({lang}) => (
+  <TerminalScene lang={lang} {...t[lang].scenes.doctor} steps={cap(lang).doctor} />
 );

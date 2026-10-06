@@ -1,15 +1,10 @@
 import React from 'react';
-import {captures} from '../captures';
+import {cap, Lang, t} from '../strings';
 import {TerminalScene} from '../TerminalScene';
 import {sceneDuration} from '../timing';
 
-export const HOUSEKEEPING_FRAMES = sceneDuration(captures.gain, 75);
+export const housekeepingFrames = (lang: Lang) => sceneDuration(cap(lang).gain, 75);
 
-export const Housekeeping: React.FC = () => (
-  <TerminalScene
-    step="07 · Measure"
-    title="Gain & clean"
-    subtitle="token totals, stale-session cleanup"
-    steps={captures.gain} fontSize={26}
-  />
+export const Housekeeping: React.FC<{lang: Lang}> = ({lang}) => (
+  <TerminalScene lang={lang} {...t[lang].scenes.housekeeping} steps={cap(lang).gain} fontSize={26} />
 );

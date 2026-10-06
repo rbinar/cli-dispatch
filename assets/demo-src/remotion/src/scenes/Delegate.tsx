@@ -1,15 +1,10 @@
 import React from 'react';
-import {captures} from '../captures';
+import {cap, Lang, t} from '../strings';
 import {TerminalScene} from '../TerminalScene';
 import {sceneDuration} from '../timing';
 
-export const DELEGATE_FRAMES = sceneDuration(captures.agent, 120);
+export const delegateFrames = (lang: Lang) => sceneDuration(cap(lang).agent, 120);
 
-export const Delegate: React.FC = () => (
-  <TerminalScene
-    step="04 · Delegate"
-    title="Just ask Claude"
-    subtitle="the runner agent delegates and verifies"
-    steps={captures.agent}
-  />
+export const Delegate: React.FC<{lang: Lang}> = ({lang}) => (
+  <TerminalScene lang={lang} {...t[lang].scenes.delegate} steps={cap(lang).agent} />
 );

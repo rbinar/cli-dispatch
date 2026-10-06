@@ -1,15 +1,10 @@
 import React from 'react';
-import {captures} from '../captures';
+import {cap, Lang, t} from '../strings';
 import {TerminalScene} from '../TerminalScene';
 import {sceneDuration} from '../timing';
 
-export const INSTALL_FRAMES = sceneDuration(captures.install, 75);
+export const installFrames = (lang: Lang) => sceneDuration(cap(lang).install, 75);
 
-export const Install: React.FC = () => (
-  <TerminalScene
-    step="01 · Install"
-    title="Install"
-    subtitle="two plugin commands, then setup"
-    steps={captures.install}
-  />
+export const Install: React.FC<{lang: Lang}> = ({lang}) => (
+  <TerminalScene lang={lang} {...t[lang].scenes.install} steps={cap(lang).install} />
 );

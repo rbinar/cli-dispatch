@@ -7,6 +7,17 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [6.0.3] — 2026-10-06
+
+### Değişti
+
+- **Demo videosu artık İngilizce ve Türkçe, `videos/` klasöründe MP4 olarak geliyor**
+  (`videos/demo-en.mp4`, `videos/demo-tr.mp4`). `README.tr.md` Türkçe bir GIF gösteriyor
+  (`assets/demo-tr.gif`). Başlıklar çevrildi; birinin prompt yazdığı iki sahne (`ask` ve Claude'a
+  söyleyerek delegasyon) container'da Türkçe prompt'larla yeniden kaydedildi, böylece ekrandaki
+  Türkçe yanıtlar da gerçek. `assets/demo.mp4`, `videos/demo-en.mp4` oldu.
+  `assets/demo-src/remotion/render.sh` iki dili de render ediyor.
+
 ## [6.0.2] — 2026-10-06
 
 ### Değişti
