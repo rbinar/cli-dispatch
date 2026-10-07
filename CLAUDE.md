@@ -184,7 +184,9 @@ non-terminal session (`running`) is never removed however old it sorts, a
 session with no state at all is left to `cli-dispatch-clean` (a parser that died before its
 first status write is indistinguishable from one that never started), and verdicts are
 archived into `verdict-archive/` first. It is a floor, not a replacement for
-`cli-dispatch-clean` — it does no staleness detection. Ordering
+`cli-dispatch-clean` — it does no staleness detection. The same call also caps the detached runner's `<root>/.runs/run-*`
+bookkeeping at the newest `CLI_DISPATCH_MAX_SESSIONS` finished runs (an `exit` file exists);
+a run without one is never touched (6.1.4). Ordering
 matters at the call site: prune AFTER creating your own dir, or you become your own target.
 
 **Session-dir root resolution** is duplicated (by design, not accidentally) across

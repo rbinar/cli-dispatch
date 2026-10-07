@@ -121,6 +121,7 @@ export function pruneSessionRoot(root, { max = resolveMaxSessions(), keepDir = n
   // sessions only — live ones are kept on top of it rather than displacing history.
   candidates.sort((a, b) => b.sort - a.sort)
   const surplus = candidates.slice(max)
+  pruneDetachedRuns(root, max, result)
   if (!surplus.length) { result.kept += candidates.length; return result }
   result.kept += candidates.length - surplus.length
 
@@ -143,13 +144,35 @@ export function pruneSessionRoot(root, { max = resolveMaxSessions(), keepDir = n
   return result
 }
 
+// `<root>/.runs/run-*` holds the detached runner's bookkeeping (pid, log, session, summary.txt,
+// exit). Nothing else ever removes it, so keep the newest `max` FINISHED runs (an `exit` file
+// exists) and drop the rest. A run with no `exit` file is still going (or died; the waiter
+// reports that) and is never touched here.
+function pruneDetachedRuns(root, max, result) {
+  const runsDir = join(root, '.runs')
+  let names
+  try { names = readdirSync(runsDir) } catch { return }
+  const finished = []
+  for (const name of names) {
+    const dir = join(runsDir, name)
+    try {
+      if (!statSync(dir).isDirectory()) continue
+      finished.push({ dir, sort: statSync(join(dir, 'exit')).mtimeMs })
+    } catch { /* no exit file: still running — keep */ }
+  }
+  finished.sort((a, b) => b.sort - a.sort)
+  result.runsRemoved = 0
+  for (const { dir } of finished.slice(max)) {
+    try { rmSync(dir, { recursive: true, force: true }); result.runsRemoved++ } catch { /* best-effort */ }
+  }
+}
+
 // ---- backend name normalization ----
 
 // Two spellings of the same five backends coexist on disk: the stream parsers write the LONG
 // name into status.json/meta.json ("codex"), while cli-dispatch-run and verdict.json use the
 // SHORT form ("cx"). Any consumer that reads both files needs the mapping, so it lives here in
-// the shared-contract module rather than in verdict-writer.mjs (which re-exports it for
-// compatibility).
+// the shared-contract module rather than in verdict-writer.mjs.
 // Returns null for an unrecognised value; callers decide whether that is fatal.
 const VALID_BACKENDS = new Set(['ds', 'ag', 'cx', 'oc', 'cp'])
 const BACKEND_ALIASES = { deepseek: 'ds', antigravity: 'ag', codex: 'cx', opencode: 'oc', copilot: 'cp' }

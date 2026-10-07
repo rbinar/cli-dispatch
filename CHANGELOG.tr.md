@@ -7,6 +7,16 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [6.1.4] — 2026-10-07
+
+### Düzeltildi
+
+- **Ayrık run kayıtları artık sonsuza kadar birikmiyor.** Her `cli-dispatch:runner` delegasyonu
+  (`cli-dispatch-run --detach`) `<sessions-root>/.runs/run-*` (pid, log, özet, exit) bırakıyordu
+  ve bunları hiçbir şey silmiyordu. Her worker session'ının başında çalışan pasif session
+  budaması artık bitmiş run'ların en yeni `CLI_DISPATCH_MAX_SESSIONS` kadarını (varsayılan 100)
+  tutup gerisini siliyor; bitmemiş bir run'a hiç dokunulmuyor.
+
 ## [6.1.3] — 2026-10-07
 
 ### Düzeltildi
