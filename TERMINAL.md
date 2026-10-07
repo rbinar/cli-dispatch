@@ -102,7 +102,7 @@ Session-tracked variant. Runs `claude` with stream-json output, pipes through `d
 
 ```
 claude-ds-stream [--cwd <dir>] [--resume <id>] [--read-only] \
-                 [--max-runtime <s>] [--idle-timeout <s>] -p "<prompt>" [extra claude flags]
+                 [--effort low|medium|high] [--max-runtime <s>] [--idle-timeout <s>] -p "<prompt>" [extra claude flags]
 
 echo "<prompt>" | claude-ds-stream [--cwd <dir>]
 ```
@@ -113,6 +113,7 @@ echo "<prompt>" | claude-ds-stream [--cwd <dir>]
 | `--resume <id>` | Resume an existing session (also `--resume=<id>`) |
 | `-p`, `--prompt <text>` | Prompt text (also `-p=<text>`, `--prompt=<text>`) |
 | `--read-only` | Restrict worker to Read/Grep/Glob tools only (no writes) |
+| `--effort low\|medium\|high` | Thinking budget via `MAX_THINKING_TOKENS` (low=1024, medium=8192, high=31999); best-effort (env: `CLAUDE_DS_EFFORT`) |
 | `--max-runtime <s>` | Kill worker after `<s>` seconds total (0 = off; env: `CLAUDE_DS_MAX_RUNTIME`) |
 | `--idle-timeout <s>` | Kill worker after `<s>` seconds with no output (0 = off; env: `CLAUDE_DS_IDLE_TIMEOUT`) |
 
@@ -132,6 +133,7 @@ Environment overrides:
 | `CLI_DISPATCH_CONFIG` | Override config file path |
 | `CLI_DISPATCH_SESSIONS_DIR` | Override session directory |
 | `CLI_DISPATCH_PARSER` | Override path to `ds-stream-parse.mjs` |
+| `CLAUDE_DS_EFFORT` | Default `--effort` value |
 | `CLAUDE_DS_MAX_RUNTIME` | Default `--max-runtime` value |
 | `CLAUDE_DS_IDLE_TIMEOUT` | Default `--idle-timeout` value |
 | `CLAUDE_DS_PROGRESS_STDERR` | Progress output goes to stderr |
@@ -141,7 +143,7 @@ Environment overrides:
 Thin synchronous wrapper over `claude-ds-stream`. Blocks until complete, shows tool activity on stderr, prints only the final answer on stdout.
 
 ```
-ds-agent [--read-only] [--cwd <dir>] [--resume <id>] [--max-runtime <s>] [--idle-timeout <s>] [-q] "<task>"
+ds-agent [--read-only] [--cwd <dir>] [--resume <id>] [--effort low|medium|high] [--max-runtime <s>] [--idle-timeout <s>] [-q] "<task>"
 
 echo "<task>" | ds-agent
 ds-agent -p "<task>"
@@ -152,13 +154,14 @@ ds-agent -p "<task>"
 | `--read-only` | Analysis only; no writes/bash |
 | `--cwd <dir>` | Work in `<dir>` |
 | `--resume <id>` | Continue an existing session |
+| `--effort low\|medium\|high` | Forward to `claude-ds-stream` (env: `CLAUDE_DS_EFFORT`) |
 | `--max-runtime <s>` | Forward to `claude-ds-stream` |
 | `--idle-timeout <s>` | Forward to `claude-ds-stream` |
 | `-q`, `--quiet` | Suppress progress header and stderr mirroring |
 | `-p`, `--prompt <text>` | Explicit prompt (alternative to positional arg) |
 | `-h`, `--help` | Print usage |
 
-Without `--read-only`, adds `--dangerously-skip-permissions` (agentic mode).
+Without `--read-only`, adds `--dangerously-skip-permissions` (agentic mode). Any other flag, including `--dangerously-skip-permissions` itself, is forwarded to `claude-ds-stream`.
 
 ### `ds-worktree-run.sh`
 
@@ -212,6 +215,10 @@ All session files live under `~/.cache/cli-dispatch/sessions/<id>/`:
 | `progress.log` | Terse human-readable stream of tool activity |
 | `transcript.jsonl` | Raw stream-json output (for resume/audit; not for live monitoring) |
 | `meta.json` | Prompt preview, cwd, branch, model, start/end times |
+| `prompt.txt` | The full prompt the worker was given |
+| `changed-files.json` | `{files, diffstat, preexistingDirty}` — files the run changed, written after a repo-changing run finishes |
+| `verdict.json` | Written only for runs through `cli-dispatch-run`: verify result, branch, diffstat, exit code |
+| `worker-report.json` | The worker's self-report (claims, notDone, assumptions), written by the worker in its worktree when asked; a self-report, not evidence |
 
 For cost-conscious monitoring, read **only `status.json`**. Do not tail `transcript.jsonl` — it is a raw JSONL stream intended for replay, not live consumption.
 
@@ -238,6 +245,7 @@ Environment overrides:
 | `CLI_DISPATCH_CONFIG` | Config file path |
 | `CLI_DISPATCH_SESSIONS_DIR` | Session directory |
 | `CLI_DISPATCH_PARSER` | Path to `ds-stream-parse.mjs` |
+| `CLAUDE_DS_EFFORT` | Default `--effort` level |
 | `CLAUDE_DS_MAX_RUNTIME` | Default max runtime (seconds) |
 | `CLAUDE_DS_IDLE_TIMEOUT` | Default idle timeout (seconds) |
 | `CLI_DISPATCH_EDITOR` | Editor for opening config during setup |

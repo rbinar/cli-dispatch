@@ -25,6 +25,7 @@
 
 import { readFileSync, existsSync, mkdirSync, statSync, readSync, openSync, closeSync } from 'node:fs'
 import path from 'node:path'
+import { StringDecoder } from 'node:string_decoder'
 import { writeMetaFile, createStatusWriter, openSessionFiles, humanSize, clip, readJsonFile, TERMINAL_STATES, pruneSessionRoot } from './parse-utils.mjs'
 
 const dir = process.env.AG_SESSION_DIR
@@ -145,15 +146,19 @@ function handleLine(o) {
 }
 
 // ---- tail-follow the transcript by byte offset ----
+// A resumed turn appends to the transcript: skip what the previous turn already wrote.
 let offset = 0
+if (isResume) { try { offset = statSync(transcriptPath).size } catch { /* not there yet */ } }
 let lineBuf = ''
+// One decoder across reads: a multibyte character split over two polls decodes intact.
+let decoder = new StringDecoder('utf8')
 const BUF = Buffer.alloc(65536)
 
 function drain() {
   if (!existsSync(transcriptPath)) return
   let size
   try { size = statSync(transcriptPath).size } catch { return }
-  if (size < offset) { offset = 0; lineBuf = '' } // truncated/rotated — restart
+  if (size < offset) { offset = 0; lineBuf = ''; decoder = new StringDecoder('utf8') } // truncated/rotated — restart
   if (size === offset) return
   let fd = -1
   try { fd = openSync(transcriptPath, 'r') } catch { return }
@@ -163,7 +168,7 @@ function drain() {
       const got = readSync(fd, BUF, 0, want, offset)
       if (got <= 0) break
       offset += got
-      lineBuf += BUF.toString('utf8', 0, got)
+      lineBuf += decoder.write(BUF.subarray(0, got))
     }
   } finally { try { closeSync(fd) } catch { /* ignore */ } }
   const lines = lineBuf.split('\n')

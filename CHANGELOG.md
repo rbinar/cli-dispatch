@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [6.1.2] — 2026-10-07
+
+The last group of fixes from the code audit: lower-severity issues, the two items 6.1.1 left open,
+documentation drift and dead code. Pinned by `scripts/__tests__/audit-wave3.test.mjs` (15 tests,
+all failing on 6.1.1).
+
+### Security
+
+- **`/cli-dispatch:kill` no longer kills a recycled process id.** A crashed session's
+  `worker.pid` could name an unrelated process by the time you ran kill; only a process whose
+  command line is a cli-dispatch worker is killed now.
+- **API keys no longer appear in the process list.** `/cli-dispatch:balance` passed the DeepSeek
+  and OpenRouter keys to `curl` as arguments; the header now goes in on stdin.
+- **The leaked-changes patch gets a random, private name** (`mktemp`, mode 600) instead of a
+  predictable file under a shared `/tmp`.
+- **Session and run ids with `/`, `\` or `..` are rejected** by `cli-dispatch-wait`,
+  `claude-ds-stream --resume` and the `watch`, `kill` and `resume` commands.
+
+### Fixed
+
+- **Ctrl-C / SIGTERM now stop the run during verify and fix attempts too,** not only while the
+  worker runs.
+- **A `--fix-attempts` round finds the worker when `~/.local/bin` is not on PATH** (it falls back
+  to the copy next to the runner).
+- **`/cli-dispatch:run` never shows another run's verdict.** When a run wrote none, the newest
+  older verdict was printed next to this run's exit code.
+- **`--resume` re-attach to a session whose directory is not a git work tree** still writes a
+  verdict instead of dying on `git diff`.
+- **Antigravity: a Turkish (or any multibyte) character split across two reads is decoded
+  intact,** and a resumed turn that produced no answer is no longer reported as done with the
+  previous turn's answer.
+- **Windows: the newest-session fallback skips `.runs`, dot directories and `verdict-archive`.**
+
+### Removed
+
+- The never-installed `~/.local/share/cli-dispatch/node` lookup, the uncalled
+  `install.sh --policy-injection` / `install.ps1 -PolicyInjection` option, and an unused
+  re-export in `verdict-writer.mjs`.
+
+### Docs
+
+- Removed the last mentions of the per-backend `*-balance` commands; corrected the runner agent's
+  wait code (124) and the session-root list in `CLAUDE.md`; completed the uninstall lists (all
+  five worktree runners; the full Windows set); added `--effort` / `CLAUDE_DS_EFFORT` and the
+  session files `changed-files.json`, `verdict.json`, `worker-report.json` to `TERMINAL.md` and
+  the session docs; `docs/security.md` now says which balance checks call a provider API.
+- `CHANGELOG.tr.md` gains the ten versions it was missing (3.14.0–3.14.4, 3.29.0–3.30.3).
+
 ## [6.1.1] — 2026-10-07
 
 Correctness fixes from the same code audit. Each has a test in

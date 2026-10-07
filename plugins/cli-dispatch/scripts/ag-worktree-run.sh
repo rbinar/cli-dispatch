@@ -23,10 +23,9 @@ _check_repo_clean() {
     echo ">>> post-check OK: $repo is clean"
     return 0
   fi
-  local ts patch_file
-  ts="$(date +%s)"
+  local patch_file
   # Temp dir, not "$repo/.." — that parent is a directory the runner does not own.
-  patch_file="${TMPDIR:-/tmp}/cli-dispatch-leaked-changes-${ts}.patch"
+  patch_file="$(mktemp "${TMPDIR:-/tmp}/cli-dispatch-leaked-changes-XXXXXX")"
   git -C "$repo" diff > "$patch_file"
   # Note: git diff does not cover untracked files; status --short above does list them.
   echo ">>> post-check FAIL: $repo is dirty — worker leaked changes outside worktree" >&2
@@ -230,8 +229,7 @@ if [ -n "${CLI_DISPATCH_ALLOW_CONCURRENT_EDITS:-}" ]; then
   printf '%s\n' "$NEW_DIRT" >&2
   exit 0
 fi
-TS="$(date +%s)"
-PATCH_FILE="${TMPDIR:-/tmp}/cli-dispatch-leaked-changes-${TS}.patch"
+PATCH_FILE="$(mktemp "${TMPDIR:-/tmp}/cli-dispatch-leaked-changes-XXXXXX")"
 git -C "$GUARD_REPO" diff > "$PATCH_FILE" 2>/dev/null || true
 echo ">>> post-check FAIL: NEW changes appeared in $GUARD_REPO, outside the worktree" >&2
 echo ">>>   Either the worker resolved a path outside the tree it was given, or something" >&2

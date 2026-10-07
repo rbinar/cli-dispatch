@@ -62,8 +62,8 @@ if [ ! -f "$CFG" ]; then echo "config: MISSING ($CFG) — run /cli-dispatch:setu
 # shellcheck disable=SC1090
 . "$CFG"
 if [ -z "${DEEPSEEK_API_KEY:-}" ]; then echo "key: MISSING — add it to the config (/cli-dispatch:setup)"; exit 1; fi
-curl -sS --max-time 20 https://api.deepseek.com/user/balance \
-  -H "Authorization: Bearer $DEEPSEEK_API_KEY" \
+printf 'Authorization: Bearer %s\n' "$DEEPSEEK_API_KEY" | curl -sS --max-time 20 https://api.deepseek.com/user/balance \
+  -H @- \
   -H "Accept: application/json"
 echo
 }
@@ -137,8 +137,8 @@ if [ ! -f "$CFG" ]; then echo "config: MISSING ($CFG) — run /cli-dispatch:setu
 # shellcheck disable=SC1090
 . "$CFG"
 if [ -z "${OPENROUTER_API_KEY:-}" ]; then echo "key: MISSING — add OPENROUTER_API_KEY to the config (/cli-dispatch:setup)"; exit 1; fi
-curl -sS --max-time 20 https://openrouter.ai/api/v1/credits \
-  -H "Authorization: Bearer $OPENROUTER_API_KEY" \
+printf 'Authorization: Bearer %s\n' "$OPENROUTER_API_KEY" | curl -sS --max-time 20 https://openrouter.ai/api/v1/credits \
+  -H @- \
   -H "Accept: application/json"
 echo
 }
@@ -165,8 +165,8 @@ if [ ! -f "$CFG" ]; then echo "config: MISSING ($CFG) — run /cli-dispatch:setu
   # shellcheck disable=SC1090
   . "$CFG"
   if [ -z "${DEEPSEEK_API_KEY:-}" ]; then echo "key: not set (skip)"; else
-    curl -sS --max-time 20 https://api.deepseek.com/user/balance \
-      -H "Authorization: Bearer $DEEPSEEK_API_KEY" -H "Accept: application/json"; echo
+    printf 'Authorization: Bearer %s\n' "$DEEPSEEK_API_KEY" | curl -sS --max-time 20 https://api.deepseek.com/user/balance \
+      -H @- -H "Accept: application/json"; echo
   fi
 fi
 
@@ -234,8 +234,8 @@ if [ ! -f "$CFG" ]; then echo "config: MISSING ($CFG) — run /cli-dispatch:setu
   # shellcheck disable=SC1090
   . "$CFG"
   if [ -z "${OPENROUTER_API_KEY:-}" ]; then echo "key: not set (skip)"; else
-    curl -sS --max-time 20 https://openrouter.ai/api/v1/credits \
-      -H "Authorization: Bearer $OPENROUTER_API_KEY" -H "Accept: application/json"; echo
+    printf 'Authorization: Bearer %s\n' "$OPENROUTER_API_KEY" | curl -sS --max-time 20 https://openrouter.ai/api/v1/credits \
+      -H @- -H "Accept: application/json"; echo
   fi
 fi
 

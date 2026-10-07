@@ -122,7 +122,11 @@ test('worker.pid tree-kill: running session with a live process tree is fully ki
   // Simulate the *-stream wrapper: a root process (worker.pid) that itself has spawned
   // child processes (the worker CLI + parser pipeline), exactly the shape proc_tree/kill_tree
   // in kill.md is designed to walk via `pgrep -P`.
-  const root = spawn('bash', ['-c', 'sleep 300 & sleep 300 & wait'], { detached: true, stdio: 'ignore' })
+  // Named like the real wrapper: since 6.1.2 kill.md only kills a worker.pid whose command line is
+  // a cli-dispatch worker (a recycled pid must survive).
+  const wrapper = path.join(sessionsRoot, 'cx-stream')
+  fs.writeFileSync(wrapper, '#!/usr/bin/env bash\nsleep 300 & sleep 300 & wait\n')
+  const root = spawn('bash', [wrapper], { detached: true, stdio: 'ignore' })
   root.unref()
   try {
     const dir = seedSession(sessionsRoot, id, { state: 'running' })

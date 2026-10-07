@@ -4,10 +4,6 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { NON_TERMINAL_STATES, TERMINAL_STATES, isTrivialDiffstat, normalizeBackend } from './parse-utils.mjs'
 
-// Moved to parse-utils.mjs (the shared session-dir contract) in 4.3.0 so consumers can
-// read it without importing this module. Re-exported here so existing importers keep working.
-export { normalizeBackend }
-
 function toLines(value) {
   return String(value ?? '').replace(/\r\n/g, '\n').split('\n')
 }

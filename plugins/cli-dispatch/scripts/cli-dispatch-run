@@ -112,13 +112,7 @@ cleanup_worktree_if_requested() {
 # normal flow so a plain `cli-dispatch-run` with bad args still prints usage rather than
 # complaining about node.
 resolve_node_and_verdict_writer() {
-  NODE_BIN="${CLI_DISPATCH_NODE:-}"
-  if [ -z "$NODE_BIN" ]; then
-    NODE_BIN="$HOME/.local/share/cli-dispatch/node"
-    if [ ! -x "$NODE_BIN" ]; then
-      NODE_BIN="node"
-    fi
-  fi
+  NODE_BIN="${CLI_DISPATCH_NODE:-node}"
   if ! command -v "$NODE_BIN" >/dev/null 2>&1; then
     echo "cli-dispatch-run: node not found in PATH" >&2
     exit 5
@@ -226,6 +220,12 @@ on_exit() {
 # --fix-attempts: resume the worker (same commands as commands/resume.md) in the run's
 # worktree with a mechanical follow-up built from the last verdict. Never fatal: a failing
 # resume still falls through to the re-verify, and the verdict stands.
+# The installed wrapper when it is on PATH, otherwise the copy next to this script.
+run_worker_cmd() {
+  local name="$1"; shift
+  if command -v "$name" >/dev/null 2>&1; then "$name" "$@"; else "$SCRIPT_DIR/$name" "$@"; fi
+}
+
 run_fix_resume() {
   local dir="$WORKTREE_PATH" fix_prompt kv
   [ -d "$dir" ] || dir="$CWD"
@@ -242,20 +242,24 @@ run_fix_resume() {
   [ -n "$fix_prompt" ] || fix_prompt="[cli-dispatch] The verify command(s) failed after your last turn: ${VERIFY[*]}. Fix the cause, do not widen scope, do not change the semantics of existing tests. Stop when done."
   echo "cli-dispatch-run: verify FAILED — fix attempt $FIX_USED/$FIX_MAX: resuming $SESSION_ID in $dir" >&2
   set +e
+  # Background + wait, like the worktree runner: a foreground child would defer INT/TERM (on_signal).
   (
     cd "$dir" || exit 1
     if [ "${#WORKTREE_BASE_VARS[@]}" -gt 0 ]; then
       for kv in "${WORKTREE_BASE_VARS[@]}"; do export "$kv"; done
     fi
     case "$BACKEND" in
-      ds) claude-ds-stream --resume "$SESSION_ID" -p "$fix_prompt" ;;
-      ag) ag-agent --resume "$SESSION_ID" "$fix_prompt" ;;
-      cx) cx-agent --resume "$SESSION_ID" "$fix_prompt" ;;
-      oc) oc-agent --resume "$SESSION_ID" "$fix_prompt" ;;
-      cp) cp-agent --resume "$SESSION_ID" "$fix_prompt" ;;
+      ds) run_worker_cmd claude-ds-stream --resume "$SESSION_ID" -p "$fix_prompt" ;;
+      ag) run_worker_cmd ag-agent --resume "$SESSION_ID" "$fix_prompt" ;;
+      cx) run_worker_cmd cx-agent --resume "$SESSION_ID" "$fix_prompt" ;;
+      oc) run_worker_cmd oc-agent --resume "$SESSION_ID" "$fix_prompt" ;;
+      cp) run_worker_cmd cp-agent --resume "$SESSION_ID" "$fix_prompt" ;;
     esac
-  ) </dev/null
+  ) </dev/null &
+  RUNNER_PID=$!
+  wait "$RUNNER_PID"
   local resume_rc=$?
+  RUNNER_PID=""
   set -e
   [ "$resume_rc" -eq 0 ] || echo "cli-dispatch-run: fix-attempt resume exited $resume_rc — re-verifying anyway" >&2
   return 0
@@ -783,7 +787,7 @@ if [ -n "$WORKTREE_PATH" ] && [ -d "$WORKTREE_PATH" ]; then
      GIT_INDEX_FILE="$PATCH_INDEX" git -C "$PATCH_TOP" add -A -- . ':(exclude,glob)**/worker-report.json' ':(exclude,glob)**/node_modules' 2>/dev/null; then
     GIT_INDEX_FILE="$PATCH_INDEX" git -C "$PATCH_TOP" diff --cached --binary HEAD >> "$DIFF_PATCH_PATH"
   else
-    git -C "$WORKTREE_PATH" diff HEAD >> "$DIFF_PATCH_PATH"
+    git -C "$WORKTREE_PATH" diff HEAD >> "$DIFF_PATCH_PATH" 2>/dev/null || true
   fi
 fi
 
@@ -812,8 +816,12 @@ if [ "${#VERIFY[@]}" -gt 0 ]; then
     fi
   fi
   set +e
-  "$NODE_BIN" "$VERDICT_WRITER" run-verify "$VERIFY_DIR" "$VERIFY_TIMEOUT_MS" 40 "${VERIFY[@]}" > "$VERIFY_RESULTS_PATH"
+  # Background + wait so INT/TERM end the run at once (on_signal kills the verify tree).
+  "$NODE_BIN" "$VERDICT_WRITER" run-verify "$VERIFY_DIR" "$VERIFY_TIMEOUT_MS" 40 "${VERIFY[@]}" > "$VERIFY_RESULTS_PATH" &
+  RUNNER_PID=$!
+  wait "$RUNNER_PID"
   RUN_VERIFY_EXIT=$?
+  RUNNER_PID=""
   set -e
   if [ "$RUN_VERIFY_EXIT" -ne 0 ] || [ ! -s "$VERIFY_RESULTS_PATH" ]; then
     printf '%s\n' "{\"commands\":[],\"exitCode\":1,\"failedAt\":null,\"tail\":\"run-verify crashed (exit $RUN_VERIFY_EXIT) — verify result unknown, treated as FAIL\"}" > "$VERIFY_RESULTS_PATH"

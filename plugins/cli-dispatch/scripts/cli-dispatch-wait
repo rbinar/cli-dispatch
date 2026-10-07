@@ -34,6 +34,7 @@ if [ "$1" = "--run" ]; then
   # (written last, after summary.txt), print the summary, exit with the run's own exit code.
   RUN_ID="${2:-}"
   [ -n "$RUN_ID" ] || { usage; exit 1; }
+  case "$RUN_ID" in */*|*\\*|*..*) echo "cli-dispatch-wait: invalid run id: $RUN_ID"; exit 5 ;; esac
   shift 2
   RUN_TIMEOUT=0
   while [ $# -gt 0 ]; do
@@ -78,6 +79,7 @@ if [ "$1" = "--run" ]; then
 fi
 
 SID="$1"; shift
+case "$SID" in */*|*\\*|*..*) echo "cli-dispatch-wait: invalid session id: $SID"; exit 5 ;; esac
 
 TIMEOUT=0
 POLL=10
