@@ -7,6 +7,16 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [6.1.3] — 2026-10-07
+
+### Düzeltildi
+
+- **`/cli-dispatch:sessions` artık `.runs`'ı session olarak listelemiyor.** Ayrık run kayıtlarını
+  tutan dizin (ve `verdict-archive`) `?` durumuyla görünüyordu. 6.1.0–6.1.2 sandbox container'ında
+  canlı bir Claude Code oturumunda yeniden test edilirken bulundu; argüman enjeksiyonu
+  düzeltmeleri de orada doğrulandı: `/cli-dispatch:sessions ds; touch x` ve ters tırnak ile `$( )`
+  içeren bir `/cli-dispatch:ask` prompt'u hiçbir şey çalıştırmadı.
+
 ## [6.1.2] — 2026-10-07
 
 Kod denetiminin son grubu: düşük önemli sorunlar, 6.1.1'in açık bıraktığı iki madde, doküman

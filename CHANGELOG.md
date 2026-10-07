@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [6.1.3] — 2026-10-07
+
+### Fixed
+
+- **`/cli-dispatch:sessions` no longer lists `.runs` as a session.** The directory that holds
+  detached-run bookkeeping (and `verdict-archive`) showed up with status `?`. Found while
+  re-testing 6.1.0–6.1.2 in a live Claude Code session in the sandbox container, where the
+  argument-injection fixes were also confirmed: `/cli-dispatch:sessions ds; touch x` and an
+  `/cli-dispatch:ask` prompt containing backticks and `$( )` ran nothing.
+
 ## [6.1.2] — 2026-10-07
 
 The last group of fixes from the code audit: lower-severity issues, the two items 6.1.1 left open,
