@@ -51,6 +51,14 @@ const hasVerdictJson = (dir) => {
   try { return fs.statSync(path.join(dir, 'verdict.json')).isFile() } catch { return false }
 }
 const archiveRoot = path.join(root, 'verdict-archive')
+const workerAlive = (dir) => {
+  try {
+    const pid = parseInt(fs.readFileSync(path.join(dir, 'worker.pid'), 'utf8'), 10)
+    if (!Number.isInteger(pid) || pid <= 0) return false
+    process.kill(pid, 0)
+    return true
+  } catch (e) { return e.code === 'EPERM' }
+}
 
 const stale = [], old = []
 let kept = 0
@@ -80,6 +88,8 @@ for (const d of fs.readdirSync(root)) {
   // A pre-5.0.0 dir can still say 'human-controlled' (legacy takeover state, never written
   // now). Nothing will finish it, so age it out like a dead running session.
   if ((state === 'running' || state === 'human-controlled') && mtime && (now - mtime > staleSecs * 1000)) { // legacy state
+    // A quiet but live worker (long thinking turn, slow tool) is not dead: its worker.pid still resolves.
+    if (workerAlive(dir)) { kept++; continue }
     stale.push({ d, backend: st.backend || m.backend || '?', idle: Math.round((now - mtime) / 1000), verdictPatch, verdictJson, verdictMarker })
     if (verdictPatch) patchCandidates++
     continue

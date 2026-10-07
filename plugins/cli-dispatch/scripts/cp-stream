@@ -118,7 +118,7 @@ CWD="$(cd "$CWD" 2>/dev/null && pwd)" || { echo "cp-stream: bad --cwd" >&2; exit
 # Snapshot dirty/untracked paths in $CWD BEFORE the worker runs, so write_diff_artifacts
 # (called after copilot finishes, below) can exclude pre-existing dirt from the reported
 # changed-files list — see snapshot_dirty_paths in stream-utils.sh.
-PREEXISTING_DIRTY="$(snapshot_dirty_paths "$CWD")"
+PREEXISTING_DIRTY="$(run_preexisting_dirty "${RESUME_ID:-}" "$CWD")"
 
 # ---- build the copilot command ----
 # `--allow-all-tools --no-ask-user` are NOT a safety opt-in — they are a FUNCTIONAL

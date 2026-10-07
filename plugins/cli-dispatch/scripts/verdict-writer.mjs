@@ -43,7 +43,15 @@ function hasStrandedChanges(worktree) {
       timeout: 10000,
       stdio: 'pipe',
     })
-    return String(status ?? '').trim().length > 0
+    // The runner's own untracked artifacts are not stranded work: worker-report.json (any depth)
+    // and the node_modules links the worktree runners add (a symlink shows as `?? node_modules`
+    // even when node_modules/ is ignored). Same exclusions as the patch builder.
+    return String(status ?? '').split('\n').some((line) => {
+      if (!line.trim()) return false
+      if (!line.startsWith('?? ')) return true
+      const segs = line.slice(3).replace(/^"|"$/g, '').split('/')
+      return !(segs[segs.length - 1] === 'worker-report.json' || segs.includes('node_modules'))
+    })
   } catch {
     return false
   }

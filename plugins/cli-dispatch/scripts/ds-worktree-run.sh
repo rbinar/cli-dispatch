@@ -58,7 +58,7 @@ REPO="$1"; BRANCH="$2"; BRIEF="$3"
 # hasn't put claude-ds-stream on PATH.
 STREAM="$(command -v claude-ds-stream 2>/dev/null || true)"
 [ -z "$STREAM" ] && STREAM="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/claude-ds-stream"
-[ -x "$STREAM" ] || { echo "ds-worktree-run.sh: claude-ds-stream not found (run /cli-dispatch:setup)." >&2; exit 1; }
+[ -x "$STREAM" ] || { echo "ds-worktree-run.sh: claude-ds-stream not found (run /cli-dispatch:setup)." >&2; exit 5; }
 # Symlink the source checkout's installed dependencies into the worktree (see the call
 # site below). Candidates: every ignored `node_modules/` directory that git knows about
 # under the repo TOP, plus the top-level and $REPO-level dirs as a belt for repos whose
@@ -71,9 +71,9 @@ STREAM="$(command -v claude-ds-stream 2>/dev/null || true)"
 #   copy          real directory trees of hard-linked files (`cp -al`, falling back to `cp -a`
 #                 when hard links fail, e.g. across filesystems). Use this for Next.js /
 #                 Turbopack, which rejects a symlinked node_modules pointing outside the root.
-#                 Cleanup removes exactly the copies this run made.
+#                 The copies stay in the worktree (verify runs there); removing the
+#                 worktree removes them.
 #   none          do not mirror node_modules at all.
-NM_COPIES=""
 _link_node_modules() {
   local top rel nm cands mode
   mode="${CLI_DISPATCH_NODE_MODULES:-link}"
@@ -90,20 +90,11 @@ _link_node_modules() {
     [ -e "$WT/$nm" ] && continue
     mkdir -p "$(dirname "$WT/$nm")" 2>/dev/null || true
     if [ "$mode" = "copy" ]; then
-      NM_COPIES="${NM_COPIES}${nm}"$'\n'
       cp -al "$top/$nm" "$WT/$nm" 2>/dev/null || { rm -rf "$WT/$nm"; cp -a "$top/$nm" "$WT/$nm" 2>/dev/null || true; }
     else
       ln -s "$top/$nm" "$WT/$nm" 2>/dev/null || true
     fi
   done <<<"$cands"
-}
-_unlink_node_modules() {
-  local nm
-  find "$WT" -name node_modules -type l -delete 2>/dev/null || true
-  while IFS= read -r nm; do
-    [ -n "$nm" ] || continue
-    [ -L "$WT/$nm" ] || rm -rf "$WT/$nm" 2>/dev/null || true
-  done <<<"$NM_COPIES"
 }
 # --- in-place mode (issues #108 / #109) ----------------------------------------------
 # If $REPO is ALREADY a linked worktree, the caller opened it for this job on purpose.
@@ -179,7 +170,7 @@ else
     WT="$(mktemp -d /tmp/ds-wt-XXXXXX)" && rmdir "$WT"
     git -C "$REPO" worktree add -b "$BRANCH" "$WT" "$BASE_REF"
   }
-  _cleanup() { _unlink_node_modules; echo ">>> Worktree: $WT  (branch: $BRANCH)"; echo ">>> Review the diff, then YOU handle git/PR/merge. Cleanup:"; echo "    find \"$WT\" -name node_modules -type l -delete; git -C \"$REPO\" worktree remove \"$WT\" --force; git -C \"$REPO\" worktree prune"; }
+  _cleanup() { echo ">>> Worktree: $WT  (branch: $BRANCH)"; echo ">>> Review the diff, then YOU handle git/PR/merge. Cleanup:"; echo "    find \"$WT\" -name node_modules -type l -delete; git -C \"$REPO\" worktree remove \"$WT\" --force; git -C \"$REPO\" worktree prune"; }
   trap _cleanup ERR INT TERM
   # Dependencies: mirror EVERY ignored node_modules dir of the source checkout into the
   # worktree at the same relative path, resolved from the repo TOP — not from $REPO.

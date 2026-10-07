@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [6.1.1] — 2026-10-07
+
+Correctness fixes from the same code audit. Each has a test in
+`scripts/__tests__/correctness-wave2.test.mjs` that failed against 6.1.0.
+
+### Fixed
+
+- **`--effort` was ignored for DeepSeek runs.** `cli-dispatch-run --backend ds --effort high` set
+  a variable nothing read; it now reaches `claude-ds-stream`. OpenCode has no effort setting, so
+  `--backend oc --effort` is now a usage error (exit 5) instead of being silently dropped.
+- **A failed worker turn no longer loses `node_modules` before verify.** Since #167 a failed turn
+  is still verified in its worktree, but the runners' error trap removed the `node_modules` links
+  (or copies) first, so JS verify commands failed for the wrong reason.
+- **`--cleanup-if-clean` cleans again, and `stranded` is no longer always true.** The runner's own
+  `worker-report.json` and `node_modules` links made every worktree look dirty.
+- **A `--fix-attempts` round no longer drops the first round's files** from `changed-files.json`.
+  A resumed turn took a fresh "already dirty" snapshot, so the first round's edits counted as
+  pre-existing; resumes now reuse the session's original snapshot (all five streams).
+- **`--timeout` and `--verify-timeout` are validated** (whole seconds, else exit 5 before anything
+  starts). `5m` used to be ignored or crash the run after the worker finished, with no verdict.
+- **Ctrl-C / SIGTERM stops `cli-dispatch-run`.** It used to delete its temp files and carry on,
+  then die without a verdict. It now stops the worker's process tree and exits 130 / 143.
+- **`cli-dispatch-wait --run` notices a runner that died** (SIGKILL, out of memory) and exits 5
+  instead of waiting forever.
+- **A worker that failed before creating a session no longer resolves to session `.`** on Linux,
+  which ran verify in the caller's checkout and wrote a verdict into the sessions root.
+- **Setup errors exit 5** (node or `verdict-writer.mjs` missing, `--prompt-file` missing,
+  `--cwd` not a git repo, worker CLI missing). They exited 1, which the contract reserves for a
+  failed verify.
+- **The patch includes changes outside a subdirectory `--cwd`.** It was staged relative to the
+  session's working directory.
+- **A runner that returned with the session still `running` no longer hangs the run.** The
+  session is settled as an error whatever the runner's exit code.
+- **`/cli-dispatch:clean` keeps a quiet session whose worker is still alive.** A single tool call
+  longer than ten minutes made a live session look stale to the daily clean.
+- **Windows: verify no longer deadlocks on a command with more than ~4 KB of output.** The
+  PowerShell runner waited for the process before reading its output pipes. (Listed for 6.1.0 in
+  the audit plan, shipped here.)
+
 ## [6.1.0] — 2026-10-07
 
 Security fixes from a code audit. Each one was reproduced against 6.0.5 and has a test that fails

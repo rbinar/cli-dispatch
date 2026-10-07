@@ -55,6 +55,20 @@ if [ "$1" = "--run" ]; then
       echo "run $RUN_ID is still going — wait again with: cli-dispatch-wait --run $RUN_ID"
       exit 124
     fi
+    # A runner that was killed outright (SIGKILL, OOM, reboot) never writes `exit`: if its pid is
+    # gone and a short re-check still finds no `exit`, stop waiting instead of waiting out the timeout.
+    if [ -f "$RUN_DIR/pid" ]; then
+      RUN_PID="$(tr -d '[:space:]' < "$RUN_DIR/pid" 2>/dev/null || true)"
+      case "$RUN_PID" in ''|*[!0-9]*) ;; *)
+        if ! kill -0 "$RUN_PID" 2>/dev/null; then
+          sleep 2
+          if [ ! -f "$RUN_DIR/exit" ]; then
+            echo "run $RUN_ID died without finishing (pid $RUN_PID)"
+            exit 5
+          fi
+        fi ;;
+      esac
+    fi
     sleep 2
   done
   cat "$RUN_DIR/summary.txt" 2>/dev/null || true

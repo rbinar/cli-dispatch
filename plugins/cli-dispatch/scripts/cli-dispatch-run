@@ -32,7 +32,12 @@ is_worktree_clean() {
   [ -n "$worktree" ] || return 1
   [ -d "$worktree" ] || return 1
   # A failing git is never "clean": the caller falls back to rm -rf for a clean one.
-  status_out="$(git -C "$worktree" status --short 2>/dev/null)" || return 1
+  status_out="$(git -C "$worktree" status --short --untracked-files=all 2>/dev/null)" || return 1
+  # The runner's own untracked artifacts do not make a worktree dirty: worker-report.json (any
+  # depth) and the node_modules links the worktree runners add (a symlink named node_modules
+  # shows as `?? node_modules` even with node_modules/ in .gitignore). Same exclusions as the
+  # patch builder below.
+  status_out="$(printf '%s\n' "$status_out" | awk '/^\?\? /{p=substr($0,4); gsub(/^"|"$/,"",p); n=split(p,a,"/"); skip=(a[n]=="worker-report.json"); for(i=1;i<=n;i++) if(a[i]=="node_modules") skip=1; if(skip) next} NF')"
   [ -z "$status_out" ]
 }
 
@@ -116,7 +121,7 @@ resolve_node_and_verdict_writer() {
   fi
   if ! command -v "$NODE_BIN" >/dev/null 2>&1; then
     echo "cli-dispatch-run: node not found in PATH" >&2
-    exit 1
+    exit 5
   fi
 
   VERDICT_WRITER="${CLI_DISPATCH_VERDICT_WRITER:-}"
@@ -125,7 +130,7 @@ resolve_node_and_verdict_writer() {
       [ -f "$cand" ] && { VERDICT_WRITER="$cand"; break; }
     done
   fi
-  [ -n "$VERDICT_WRITER" ] && [ -f "$VERDICT_WRITER" ] || { echo "cli-dispatch-run: verdict-writer.mjs not found" >&2; exit 1; }
+  [ -n "$VERDICT_WRITER" ] && [ -f "$VERDICT_WRITER" ] || { echo "cli-dispatch-run: verdict-writer.mjs not found" >&2; exit 5; }
 }
 
 record_worktree_removed() {
@@ -256,7 +261,35 @@ run_fix_resume() {
   return 0
 }
 
-trap cleanup_tmp INT TERM
+# Every pid in the process tree under $1 (inclusive), one per line.
+process_tree() {
+  ps -A -o pid= -o ppid= 2>/dev/null | awk -v r="$1" '{pp[$1]=$2; n++; id[n]=$1} END{keep[r]=1; do{ch=0; for(i=1;i<=n;i++) if(!(id[i] in keep) && (pp[id[i]] in keep)){keep[id[i]]=1; ch=1}} while(ch); for(k in keep) print k}'
+}
+
+# SIGINT/SIGTERM: stop the worktree runner's whole tree (TERM, then KILL for what ignores it),
+# drop the temp files and exit 128+signal. The EXIT trap still records a detached run's result.
+on_signal() {
+  local code="$1" pids="" p i alive
+  trap '' INT TERM
+  if [ -n "${RUNNER_PID:-}" ]; then
+    pids="$(process_tree "$RUNNER_PID")"
+    # shellcheck disable=SC2086
+    kill -TERM $pids 2>/dev/null || true
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+      alive=0
+      for p in $pids; do kill -0 "$p" 2>/dev/null && alive=1; done
+      [ "$alive" -eq 0 ] && break
+      sleep 0.2
+    done
+    # shellcheck disable=SC2086
+    kill -KILL $pids 2>/dev/null || true
+  fi
+  cleanup_tmp
+  exit "$code"
+}
+
+trap 'on_signal 130' INT
+trap 'on_signal 143' TERM
 trap on_exit EXIT
 
 # The run dir belongs to THIS detached child only. Take it out of the environment so the worker
@@ -300,8 +333,14 @@ while [ "$#" -gt 0 ]; do
     --model) need_val --model "$#"; MODEL="$2"; shift 2;;
     --effort) need_val --effort "$#"; EFFORT="$2"; shift 2;;
     --verify) need_val --verify "$#"; VERIFY+=("$2"); shift 2;;
-    --verify-timeout) need_val --verify-timeout "$#"; VERIFY_TIMEOUT="$2"; shift 2;;
-    --timeout) need_val --timeout "$#"; TIMEOUT="$2"; shift 2;;
+    --verify-timeout)
+      need_val --verify-timeout "$#"
+      case "$2" in ''|*[!0-9]*) echo "cli-dispatch-run: --verify-timeout must be a non-negative integer (seconds)" >&2; exit 5;; esac
+      VERIFY_TIMEOUT="$2"; shift 2;;
+    --timeout)
+      need_val --timeout "$#"
+      case "$2" in ''|*[!0-9]*) echo "cli-dispatch-run: --timeout must be a non-negative integer (seconds)" >&2; exit 5;; esac
+      TIMEOUT="$2"; shift 2;;
     --resume) need_val --resume "$#"; RESUME="$2"; shift 2;;
     --cleanup-if-clean) CLEANUP_IF_CLEAN=1; shift;;
     --detach) DETACH=1; shift;;
@@ -368,10 +407,10 @@ fi
   RUN_DIR="$ROOT/.runs/$RUN_ID"
   mkdir -p "$RUN_DIR"
   CHILD_ARGS=()
-  for _a in "${ORIG_ARGS[@]}"; do
+  for _a in ${ORIG_ARGS[@]+"${ORIG_ARGS[@]}"}; do
     [ "$_a" = "--detach" ] || CHILD_ARGS+=("$_a")
   done
-  CLI_DISPATCH_RUN_DIR="$RUN_DIR" nohup bash "$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")" "${CHILD_ARGS[@]}" </dev/null >"$RUN_DIR/log" 2>&1 &
+  CLI_DISPATCH_RUN_DIR="$RUN_DIR" nohup bash "$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")" ${CHILD_ARGS[@]+"${CHILD_ARGS[@]}"} </dev/null >"$RUN_DIR/log" 2>&1 &
   echo "$!" > "$RUN_DIR/pid"
   echo "run: $RUN_ID"
   exit 0
@@ -425,7 +464,7 @@ if [ -n "$PROMPT" ] && [ -n "$PROMPT_FILE" ]; then
 fi
 if [ -n "$PROMPT_FILE" ] && [ ! -f "$PROMPT_FILE" ]; then
   echo "cli-dispatch-run: prompt file not found: $PROMPT_FILE" >&2
-  exit 1
+  exit 5
 fi
 
 case "$BACKEND" in
@@ -437,6 +476,10 @@ case "$EFFORT" in
   ''|low|medium|high) ;;
   *) echo "cli-dispatch-run: --effort must be low|medium|high" >&2; usage; exit 5;;
 esac
+if [ -n "$EFFORT" ] && [ "$BACKEND" = "oc" ]; then
+  echo "cli-dispatch-run: --effort is not supported by the oc backend (oc-stream has no effort flag)" >&2
+  exit 5
+fi
 
 ROOT="${CLI_DISPATCH_SESSIONS_DIR:-${CLAUDE_DS_SESSIONS_DIR:-}}"
 [ -n "$ROOT" ] || { _c="${XDG_CACHE_HOME:-$HOME/.cache}"; ROOT="$_c/cli-dispatch/sessions"; [ -d "$ROOT" ] || [ ! -d "$_c/claude-ds/sessions" ] || ROOT="$_c/claude-ds/sessions"; }
@@ -447,6 +490,12 @@ fi
 SESSIONS_ROOT="$ROOT"
 
 resolve_node_and_verdict_writer
+
+# A --resume re-attaches to a session and may outlive its --cwd; a fresh run needs a repo.
+if [ -z "$RESUME" ] && [ "$(git -C "$CWD" rev-parse --is-inside-work-tree 2>/dev/null)" != "true" ]; then
+  echo "cli-dispatch-run: --cwd is not a git repo (or not a work tree): $CWD" >&2
+  exit 5
+fi
 
 read_json_field() {
   local file="$1"
@@ -489,10 +538,9 @@ if [ -n "$MODEL" ]; then
 fi
 if [ -n "$EFFORT" ]; then
   case "$BACKEND" in
-    ds) WORKTREE_BASE_VARS+=("DS_EFFORT=$EFFORT");;
+    ds) WORKTREE_BASE_VARS+=("CLAUDE_DS_EFFORT=$EFFORT");;
     ag) WORKTREE_BASE_VARS+=("AG_EFFORT=$EFFORT");;
     cx) WORKTREE_BASE_VARS+=("CX_EFFORT=$EFFORT");;
-    oc) WORKTREE_BASE_VARS+=("OC_EFFORT=$EFFORT");;
     cp) WORKTREE_BASE_VARS+=("CP_EFFORT=$EFFORT");;
   esac
 fi
@@ -590,13 +638,24 @@ WORKER_REPORT
   # Pipe (not process substitution): the pipeline only returns once tee has flushed
   # $WORKTREE_STDERR completely, so the marker grep below never reads a partial file.
   # PIPESTATUS[0] recovers the runner's own exit code (tee's is irrelevant).
+  # The pipeline runs in a background subshell that we `wait` on: bash defers a trapped signal
+  # until a FOREGROUND child exits, so a foreground runner would postpone INT/TERM (see
+  # on_signal) for as long as the worker runs.
   set +e
-  if [ "${#WORKTREE_BASE_VARS[@]}" -gt 0 ]; then
-    env "${WORKTREE_BASE_VARS[@]}" "$WORKTREE_RUN" "$CWD" "$BRANCH" "$PROMPT_FILE" </dev/null 2>&1 >/dev/null | tee "$WORKTREE_STDERR" >&2
-  else
-    "$WORKTREE_RUN" "$CWD" "$BRANCH" "$PROMPT_FILE" </dev/null 2>&1 >/dev/null | tee "$WORKTREE_STDERR" >&2
-  fi
-  WORKTREE_RC=${PIPESTATUS[0]}
+  (
+    if [ "${#WORKTREE_BASE_VARS[@]}" -gt 0 ]; then
+      env "${WORKTREE_BASE_VARS[@]}" "$WORKTREE_RUN" "$CWD" "$BRANCH" "$PROMPT_FILE" </dev/null 2>&1 >/dev/null | tee "$WORKTREE_STDERR" >&2
+      _rc=${PIPESTATUS[0]}
+    else
+      "$WORKTREE_RUN" "$CWD" "$BRANCH" "$PROMPT_FILE" </dev/null 2>&1 >/dev/null | tee "$WORKTREE_STDERR" >&2
+      _rc=${PIPESTATUS[0]}
+    fi
+    exit "$_rc"
+  ) &
+  RUNNER_PID=$!
+  wait "$RUNNER_PID"
+  WORKTREE_RC=$?
+  RUNNER_PID=""
   set -e
 
   # The runner prints `>>> cli-dispatch: in-place=1` when it decided to run the worker in
@@ -619,7 +678,9 @@ WORKER_REPORT
   # newest-dir fallback below ever runs (this stranded verified work in production).
   SESSION_ID="$(grep -aoE "${MARKER}[[:space:]]*[A-Za-z0-9._-]+" "$WORKTREE_STDERR" | sed -E "s/.*${MARKER}[[:space:]]*([A-Za-z0-9._-]+)\$/\\1/" | tail -n 1 || true)"
   if [ -z "$SESSION_ID" ]; then
-    SESSION_ID="$(find "$SESSIONS_ROOT" -mindepth 1 -maxdepth 1 -type d -newer "$LAUNCH_MARKER" -print0 2>/dev/null | xargs -0 ls -1dt 2>/dev/null | head -n 1)"
+    # No xargs: GNU xargs runs its command even on empty input, so `ls` listed the cwd and the
+    # session id became ".". -exec ... + never runs ls without a match.
+    SESSION_ID="$(find "$SESSIONS_ROOT" -mindepth 1 -maxdepth 1 -type d ! -name '.*' ! -name verdict-archive -newer "$LAUNCH_MARKER" -exec ls -1dt {} + 2>/dev/null | head -n 1 || true)"
   fi
 
   if [ -z "$SESSION_ID" ]; then
@@ -645,16 +706,16 @@ WORKER_REPORT
     export CLI_DISPATCH_WORKER_EXIT="$WORKER_EXIT"
     # 7 is the worktree runners' leak-guard code: the worker wrote outside its worktree.
     [ "$WORKER_EXIT" -ne 7 ] || export CLI_DISPATCH_LEAK=1
-    # The runner has exited, so the worker is gone: a status still saying "running" would make
-    # the wait below block forever. Settle it as an error.
-    if [ "$(read_json_field "$SESSION_DIR/status.json" state)" = "running" ]; then
-      "$NODE_BIN" -e '
-        const fs = require("fs"); const p = process.argv[1]
-        const s = JSON.parse(fs.readFileSync(p, "utf8")); s.state = "error"
-        s.error = s.error || ("worker runner exited " + process.argv[2] + " with the session still running")
-        fs.writeFileSync(p + ".tmp", JSON.stringify(s, null, 2) + "\n"); fs.renameSync(p + ".tmp", p)
-      ' "$SESSION_DIR/status.json" "$WORKER_EXIT" || true
-    fi
+  fi
+  # The runner has exited, so the worker is gone — whatever the runner's code: a status still
+  # saying "running" would make the wait below block forever. Settle it as an error.
+  if [ "$(read_json_field "$SESSION_DIR/status.json" state)" = "running" ]; then
+    "$NODE_BIN" -e '
+      const fs = require("fs"); const p = process.argv[1]
+      const s = JSON.parse(fs.readFileSync(p, "utf8")); s.state = "error"
+      s.error = s.error || ("worker runner exited " + process.argv[2] + " with the session still running")
+      fs.writeFileSync(p + ".tmp", JSON.stringify(s, null, 2) + "\n"); fs.renameSync(p + ".tmp", p)
+    ' "$SESSION_DIR/status.json" "$WORKER_EXIT" || true
   fi
 fi
 
@@ -714,9 +775,13 @@ DIFF_PATCH_PATH="$SESSION_DIR/verdict-diff.patch"
 if [ -n "$WORKTREE_PATH" ] && [ -d "$WORKTREE_PATH" ]; then
   PATCH_INDEX="$(mktemp)"
   TEMP_FILES+=("$PATCH_INDEX")
-  if GIT_INDEX_FILE="$PATCH_INDEX" git -C "$WORKTREE_PATH" read-tree HEAD 2>/dev/null &&
-     GIT_INDEX_FILE="$PATCH_INDEX" git -C "$WORKTREE_PATH" add -A -- . ':(exclude)worker-report.json' ':(exclude,glob)**/node_modules' 2>/dev/null; then
-    GIT_INDEX_FILE="$PATCH_INDEX" git -C "$WORKTREE_PATH" diff --cached --binary HEAD >> "$DIFF_PATCH_PATH"
+  # Stage from the repo top: a session cwd that is a subdirectory would make `add -A -- .` miss
+  # every change elsewhere in the repo.
+  PATCH_TOP="$(git -C "$WORKTREE_PATH" rev-parse --show-toplevel 2>/dev/null || true)"
+  if [ -n "$PATCH_TOP" ] &&
+     GIT_INDEX_FILE="$PATCH_INDEX" git -C "$PATCH_TOP" read-tree HEAD 2>/dev/null &&
+     GIT_INDEX_FILE="$PATCH_INDEX" git -C "$PATCH_TOP" add -A -- . ':(exclude,glob)**/worker-report.json' ':(exclude,glob)**/node_modules' 2>/dev/null; then
+    GIT_INDEX_FILE="$PATCH_INDEX" git -C "$PATCH_TOP" diff --cached --binary HEAD >> "$DIFF_PATCH_PATH"
   else
     git -C "$WORKTREE_PATH" diff HEAD >> "$DIFF_PATCH_PATH"
   fi

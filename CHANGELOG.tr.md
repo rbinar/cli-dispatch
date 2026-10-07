@@ -7,6 +7,47 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [6.1.1] — 2026-10-07
+
+Aynı kod denetiminden doğruluk düzeltmeleri. Her birinin
+`scripts/__tests__/correctness-wave2.test.mjs` içinde 6.1.0'a karşı düşen bir testi var.
+
+### Düzeltildi
+
+- **DeepSeek koşularında `--effort` yok sayılıyordu.** `cli-dispatch-run --backend ds --effort high`
+  kimsenin okumadığı bir değişken set ediyordu; artık `claude-ds-stream`'e ulaşıyor. OpenCode'un
+  effort ayarı yok, bu yüzden `--backend oc --effort` sessizce düşürülmek yerine artık kullanım
+  hatası (exit 5).
+- **Başarısız bir worker turu artık verify'dan önce `node_modules`'ı kaybetmiyor.** #167'den beri
+  başarısız bir tur da worktree'sinde verify ediliyor, ama runner'ların hata tuzağı önce
+  `node_modules` bağlarını (ya da kopyalarını) siliyordu; JS verify komutları yanlış sebepten
+  düşüyordu.
+- **`--cleanup-if-clean` yeniden temizliyor ve `stranded` artık hep true değil.** Runner'ın kendi
+  `worker-report.json`'u ve `node_modules` bağları her worktree'yi kirli gösteriyordu.
+- **Bir `--fix-attempts` turu artık ilk turun dosyalarını `changed-files.json`'dan düşürmüyor.**
+  Sürdürülen tur yeni bir "zaten kirli" anlık görüntüsü alıyor, ilk turun düzenlemeleri önceden
+  var sayılıyordu; resume artık session'ın ilk görüntüsünü kullanıyor (beş stream'de de).
+- **`--timeout` ve `--verify-timeout` doğrulanıyor** (tam saniye, değilse hiçbir şey başlamadan
+  exit 5). `5m` ya yok sayılıyor ya da worker bittikten sonra run'ı verdict'siz çökertiyordu.
+- **Ctrl-C / SIGTERM `cli-dispatch-run`'ı durduruyor.** Eskiden geçici dosyalarını silip devam
+  ediyor, sonra verdict'siz ölüyordu. Artık worker'ın süreç ağacını durdurup 130 / 143 ile çıkıyor.
+- **`cli-dispatch-wait --run` ölen bir runner'ı fark ediyor** (SIGKILL, bellek yetersizliği) ve
+  sonsuza kadar beklemek yerine 5 ile çıkıyor.
+- **Session oluşturmadan ölen bir worker Linux'ta artık `.` session'ına çözülmüyor**; bu durum
+  verify'ı çağıranın checkout'unda çalıştırıp session kök dizinine bir verdict yazıyordu.
+- **Kurulum hataları 5 ile çıkıyor** (node ya da `verdict-writer.mjs` yok, `--prompt-file` yok,
+  `--cwd` bir git repo'su değil, worker CLI'ı yok). Sözleşmede "verify başarısız"a ayrılmış 1 ile
+  çıkıyorlardı.
+- **Patch, alt dizin `--cwd` dışındaki değişiklikleri de içeriyor.** Session'ın çalışma dizinine
+  göre stage ediliyordu.
+- **Session hâlâ `running` iken dönen bir runner artık run'ı askıda bırakmıyor.** Session,
+  runner'ın çıkış kodu ne olursa olsun hata olarak kapatılıyor.
+- **`/cli-dispatch:clean` worker'ı hâlâ canlı olan sessiz bir session'ı tutuyor.** On dakikadan
+  uzun tek bir araç çağrısı, canlı bir session'ı günlük temizliğe bayat gösteriyordu.
+- **Windows: verify artık ~4 KB'tan fazla çıktı veren bir komutta kilitlenmiyor.** PowerShell
+  runner çıktı borularını okumadan önce sürecin bitmesini bekliyordu. (Denetim planında 6.1.0'a
+  yazılmıştı, bu sürümde çıktı.)
+
 ## [6.1.0] — 2026-10-07
 
 Bir kod denetiminden çıkan güvenlik düzeltmeleri. Her biri 6.0.5'e karşı yeniden üretildi ve

@@ -198,15 +198,16 @@ test('#160 — CLI_DISPATCH_NODE_MODULES=copy: worktree node_modules is a REAL d
   }
 })
 
-test('#160 — copy mode: the runner cleanup removes the copy and leaves the SOURCE node_modules intact', () => {
+// 6.1.1: a failed worker turn is still verified in its worktree (#167), so the ERR trap no longer
+// removes the node_modules it mirrored; the source checkout must stay untouched either way.
+test('#160 — copy mode: a failed worker keeps the copy for verify and leaves the SOURCE node_modules intact', () => {
   const repo = mkMonorepo()
   for (const script of RUNNERS) {
-    // A failing worker trips the runner's ERR trap, which is its cleanup path.
     const r = runRunner(script, repo, { CLI_DISPATCH_NODE_MODULES: 'copy', STUB_EXIT: '3' })
     assert.notEqual(r.status, 0, `${script}: stub failure must propagate`)
     assert.equal(r.rootKind, 'dir', `${script}: worker saw a real directory`)
-    assert.equal(fs.existsSync(path.join(r.workerCwd, 'node_modules')), false, `${script}: copied node_modules must be removed by cleanup`)
-    assert.equal(fs.existsSync(path.join(r.workerCwd, 'packages', 'core', 'node_modules')), false, `${script}: copied package node_modules must be removed`)
+    assert.equal(fs.existsSync(path.join(r.workerCwd, 'node_modules', '.bin', 'vitest')), true, `${script}: the copy stays for verify`)
+    assert.equal(fs.existsSync(path.join(r.workerCwd, 'packages', 'core', 'node_modules')), true, `${script}: the package copy stays too`)
     assert.equal(fs.readFileSync(path.join(repo, 'node_modules', '.bin', 'vitest'), 'utf8'), '#!/bin/sh\necho hoisted-vitest\n', `${script}: source vitest intact`)
     assert.ok(fs.existsSync(path.join(repo, 'packages', 'core', 'node_modules', 'localdep', 'index.js')), `${script}: source package deps intact`)
   }
