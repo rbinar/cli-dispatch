@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [6.1.4] — 2026-10-07
+
+### Fixed
+
+- **Detached-run bookkeeping no longer grows forever.** Every `cli-dispatch:runner` delegation
+  (`cli-dispatch-run --detach`) leaves `<sessions-root>/.runs/run-*` (pid, log, summary, exit) and
+  nothing removed it. The passive session pruning that runs at the start of every worker session
+  now keeps the newest `CLI_DISPATCH_MAX_SESSIONS` (default 100) finished runs and removes the
+  rest; a run that has not finished is never touched.
+
 ## [6.1.3] — 2026-10-07
 
 ### Fixed
