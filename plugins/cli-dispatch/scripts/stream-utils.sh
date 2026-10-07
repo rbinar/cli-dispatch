@@ -176,6 +176,24 @@ snapshot_dirty_paths() {
   git -C "$cwd" status --short --untracked-files=all 2>/dev/null | cut -c4-
 }
 
+# run_preexisting_dirty <resume-id|""> <cwd>
+#
+# What to record as PREEXISTING_DIRTY. A fresh run snapshots <cwd>. A --resume turn must NOT:
+# the first turn's own edits are dirty now, and a fresh snapshot would exclude them from this
+# turn's changed-files. Reuse the existing session's `preexistingDirty` (empty if the field is
+# missing) and snapshot only when the session has no changed-files.json.
+run_preexisting_dirty() {
+  local rid="$1" cwd="$2" f
+  if [ -n "$rid" ]; then
+    f="$(resolve_sessions_root)/$rid/changed-files.json"
+    if [ -f "$f" ]; then
+      node -e 'try{const a=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).preexistingDirty;if(Array.isArray(a))for(const p of a)if(typeof p==="string"&&p)console.log(p)}catch{}' "$f" || true
+      return 0
+    fi
+  fi
+  snapshot_dirty_paths "$cwd"
+}
+
 # write_diff_artifacts <session_dir> <cwd>
 #
 # Best-effort capture of git edits in <cwd> into <session_dir>/:

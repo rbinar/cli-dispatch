@@ -499,7 +499,15 @@ if ($passArgs.Count -gt 0) { $claudeArgs += $passArgs }
 
 # ---- snapshot pre-existing dirt BEFORE launch ($cwd is fully resolved above) so the run's
 # changed-files.json excludes files already dirty/untracked before the worker started. ----
-$preexistingDirty = Snapshot-DirtyPaths -Cwd $cwd
+# A --resume turn reuses the session's own preexistingDirty (its first turn's edits are dirty now
+# and must not be re-classified as pre-existing); snapshot only if there is no changed-files.json.
+$cfPrev = Join-Path $sessionDir 'changed-files.json'
+if ($resume -eq 1 -and (Test-Path $cfPrev)) {
+  $preexistingDirty = @()
+  try { $preexistingDirty = @((Get-Content -Raw $cfPrev | ConvertFrom-Json).preexistingDirty | Where-Object { $_ }) } catch {}
+} else {
+  $preexistingDirty = Snapshot-DirtyPaths -Cwd $cwd
+}
 
 # ---- timeout/idle watchdog ----
 $pidfile = Join-Path $sessionDir '.claude.pid'

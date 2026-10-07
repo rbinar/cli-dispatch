@@ -48,8 +48,16 @@ while ($i -lt $args.Count) {
     '--model' { Need-Value '--model' $i $args.Count; $Model = $args[$i + 1]; $i += 2 }
     '--effort' { Need-Value '--effort' $i $args.Count; $Effort = $args[$i + 1]; $i += 2 }
     '--verify' { Need-Value '--verify' $i $args.Count; $Verify += $args[$i + 1]; $i += 2 }
-    '--verify-timeout' { Need-Value '--verify-timeout' $i $args.Count; $VerifyTimeout = [int]$args[$i + 1]; $i += 2 }
-    '--timeout' { Need-Value '--timeout' $i $args.Count; $Timeout = [int]$args[$i + 1]; $i += 2 }
+    '--verify-timeout' {
+      Need-Value '--verify-timeout' $i $args.Count
+      if ("$($args[$i + 1])" -notmatch '^[0-9]+$') { Write-Host 'cli-dispatch-run: --verify-timeout must be a non-negative integer (seconds)'; exit 5 }
+      $VerifyTimeout = [int]$args[$i + 1]; $i += 2
+    }
+    '--timeout' {
+      Need-Value '--timeout' $i $args.Count
+      if ("$($args[$i + 1])" -notmatch '^[0-9]+$') { Write-Host 'cli-dispatch-run: --timeout must be a non-negative integer (seconds)'; exit 5 }
+      $Timeout = [int]$args[$i + 1]; $i += 2
+    }
     '--resume' { Need-Value '--resume' $i $args.Count; $Resume = $args[$i + 1]; $i += 2 }
     '--cleanup-if-clean' { $CleanupIfClean = $true; $i += 1 }
     '--help' { Show-Usage; exit 0 }
@@ -131,7 +139,7 @@ $NodeBin = if ($env:CLI_DISPATCH_NODE) { $env:CLI_DISPATCH_NODE } else { Join-Pa
 if (-not (Test-Path $NodeBin)) { $NodeBin = 'node' }
 if (-not (Get-Command $NodeBin -ErrorAction SilentlyContinue)) {
   Write-Host "cli-dispatch-run: node not found in PATH"
-  exit 1
+  exit 5
 }
 
 $VerdictWriter = if ($env:CLI_DISPATCH_VERDICT_WRITER) { $env:CLI_DISPATCH_VERDICT_WRITER } else { '' }
@@ -147,7 +155,7 @@ if (-not $VerdictWriter) {
 }
 if (-not (Test-Path $VerdictWriter)) {
   Write-Host 'cli-dispatch-run: verdict-writer.mjs not found'
-  exit 1
+  exit 5
 }
 
 function Read-JsonField {
@@ -184,8 +192,13 @@ function Invoke-Verify {
     $proc = New-Object System.Diagnostics.Process
     $proc.StartInfo = $psi
     [void]$proc.Start()
+    # Start draining both pipes BEFORE waiting: a command that writes more than the pipe buffer
+    # (~4 KB) blocks on a full pipe, and WaitForExit would then sit until the timeout.
+    $outTask = $proc.StandardOutput.ReadToEndAsync()
+    $errTask = $proc.StandardError.ReadToEndAsync()
     $finished = $proc.WaitForExit($TimeoutMs)
-    $output = "$(($proc.StandardOutput.ReadToEnd()) + ($proc.StandardError.ReadToEnd()))"
+    if (-not $finished) { try { $proc.Kill() } catch {} }
+    $output = "$($outTask.Result + $errTask.Result)"
 
     if (-not $finished) {
       $result.exitCode = 124
@@ -213,10 +226,18 @@ function Test-WorktreeClean {
   if (-not $Worktree) { return $false }
   if (-not (Test-Path $Worktree)) { return $false }
   try {
-    $status = git -C $Worktree status --short 2>$null
+    $status = git -C $Worktree status --short --untracked-files=all 2>$null
     # A failing git is never "clean" (the caller falls back to Remove-Item for a clean one).
     if ($LASTEXITCODE -ne 0) { return $false }
-    return [string]::IsNullOrWhiteSpace($status)
+    # The runner's own untracked artifacts do not make a worktree dirty: worker-report.json (any
+    # depth) and node_modules links. Same exclusions as the patch builder.
+    $real = @($status | Where-Object {
+      if ([string]::IsNullOrWhiteSpace($_)) { return $false }
+      if (-not "$_".StartsWith('?? ')) { return $true }
+      $segs = "$_".Substring(3).Trim('"') -split '/'
+      -not ($segs[-1] -eq 'worker-report.json' -or ($segs -contains 'node_modules'))
+    })
+    return ($real.Count -eq 0)
   } catch {
     return $false
   }
@@ -354,9 +375,15 @@ try {
     exit 5
   }
   if (-not $Resume) {
+    # A --resume re-attaches and may outlive its --cwd; a fresh run needs a repo (bash twin: exit 5).
+    $insideRepo = "$(git -C $Cwd rev-parse --is-inside-work-tree 2>$null)".Trim()
+    if ($insideRepo -ne 'true') {
+      Write-Host "cli-dispatch-run: --cwd is not a git repo (or not a work tree): $Cwd"
+      exit 5
+    }
     if ($PromptFile -and -not (Test-Path $PromptFile)) {
       Write-Host "cli-dispatch-run: prompt file not found: $PromptFile"
-      exit 1
+      exit 5
     }
     # Build the brief the worker actually sees: caller text + the standing cwd contract.
     # The caller's own --prompt-file is never modified in place; we always write a copy.
@@ -419,7 +446,7 @@ honest empty `command` is more useful than a confident one that was never execut
     if ($Backend -eq 'cx') { $baseVars['CX_MODEL'] = $Model }
   }
   if ($Effort) {
-    if ($Backend -eq 'ds') { $baseVars['DS_EFFORT'] = $Effort }
+    if ($Backend -eq 'ds') { $baseVars['CLAUDE_DS_EFFORT'] = $Effort }
     if ($Backend -eq 'cx') { $baseVars['CX_EFFORT'] = $Effort }
   }
 
@@ -515,19 +542,20 @@ honest empty `command` is more useful than a confident one that was never execut
       $env:CLI_DISPATCH_WORKER_EXIT = "$workerExit"
       # 7 is the worktree runners' leak-guard code: the worker wrote outside its worktree.
       if ($workerExit -eq 7) { $env:CLI_DISPATCH_LEAK = '1' }
-      # The runner has exited, so a status still saying "running" would block the wait forever.
-      $statusFile = Join-Path $SessionDir 'status.json'
-      if ((Read-JsonField -Path $statusFile -Key 'state') -eq 'running') {
-        try {
-          $st = Get-Content -Raw $statusFile | ConvertFrom-Json
-          $st.state = 'error'
-          if (-not $st.PSObject.Properties['error'] -or -not $st.error) {
-            $st | Add-Member -NotePropertyName error -NotePropertyValue "worker runner exited $workerExit with the session still running" -Force
-          }
-          $st | ConvertTo-Json -Depth 20 | Set-Content -Path "$statusFile.tmp" -Encoding UTF8
-          Move-Item -Force "$statusFile.tmp" $statusFile
-        } catch { }
-      }
+    }
+    # The runner has exited - whatever its code - so a status still saying "running" would block
+    # the wait forever. Settle it as an error.
+    $statusFile = Join-Path $SessionDir 'status.json'
+    if ((Read-JsonField -Path $statusFile -Key 'state') -eq 'running') {
+      try {
+        $st = Get-Content -Raw $statusFile | ConvertFrom-Json
+        $st.state = 'error'
+        if (-not $st.PSObject.Properties['error'] -or -not $st.error) {
+          $st | Add-Member -NotePropertyName error -NotePropertyValue "worker runner exited $workerExit with the session still running" -Force
+        }
+        $st | ConvertTo-Json -Depth 20 | Set-Content -Path "$statusFile.tmp" -Encoding UTF8
+        Move-Item -Force "$statusFile.tmp" $statusFile
+      } catch { }
     }
   }
 
@@ -570,12 +598,18 @@ honest empty `command` is more useful than a confident one that was never execut
     $patchIndex = [IO.Path]::GetTempFileName()
     $script:TempFiles.Add($patchIndex)
     $prevIndex = $env:GIT_INDEX_FILE
+    # Stage from the repo top: a session cwd that is a subdirectory would make `add -A -- .` miss
+    # every change elsewhere in the repo.
+    $patchTop = "$(git -C $WorktreePath rev-parse --show-toplevel 2>$null)".Trim()
+    $ok = $false
     try {
       $env:GIT_INDEX_FILE = $patchIndex
-      git -C $WorktreePath read-tree HEAD 2>$null
-      $ok = ($LASTEXITCODE -eq 0)
-      if ($ok) { git -C $WorktreePath add -A -- . ':(exclude)worker-report.json' ':(exclude,glob)**/node_modules' 2>$null; $ok = ($LASTEXITCODE -eq 0) }
-      if ($ok) { git -C $WorktreePath diff --cached --binary HEAD >> $diffPatchPath }
+      if ($patchTop) {
+        git -C $patchTop read-tree HEAD 2>$null
+        $ok = ($LASTEXITCODE -eq 0)
+      }
+      if ($ok) { git -C $patchTop add -A -- . ':(exclude,glob)**/worker-report.json' ':(exclude,glob)**/node_modules' 2>$null; $ok = ($LASTEXITCODE -eq 0) }
+      if ($ok) { git -C $patchTop diff --cached --binary HEAD >> $diffPatchPath }
     } finally {
       if ($null -eq $prevIndex) { Remove-Item Env:GIT_INDEX_FILE -ErrorAction SilentlyContinue } else { $env:GIT_INDEX_FILE = $prevIndex }
     }

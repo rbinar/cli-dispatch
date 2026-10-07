@@ -147,7 +147,7 @@ printf '%s' "$PROMPT" > "$SESSION_DIR/prompt.txt" 2>/dev/null || true
 # Snapshot dirty/untracked paths in $CWD BEFORE the worker runs, so write_diff_artifacts
 # (called after claude finishes, below) can exclude pre-existing dirt from the reported
 # changed-files list — see snapshot_dirty_paths in stream-utils.sh.
-PREEXISTING_DIRTY="$(snapshot_dirty_paths "$CWD")"
+PREEXISTING_DIRTY="$(run_preexisting_dirty "${RESUME_ID:-}" "$CWD")"
 
 BRANCH="$(git -C "$CWD" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
 MODEL="${DS_MODEL:-deepseek-v4-pro}"

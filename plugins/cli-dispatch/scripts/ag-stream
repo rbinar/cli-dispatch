@@ -123,7 +123,7 @@ require_writable_sessions_root "$(resolve_sessions_root)"
 # Snapshot dirty/untracked paths in $CWD BEFORE the worker runs, so write_diff_artifacts
 # (called after agy finishes, below) can exclude pre-existing dirt from the reported
 # changed-files list — see snapshot_dirty_paths in stream-utils.sh.
-PREEXISTING_DIRTY="$(snapshot_dirty_paths "$CWD")"
+PREEXISTING_DIRTY="$(run_preexisting_dirty "${RESUME_ID:-}" "$CWD")"
 
 AG_HOME="$HOME/.gemini/antigravity-cli"
 LC="$AG_HOME/cache/last_conversations.json"
