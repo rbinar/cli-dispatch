@@ -247,3 +247,14 @@ test('dead code: the never-installed node path, the uncalled --policy-injection 
   assert.doesNotMatch(fs.readFileSync(path.join(SCRIPTS, 'install.ps1'), 'utf8'), /PolicyInjection/)
   assert.doesNotMatch(fs.readFileSync(path.join(SCRIPTS, 'verdict-writer.mjs'), 'utf8'), /export \{ normalizeBackend \}/)
 })
+
+// Found live in the sandbox (6.1.2): /cli-dispatch:sessions listed the detached-run dir `.runs`
+// (and would list verdict-archive) as sessions with status "?".
+test('sessions: .runs, other dot dirs and verdict-archive are not listed as sessions', () => {
+  const sessions = tmp('cd-w3-sess-')
+  for (const d of ['.runs', '.tmp', 'verdict-archive', 'real-session']) fs.mkdirSync(path.join(sessions, d))
+  fs.writeFileSync(path.join(sessions, 'real-session', 'status.json'), JSON.stringify({ state: 'done', backend: 'deepseek' }))
+  const r = spawnSync('bash', [path.join(SCRIPTS, 'cli-dispatch-sessions.sh')], { encoding: 'utf8', env: { ...process.env, CLI_DISPATCH_SESSIONS_DIR: sessions } })
+  assert.match(r.stdout, /real-session/)
+  assert.doesNotMatch(r.stdout, /\.runs|\.tmp|verdict-archive/, r.stdout)
+})
