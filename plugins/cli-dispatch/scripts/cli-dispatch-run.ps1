@@ -135,8 +135,7 @@ try {
   exit 5
 }
 
-$NodeBin = if ($env:CLI_DISPATCH_NODE) { $env:CLI_DISPATCH_NODE } else { Join-Path $HOME '.local/share/cli-dispatch/node' }
-if (-not (Test-Path $NodeBin)) { $NodeBin = 'node' }
+$NodeBin = if ($env:CLI_DISPATCH_NODE) { $env:CLI_DISPATCH_NODE } else { 'node' }
 if (-not (Get-Command $NodeBin -ErrorAction SilentlyContinue)) {
   Write-Host "cli-dispatch-run: node not found in PATH"
   exit 5
@@ -523,7 +522,7 @@ honest empty `command` is more useful than a confident one that was never execut
     if (-not $sessionId) {
       $launchTime = (Get-Item -Path $launchMarker).LastWriteTimeUtc
       $session = Get-ChildItem -Path $SessionsRoot -Directory |
-        Where-Object { $_.LastWriteTimeUtc -gt $launchTime } |
+        Where-Object { -not $_.Name.StartsWith('.') -and $_.Name -ne 'verdict-archive' -and $_.LastWriteTimeUtc -gt $launchTime } |
         Sort-Object LastWriteTimeUtc -Descending |
         Select-Object -First 1
       if ($session) { $sessionId = $session.Name }

@@ -3,10 +3,10 @@
 [← README](../../README.tr.md)
 
 "Limitimden ne kadar kaldı?" — **her** backend için, ekstra hiçbir şey kurmadan yanıtlanır.
-Her `*-balance` komutu, CLI'ın zaten yerelde tuttuğu veriyi tersine mühendislikle okur; senin
+Her backend kontrolü, CLI'ın zaten yerelde tuttuğu veriyi tersine mühendislikle okur; senin
 adına ağ üzerinden yeni bir şey gönderilmez.
 
-Beşini bir arada görmek için `/cli-dispatch:balance` kullan, ya da backend başına tek bir `*-balance` komutu.
+Beşini bir arada görmek için `/cli-dispatch:balance` kullan, ya da tek bir backend için `/cli-dispatch:balance <backend>`.
 
 | Backend | Komut | Sayı nereden geliyor |
 |---|---|---|

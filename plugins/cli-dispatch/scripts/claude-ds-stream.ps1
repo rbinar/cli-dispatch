@@ -389,6 +389,11 @@ $sessionsRoot = if ($env:CLI_DISPATCH_SESSIONS_DIR) {
   if ((Test-Path $newRoot) -or (-not (Test-Path $oldRoot))) { $newRoot } else { $oldRoot }
 }
 
+# The resume id becomes a session-dir path component → reject path traversal early.
+if (-not [string]::IsNullOrEmpty($resumeId)) {
+  if ($resumeId -match '[\\/]' -or $resumeId -match '\.\.') { Write-Error "claude-ds-stream: invalid --resume id"; exit 1 }
+}
+
 $resume = 0
 if (-not [string]::IsNullOrWhiteSpace($resumeId)) {
   $sid = $resumeId

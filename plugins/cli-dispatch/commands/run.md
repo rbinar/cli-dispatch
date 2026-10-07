@@ -51,16 +51,17 @@ if ! command -v cli-dispatch-run >/dev/null 2>&1; then
     exit 1
   fi
 fi
+SESSIONS_ROOT="${CLI_DISPATCH_SESSIONS_DIR:-${CLAUDE_DS_SESSIONS_DIR:-}}"
+[ -n "$SESSIONS_ROOT" ] || { _c="${XDG_CACHE_HOME:-$HOME/.cache}"; SESSIONS_ROOT="$_c/cli-dispatch/sessions"; [ -d "$SESSIONS_ROOT" ] || [ ! -d "$_c/claude-ds/sessions" ] || SESSIONS_ROOT="$_c/claude-ds/sessions"; }
+RUN_MARK="$(mktemp)"
 RC=0
 "${RUNNER[@]}" --backend "$BACKEND" --cwd "$PWD" --prompt "$PROMPT" "$@" || RC=$?
-SESSIONS_ROOT="${CLI_DISPATCH_SESSIONS_DIR:-}"
-[ -z "$SESSIONS_ROOT" ] && [ -d "$HOME/.cache/cli-dispatch/sessions" ] && SESSIONS_ROOT="$HOME/.cache/cli-dispatch/sessions"
-[ -z "$SESSIONS_ROOT" ] && SESSIONS_ROOT="$HOME/.cache/claude-ds/sessions"
-# Newest session dir that actually carries a verdict.json (this run's, unless none was written).
+# Newest session dir whose verdict.json was written after this run started (never an older run's).
 SESSION_DIR=""
 for d in $(ls -dt "$SESSIONS_ROOT"/*/ 2>/dev/null | head -5); do
-  [ -f "$d/verdict.json" ] && { SESSION_DIR="${d%/}"; break; }
+  [ -f "$d/verdict.json" ] && [ -n "$(find "$d/verdict.json" -newer "$RUN_MARK" 2>/dev/null)" ] && { SESSION_DIR="${d%/}"; break; }
 done
+rm -f "$RUN_MARK"
 # The summary script ships in the plugin (not installed to ~/.local), so it matches this command.
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/cli-dispatch-run-summary.sh" "${SESSION_DIR:+$SESSION_DIR/verdict.json}" "$RC"
 exit $RC

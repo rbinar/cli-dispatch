@@ -3,10 +3,10 @@
 [← README](../README.md)
 
 "How much of my limit is left?" — answered for **every** backend without installing anything
-extra. Each `*-balance` command reverse-engineers data the CLI already keeps locally; nothing
+extra. Each backend check reverse-engineers data the CLI already keeps locally; nothing
 new is sent over the network on your behalf.
 
-Use `/cli-dispatch:balance` to see all five at once, or a single `*-balance` command per backend.
+Use `/cli-dispatch:balance` to see all five at once, or one backend with `/cli-dispatch:balance <backend>`.
 
 | Backend | Command | Where the number comes from |
 |---|---|---|

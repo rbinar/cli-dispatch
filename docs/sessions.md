@@ -13,6 +13,9 @@ Session directory: `${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<id>/`
 | `transcript.jsonl` | Raw stream-json (resume/audit; not read while watching) |
 | `meta.json` | Prompt preview, cwd, branch, model, start/end |
 | `prompt.txt` | The **full** task prompt (untruncated) |
+| `changed-files.json` | `{files, diffstat, preexistingDirty}` — files the run changed, written after a repo-changing run finishes |
+| `verdict.json` | Written only for runs through `cli-dispatch-run`: verify result, branch, diffstat, exit code |
+| `worker-report.json` | The worker's self-report (claims, notDone, assumptions), written by the worker in its worktree when asked; a self-report, not evidence |
 
 **Cost-aware watching:** progress is tracked only from the small `status.json` (`/cli-dispatch:watch <id>` or `/cli-dispatch:watch <id> --wait`); the raw transcript is not read, not tailed in a tight loop — because every read by the orchestrator spends tokens.
 

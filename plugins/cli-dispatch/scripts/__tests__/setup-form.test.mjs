@@ -26,7 +26,6 @@ const CONFIG = [
   '# --- OpenCode backend --- OPTIONAL.',
   'OPENROUTER_API_KEY=""',
   'OC_MODEL=""',
-  'OC_MODELS=""',
   '',
 ].join('\n')
 

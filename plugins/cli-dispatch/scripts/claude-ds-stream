@@ -111,6 +111,11 @@ fi
 case "$MAX_RUNTIME"  in ''|*[!0-9]*) MAX_RUNTIME=0;;  esac
 case "$IDLE_TIMEOUT" in ''|*[!0-9]*) IDLE_TIMEOUT=0;; esac
 
+# The resume id becomes a session-dir path component → reject path traversal early.
+case "$RESUME_ID" in
+  */*|*\\*|*..*) echo "claude-ds-stream: invalid --resume id" >&2; exit 1;;
+esac
+
 # ---- prepare the session directory ----
 # Sessions root: cli-dispatch cache, with legacy claude-ds fallback (env wins).
 SESSIONS_ROOT="$(resolve_sessions_root)"

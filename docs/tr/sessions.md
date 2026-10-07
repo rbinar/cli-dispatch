@@ -13,6 +13,9 @@ Session dizini: `${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<id>/` (e
 | `transcript.jsonl` | Ham stream-json (resume/audit; izlerken okunmaz) |
 | `meta.json` | Prompt önizlemesi, cwd, branch, model, başlangıç/bitiş |
 | `prompt.txt` | **Tam** görev prompt'u (kısaltmasız) |
+| `changed-files.json` | `{files, diffstat, preexistingDirty}` — çalıştırmanın değiştirdiği dosyalar; repo'yu değiştiren bir run bittikten sonra yazılır |
+| `verdict.json` | Yalnızca `cli-dispatch-run` üzerinden giden run'lar için yazılır: verify sonucu, branch, diffstat, çıkış kodu |
+| `worker-report.json` | İşçinin kendi beyanı (claims, notDone, assumptions); istendiğinde worktree'sinde işçi yazar; kanıt değil, beyandır |
 
 **Maliyet-odaklı izleme:** ilerleme yalnızca küçük `status.json`'dan takip edilir (`/cli-dispatch:watch <id>` veya `/cli-dispatch:watch <id> --wait`); ham transcript okunmaz, sıkı döngüde tail edilmez — orkestratörün her okuması token harcadığı için.
 

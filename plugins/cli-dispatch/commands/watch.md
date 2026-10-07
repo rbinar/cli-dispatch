@@ -30,6 +30,7 @@ if [ -z "$SID" ]; then
   echo "tip:   /cli-dispatch:sessions  to list session ids"
   exit 1
 fi
+case "$SID" in */*|*\\*|*..*) echo "invalid session id: $SID"; exit 1 ;; esac
 shift
 WAIT=0; REST=()
 for a in "$@"; do

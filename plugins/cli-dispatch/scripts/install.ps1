@@ -3,7 +3,7 @@
 # Usage: install.ps1 [-Backends deepseek,codex | all]
 # Native Windows supports the DeepSeek and Codex backends; Antigravity needs a pseudo-TTY
 # (not available on native Windows) — install it under WSL instead.
-param([string]$Backends = "deepseek", [switch]$InstallMissing, [string]$PolicyInjection = "off", [switch]$NonInteractive)
+param([string]$Backends = "deepseek", [switch]$InstallMissing, [switch]$NonInteractive)
 $ErrorActionPreference = "Stop"
 
 $backendList = ($Backends -replace '\s', '').ToLower()
@@ -224,27 +224,6 @@ foreach ($b in @('deepseek', 'codex')) { if (Ensure-ConfigBlock -CfgPath $Config
 if ($cfgCreated) { Write-Host "Created config template -> $Config" }
 elseif ($cfgChanged) { Write-Host "Config updated (added missing backend blocks) -> $Config" }
 else { Write-Host "Config already complete -> $Config (left untouched)" }
-
-# Write the policy.json skeleton — only when -PolicyInjection on AND the file doesn't already
-# exist (never clobber an existing policy.json).
-$policyFile = Join-Path $ConfigDir "policy.json"
-if (($PolicyInjection -eq "on") -and (-not (Test-Path $policyFile))) {
-  New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
-  $ver = "unknown"
-  try { $ver = (Get-Content -Raw (Join-Path $ScriptDir "..\.claude-plugin\plugin.json") | ConvertFrom-Json).version } catch {}
-  $now = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-  @"
-{
-  "schemaVersion": 1,
-  "enabled": true,
-  "issueReminder": true,
-  "claudeMdBlock": false,
-  "pluginVersionAtSetup": "$ver",
-  "updatedAt": "$now"
-}
-"@ | Set-Content -Path $policyFile -Encoding UTF8
-  Write-Host "Created policy.json (injection ENABLED) -> $policyFile"
-}
 
 # Open the one-shot setup form so the user can enter keys — only when the config was created
 # or changed (a new backend block appended) AND the session is interactive. The form blocks

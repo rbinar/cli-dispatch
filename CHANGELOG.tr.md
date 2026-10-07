@@ -7,6 +7,54 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [6.1.2] — 2026-10-07
+
+Kod denetiminin son grubu: düşük önemli sorunlar, 6.1.1'in açık bıraktığı iki madde, doküman
+kayması ve ölü kod. `scripts/__tests__/audit-wave3.test.mjs` ile sabitlendi (15 test, hepsi
+6.1.1'e karşı düşüyordu).
+
+### Güvenlik
+
+- **`/cli-dispatch:kill` artık yeniden kullanılmış bir süreç numarasını öldürmüyor.** Çökmüş bir
+  session'ın `worker.pid`'i, kill çalıştırıldığında ilgisiz bir süreci gösterebiliyordu; artık
+  yalnız komut satırı bir cli-dispatch worker'ı olan süreç öldürülüyor.
+- **API key'ler artık süreç listesinde görünmüyor.** `/cli-dispatch:balance` DeepSeek ve
+  OpenRouter key'lerini `curl`'e argüman olarak veriyordu; başlık artık stdin'den gidiyor.
+- **Sızan değişikliklerin patch'i rastgele ve özel bir ad alıyor** (`mktemp`, mod 600); paylaşılan
+  `/tmp` altında tahmin edilebilir bir dosya değil.
+- **`/`, `\` ya da `..` içeren session ve run id'leri reddediliyor**: `cli-dispatch-wait`,
+  `claude-ds-stream --resume` ve `watch`, `kill`, `resume` komutları.
+
+### Düzeltildi
+
+- **Ctrl-C / SIGTERM artık run'ı verify ve düzeltme denemeleri sırasında da durduruyor,** yalnız
+  worker çalışırken değil.
+- **Bir `--fix-attempts` turu `~/.local/bin` PATH'te değilken de worker'ı buluyor** (runner'ın
+  yanındaki kopyaya düşüyor).
+- **`/cli-dispatch:run` artık başka bir run'ın verdict'ini göstermiyor.** Bir run verdict
+  yazmadığında, en yeni eski verdict bu run'ın çıkış koduyla birlikte basılıyordu.
+- **Dizini git work tree olmayan bir session'a `--resume` ile yeniden bağlanma** `git diff`'te
+  ölmek yerine yine verdict yazıyor.
+- **Antigravity: iki okumaya bölünen Türkçe (ya da çok baytlı herhangi bir) karakter bozulmadan
+  çözülüyor,** ve yanıt üretmeyen sürdürülmüş bir tur artık önceki turun yanıtıyla "done"
+  raporlanmıyor.
+- **Windows: en yeni session'a düşme yolu `.runs`, nokta dizinleri ve `verdict-archive`'ı atlıyor.**
+
+### Kaldırıldı
+
+- Hiç kurulmayan `~/.local/share/cli-dispatch/node` araması, hiç çağrılmayan
+  `install.sh --policy-injection` / `install.ps1 -PolicyInjection` seçeneği ve
+  `verdict-writer.mjs`'teki kullanılmayan bir yeniden dışa aktarım.
+
+### Doküman
+
+- Backend başına `*-balance` komutlarının son anılmaları kaldırıldı; `CLAUDE.md`'de runner
+  agent'ın wait kodu (124) ve session kök listesi düzeltildi; kaldırma listeleri tamamlandı (beş
+  worktree runner'ı; tüm Windows dosyaları); `TERMINAL.md` ve session dokümanlarına `--effort` /
+  `CLAUDE_DS_EFFORT` ile `changed-files.json`, `verdict.json`, `worker-report.json` eklendi;
+  `docs/security.md` artık hangi bakiye kontrollerinin sağlayıcı API'sine istek attığını söylüyor.
+- `CHANGELOG.tr.md` eksik olan on sürümü kazandı (3.14.0–3.14.4, 3.29.0–3.30.3).
+
 ## [6.1.1] — 2026-10-07
 
 Aynı kod denetiminden doğruluk düzeltmeleri. Her birinin
@@ -2747,6 +2795,127 @@ hatalarını düzeltiyor; kalan bulgular issue olarak takip ediliyor.
   senkron-bekleme / terminal-durum-kapısı gereksinimlerinin yerine değil,
   onlara ek olarak.
 
+## [3.30.3] — 2026-07-09
+
+### Değişti
+
+- **Runner tanımları: babysitter modeli için açık "asla opus" kuralı.** Görev
+  zorluğu bir `*-runner`'ın kendi modelini asla yükseltmez — işi worker
+  yapar, runner yalnızca izler/doğrular, orkestratör de zaten yeniden
+  doğrular. Delegasyon başına ölçüm: opus babysitting maliyeti haiku'nun
+  ~20 katı, sonnet ~12 katı; kalite kazancı sıfır.
+
+## [3.30.2] — 2026-07-09
+
+### Düzeltildi
+
+- **`/cli-dispatch:gain` babysitting tablosu artık yalnızca runner
+  subagent'larını sayıyor** (#87). Bir subagent, Bash tool çağrısında gerçekten
+  bir wrapper CLI'ı (`claude-ds`/`ds-agent`/`ag-*`/`cx-*`/`oc-*`/`cp-*`)
+  çalıştırmışsa runner sayılır; runner olmayan subagent'lar (reviewer'lar,
+  explorer'lar, ilgisiz projeler) tek satırlık bir toplama indirgenir ve
+  babysitter/worker oranını artık şişirmez (gerçek veride ~8x). `--log`
+  snapshot'ına bir `otherSubagents {agents, output}` alanı eklendi.
+
+## [3.30.1] — 2026-07-08
+
+### Eklendi
+
+- **`/cli-dispatch:gain --log`**, raporun zaman damgalı bir JSON
+  snapshot'ını (`{ts, workers, trivialDelegations, anthropic}`) her
+  çalıştırmada bir satır olarak `~/.cache/cli-dispatch/gain-history.jsonl`
+  dosyasına ekler — geçmiş `/cli-dispatch:clean` sonrasında da kalır.
+  Bayrak olmadan varsayılan davranış değişmez.
+
+## [3.30.0] — 2026-07-08
+
+### Eklendi
+
+- **5 stream CLI'ın hepsinde çalışma sonrası diff artifact'leri.** Worker
+  bittiğinde, cwd kirli bir git worktree ise ortak `write_diff_artifacts()`
+  session dizinine `diff.patch` (takip edilen dosyaların diff'i + takip
+  edilmeyenler için no-index patch'ler; temiz bir checkout'a `git apply`
+  ile uygulanabilir) ve `changed-files.json` (dosya başına durum +
+  diffstat) yazar. Orkestratör worktree'ye uğramak yerine bu iki küçük
+  dosyadan merge eder; artifact'ler worktree temizliğinden sonra da
+  kalır. Best-effort'tur, çıkış kodlarını asla değiştirmez.
+- **5 stream CLI'ın hepsinde `--verify-cmd <cmd>`** (env fallback
+  `CLI_DISPATCH_VERIFY_CMD`): worker temiz çıktıktan sonra komutu worker
+  cwd'sinde çalıştırır ve `{cmd, exit, tail}` değerini
+  `status.json.verify` içine kaydeder. Sıfırdan farklı verify çıkışı
+  kaydedilir, yükseltilmez.
+- **`/cli-dispatch:gain` Anthropic babysitting tarafını da raporlar**:
+  `~/.claude/projects` altındaki tüm subagent transcript'lerinin
+  `message.usage` değerlerini model başına toplayan (satır satır
+  streaming ile) ikinci bir tablo, ayrıca babysitter-çıktısı/worker-çıktısı
+  oranı ve toplam offload edilen worker girdisi. Yalnızca `claude-*`
+  modelleri sayılır — claude-ds (DeepSeek) worker'ları aynı transcript
+  düzenini yazar ve hariç tutulur. Üst sınır olarak belgelenmiştir
+  (makinedeki TÜM subagent'ları kapsar).
+- **4 katmanlı önemsizlik koruması** — satır içi yapmak daha ucuz olan işi
+  delege etmeyi durdurur (tek dosya, 50 satırın altı, belirsizliği olmayan
+  düzenlemeler): spawn kararı anında runner frontmatter uyarıları;
+  ds-delegate skill'inde 3 soruluk Triviality kapısı; worker'ı
+  başlatmadan `trivial — do inline: <reason>` döndüren runner tarafı erken
+  çıkış; ve diffstat toplamı 50 satırın altında kalan tamamlanmış
+  delegasyonları işaretleyen bir `/cli-dispatch:gain` sayacı.
+- **Küçük düzeltmeleri toplu yapma yönlendirmesi**, 5 runner tanımında ve
+  ds-delegate skill'inde: birkaç küçük ilgili değişiklik TEK bir
+  delegasyona/worktree'ye girer — küçük değişikliklerde delegasyon başına
+  sabit maliyet baskındır.
+
+## [3.29.0] — 2026-07-08
+
+### Eklendi
+
+- **Token muhasebesi (#85).** `oc-stream-parse` artık tüm LLM çağrılarındaki
+  `step_finish` token kullanımını standart
+  `input_tokens/cached_input_tokens/output_tokens/reasoning_output_tokens`
+  şekline topluyor (önceden: standart olmayan iç içe bir şekilde son
+  olay snapshot'ı); `cp-stream-parse` tur başına `assistant.message`
+  outputTokens değerlerini biriktiriyor (Copilot girdi-token sayısı
+  sunmuyor — kasıtlı olarak atlandı, sıfır değil); `ag-transcript-parse`
+  kod içinde agy 1.0.16'nın hiç token verisi sunmadığını belgeliyor
+  (`usage` `null` kalır). Yeni dashboard endpoint'i
+  `GET /api/workers/aggregate` ile workers görünümünde backend başına kompakt
+  bir kullanım paneli ve session `status.json` dosyaları üzerinden backend
+  başına token toplamlarını raporlayan yeni, salt-okunur bir
+  `/cli-dispatch:gain` skill'i (hem eski hem yeni usage şekillerini
+  işler).
+
+### Değişti
+
+- **Runner tanımları: haiku babysitting artık TÜM delegasyonlar için
+  varsayılan** (ds/ag/cx/cp/oc). Uzun bir gerçek session üzerinde ölçüldü:
+  sonnet/opus babysitter'lar işi doğal yapmaktan daha çok Anthropic token'ı
+  harcıyor (~\$338'e karşı ~\$143 API-eşdeğeri), haiku babysitter'lar ise
+  ~\$80 — orkestratör diff'leri/testleri zaten bağımsız olarak yeniden
+  doğruluyor. Maliyet-odaklı bölümler yalın-bekleme kuralları kazandı:
+  tek bir bloklayan foreground çağrıyı tercih et; poll'luyorsan 30-60 sn'lik
+  sınırlı sleep'ler; tam transcript/diff'leri asla runner'ın kendi
+  context'ine okuma.
+
+### Düzeltildi
+
+- **cx-stream `--resume` fail-safe (#82 devamı).** Bir session SIGKILL ile
+  (ya da `threadId`'si kaydedilmeden önce) ölürse geçici session dizini hiç
+  taşınmıyordu ve sonraki bir `--resume`, çağıran shell'in cwd'sini sessizce
+  benimsiyordu — gerçek bir olayda bu, yanlış repo checkout'una 11 dosya
+  yazdı. Resume artık geçici `cx-*` dizinlerini threadId eşleşmesiyle
+  kurtarıyor; kayıtlı bir cwd bulunamıyorsa ve açık bir `--cwd`
+  verilmemişse çalışmayı reddediyor (exit 1). `cx-stream.ps1` eşdeğer
+  restore/rescue/fail-safe kazandı (önceden hiç cwd geri yüklemesi yoktu).
+- **cx-stream `--resume` model kayması (#84).** Resume artık açık bir
+  `--model` verilmediğinde, mevcut config varsayılanından sessizce yeniden
+  çözmek yerine `meta.json`'daki kayıtlı modeli geri yüklüyor
+  (`" (effort)"` görüntü son ekini çıkararak).
+- **cp-stream-parse usage kirlenmesi.** İlgisiz bir Task alt-agent'ının
+  `subagent.completed.totalTokens` değeri `status.usage`'a sızabiliyordu;
+  kaldırıldı.
+- **dashboard-utils `collectProcTree`**, `pgrep` yokken `ps` /
+  aktif-child-handle fallback'leri kazandı (`pgrep`'in çalıştığı yerde
+  davranış değişikliği yok).
+
 ## [3.28.0] — 2026-07-07 17:35
 
 ### Eklendi
@@ -3177,6 +3346,56 @@ Vaad-edilen-vs-teslim-edilen denetimi (README/komutlar/ajan-talimatları/script'
 - **OpenCode'da gerçek sandbox yok.** Codex'in kernel tarafında zorlanan `--read-only`'sinin aksine, OpenCode'da OS-seviyesi veya tool-seviyesi write-deny yok; her zaman geçilen `--auto` bayrağı, headless kullanım için bir güvenlik opsiyonu değil işlevsel bir gereklilik olarak her izin isteğini otomatik onaylar — tek güvenlik sınırı git-worktree izolasyonudur (Antigravity backend'iyle aynı duruş).
 - **OpenCode için setup akışında model seçici.** `/cli-dispatch:setup` artık `AskUserQuestion` ile kullanıcıya varsayılan bir OpenCode modeli seçtiriyor (2-3 seçilmiş ücretsiz-katman OpenRouter slug'ı + özel giriş seçeneği) ve bunu config'e `OC_MODEL` olarak yazıyor; `OPENROUTER_API_KEY`'in kendisi Claude tarafından asla yazılmaz — DeepSeek'in anahtarıyla aynı, kullanıcının kendi yapıştırdığı mekanizma (kurulumdan sonra anahtar hâlâ boşsa installer config'i otomatik olarak bir editörde açar).
 - **Windows v1 için ertelendi.** OpenCode v1 için yalnızca Unix'tir (macOS/Linux/WSL); `install.ps1` ve varsa `.ps1` eşleri değiştirilmedi.
+
+## [3.14.4] — 2026-07-01
+
+### Eklenenler
+- **Dashboard: worker model gösterimi.** Workers sekmesi artık model adını listede backend'in yanında (örn. `deepseek deepseek-v4-pro`, `codex gpt-4.1`), bir worker açıkken crumb'da ve Claude Code session detayındaki bağlı-worker'lar panelinde gösteriyor. Kaynak: `meta.json` → `model` alanı (parser tarafından session başlangıcında `CLAUDE_DS_MODEL` / `AG_MODEL` / `CX_MODEL` env değişkenlerinden yazılır).
+- **Dashboard: Workers sekmesi durum filtresi.** Workers sekmesi artık `all / running / done / error` filtre çipleri gösteriyor (Claude Code session filtresiyle aynı UX). Filtre her sekme geçişinde `all`'a döner.
+
+## [3.14.3] — 2026-07-01
+
+### Değişenler
+- **`stream-utils.sh` ayrıştırıldı.** `mtime_of`, `kill_tree`, `proc_tree`, `kill_worker`, `source_config` ve `resolve_sessions_root`, `ag-stream`, `cx-stream` ve `claude-ds-stream` içinde tekrarlanıyordu. Tek bir `scripts/stream-utils.sh` dosyasına taşındı; her stream script'i artık bunu source ediyor. Net: ~160 satır silindi.
+- **`parse-utils.mjs` ayrıştırıldı.** `createStatusWriter`, `openSessionFiles`, `writeMetaFile`, `humanSize` ve `clip`, `ag-transcript-parse.mjs`, `cx-stream-parse.mjs` ve `ds-stream-parse.mjs` içinde tekrarlanıyordu. `scripts/parse-utils.mjs` dosyasına taşındı; her parser artık buradan import ediyor. Net: ~80 satır silindi.
+
+### Düzeltilenler
+- **`ag-worktree-run.sh` / `cx-worktree-run.sh` / `ds-worktree-run.sh`: worktree yolu sahiplenmede TOCTOU yarışı.** `mktemp -d … && rmdir` + `git worktree add` dizisinde başka bir process'in aynı yolu sahiplenebileceği bir pencere vardı. Yeniden deneme eklendi: `git worktree add` başarısız olursa yeni bir `mktemp` yolu üretilir ve bir kez daha denenir.
+
+## [3.14.2] — 2026-07-01
+
+### Düzeltilenler
+- **`ag-stream`: ölü `RAWLOG` geçici dosyası.** `RAWLOG` `mktemp` ile oluşturulup `run_agy_bg()`'ye yönlendirme hedefi olarak veriliyordu ama hiç okunmuyordu. Kaldırıldı; pty çıktısı bunun yerine `/dev/null 2>&1`'e yönlendirildi. Temizlik/çıkış yollarındaki üç `rm -f "$RAWLOG"` noktası buna göre güncellendi.
+- **`ag-transcript-parse.mjs`: `finalize()` sıfırdan farklı çıkışta başarı raporluyordu.** Önceki koşul `finalText ? (isErr && !/^\d+$/.test(done) ? 'error' : 'done') : 'error'`, `finalText` varken sayısal bir done-string'ini (örn. `"1"`) başarı sayıyordu. `finalText && (done === '0' || done === '') ? 'done' : 'error'` ile değiştirildi — sıfırdan farklı her çıkış, done-string biçimine bakmadan artık `'error'`'a zorlar.
+- **`claude-ds-stream`: timeout'ta öksüz DS process'leri.** Watchdog `kill_tree "$pid" -TERM; sleep 5; kill_tree "$pid" -KILL` kullanıyordu; bu, iki çağrı arasında init'e yeniden bağlanan process'leri kaçırıyordu. `kill_worker` ile değiştirildi (`ag-stream`/`cx-stream`'deki önce-snapshot kalıbı): ilk kill'den önce tüm alt ağaç yakalanır, ardından yakalanan küme TERM ve KILL ile sonlandırılır. Script beklenmedik çıkışta da worker'ı öldürsün diye bir `EXIT` trap'i (`cleanup`) eklendi.
+- **`cx-stream`: ölü `RC_FILE` geçici dosyası.** `RC_FILE` `mktemp` ile oluşturuluyordu ama hiç yazılmıyordu; çıkış kodu bunun yerine `wait` ile yakalanıyor. Oluşturma ve tüm `rm -f "$RC_FILE"` referansları kaldırıldı. Gereksiz `[ "${CX_PROGRESS_STDERR:-0}" = "1" ] && export CX_PROGRESS_STDERR` yeniden export'u kaldırıldı (değişken `cx-stream` başlatılmadan önce `cx-agent` tarafından zaten export ediliyor).
+- **`dashboard-server.mjs`: onclick attribute eklemelerinde XSS.** Dört yer, dinamik değerleri (agent ID'leri, session ID'leri, worker ID'leri) çıplak olarak `onclick="openSub('...')"` / `openWorkerById('...')` / `reopen('...')` attribute'larına ekliyordu. `escAttr()` yardımcısı eklendi (`& < > " '` karakterlerini HTML entity'lerine çevirir); dört ekleme noktasının hepsi sarıldı. Ayrıca `mdInline` href oluşturmadaki URL de escape edildi (`safe.replace(/"/g,'&quot;')`).
+- **`cx-agent`: eskimiş denetim-öneki yorumu.** `${FWD[@]+"${FWD[@]}"}` yorumundan `# M1:` öneki kaldırıldı.
+- **`ds-stream-parse.mjs`: `handleEvent()` içinde eksik `return`.** `'result'` dalı `finalText`'i ayarlıyor ama return etmeden aşağı düşüyordu; bu da bir result olayı işlenirken sonraki tüm dalları erişilebilir kılıyordu. Diğer tüm dallarla uyumlu olması için `return` eklendi.
+
+## [3.14.1] — 2026-06-29
+
+### Düzeltilenler
+- **kill.md / resume.md: `node -e` string'inde `$DIR` üzerinden shell injection.** Session dizin yolu, tek tırnaklı JS string literal'lerine (`'$DIR/status.json'`) çıplak olarak ekleniyordu; tek tırnak içeren bir session ID string'den çıkabilirdi. `CLI_DISPATCH_SESSION_DIR` env değişkeniyle geçirilip script içinde `process.env.CLI_DISPATCH_SESSION_DIR` okunarak düzeltildi.
+- **kill.md: `pgrep` kendini-hariç-tutma regex typo'su.** `grep -v "^$$\$"` sonundaki `\$` yüzünden deseni literal bir `$` içerir hale getiriyordu. `grep -v "^$$"` olarak düzeltildi.
+- **resume.md: metadata fallback'inde eksik uyarı.** Ne `status.json`'da ne `meta.json`'da `backend` alanı olduğunda komut sessizce DeepSeek'e yönleniyordu. Artık `deepseek` varsaymadan önce bir uyarı veriyor.
+- **cx-worktree-run.sh: eksik `trap _cleanup ERR INT TERM`.** ds ve ag varyantlarının aksine cx worktree script'inde temizlik trap'i yoktu — bir Codex çökmesi diskte eski bir worktree bırakıyordu. 3.14.0'da ds/ag'e uygulanan düzeltmeyi yansıtan `_cleanup` + `trap` eklendi. Ayrıca worker çökmeleri babysitter'a ulaşsın diye `cx-stream` çağrısından `|| true` kaldırıldı.
+- **ag-agent / cx-agent: eksik CLI'da yanlış hata mesajı.** "Bulunamadı" mesajı `/cli-dispatch:ds-setup`'a (DeepSeek'e özgü) atıf yapıyordu; `/cli-dispatch:setup` olarak düzeltildi.
+- **sessions.md / ds-sessions.md / ag-sessions.md / cx-sessions.md: eskimiş veya yanlış takip ipuçları.** Dört session komutunun altındaki resume ipucu, backend'e özgü CLI bayraklarına (`claude-ds-stream --resume`, `ag-stream --resume`, `cx-stream --resume`) doğrudan atıf yapıyordu. `ag-stream` ve `cx-stream`'de `--resume` bayrağı yok — o ipuçları fiilen yanlıştı. Dördü de artık `/cli-dispatch:resume <id> <follow-up>`'a işaret ediyor.
+- **doctor.md: eksik CLI kontrolleri.** DeepSeek bölümü `ds-agent` + `claude-ds-stream`'i kontrol ediyordu ama `claude-ds`'yi etmiyordu (üçü de setup ile kurulur). Antigravity bölümü `ag-agent`'ı kontrol ediyordu ama `ag-stream`'i etmiyordu. Codex bölümü `cx-agent`'ı kontrol ediyordu ama `cx-stream`'i etmiyordu. Üç boşluk da dolduruldu.
+- **watch.md: boş `$ARGUMENTS` için koruma yok.** `/cli-dispatch:watch`'ı argümansız çağırmak kafa karıştırıcı çıktı üretiyordu (session kökünü bir session dizini gibi kontrol ediyordu). `$ARGUMENTS` boşken kullanım ipucu + erken çıkış eklendi.
+
+## [3.14.0] — 2026-06-29
+
+### Eklenenler
+- `/cli-dispatch:doctor` — tam sağlık kontrolü komutu: 6 CLI'ın hepsinin PATH'te olduğunu, API anahtarlarını, auth durumunu doğrular; öğe başına yeşil ✓ / kırmızı ✗; açık `~/.local/bin` PATH kontrolü ve smoke-test ipucu içerir.
+- `/cli-dispatch:kill <session-id>` — çalışan bir worker session'ını durdurur: `pgrep -f <session-id>` ile SIGTERM gönderir ve `status.json` durumunu `killed` olarak işaretler.
+- `/cli-dispatch:help` — tek ekranlık, gruplanmış komut kopya kâğıdı (Setup, Delegate, Monitor, Housekeeping).
+- `/cli-dispatch:resume <session-id> <prompt>` — herhangi bir worker session'ını takip prompt'uyla sürdürür; backend'i (DeepSeek / Antigravity / Codex) `status.json`'dan otomatik algılar.
+
+### Düzeltilenler
+- `ds-worktree-run.sh` / `ag-worktree-run.sh`: worker çağrısından `|| true` kaldırıldı (çökme artık babysitter'a ulaşır); çökme veya sinyalde sızan worktree'leri silmek için `trap _cleanup ERR INT TERM` eklendi.
+- `watch.md`: eskimiş "claude-ds" markalaması kaldırıldı — komut tüm backend'lerde (DeepSeek, Antigravity, Codex) çalışır; takip ipucu `/cli-dispatch:resume` olarak güncellendi.
 
 ## [3.13.4] — 2026-06-28
 

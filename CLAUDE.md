@@ -147,7 +147,7 @@ Anthropic tokens (~62 turns per run: polling, reading diffs, running verify them
 the default delegation path from an orchestrator, modelled on codex-plugin-cc's `codex-rescue`:
 a forwarder, not a babysitter. It makes ONE Bash call that writes the brief to a file and runs
 `cli-dispatch-run --detach … --fix-attempts 1`, then blocks on `cli-dispatch-wait --run <id>`
-(re-calling on exit 2, capped) and returns the output verbatim — ~3-4 turns vs ~62. It is cheap
+(re-calling on exit 124, the timeout code, capped) and returns the output verbatim — ~3-4 turns vs ~62. It is cheap
 because every mechanical step lives in shell: `--detach` re-execs the runner under `nohup`
 into `<sessions-root>/.runs/<id>/` (`pid`, `log`, `session`, then `summary.txt` and last `exit`,
 written from an EXIT trap so a waiter that sees `exit` can always read the summary — the
@@ -188,8 +188,8 @@ archived into `verdict-archive/` first. It is a floor, not a replacement for
 matters at the call site: prune AFTER creating your own dir, or you become your own target.
 
 **Session-dir root resolution** is duplicated (by design, not accidentally) across
-`watch.md`, `resume.md`, `kill.md`, `sessions.md`, `gain.md`, `cli-dispatch-clean`, and
-`cli-dispatch-wait` as the same shell snippet: `CLI_DISPATCH_SESSIONS_DIR` env override →
+`watch.md`, `resume.md`, `kill.md`, `run.md`, `cli-dispatch-sessions.sh` (what `sessions.md`
+pre-executes), `cli-dispatch-clean`, and `cli-dispatch-wait` as the same shell snippet: `CLI_DISPATCH_SESSIONS_DIR` env override →
 `~/.cache/cli-dispatch/sessions` → legacy `~/.cache/claude-ds/sessions` fallback. If you add
 a new command that touches sessions, copy this exact snippet rather than inventing a new
 resolution order.

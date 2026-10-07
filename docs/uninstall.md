@@ -19,7 +19,7 @@ For a full cleanup, in order: (1) remove the plugin, (2) delete the wrapper + co
 rm -f  ~/.local/bin/claude-ds ~/.local/bin/claude-ds-stream ~/.local/bin/ds-agent
 rm -f  ~/.local/bin/{ag,cx,oc,cp}-agent ~/.local/bin/{ag,cx,oc,cp}-stream
 rm -f  ~/.local/bin/cli-dispatch-{run,wait,clean,gain}
-rm -f  ~/.local/bin/{ds,cx}-worktree-run.* ~/.local/bin/stream-utils.sh ~/.local/bin/version-check.sh
+rm -f  ~/.local/bin/{ds,ag,cx,oc,cp}-worktree-run.* ~/.local/bin/stream-utils.sh ~/.local/bin/version-check.sh
 rm -rf ~/.local/share/cli-dispatch ~/.local/share/claude-ds   # engines/parsers (also legacy path)
 rm -rf ~/.cache/cli-dispatch ~/.cache/claude-ds               # session records (also legacy path)
 rm -rf ~/.config/cli-dispatch ~/.config/claude-ds             # config (incl. API key) — deleting removes the key too (also legacy path)
@@ -27,10 +27,13 @@ rm -rf ~/.config/cli-dispatch ~/.config/claude-ds             # config (incl. AP
 
 ```powershell
 # Native Windows (PowerShell)
-Remove-Item -Force "$HOME\.local\bin\claude-ds.ps1","$HOME\.local\bin\claude-ds.cmd","$HOME\.local\bin\claude-ds-stream.ps1","$HOME\.local\bin\claude-ds-stream.cmd" -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force "$HOME\.local\share\claude-ds" -ErrorAction SilentlyContinue   # stream parser
-Remove-Item -Recurse -Force "$HOME\.cache\claude-ds" -ErrorAction SilentlyContinue          # session records
-Remove-Item -Recurse -Force "$HOME\.config\claude-ds" -ErrorAction SilentlyContinue
+$bin = "$HOME\.local\bin"
+$names = "claude-ds","claude-ds-stream","ds-agent","cx-stream","cx-agent","cli-dispatch-run","cli-dispatch-wait","cli-dispatch-clean","cli-dispatch-gain"
+foreach ($n in $names) { Remove-Item -Force "$bin\$n.ps1","$bin\$n.cmd" -ErrorAction SilentlyContinue }
+Remove-Item -Force "$bin\version-check.ps1","$bin\ds-worktree-run.sh","$bin\cx-worktree-run.sh" -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force "$HOME\.local\share\cli-dispatch","$HOME\.local\share\claude-ds" -ErrorAction SilentlyContinue   # engines/parsers (also legacy path)
+Remove-Item -Recurse -Force "$HOME\.cache\cli-dispatch","$HOME\.cache\claude-ds" -ErrorAction SilentlyContinue                  # session records (also legacy path)
+Remove-Item -Recurse -Force "$HOME\.config\cli-dispatch","$HOME\.config\claude-ds" -ErrorAction SilentlyContinue                # config (incl. API key) — deleting removes the key too (also legacy path)
 ```
 
 **Step 3 — (Optional) clean up temporary worktrees:**

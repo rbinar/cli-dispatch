@@ -19,6 +19,8 @@ set --; while IFS= read -r -d '' a; do set -- "$@" "$a"; done < "$_AF"; rm -f "$
 SID="${1:-}"
 if [ -z "$SID" ]; then echo "usage: /cli-dispatch:kill <session-id>  (use /cli-dispatch:sessions to list)"; exit 1; fi
 
+case "$SID" in */*|*\\*|*..*) echo "invalid session id: $SID"; exit 1 ;; esac
+
 ROOT="${CLI_DISPATCH_SESSIONS_DIR:-${CLAUDE_DS_SESSIONS_DIR:-}}"
 [ -n "$ROOT" ] || { _c="${XDG_CACHE_HOME:-$HOME/.cache}"; ROOT="$_c/cli-dispatch/sessions"; [ -d "$ROOT" ] || [ ! -d "$_c/claude-ds/sessions" ] || ROOT="$_c/claude-ds/sessions"; }
 DIR="$ROOT/$SID"
@@ -58,6 +60,10 @@ kill_tree() {
 SIGNALLED=""
 WPID=""
 [ -f "$DIR/worker.pid" ] && WPID=$(tr -dc '0-9' < "$DIR/worker.pid" 2>/dev/null)
+# A recycled pid must never be killed: only a process whose command line is a cli-dispatch worker counts.
+if [ -n "$WPID" ]; then
+  case "$(ps -o command= -p "$WPID" 2>/dev/null)" in *-stream*|*-agent*|*claude-ds*) ;; *) WPID="" ;; esac
+fi
 if [ -n "$WPID" ] && kill -0 "$WPID" 2>/dev/null; then
   kill_tree "$WPID"
   echo "killed worker process tree (root PID $WPID from worker.pid)"

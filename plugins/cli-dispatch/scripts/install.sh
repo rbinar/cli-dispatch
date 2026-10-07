@@ -36,15 +36,12 @@ fi
 # automates auth/sign-in. Default OFF (unset behavior is unchanged).
 BACKENDS="deepseek"
 INSTALL_MISSING=0
-POLICY_INJECTION="off"
 NONINTERACTIVE=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --backends) BACKENDS="${2:-}"; shift 2;;
     --backends=*) BACKENDS="${1#*=}"; shift;;
     --install-missing) INSTALL_MISSING=1; shift;;
-    --policy-injection) POLICY_INJECTION="${2:-}"; shift 2;;
-    --policy-injection=*) POLICY_INJECTION="${1#*=}"; shift;;
     --non-interactive) NONINTERACTIVE=1; shift;;
     *) echo "install.sh: unknown arg '$1'" >&2; exit 1;;
   esac
@@ -397,24 +394,6 @@ elif [ "$CFG_CHANGED" -eq 1 ]; then
   echo "Config updated (added missing backend blocks) -> $CONFIG"
 else
   echo "Config already complete -> $CONFIG (left untouched)"
-fi
-
-# ---- policy.json skeleton (only with --policy-injection on; never clobbered) -----------
-POLICY_FILE="$CONFIG_DIR/policy.json"
-if [ "$POLICY_INJECTION" = "on" ] && [ ! -f "$POLICY_FILE" ]; then
-  mkdir -p "$CONFIG_DIR"
-  _VER="$(grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' "$SCRIPT_DIR/../.claude-plugin/plugin.json" 2>/dev/null | head -1 | sed 's/.*"\([^"]*\)"[^"]*$/\1/')"
-  cat > "$POLICY_FILE" <<POL
-{
-  "schemaVersion": 1,
-  "enabled": true,
-  "issueReminder": true,
-  "claudeMdBlock": false,
-  "pluginVersionAtSetup": "${_VER:-unknown}",
-  "updatedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-}
-POL
-  echo "Created policy.json (injection ENABLED) -> $POLICY_FILE"
 fi
 
 # Open the one-shot setup form so the user can enter keys — triggered whenever the config was just
