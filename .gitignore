@@ -14,3 +14,6 @@ config
 
 # Playwright MCP QC artifacts (transient)
 .playwright-mcp/
+
+# Demo video source (Remotion + capture scripts) — local only; videos/ and assets/*.gif ship
+assets/demo-src/
