@@ -54,6 +54,12 @@ Everything the plugin installs lives under `plugins/cli-dispatch/`:
 - `hooks/hooks.json` — the SessionStart hook registration. Wires `scripts/policy-inject.mjs`
   to all five matchers (`startup`/`resume`/`clear`/`compact`/`fork`); `compact` and `fork`
   matter because compaction drops the injected policy from a long session's context (#118).
+- `hooks/cli-dispatch-mod.tsx` — the plugin's mod (Claude Code 2.1.287+), named under `modules` in
+  the same `hooks.json`: a band above the prompt with this session's workers, and a `tool.call`
+  guard that refuses `Edit`/`Write` into a repo while a worktree run for it is live (the leak check
+  would blame the worker). Its state contract is `types/index.d.ts` (named as `types` in
+  `plugin.json`); its tests are `tests/mod.test.ts`. It reads session dirs with the same root
+  resolution and 90 s liveness window as `cli-dispatch-statusline.sh`.
 - `skills/ds-delegate/SKILL.md` — the `ds-delegate` skill.
 
 ## Commands
@@ -72,6 +78,12 @@ bash -n plugins/cli-dispatch/scripts/<script>
 
 # Verify the four version-tracking files agree (see "Version sync" below)
 node plugins/cli-dispatch/scripts/check-version-sync.mjs
+
+# The mod: validate, then run its tests against the Claude Code runtime
+claude plugin validate plugins/cli-dispatch
+claude plugin test plugins/cli-dispatch
+# …and type-check it; the engine lays the types (gitignored) the first time a session loads it
+tsc -p plugins/cli-dispatch
 ```
 
 Test files live in `plugins/cli-dispatch/scripts/__tests__/`, one per parser/utility
@@ -296,6 +308,13 @@ diff the guards — not only the happy path.
   both pre-executed; each passes alone, and the plugin passes with `help`/`sessions`/`doctor`.
   Bisected with throwaway branches in the portal (6.1.5). Re-validate there
   (claude.ai/directory/manage, branch field) before adding another `!` line.
+- The mod's tests stub every `$` call (the test kit has no fs, env, clock or process beneath), so
+  they cannot catch a wrong literal from the engine: `$.fs.list` spells a directory `kind: 'dir'`,
+  and with fixtures that said `'directory'` every test passed while the guard and band saw no
+  session at all in a real one. Type-check the module against the engine's `claude-code.d.ts` with
+  `tsc` (it flags that comparison) and try it once in a real session. Older Claude Code still runs
+  the `SessionStart` hooks beside `modules` (checked: 2.1.286 validates it, 2.1.250 rejects the module
+  and nothing else).
 - No bash process substitution (`<(…)` / `>(…)`) in runtime scripts: it needs `/dev/fd`, which
   managed sandboxes forbid (#171). Use a pipe, a here-string or a `mktemp` file; a named pipe read
   by `cat` when node must read a live stream (libuv reopens a FIFO stdin and never sees EOF).
