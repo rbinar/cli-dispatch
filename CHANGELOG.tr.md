@@ -7,6 +7,16 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [6.1.5] — 2026-10-11
+
+### Değişti
+
+- **`/cli-dispatch:balance` artık önceden çalıştırılmıyor.** Script'ini `!` satırı yerine tek bir
+  Bash çağrısıyla çalıştırıyor. Anthropic'in plugin dizini validator'ı `balance` ve `sessions`
+  ikisi birden önceden çalıştırılırken plugin'i reddediyordu (ikisi de tek başına geçiyordu); bu
+  değişiklikle plugin dizinin otomatik kontrollerinden geçiyor. Raporun kendisi değişmedi; backend
+  argümanı (`ds|ag|cx|oc|cp` ya da uzun adı) artık doğrudan script'e geçiyor.
+
 ## [6.1.4] — 2026-10-07
 
 ### Düzeltildi

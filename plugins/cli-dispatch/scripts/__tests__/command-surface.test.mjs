@@ -142,10 +142,11 @@ test('doctor shows the configured model (from status)', () => {
 
 // ---- sessions [backend] / balance [backend] -------------------------------------------------
 
-test('sessions and balance pre-execute without user arguments', () => {
+test('sessions pre-executes without user arguments; balance passes them to its script', () => {
   assert.match(preExec('sessions'), /cli-dispatch-sessions\.sh"?\s*$/)
-  assert.match(preExec('balance'), /cli-dispatch-balance\.sh"?\s*$/)
-  for (const n of ['sessions', 'balance']) assert.match(md(n).split('\n').filter((l) => !l.startsWith('!`')).join('\n'), /\$ARGUMENTS/, `${n}: prose names the requested backend`)
+  assert.match(md('sessions').split('\n').filter((l) => !l.startsWith('!`')).join('\n'), /\$ARGUMENTS/, 'sessions: prose names the requested backend')
+  assert.match(md('balance'), /^\$ARGUMENTS$/m)
+  assert.match(md('balance'), /cli-dispatch-balance\.sh" "\$@"$/m)
 })
 
 test('sessions accepts a short or long backend slug', () => {

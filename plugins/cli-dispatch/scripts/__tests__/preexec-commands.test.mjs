@@ -28,13 +28,6 @@ const COMMANDS = [
     forbidden: [/```bash/, /command -v cx-agent/, /codex login status/],
   },
   {
-    name: 'balance',
-    script: 'cli-dispatch-balance.sh',
-    maxBytes: 3200, // was 6410; carries the per-backend notes + DeepSeek PowerShell fallback since 6.0.0
-    stripFencedPowerShell: true,
-    forbidden: [/```bash/, /api\.deepseek\.com/, /openrouter\.ai\/api/],
-  },
-  {
     name: 'sessions',
     script: 'cli-dispatch-sessions.sh',
     maxBytes: 1200,
@@ -114,10 +107,15 @@ test('doctor passes the plugin root as an argument, not via env', () => {
   }
 })
 
-test('balance keeps the DeepSeek native Windows PowerShell fallback but no fenced bash', () => {
+// 6.1.5: balance is no longer pre-executed. Anthropic's plugin-directory validator blocks the
+// plugin (COMMAND_PATH_COMPUTED) while sessions and balance are both `!` lines; each passes alone.
+test('balance runs its script from one fenced bash block and keeps the DeepSeek PowerShell fallback', () => {
   const markdown = read(path.join(commandsDir, 'balance.md'))
+  assert.doesNotMatch(markdown, /^!`/m)
   assert.match(markdown, /^```powershell$/m)
-  assert.doesNotMatch(markdown, /^```bash$/m)
+  assert.equal((markdown.match(/^```bash$/gm) || []).length, 1)
+  assert.match(markdown, /^bash "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/cli-dispatch-balance\.sh" "\$@"$/m)
+  assert.doesNotMatch(withoutFencedPowerShell(markdown), /api\.deepseek\.com|openrouter\.ai\/api/)
 })
 
 test('cli-dispatch-clean-schedule.sh defaults to status when given no action', () => {

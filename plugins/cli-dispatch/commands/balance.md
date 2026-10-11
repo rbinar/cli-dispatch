@@ -4,10 +4,19 @@ argument-hint: "[ds|ag|cx|oc|cp]"
 allowed-tools: Bash
 ---
 
-!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/cli-dispatch-balance.sh"`
+Run this once with the Bash tool. With no argument it covers every backend; `ds`/`ag`/`cx`/`oc`/`cp`
+(or the long name) limits it to one.
 
-The report above already ran — do NOT run it again. If the user named a backend ($ARGUMENTS — ds|deepseek, ag|antigravity, cx|codex, oc|opencode, cp|copilot), show only that backend's section; otherwise show everything. With no argument it covers every
-backend; `ds`/`ag`/`cx`/`oc`/`cp` (or the long name) limits it to one.
+```bash
+# The user's text is pasted in before bash parses it, so it is kept in a quoted heredoc and split
+# by a tokenizer that expands nothing. (`read`, not $(cat): bash 3.2 mis-parses a lone quote in $( ).)
+IFS= read -r -d '' ARGS_RAW <<'CLI_DISPATCH_ARGS_EOF_9f2c' || true
+$ARGUMENTS
+CLI_DISPATCH_ARGS_EOF_9f2c
+_AF="$(mktemp)"; printf '%s' "$ARGS_RAW" | node "${CLAUDE_PLUGIN_ROOT}/scripts/cli-dispatch-args.mjs" > "$_AF" || { rm -f "$_AF"; exit 2; }
+set --; while IFS= read -r -d '' a; do set -- "$@" "$a"; done < "$_AF"; rm -f "$_AF"
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/cli-dispatch-balance.sh" "$@"
+```
 
 Summarize one headline number per `==` section and nothing more:
 
