@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [6.1.7] — 2026-10-11
+
+### Fixed
+
+- **The marketplace descriptions are in English.** `/plugin` showed the plugin and marketplace
+  descriptions in Turkish; `marketplace.json` now matches the GitHub About text.
+
 ## [6.1.6] — 2026-10-11
 
 ### Added
