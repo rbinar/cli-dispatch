@@ -305,8 +305,8 @@ set +e
     ANTHROPIC_MODEL="${DS_MODEL:-deepseek-v4-pro}" \
     ANTHROPIC_DEFAULT_OPUS_MODEL="${DS_MODEL:-deepseek-v4-pro}" \
     ANTHROPIC_DEFAULT_SONNET_MODEL="${DS_MODEL:-deepseek-v4-pro}" \
-    ANTHROPIC_DEFAULT_HAIKU_MODEL="${DS_FLASH_MODEL:-deepseek-v4-flash}" \
-    CLAUDE_CODE_SUBAGENT_MODEL="${DS_FLASH_MODEL:-deepseek-v4-flash}" \
+    ANTHROPIC_DEFAULT_HAIKU_MODEL="${DS_FLASH_MODEL:-deepseek-flash}" \
+    CLAUDE_CODE_SUBAGENT_MODEL="${DS_FLASH_MODEL:-deepseek-flash}" \
     ${THINK:+MAX_THINKING_TOKENS="$THINK"} \
     claude "${CLAUDE_ARGS[@]}" < "$PROMPT_TMP" &
   CPID=$!

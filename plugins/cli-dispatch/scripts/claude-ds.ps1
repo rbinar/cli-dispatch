@@ -26,7 +26,7 @@ if ([string]::IsNullOrEmpty($key)) {
 $modelCfg = if ($cfg.ContainsKey("DS_MODEL")) { $cfg["DS_MODEL"] } else { "" }
 $flashCfg = if ($cfg.ContainsKey("DS_FLASH_MODEL")) { $cfg["DS_FLASH_MODEL"] } else { "" }
 $model = if (-not [string]::IsNullOrEmpty($modelCfg)) { $modelCfg } elseif ($env:DS_MODEL) { $env:DS_MODEL } else { "deepseek-v4-pro" }
-$flash = if (-not [string]::IsNullOrEmpty($flashCfg)) { $flashCfg } elseif ($env:DS_FLASH_MODEL) { $env:DS_FLASH_MODEL } else { "deepseek-v4-flash" }
+$flash = if (-not [string]::IsNullOrEmpty($flashCfg)) { $flashCfg } elseif ($env:DS_FLASH_MODEL) { $env:DS_FLASH_MODEL } else { "deepseek-flash" }
 
 $env:ANTHROPIC_BASE_URL = "https://api.deepseek.com/anthropic"
 $env:ANTHROPIC_AUTH_TOKEN = $key
