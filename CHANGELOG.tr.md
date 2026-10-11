@@ -7,6 +7,13 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [6.1.7] — 2026-10-11
+
+### Düzeltildi
+
+- **Marketplace açıklamaları İngilizce.** `/plugin` plugin ve marketplace açıklamalarını
+  Türkçe gösteriyordu; `marketplace.json` artık GitHub About metniyle aynı.
+
 ## [6.1.6] — 2026-10-11
 
 ### Eklendi
