@@ -22,8 +22,9 @@ Everything the plugin installs lives under `plugins/cli-dispatch/`:
   script** via a leading `` !`bash "${CLAUDE_PLUGIN_ROOT}/scripts/<name>.sh"` `` line:
   embedded shell is paid twice (once as the markdown's input tokens, again as output when
   the model re-emits it verbatim as a Bash tool call), while a `!` line runs before the
-  model sees anything and injects only the output. `doctor`, `sessions`, `balance` and
-  `help` are converted; `clean` is a thin call to the installed `cli-dispatch-clean` binary (not
+  model sees anything and injects only the output. `doctor`, `sessions` and `help` are
+  converted; `balance` was too until 6.1.5 and now runs its script from one fenced call (see
+  "Non-obvious constraints"); `clean` is a thin call to the installed `cli-dispatch-clean` binary (not
   pre-executed — it mutates); the rest are not yet. Two traps: `${CLAUDE_PLUGIN_ROOT}`
   is interpolated into the `!` command string but **not** exported into the subprocess, so
   a script that needs it must take it as an argument (this silently killed `doctor`'s
@@ -290,6 +291,11 @@ diff the guards — not only the happy path.
 
 ## Non-obvious constraints
 
+- Anthropic's plugin-directory validator follows every `!` pre-execution line into its script and
+  blocks submission (`COMMAND_PATH_COMPUTED`, no file named) while `balance` and `sessions` are
+  both pre-executed; each passes alone, and the plugin passes with `help`/`sessions`/`doctor`.
+  Bisected with throwaway branches in the portal (6.1.5). Re-validate there
+  (claude.ai/directory/manage, branch field) before adding another `!` line.
 - No bash process substitution (`<(…)` / `>(…)`) in runtime scripts: it needs `/dev/fd`, which
   managed sandboxes forbid (#171). Use a pipe, a here-string or a `mktemp` file; a named pipe read
   by `cat` when node must read a live stream (libuv reopens a FIFO stdin and never sees EOF).

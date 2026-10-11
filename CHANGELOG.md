@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [6.1.5] — 2026-10-11
+
+### Changed
+
+- **`/cli-dispatch:balance` is no longer pre-executed.** It runs its script from one Bash call
+  instead of a `!` line. Anthropic's plugin-directory validator refused the plugin while both
+  `balance` and `sessions` were pre-executed (each passed on its own); with this change the
+  plugin passes the directory's automated checks. The report itself is unchanged, and a backend
+  argument (`ds|ag|cx|oc|cp` or the long name) is now passed straight to the script.
+
 ## [6.1.4] — 2026-10-07
 
 ### Fixed
