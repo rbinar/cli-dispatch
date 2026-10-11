@@ -7,6 +7,18 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [6.1.6] — 2026-10-11
+
+### Eklendi
+
+- **Plugin ikonu** (`.claude-plugin/icon.png`, 1024×1024), Anthropic plugin dizini ilanı için:
+  beş worker düğümüne dağılan bir orkestratör düğümü.
+
+### Kaldırıldı
+
+- `plugin.json`'dan `category`. Claude Code orada onu yok sayıyor, dizin de uyarı veriyor;
+  marketplace girdisinde duruyor.
+
 ## [6.1.5] — 2026-10-11
 
 ### Değişti

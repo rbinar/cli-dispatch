@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [6.1.6] — 2026-10-11
+
+### Added
+
+- **Plugin icon** (`.claude-plugin/icon.png`, 1024×1024) for the Anthropic plugin-directory
+  listing: an orchestrator node fanning out to five worker nodes.
+
+### Removed
+
+- `category` from `plugin.json`. Claude Code ignores it there and the directory flags it; the
+  marketplace entry keeps it.
+
 ## [6.1.5] — 2026-10-11
 
 ### Changed
