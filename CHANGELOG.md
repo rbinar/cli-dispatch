@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [6.2.0] — 2026-10-12
+
+### Added
+
+- **A worker band above the prompt** (Claude Code 2.1.287+, no setup). The plugin now ships a mod,
+  `hooks/cli-dispatch-mod.tsx`, that shows this session's live workers (`▶ cx 2m05s`) and, for
+  10 minutes after, each finished run's verify result (`■ ds PASS`). The statusline fragment stays
+  for statuslines you already run.
+- **A guard for the repo a worktree run came from.** While a run is live, `Edit`/`Write` into that
+  repo is refused with the reason: an edit there made the run's leak check blame the worker and
+  skip verify. Bash writes are not caught, and a guard that fails lets the edit through.
+- Older Claude Code versions keep running the `SessionStart` policy hook beside the mod.
+
 ## [6.1.8] — 2026-10-11
 
 ### Fixed

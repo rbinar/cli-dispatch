@@ -2,6 +2,9 @@
 
 [← README](../../README.tr.md)
 
+> Claude Code 2.1.287+ sürümünde plugin, prompt'un üstüne kurulum gerektirmeyen bir worker şeridi
+> zaten çiziyor ([Özellikler](features.md)); bu fragment, zaten kullandığın bir statusline için.
+
 `scripts/cli-dispatch-statusline.sh` bir statusline **fragment'ıdır**: birleştirici
 `~/.claude/hooks/statusline.sh` wrapper'ın statusline stdin JSON'unu bu script'e aktarıp
 çıktısını eklemesiyle çalışır. Claude Code'un snake_case `session_id` alanından

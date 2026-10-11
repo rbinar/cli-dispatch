@@ -2,6 +2,9 @@
 
 [← README](../README.md)
 
+> On Claude Code 2.1.287+ the plugin already draws a worker band above the prompt with no setup
+> ([Features](features.md)); this fragment is for a statusline you already run.
+
 `scripts/cli-dispatch-statusline.sh` is a statusline **fragment**: a combining
 `~/.claude/hooks/statusline.sh` wrapper pipes the statusline's stdin JSON to it and appends
 its output. From Claude Code's snake_case `session_id`, it counts only fresh, running workers

@@ -7,6 +7,20 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [6.2.0] — 2026-10-12
+
+### Eklendi
+
+- **Prompt'un üstünde worker şeridi** (Claude Code 2.1.287+, kurulum yok). Plugin artık bir mod
+  (`hooks/cli-dispatch-mod.tsx`) içeriyor: bu oturumun çalışan worker'larını (`▶ cx 2m05s`) ve
+  biten her koşunun verify sonucunu 10 dakika boyunca (`■ ds PASS`) gösterir. Statusline fragment'ı,
+  zaten kullandığın statusline'lar için duruyor.
+- **Worktree koşusunun geldiği repo için koruma.** Bir koşu sürerken o repo'ya `Edit`/`Write`
+  gerekçesiyle reddedilir: oraya yapılan düzenleme koşunun sızıntı kontrolünün suçu worker'a
+  atmasına ve verify'ın atlanmasına yol açıyordu. Bash ile yazma yakalanmaz; koruma hata verirse
+  düzenlemeye izin verir.
+- Eski Claude Code sürümleri `SessionStart` politika hook'unu modun yanında çalıştırmaya devam eder.
+
 ## [6.1.8] — 2026-10-11
 
 ### Düzeltildi
