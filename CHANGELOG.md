@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [6.1.8] — 2026-10-11
+
+### Fixed
+
+- **The DeepSeek flash slot defaults to `deepseek-flash`.** DeepSeek's API lists only
+  `deepseek-flash` and `deepseek-v4-pro`; `deepseek-v4-flash` still answers as an unlisted alias.
+  `claude-ds`, `claude-ds-stream` (+ `.ps1` twins) and the installers now default to the listed
+  name. An existing config keeps whatever `DS_FLASH_MODEL` it has.
+
 ## [6.1.7] — 2026-10-11
 
 ### Fixed

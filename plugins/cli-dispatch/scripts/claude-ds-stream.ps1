@@ -430,7 +430,7 @@ $modelCfg = if ($cfg.ContainsKey("DS_MODEL")) { $cfg["DS_MODEL"] } else { "" }
 $flashCfg = if ($cfg.ContainsKey("DS_FLASH_MODEL")) { $cfg["DS_FLASH_MODEL"] } else { "" }
 # Env wins over the config, matching bash source_config (#163).
 $model = if ($env:DS_MODEL) { $env:DS_MODEL } elseif (-not [string]::IsNullOrWhiteSpace($modelCfg)) { $modelCfg } else { "deepseek-v4-pro" }
-$flash = if ($env:DS_FLASH_MODEL) { $env:DS_FLASH_MODEL } elseif (-not [string]::IsNullOrWhiteSpace($flashCfg)) { $flashCfg } else { "deepseek-v4-flash" }
+$flash = if ($env:DS_FLASH_MODEL) { $env:DS_FLASH_MODEL } elseif (-not [string]::IsNullOrWhiteSpace($flashCfg)) { $flashCfg } else { "deepseek-flash" }
 
 $originalLocation = Get-Location
 

@@ -69,7 +69,7 @@ ensure_config_block() {
 # --- DeepSeek backend (claude-ds) --- add your DeepSeek API key below.
 DEEPSEEK_API_KEY=""
 DS_MODEL="deepseek-v4-pro"
-DS_FLASH_MODEL="deepseek-v4-flash"
+DS_FLASH_MODEL="deepseek-flash"
 BLOCK
 )
       ;;

@@ -7,6 +7,15 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [6.1.8] — 2026-10-11
+
+### Düzeltildi
+
+- **DeepSeek flash yuvasının varsayılanı `deepseek-flash`.** DeepSeek API'si yalnız
+  `deepseek-flash` ve `deepseek-v4-pro` adlarını listeliyor; `deepseek-v4-flash` listede olmayan
+  bir alias olarak hâlâ yanıt veriyor. `claude-ds`, `claude-ds-stream` (+ `.ps1` ikizleri) ve
+  installer'lar artık listelenen adı kullanıyor. Mevcut config'teki `DS_FLASH_MODEL` korunur.
+
 ## [6.1.7] — 2026-10-11
 
 ### Düzeltildi

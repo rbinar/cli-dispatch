@@ -30,11 +30,11 @@ ANTHROPIC_AUTH_TOKEN="$DEEPSEEK_API_KEY"
 ANTHROPIC_MODEL="${DS_MODEL:-deepseek-v4-pro}"
 ANTHROPIC_DEFAULT_OPUS_MODEL="${DS_MODEL:-deepseek-v4-pro}"
 ANTHROPIC_DEFAULT_SONNET_MODEL="${DS_MODEL:-deepseek-v4-pro}"
-ANTHROPIC_DEFAULT_HAIKU_MODEL="${DS_FLASH_MODEL:-deepseek-v4-flash}"
-CLAUDE_CODE_SUBAGENT_MODEL="${DS_FLASH_MODEL:-deepseek-v4-flash}"
+ANTHROPIC_DEFAULT_HAIKU_MODEL="${DS_FLASH_MODEL:-deepseek-flash}"
+CLAUDE_CODE_SUBAGENT_MODEL="${DS_FLASH_MODEL:-deepseek-flash}"
 ```
 
-The API key lives in `~/.config/cli-dispatch/config` (mode 0600, never committed). All primary model slots map to `deepseek-v4-pro`; the haiku/subagent slot maps to `deepseek-v4-flash`.
+The API key lives in `~/.config/cli-dispatch/config` (mode 0600, never committed). All primary model slots map to `deepseek-v4-pro`; the haiku/subagent slot maps to `deepseek-flash`.
 
 The `claude-ds-stream` variant adds session tracking: it runs `claude` with stream-json output and pipes through a Node.js parser (`ds-stream-parse.mjs`) that writes structured session files (status.json, progress.log, transcript.jsonl, meta.json) to `~/.cache/cli-dispatch/sessions/<id>/`.
 
@@ -68,7 +68,7 @@ Get a key from https://platform.deepseek.com/api_keys, then add it to `~/.config
 ```
 DEEPSEEK_API_KEY="sk-..."
 DS_MODEL="deepseek-v4-pro"
-DS_FLASH_MODEL="deepseek-v4-flash"
+DS_FLASH_MODEL="deepseek-flash"
 ```
 
 ### 3. Verify PATH
@@ -229,14 +229,14 @@ Config file: `~/.config/cli-dispatch/config` (mode 0600, never committed).
 ```
 DEEPSEEK_API_KEY="sk-..."
 DS_MODEL="deepseek-v4-pro"
-DS_FLASH_MODEL="deepseek-v4-flash"
+DS_FLASH_MODEL="deepseek-flash"
 ```
 
 | Variable | Purpose |
 |---|---|
 | `DEEPSEEK_API_KEY` | DeepSeek API key |
 | `DS_MODEL` | Model for opus/sonnet/default slots (default: `deepseek-v4-pro`) |
-| `DS_FLASH_MODEL` | Model for haiku/subagent slot (default: `deepseek-v4-flash`) |
+| `DS_FLASH_MODEL` | Model for haiku/subagent slot (default: `deepseek-flash`) |
 
 Environment overrides:
 
