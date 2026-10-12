@@ -55,9 +55,11 @@ Everything the plugin installs lives under `plugins/cli-dispatch/`:
   to all five matchers (`startup`/`resume`/`clear`/`compact`/`fork`); `compact` and `fork`
   matter because compaction drops the injected policy from a long session's context (#118).
 - `hooks/cli-dispatch-mod.tsx` — the plugin's mod (Claude Code 2.1.287+), named under `modules` in
-  the same `hooks.json`: a band above the prompt with this session's workers, and a `tool.call`
+  the same `hooks.json`: a band above the prompt with this session's workers; a `tool.call`
   guard that refuses `Edit`/`Write` into a repo while a worktree run for it is live (the leak check
-  would blame the worker). Its state contract is `types/index.d.ts` (named as `types` in
+  would blame the worker); and the `mcp__cli-dispatch__dispatch` tool (6.3.0), which runs
+  `cli-dispatch-run --detach` + `cli-dispatch-wait --run` itself in one tool call — the runner agent's
+  job with no LLM turns. It is not registered inside a worker (`CLI_DISPATCH_WORKER=1`). Its state contract is `types/index.d.ts` (named as `types` in
   `plugin.json`); its tests are `tests/mod.test.ts`. It reads session dirs with the same root
   resolution and 90 s liveness window as `cli-dispatch-statusline.sh`.
 - `skills/ds-delegate/SKILL.md` — the `ds-delegate` skill.
@@ -157,7 +159,8 @@ to ship five LLM `*-runner` babysitter subagents for this instead; they were ret
 Anthropic tokens (~62 turns per run: polling, reading diffs, running verify themselves).
 
 **The thin `cli-dispatch:runner` agent (5.2.0).** `agents/runner.md` (haiku, `tools: Bash`) is
-the default delegation path from an orchestrator, modelled on codex-plugin-cc's `codex-rescue`:
+the delegation path from an orchestrator on Claude Code older than 2.1.287 (on newer ones the policy
+names the mod's `dispatch` tool first; a single tool call of 780 s was measured not to be cut off), modelled on codex-plugin-cc's `codex-rescue`:
 a forwarder, not a babysitter. It makes ONE Bash call that writes the brief to a file and runs
 `cli-dispatch-run --detach … --fix-attempts 1`, then blocks on `cli-dispatch-wait --run <id>`
 (re-calling on exit 124, the timeout code, capped) and returns the output verbatim — ~3-4 turns vs ~62. It is cheap

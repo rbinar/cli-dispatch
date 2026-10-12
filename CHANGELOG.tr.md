@@ -7,6 +7,23 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [6.3.0] — 2026-10-12
+
+### Eklendi
+
+- **`mcp__cli-dispatch__dispatch` aracı** (Claude Code 2.1.287+). Plugin'in modu, modelin
+  `backend`, `cwd`, `task` ve isteğe bağlı `verify`/`model` ile çağırdığı bir araç kaydediyor:
+  `cli-dispatch-run --detach … --fix-attempts 1` çalıştırır, `cli-dispatch-wait --run` ile bekler
+  ve runner özetini olduğu gibi döndürür. `cli-dispatch:runner` agent'ının işini subagent ve LLM
+  turu olmadan yapar: gerçek bir `ds` koşusu 29 sn ve 2 orkestratör turu sürdü, 780 sn'lik bir araç
+  çağrısı kesilmedi. `cli-dispatch-run` PATH'te yoksa plugin'in kendi runner'ına düşer; worker
+  oturumunda sunulmaz.
+
+### Değişti
+
+- Oturum başı politika önce dispatch aracını anıyor; eski Claude Code için runner agent'ı yol olarak
+  kalıyor. `cli-dispatch-drift` dispatch aracı çağrılarını runner kullanımı sayıyor.
+
 ## [6.2.0] — 2026-10-12
 
 ### Eklendi

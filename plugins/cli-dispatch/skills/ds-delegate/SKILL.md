@@ -62,12 +62,16 @@ Session directory: `${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<id>/`
 - `transcript.jsonl` — raw stream-json (resume/audit; **NOT read while polling**)
 - `meta.json` — prompt preview, cwd, branch, model, start/end
 
-## The deterministic runner — `cli-dispatch:runner` agent (default) and `/cli-dispatch:run` (direct)
+## The deterministic runner — `mcp__cli-dispatch__dispatch` tool (preferred), `cli-dispatch:runner` agent (older Claude Code) and `/cli-dispatch:run` (direct)
 Delegation runs through `cli-dispatch-run`: it launches the worker, isolates repo work in a git
 worktree, blocks until it finishes, runs `--verify` itself and writes a compact verdict. All of
 that is plain shell. An LLM *watching* a worker is what measured ~9x the worker's own output in
 Anthropic tokens (issue #114, ~62 turns per run), so the default path is a **thin forwarder**, not
-a babysitter. For mechanical work with a machine-checkable verify command:
+a babysitter. For mechanical work with a machine-checkable verify command, if the `mcp__cli-dispatch__dispatch` tool is available (Claude Code 2.1.287+), call it first — it runs the detached runner and blocks on it itself, with no subagent:
+```
+mcp__cli-dispatch__dispatch({"backend": "ds", "cwd": "/abs/path", "task": "<self-contained brief>", "verify": ["<cmd>"]})
+```
+`model` is optional. It returns the runner's compact summary verbatim; it does not read the verdict or diff for you. Otherwise (older Claude Code) use the thin agent:
 ```
 Agent(subagent_type: "cli-dispatch:runner", prompt:
   "backend: ds\ncwd: /abs/path\nverify: <cmd>\n---\n<self-contained brief>")
@@ -192,7 +196,8 @@ rule applies (`--cwd <worktree>`, review the diff yourself) — for Antigravity,
 Copilot, worktree isolation is the *only* safety boundary, since none of the three has any
 OS- or tool-level write-deny.
 
-**Delegation path (all four):** use `Agent(subagent_type: "cli-dispatch:runner")` with
+**Delegation path (all four):** use the `mcp__cli-dispatch__dispatch` tool with
+`backend: "ag"|"cx"|"oc"|"cp"` when available, else `Agent(subagent_type: "cli-dispatch:runner")` with
 `backend: ag|cx|oc|cp` for mechanical work (or `/cli-dispatch:run <backend> "<task>" --verify '<cmd>'`
 directly), or the escalation path (call the `*-agent` CLI directly and verify the result yourself) for judgment-heavy work.
 

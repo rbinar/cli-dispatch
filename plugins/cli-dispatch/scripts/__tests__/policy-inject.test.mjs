@@ -61,6 +61,8 @@ test('3. enabled:true -> routing + escalation + issue sentences, starts with the
     'must keep behavior-changing decisions in the orchestrator brief'
   )
   assert.ok(ctx.includes('cli-dispatch:runner'), 'must route delegation to the runner agent')
+  assert.ok(ctx.includes('mcp__cli-dispatch__dispatch'), 'must name the dispatch tool first, where the mod registers it')
+  assert.ok(ctx.indexOf('mcp__cli-dispatch__dispatch') < ctx.indexOf('cli-dispatch:runner'), 'the tool comes before the runner agent fallback')
   assert.ok(ctx.includes('/cli-dispatch:resume'), 'must name the escalation follow-up path')
   assert.ok(
     ctx.includes('Do not spawn any other LLM subagent to watch a worker'),
