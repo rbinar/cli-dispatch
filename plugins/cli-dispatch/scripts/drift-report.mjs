@@ -291,7 +291,9 @@ export function analyzeTranscriptText(text) {
     policyInjected: text.includes(POLICY_NEEDLE),
     agentSpawns: countMatches(text, /"name"\s*:\s*"Agent"/g) - runnerAgentSpawns,
     inlineEdits: countMatches(text, /"name"\s*:\s*"(?:Edit|Write)"/g),
-    runnerInvocations: countRunnerBashToolUses(text) + runnerAgentSpawns,
+    // 6.3.0: the mod's dispatch tool is the same delegation path in one call.
+    runnerInvocations:
+      countRunnerBashToolUses(text) + runnerAgentSpawns + countMatches(text, /"name"\s*:\s*"mcp__cli-dispatch__dispatch"/g),
   }
 }
 

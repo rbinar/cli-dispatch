@@ -23,6 +23,7 @@ function stubHost(on: any, sessions: Fixture, repoOf: Record<string, string> = {
   on('session.id', () => ({ value: SID }))
   on('clock.now', () => ({ value: NOW }))
   on('clock.every', () => ({ value: undefined }))
+  on('tool.register', ($: any, e: any) => ({ value: { tool: `mcp__cli-dispatch__${e.name}` } }))
   on('fs.exists', ($: any, e: any) => ({ value: e.path in files }))
   on('fs.list', () => ({ value: Object.keys(sessions).map(name => ({ name, kind: 'dir', size: 0, mtimeMs: 0, isLink: false })) }))
   on('fs.read', ($: any, e: any) => {
@@ -102,5 +103,86 @@ describe('cli-dispatch mod', () => {
     await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
     const r = await $.tool.call({ tool: 'Edit', file_path: '/repo/src/a.ts', old_string: 'a', new_string: 'b' } as any)
     expect((r as any).isError).toBeUndefined()
+  })
+})
+
+// The dispatch tool: every host call is scripted, so the test sees the exact argv and env.
+function stubDispatch(on: any, opts: { worker?: boolean; noPath?: boolean; waits?: number[] } = {}) {
+  const calls: { argv: string[]; env?: Record<string, string> }[] = []
+  const registered: string[] = []
+  const written: Record<string, string> = {}
+  const waits = [...(opts.waits ?? [0])]
+  on('session.start', ($: any, e: any) => ({ cwd: e.cwd }))
+  on('env.get', ($: any, e: any) => ({
+    value: e.name === 'CLI_DISPATCH_SESSIONS_DIR' ? ROOT : e.name === 'TMPDIR' ? '/tmp/' : e.name === 'CLI_DISPATCH_WORKER' && opts.worker ? '1' : undefined,
+  }))
+  on('session.id', () => ({ value: SID }))
+  on('clock.now', () => ({ value: NOW }))
+  on('clock.every', () => ({ value: undefined }))
+  on('tool.register', ($: any, e: any) => {
+    registered.push(e.name)
+    return { value: { tool: `mcp__cli-dispatch__${e.name}` } }
+  })
+  on('fs.exists', () => ({ value: false }))
+  on('fs.list', () => ({ value: [] }))
+  on('fs.write', ($: any, e: any) => {
+    written[e.path] = e.content ?? e.text ?? e.data
+    return { value: undefined }
+  })
+  on('process.run', ($: any, e: any) => {
+    calls.push({ argv: [...e.argv], env: e.init?.env })
+    const name = e.argv[0] === 'bash' ? e.argv[1].split('/').pop() : e.argv[0]
+    if (opts.noPath && e.argv[0] !== 'bash') throw new Error(`spawn ${e.argv[0]} ENOENT`)
+    if (name === 'cli-dispatch-run') return { value: { exitCode: 0, stdout: 'run: run-7\n', stderr: '' } }
+    if (name === 'cli-dispatch-wait') {
+      const code = waits.shift() ?? 0
+      return { value: { exitCode: code, stdout: code === 124 ? '' : 'exit: 0  session: s-1  state: done  verify: pass\n', stderr: '' } }
+    }
+    return { value: { exitCode: 1, stdout: '', stderr: '' } }
+  })
+  return { calls, registered, written }
+}
+
+describe('dispatch tool', () => {
+  test('runs the runner detached with the brief, verify and session id, waits through a timeout, returns the summary', async ($, on) => {
+    const h = stubDispatch(on, { waits: [124, 0] })
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    expect(h.registered).toEqual(['dispatch'])
+    const r: any = await $.tool.call({ tool: 'mcp__cli-dispatch__dispatch', backend: 'cx', cwd: '/repo', task: 'fix it', verify: ['node --test', "echo 'a b'"] } as any)
+    expect(String(r.result ?? r.text)).toMatch(/verify: pass/)
+    const run = h.calls[0]!
+    expect(run.argv.slice(0, 6)).toEqual(['cli-dispatch-run', '--detach', '--backend', 'cx', '--cwd', '/repo'])
+    expect(run.argv).toContain('--fix-attempts')
+    expect(run.argv.filter((a, i) => run.argv[i - 1] === '--verify')).toEqual(['node --test', "echo 'a b'"])
+    expect(run.env?.CLAUDE_CODE_SESSION_ID).toBe(SID)
+    const briefPath = run.argv[run.argv.indexOf('--prompt-file') + 1]!
+    expect(h.written[briefPath]).toBe('fix it')
+    expect(h.calls.filter(c => c.argv[0] === 'cli-dispatch-wait').length).toBe(2)
+  })
+
+  test('falls back to the plugin copy of the runner when it is not on PATH', async ($, on) => {
+    const h = stubDispatch(on, { noPath: true })
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    const r: any = await $.tool.call({ tool: 'mcp__cli-dispatch__dispatch', backend: 'ds', cwd: '/repo', task: 't' } as any)
+    expect(String(r.result ?? r.text)).toMatch(/verify: pass/)
+    const viaBash = h.calls.filter(c => c.argv[0] === 'bash').map(c => c.argv[1])
+    expect(viaBash.some(p => /\/scripts\/cli-dispatch-run$/.test(p!))).toBe(true)
+    expect(viaBash.some(p => /\/scripts\/cli-dispatch-wait$/.test(p!))).toBe(true)
+  })
+
+  test('rejects a bad backend or a relative cwd without starting anything', async ($, on) => {
+    const h = stubDispatch(on)
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    const bad: any = await $.tool.call({ tool: 'mcp__cli-dispatch__dispatch', backend: 'zz', cwd: '/repo', task: 't' } as any)
+    expect(String(bad.result ?? bad.text)).toMatch(/backend must be one of/)
+    const rel: any = await $.tool.call({ tool: 'mcp__cli-dispatch__dispatch', backend: 'ds', cwd: 'repo', task: 't' } as any)
+    expect(String(rel.result ?? rel.text)).toMatch(/absolute path/)
+    expect(h.calls.length).toBe(0)
+  })
+
+  test('is not offered inside a worker session', async ($, on) => {
+    const h = stubDispatch(on, { worker: true })
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    expect(h.registered).toEqual([])
   })
 })

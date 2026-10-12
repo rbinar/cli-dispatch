@@ -134,7 +134,7 @@ export function buildPolicyContext(policyJson) {
 
   const parts = []
   parts.push(
-    `Route delegations by auditability, not reflex. Work with a machine-checkable check belongs on the deterministic runner — including exploratory work, as long as behavior-changing decisions stay in the orchestrator's brief. Delegate with Agent(subagent_type: "cli-dispatch:runner", run_in_background: true), NO model parameter (haiku is pinned): prompt = "backend: <ds|ag|cx|oc|cp>", "cwd: <abs path>", "verify: <cmd>", "---", brief. It returns the verdict; apply the patch yourself. /cli-dispatch:run stays for direct use. Default to delegating: work that adds or changes tests or touches more than one file goes to the agent; do inline only a fix of ~20 lines in one file.`
+    `Route delegations by auditability, not reflex. Work with a machine-checkable check belongs on the deterministic runner — including exploratory work, as long as behavior-changing decisions stay in the orchestrator's brief. Delegate with the mcp__cli-dispatch__dispatch tool if listed, else Agent(subagent_type: "cli-dispatch:runner", run_in_background: true), NO model parameter (haiku is pinned): prompt = "backend: <ds|ag|cx|oc|cp>", "cwd: <abs path>", "verify: <cmd>", "---", brief. Either returns the verdict; apply the patch yourself. /cli-dispatch:run stays for direct use. Default to delegating: work that adds or changes tests or touches more than one file goes to the agent; do inline only a fix of ~20 lines in one file.`
   )
   // Sessions have vetoed the runner by quoting the first half of the
   // never-delegate-verification rule and dropping the remedy: "--verify only says

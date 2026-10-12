@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [6.3.0] — 2026-10-12
+
+### Added
+
+- **The `mcp__cli-dispatch__dispatch` tool** (Claude Code 2.1.287+). The plugin's mod registers a
+  tool the model calls with `backend`, `cwd`, `task` and optional `verify`/`model`; it runs
+  `cli-dispatch-run --detach … --fix-attempts 1`, waits on `cli-dispatch-wait --run`, and returns
+  the runner summary verbatim. It does the `cli-dispatch:runner` agent's job with no subagent and no
+  LLM turns: a real `ds` run took 29 s and 2 orchestrator turns, and a 780 s tool call was not cut
+  off. It falls back to the plugin's own runner when `cli-dispatch-run` is not on PATH, and is not
+  offered inside a worker.
+
+### Changed
+
+- The session-start policy names the dispatch tool first and keeps the runner agent as the path for
+  older Claude Code. `cli-dispatch-drift` counts dispatch tool calls as runner adoption.
+
 ## [6.2.0] — 2026-10-12
 
 ### Added

@@ -220,6 +220,13 @@ test('drift: delegating through the runner agent counts as runner adoption, not 
   assert.equal(analyzeTranscriptText(other + '\n').agentSpawns, 1)
 })
 
+test('drift: a call to the mod dispatch tool counts as runner adoption (6.3.0)', () => {
+  const line = JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'mcp__cli-dispatch__dispatch', input: { backend: 'cx', cwd: '/r', task: 't' } }] } })
+  const a = analyzeTranscriptText(line + '\n')
+  assert.equal(a.runnerInvocations, 1)
+  assert.equal(a.agentSpawns, 0)
+})
+
 test('policy routes delegation to the runner agent and no longer forbids a babysitter', () => {
   const ctx = buildPolicyContext({ enabled: true, schemaVersion: 1 })
   assert.match(ctx, /cli-dispatch:runner/)

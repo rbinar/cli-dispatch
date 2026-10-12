@@ -2,10 +2,16 @@
 
 [← README](../README.md)
 
-The five per-backend "babysitter" subagents (`ds-/ag-/cx-/oc-/cp-runner`) that used to watch each delegation in their own LLM sub-context were retired in 4.0.0 — measured across production usage, they cost roughly **9x** their own worker's output in Anthropic tokens (~62 turns per run; see [CHANGELOG.md](../CHANGELOG.md)). Since 5.2.0 there is one **thin** agent instead, `cli-dispatch:runner` (haiku, Bash-only). It is a forwarder, not a babysitter: one Bash call starts `cli-dispatch-run --detach`, one blocking `cli-dispatch-wait --run <id>` waits, and the compact verdict comes back verbatim (~3-4 turns). Everything mechanical stays in shell — including one retry of a failing verify (`--fix-attempts 1`) — and detaching means a run longer than the Bash tool's 10-minute ceiling is no longer killed. This is the default delegation path from an orchestrator:
+The five per-backend "babysitter" subagents (`ds-/ag-/cx-/oc-/cp-runner`) that used to watch each delegation in their own LLM sub-context were retired in 4.0.0 — measured across production usage, they cost roughly **9x** their own worker's output in Anthropic tokens (~62 turns per run; see [CHANGELOG.md](../CHANGELOG.md)). Since 5.2.0 there is one **thin** agent instead, `cli-dispatch:runner` (haiku, Bash-only). It is a forwarder, not a babysitter: one Bash call starts `cli-dispatch-run --detach`, one blocking `cli-dispatch-wait --run <id>` waits, and the compact verdict comes back verbatim (~3-4 turns). Everything mechanical stays in shell — including one retry of a failing verify (`--fix-attempts 1`) — and detaching means a run longer than the Bash tool's 10-minute ceiling is no longer killed. This is the delegation path from an orchestrator on Claude Code older than 2.1.287; on 2.1.287+ the `mcp__cli-dispatch__dispatch` tool below is preferred:
 
 ```text
 Agent(subagent_type: "cli-dispatch:runner", prompt: "backend: ds\ncwd: /abs/path\nverify: <cmd>\n---\n<self-contained brief>")
+```
+
+Since 6.3.0, on Claude Code 2.1.287+ the plugin's mod also provides a model-callable tool, `mcp__cli-dispatch__dispatch` — the preferred path when it is available. It runs `cli-dispatch-run --detach … --fix-attempts 1` itself (no subagent, no LLM turns of its own), blocks on `cli-dispatch-wait --run <id>` (waits of up to 570 s, up to 6 of them) and returns the runner's compact summary verbatim (session id, verify result, diff, STRANDED worktree, patch path). Inputs: `backend` (`ds|ag|cx|oc|cp`, required), `cwd` (absolute repo path, required), `task` (the full brief, required), `verify` (array of shell commands, optional), `model` (optional). Measured: a real `ds` run took 29 s end to end with 2 orchestrator turns, and a single 780 s tool call was not cut off. The session-start policy tells the orchestrator to call the tool if it is available, otherwise `Agent(subagent_type: "cli-dispatch:runner")`. The tool does not read the verdict or diff for you — you still re-measure the result yourself.
+
+```text
+mcp__cli-dispatch__dispatch({"backend": "ds", "cwd": "/abs/path", "task": "<self-contained brief>", "verify": ["<cmd>"]})
 ```
 
 For direct use, the same runner is a slash command (zero LLM tokens; you background it yourself):
@@ -18,4 +24,4 @@ For direct use, the same runner is a slash command (zero LLM tokens; you backgro
 
 **Escalation path** (judgment-heavy work, no machine-checkable verify command): there is no LLM babysitter to hand this to. You (Claude Code) run the deterministic runner — or a plain `*-agent` CLI directly — but instead of gating on `--verify`, you read the compact verdict and the diff yourself, then follow up with `/cli-dispatch:resume <session-id> "<prompt>"` if the result needs another pass.
 
-Default to delegating: work that adds or changes tests or touches more than one file goes to the runner agent. Only a fix of ~20 lines in one file (zero discovery/ambiguity) stays inline — there the fixed cost of a delegation isn't worth it. For a simple one-shot job with no repo changes, `/cli-dispatch:ask <backend> "<prompt>"` is enough.
+Default to delegating: work that adds or changes tests or touches more than one file goes to the dispatch tool (or the runner agent on older Claude Code). Only a fix of ~20 lines in one file (zero discovery/ambiguity) stays inline — there the fixed cost of a delegation isn't worth it. For a simple one-shot job with no repo changes, `/cli-dispatch:ask <backend> "<prompt>"` is enough.

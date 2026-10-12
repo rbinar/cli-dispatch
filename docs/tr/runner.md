@@ -10,11 +10,16 @@ Her delegasyonu kendi LLM alt-bağlamında izleyen beş backend-başına "babysi
 `cli-dispatch-run --detach` ile runner'ı başlatır, tek bir bloklayan `cli-dispatch-wait --run <id>`
 bitmesini bekler ve kompakt verdict olduğu gibi geri döner (~3-4 tur). Mekanik her şey shell'de
 kalır — başarısız bir verify'ın bir kez yeniden denenmesi de (`--fix-attempts 1`) — ve ayrık
-çalışma sayesinde Bash aracının 10 dakikalık tavanını aşan bir run artık öldürülmez. Orkestratörden
-varsayılan delegasyon yolu budur:
+çalışma sayesinde Bash aracının 10 dakikalık tavanını aşan bir run artık öldürülmez. Claude Code 2.1.287'den eski sürümlerde orkestratörden delegasyon yolu budur; 2.1.287+ sürümlerde aşağıdaki `mcp__cli-dispatch__dispatch` aracı tercih edilir:
 
 ```text
 Agent(subagent_type: "cli-dispatch:runner", prompt: "backend: ds\ncwd: /mutlak/yol\nverify: <cmd>\n---\n<kendi başına yeterli brief>")
+```
+
+6.3.0'dan beri Claude Code 2.1.287+ sürümlerinde eklentinin mod'u, modelin çağırabildiği bir araç da sağlar: `mcp__cli-dispatch__dispatch` — kullanılabiliyorsa tercih edilen yol budur. `cli-dispatch-run --detach … --fix-attempts 1` komutunu kendisi çalıştırır (subagent yok, kendi başına LLM turu yok), `cli-dispatch-wait --run <id>` üzerinde bloklar (en fazla 570 sn'lik, en çok 6 bekleme) ve runner'ın kompakt özetini olduğu gibi döndürür (session id, verify sonucu, diff, STRANDED worktree, patch yolu). Girdiler: `backend` (`ds|ag|cx|oc|cp`, zorunlu), `cwd` (mutlak repo yolu, zorunlu), `task` (brief'in tamamı, zorunlu), `verify` (shell komutları dizisi, opsiyonel), `model` (opsiyonel). Ölçüm: gerçek bir `ds` run'ı uçtan uca 29 sn sürdü ve orkestratör tarafında 2 tur harcandı; 780 sn'lik tek bir araç çağrısı kesilmedi. Oturum-başı politika, orkestratöre aracı kullanılabiliyorsa çağırmasını, değilse `Agent(subagent_type: "cli-dispatch:runner")` kullanmasını söyler. Araç verdict'i ya da diff'i senin yerine okumaz — sonucu yine kendin yeniden ölçersin.
+
+```text
+mcp__cli-dispatch__dispatch({"backend": "ds", "cwd": "/mutlak/yol", "task": "<kendi başına yeterli brief>", "verify": ["<cmd>"]})
 ```
 
 Doğrudan kullanım için aynı runner bir slash komutudur (sıfır LLM token'ı; arka plana almayı sen
@@ -38,6 +43,6 @@ kendin okur, sonuç bir tur daha gerektiriyorsa `/cli-dispatch:resume <session-i
 ile devam edersin.
 
 Varsayılan delege etmektir: test ekleyen ya da değiştiren veya birden fazla dosyaya dokunan iş
-runner agent'ına gider. Yalnızca tek dosyada ~20 satırlık bir düzeltme (sıfır keşif/belirsizlik)
+dispatch aracına (eski Claude Code'da runner agent'ına) gider. Yalnızca tek dosyada ~20 satırlık bir düzeltme (sıfır keşif/belirsizlik)
 inline kalır — orada delegasyonun sabit maliyeti işe değmez. Repo değişikliği olmayan basit, tek-atışlık bir iş için `/cli-dispatch:ask <backend> "<prompt>"`
 yeterlidir.

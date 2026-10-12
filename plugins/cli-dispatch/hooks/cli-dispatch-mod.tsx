@@ -3,9 +3,10 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { Worker } from '../types'
 
-// cli-dispatch mod (Claude Code 2.1.287+): a band above the prompt with this session's workers,
-// and a guard that keeps Edit/Write out of a repo while a worktree run for it is live — the
-// run's leak check would otherwise blame the worker and skip verify.
+// cli-dispatch mod (Claude Code 2.1.287+): a band above the prompt with this session's workers;
+// a guard that keeps Edit/Write out of a repo while a worktree run for it is live — the run's
+// leak check would otherwise blame the worker and skip verify; and the `dispatch` tool, which
+// runs cli-dispatch-run and waits for it in one call, with no forwarding subagent.
 
 const workers = atom({ plugin: 'cli-dispatch', key: 'workers' } as const, [])
 
@@ -129,13 +130,75 @@ async function realPath($: EngineInterface, path: string): Promise<string> {
   return path
 }
 
+const DISPATCH = {
+  name: 'dispatch',
+  description:
+    "Delegate a coding task to an external worker CLI through cli-dispatch's deterministic runner and wait for its verdict. " +
+    'The worker runs in a git worktree of `cwd`; your `verify` commands decide pass/fail; a failing verify is retried once. ' +
+    'Returns the runner summary verbatim (session id, verify result, diff, stranded worktree, patch path). It does not apply the patch.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      backend: { type: 'string', enum: ['ds', 'ag', 'cx', 'oc', 'cp'] },
+      cwd: { type: 'string', description: 'Absolute path of the git repo to work in.' },
+      task: { type: 'string', description: 'The full, self-contained brief for the worker.' },
+      verify: { type: 'array', items: { type: 'string' }, description: 'Shell commands run in the worktree after the worker; all must exit 0.' },
+      model: { type: 'string', description: "The worker's model slug; omit for the backend default." },
+    },
+    required: ['backend', 'cwd', 'task'],
+  },
+} as const
+
+type DispatchInput = { backend: string; cwd: string; task: string; verify?: string[]; model?: string }
+
+// cli-dispatch-run from PATH, else the copy in this plugin (#150: a new binary not yet installed).
+async function runner($: EngineInterface, args: string[], init: { env: Record<string, string>; timeoutMs: number }) {
+  try {
+    return await $.process.run(args, init)
+  } catch {
+    return $.process.run(['bash', `${$.plugin.root}/scripts/${args[0]}`, ...args.slice(1)], init)
+  }
+}
+
+async function dispatch($: EngineInterface, input: DispatchInput, signal: AbortSignal): Promise<string> {
+  if (!['ds', 'ag', 'cx', 'oc', 'cp'].includes(input.backend)) return `dispatch: backend must be one of ds, ag, cx, oc, cp (got ${input.backend})`
+  if (!input.cwd?.startsWith('/')) return 'dispatch: cwd must be an absolute path'
+  const tmp = ((await $.env.get('TMPDIR')) || '/tmp').replace(/\/$/, '')
+  const brief = `${tmp}/cli-dispatch-brief-${await $.clock.now()}-${Math.random().toString(36).slice(2, 8)}.txt`
+  await $.fs.write(brief, input.task)
+  const argv = ['cli-dispatch-run', '--detach', '--backend', input.backend, '--cwd', input.cwd, '--prompt-file', brief, '--fix-attempts', '1']
+  for (const v of input.verify ?? []) argv.push('--verify', v)
+  if (input.model) argv.push('--model', input.model)
+  // The parsers read the parent session from this; it is what scopes the band to this session.
+  const env = { CLAUDE_CODE_SESSION_ID: await $.session.id() }
+  const started = await runner($, argv, { env, timeoutMs: 60_000 })
+  const runId = /^run: (\S+)/m.exec(started.stdout)?.[1]
+  if (!runId) return `cli-dispatch-run did not start (exit ${started.exitCode}):\n${started.stdout}${started.stderr}`
+  await refresh($)
+  let last = started
+  for (let i = 0; i < 6 && !signal.aborted; i++) {
+    last = await runner($, ['cli-dispatch-wait', '--run', runId, '--timeout', '570'], { env, timeoutMs: 600_000 })
+    if (last.exitCode !== 124) break
+  }
+  await refresh($)
+  if (signal.aborted || last.exitCode === 124) return `run ${runId} is still running — wait with: cli-dispatch-wait --run ${runId}`
+  return last.stdout || last.stderr
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const result = await next(e)
     await refresh($)
     $.clock.every(TICK_MS, () => refresh($))
+    // A worker can itself be a Claude Code session with this plugin (DeepSeek runs claude):
+    // it must do its task, not delegate it again.
+    if ((await $.env.get('CLI_DISPATCH_WORKER')) !== '1') await $.tool.register(DISPATCH)
     return result
   })
+
+  on('tool.call', { tool: 'mcp__cli-dispatch__dispatch' }, async ($, e, next) => ({
+    result: await dispatch($, e as unknown as DispatchInput, next.signal),
+  })).catch(($, e, next) => (next.called ? next(e) : { deny: 'cli-dispatch: the dispatch tool failed before it could start a run.' }))
 
   on('tool.call', async ($, e, next) => {
     if (!EDIT_TOOLS.has(e.tool)) return next(e)
