@@ -12,7 +12,7 @@ if ($env:CLI_DISPATCH_WORKER -eq '1') {
 }
 
 function Show-Usage {
-  Write-Host 'usage: cli-dispatch-run --backend <ds|ag|cx|oc|cp> --cwd <repo> [--prompt <text> | --prompt-file <path>] [--branch <name>] [--model <slug>] [--effort low|medium|high] [--verify <cmd>] [--verify-timeout SECS] [--timeout SECS] [--resume <session-id>] [--cleanup-if-clean]'
+  Write-Host 'usage: cli-dispatch-run --backend <ds|ag|cx|oc|cp> --cwd <repo> [--prompt <text> | --prompt-file <path>] [--branch <name>] [--model <slug>] [--effort low|medium|high] [--verify <cmd>] [--verify-timeout SECS] [--timeout SECS] [--resume <session-id>] [--cleanup-if-clean] [--scope <glob>]'
 }
 
 function Need-Value {
@@ -32,6 +32,7 @@ $Branch = ''
 $Model = ''
 $Effort = ''
 $Verify = @()
+$Scope = @()
 $VerifyTimeout = 600
 $Timeout = 0
 $Resume = ''
@@ -48,6 +49,7 @@ while ($i -lt $args.Count) {
     '--model' { Need-Value '--model' $i $args.Count; $Model = $args[$i + 1]; $i += 2 }
     '--effort' { Need-Value '--effort' $i $args.Count; $Effort = $args[$i + 1]; $i += 2 }
     '--verify' { Need-Value '--verify' $i $args.Count; $Verify += $args[$i + 1]; $i += 2 }
+    '--scope' { Need-Value '--scope' $i $args.Count; $Scope += $args[$i + 1]; $i += 2 }
     '--verify-timeout' {
       Need-Value '--verify-timeout' $i $args.Count
       if ("$($args[$i + 1])" -notmatch '^[0-9]+$') { Write-Host 'cli-dispatch-run: --verify-timeout must be a non-negative integer (seconds)'; exit 5 }
@@ -632,6 +634,8 @@ honest empty `command` is more useful than a confident one that was never execut
     $verifyResult | ConvertTo-Json -Depth 8 -Compress | Set-Content -Path $verifyResultsPath -NoNewline
   }
 
+  # build-verdict reads the --scope globs from here, one per line.
+  $env:CLI_DISPATCH_SCOPE = $Scope -join "`n"
   if ($verifyResultsPath) {
     $verdictOut = & $NodeBin $VerdictWriter build-verdict $SessionDir $StatusPath $MetaPath $ChangedPath $timeoutExpired $verifyResultsPath
     $verdictExit = $LASTEXITCODE

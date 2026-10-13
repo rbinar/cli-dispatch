@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [6.4.0] — 2026-10-13
+
+### Added
+
+- **`cli-dispatch-run --scope <glob>`** (repeatable; #205). Every file the worker changed, measured
+  from git, must match one glob, or the run fails with exit 2 even when verify passes, the same
+  treatment as a leak. The verdict carries `scope` and `scopeViolations`, and the summary prints a
+  `SCOPE:` line naming the files. `**` crosses directories, `*` and `?` do not, and a glob with no
+  wildcard covers that path and everything under it. Without `--scope` nothing changes. The
+  PowerShell twin takes it too, and the `dispatch` tool has a matching `scope` input.
+
 ## [6.3.0] — 2026-10-12
 
 ### Added

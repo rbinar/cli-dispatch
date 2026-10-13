@@ -235,6 +235,27 @@ export function readWorkerReport(sessionDir) {
   return normalizeWorkerReport(parsed)
 }
 
+// --scope (issue #205): the measured changed files that no glob covers. `**` crosses directories
+// (`**/` also matches none), `*` and `?` stay inside one segment, and a glob with no wildcard
+// covers that path and everything under it, so `--scope src/auth` reads as a directory.
+function globToRegExp(glob) {
+  let re = ''
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i]
+    if (c === '*' && glob[i + 1] === '*') {
+      if (glob[i + 2] === '/') { re += '(?:.*/)?'; i += 2 } else { re += '.*'; i += 1 }
+    } else if (c === '*') re += '[^/]*'
+    else if (c === '?') re += '[^/]'
+    else re += c.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+  }
+  return new RegExp(/[*?]/.test(glob) ? `^${re}$` : `^${re}(?:/.*)?$`)
+}
+
+export function scopeViolations(files, globs) {
+  const res = globs.map(globToRegExp)
+  return files.filter((f) => !res.some((r) => r.test(f)))
+}
+
 export function buildVerdict({ statusJson, metaJson, changedFilesJson, verifyResults, worktreeInfo = {} }) {
   const status = statusJson || {}
   const meta = metaJson || {}
@@ -272,8 +293,11 @@ export function buildVerdict({ statusJson, metaJson, changedFilesJson, verifyRes
     verify,
     timeoutExpired: Boolean(worktreeInfo.timeoutExpired),
   })
-  // A leak (worker wrote outside its worktree) is a worker error even when verify passed.
-  const exitCode = worktreeInfo.leak && mappedExit === 0 ? 2 : mappedExit
+  const scope = Array.isArray(worktreeInfo.scope) && worktreeInfo.scope.length ? worktreeInfo.scope : null
+  const outOfScope = scope ? scopeViolations(files, scope) : []
+  // A leak (worker wrote outside its worktree), or a change outside --scope, is a worker error
+  // even when verify passed.
+  const exitCode = (worktreeInfo.leak || outOfScope.length) && mappedExit === 0 ? 2 : mappedExit
 
   const verdict = {
     schemaVersion: 1,
@@ -306,6 +330,8 @@ export function buildVerdict({ statusJson, metaJson, changedFilesJson, verifyRes
     ...(worktreeInfo.workerExit ? { workerExit: worktreeInfo.workerExit } : {}),
     // The leak guard's exit 7 from the worktree runner: the worker wrote outside its worktree.
     ...(worktreeInfo.leak ? { leak: true } : {}),
+    // Only when --scope was given: the globs, and the changed files none of them covers.
+    ...(scope ? { scope, scopeViolations: outOfScope } : {}),
     startedAt: meta.startedAt,
     endedAt: new Date().toISOString(),
   }
@@ -412,6 +438,7 @@ if (entryPath && import.meta.url === pathToFileURL(entryRealPath).href) {
           timeoutExpired: parseBoolean(timeoutExpired),
           workerExit: Number(process.env.CLI_DISPATCH_WORKER_EXIT) || 0,
           leak: process.env.CLI_DISPATCH_LEAK === '1',
+          scope: (process.env.CLI_DISPATCH_SCOPE || '').split('\n').filter(Boolean),
           fixAttempts: Number(process.env.CLI_DISPATCH_FIX_MAX) > 0
             ? { used: Number(process.env.CLI_DISPATCH_FIX_USED) || 0, max: Number(process.env.CLI_DISPATCH_FIX_MAX) }
             : undefined,

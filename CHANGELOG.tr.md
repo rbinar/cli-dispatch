@@ -7,6 +7,17 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [6.4.0] — 2026-10-13
+
+### Eklendi
+
+- **`cli-dispatch-run --scope <glob>`** (tekrarlanabilir; #205). Worker'ın değiştirdiği, git'ten
+  ölçülen her dosya bir glob'a uymalı; uymayan varsa verify geçse bile run, leak'teki gibi exit 2
+  ile başarısız olur. Verdict `scope` ve `scopeViolations` alanlarını taşır, özet dosyaları sayan
+  bir `SCOPE:` satırı basar. `**` dizinler arasında geçer, `*` ve `?` geçmez; joker içermeyen bir
+  glob o yolu ve altındaki her şeyi kapsar. `--scope` verilmezse hiçbir şey değişmez. PowerShell
+  ikizi de alır; `dispatch` aracında karşılığı `scope` girdisidir.
+
 ## [6.3.0] — 2026-10-12
 
 ### Eklendi

@@ -6,8 +6,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   cat <<'USAGE' >&2
-usage: cli-dispatch-run --backend <ds|ag|cx|oc|cp> --cwd <repo> [--prompt <text> | --prompt-file <path>] [--branch <name>] [--model <slug>] [--effort low|medium|high] [--verify <cmd>] [--verify-timeout SECS] [--timeout SECS] [--resume <session-id>] [--cleanup-if-clean] [--fix-attempts N] [--detach]
+usage: cli-dispatch-run --backend <ds|ag|cx|oc|cp> --cwd <repo> [--prompt <text> | --prompt-file <path>] [--branch <name>] [--model <slug>] [--effort low|medium|high] [--verify <cmd>] [--verify-timeout SECS] [--timeout SECS] [--resume <session-id>] [--cleanup-if-clean] [--fix-attempts N] [--scope <glob>] [--detach]
   --fix-attempts N  on a verify FAIL, resume the worker up to N times with the verify tail, re-verify (default 0)
+  --scope <glob>    repeatable; a changed file outside every glob fails the run with exit 2, even if verify passes
   --detach          return at once with "run: <id>"; block on it with: cli-dispatch-wait --run <id> (bash-only)
 USAGE
 }
@@ -314,6 +315,7 @@ VERIFY_TIMEOUT=600
 TIMEOUT=0
 RESUME=""
 VERIFY=()
+SCOPE=()
 TEST_MODE=0
 TEST_WORKTREE=""
 TEST_EXIT_CODE=0
@@ -337,6 +339,7 @@ while [ "$#" -gt 0 ]; do
     --model) need_val --model "$#"; MODEL="$2"; shift 2;;
     --effort) need_val --effort "$#"; EFFORT="$2"; shift 2;;
     --verify) need_val --verify "$#"; VERIFY+=("$2"); shift 2;;
+    --scope) need_val --scope "$#"; SCOPE+=("$2"); shift 2;;
     --verify-timeout)
       need_val --verify-timeout "$#"
       case "$2" in ''|*[!0-9]*) echo "cli-dispatch-run: --verify-timeout must be a non-negative integer (seconds)" >&2; exit 5;; esac
@@ -735,6 +738,8 @@ SECS_ELAPSED=0
 while :; do
 RETRY_FIX=0
 export CLI_DISPATCH_FIX_MAX="$FIX_MAX" CLI_DISPATCH_FIX_USED="$FIX_USED"
+# build-verdict reads the --scope globs from here, one per line.
+export CLI_DISPATCH_SCOPE="$([ "${#SCOPE[@]}" -eq 0 ] || printf '%s\n' "${SCOPE[@]}")"
 while :; do
   set +e
   CLI_DISPATCH_NODE="$NODE_BIN" "$SCRIPT_DIR/cli-dispatch-wait" "$SESSION_ID" --timeout 30

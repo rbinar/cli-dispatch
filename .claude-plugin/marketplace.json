@@ -3,12 +3,12 @@
   "name": "cli-dispatch",
   "description": "cli-dispatch — delegate Claude Code tasks to worker CLIs: DeepSeek, Gemini (Antigravity), OpenAI Codex, OpenCode (OpenRouter) and GitHub Copilot.",
   "owner": { "name": "rbinar", "url": "https://github.com/rbinar" },
-  "metadata": { "version": "6.3.0" },
+  "metadata": { "version": "6.4.0" },
   "plugins": [
     {
       "name": "cli-dispatch",
       "description": "Hands Claude Code's work to DeepSeek, Gemini (Antigravity), OpenAI Codex, OpenCode and GitHub Copilot as worker CLIs: git-worktree isolation, your verify command, a compact verdict.",
-      "version": "6.3.0",
+      "version": "6.4.0",
       "category": "development",
       "keywords": ["cli-dispatch", "delegation", "deepseek", "antigravity", "gemini", "codex", "openai", "opencode", "openrouter", "copilot", "github-copilot", "worker", "claude-code"],
       "source": "./plugins/cli-dispatch"
