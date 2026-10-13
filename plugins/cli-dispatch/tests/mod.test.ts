@@ -148,12 +148,13 @@ describe('dispatch tool', () => {
     const h = stubDispatch(on, { waits: [124, 0] })
     await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
     expect(h.registered).toEqual(['dispatch'])
-    const r: any = await $.tool.call({ tool: 'mcp__cli-dispatch__dispatch', backend: 'cx', cwd: '/repo', task: 'fix it', verify: ['node --test', "echo 'a b'"] } as any)
+    const r: any = await $.tool.call({ tool: 'mcp__cli-dispatch__dispatch', backend: 'cx', cwd: '/repo', task: 'fix it', verify: ['node --test', "echo 'a b'"], scope: ['src/**', 'package.json'] } as any)
     expect(String(r.result ?? r.text)).toMatch(/verify: pass/)
     const run = h.calls[0]!
     expect(run.argv.slice(0, 6)).toEqual(['cli-dispatch-run', '--detach', '--backend', 'cx', '--cwd', '/repo'])
     expect(run.argv).toContain('--fix-attempts')
     expect(run.argv.filter((a, i) => run.argv[i - 1] === '--verify')).toEqual(['node --test', "echo 'a b'"])
+    expect(run.argv.filter((a, i) => run.argv[i - 1] === '--scope')).toEqual(['src/**', 'package.json'])
     expect(run.env?.CLAUDE_CODE_SESSION_ID).toBe(SID)
     const briefPath = run.argv[run.argv.indexOf('--prompt-file') + 1]!
     expect(h.written[briefPath]).toBe('fix it')

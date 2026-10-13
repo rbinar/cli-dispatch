@@ -144,12 +144,17 @@ const DISPATCH = {
       task: { type: 'string', description: 'The full, self-contained brief for the worker.' },
       verify: { type: 'array', items: { type: 'string' }, description: 'Shell commands run in the worktree after the worker; all must exit 0.' },
       model: { type: 'string', description: "The worker's model slug; omit for the backend default." },
+      scope: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Repo-relative globs the worker may change (`**` crosses directories; a plain path covers everything under it). A change outside all of them fails the run.',
+      },
     },
     required: ['backend', 'cwd', 'task'],
   },
 } as const
 
-type DispatchInput = { backend: string; cwd: string; task: string; verify?: string[]; model?: string }
+type DispatchInput = { backend: string; cwd: string; task: string; verify?: string[]; model?: string; scope?: string[] }
 
 // cli-dispatch-run from PATH, else the copy in this plugin (#150: a new binary not yet installed).
 async function runner($: EngineInterface, args: string[], init: { env: Record<string, string>; timeoutMs: number }) {
@@ -168,6 +173,7 @@ async function dispatch($: EngineInterface, input: DispatchInput, signal: AbortS
   await $.fs.write(brief, input.task)
   const argv = ['cli-dispatch-run', '--detach', '--backend', input.backend, '--cwd', input.cwd, '--prompt-file', brief, '--fix-attempts', '1']
   for (const v of input.verify ?? []) argv.push('--verify', v)
+  for (const g of input.scope ?? []) argv.push('--scope', g)
   if (input.model) argv.push('--model', input.model)
   // The parsers read the parent session from this; it is what scopes the band to this session.
   const env = { CLAUDE_CODE_SESSION_ID: await $.session.id() }
