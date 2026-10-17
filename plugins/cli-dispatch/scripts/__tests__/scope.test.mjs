@@ -76,6 +76,20 @@ test('--scope: every change inside a glob passes; --scope repeats', () => {
   } finally { f.cleanup() }
 })
 
+test("scopeViolations: the runner's own artifacts are never out of scope", () => {
+  const files = ['sum.mjs', 'worker-report.json', 'sub/worker-report.json', 'node_modules', 'pkg/node_modules/x.js']
+  assert.deepEqual(scopeViolations(files, ['sum.mjs']), [])
+})
+
+test('--scope: the worker-report.json the runner asks for does not fail the run', () => {
+  const f = fixture(['sum.mjs', 'worker-report.json'])
+  try {
+    const r = runner(f, ['--verify', 'true', '--scope', 'sum.mjs'])
+    assert.equal(r.status, 0, r.stdout + r.stderr)
+    assert.deepEqual(verdictOf(f.dir).scopeViolations, [])
+  } finally { f.cleanup() }
+})
+
 test('--scope: a verify FAIL stays exit 1 (scope does not mask it)', () => {
   const f = fixture(['package.json'])
   try {

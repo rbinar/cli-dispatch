@@ -45,8 +45,7 @@ function hasStrandedChanges(worktree) {
     return String(status ?? '').split('\n').some((line) => {
       if (!line.trim()) return false
       if (!line.startsWith('?? ')) return true
-      const segs = line.slice(3).replace(/^"|"$/g, '').split('/')
-      return !(segs[segs.length - 1] === 'worker-report.json' || segs.includes('node_modules'))
+      return !isRunnerArtifact(line.slice(3).replace(/^"|"$/g, ''))
     })
   } catch {
     return false
@@ -251,9 +250,16 @@ function globToRegExp(glob) {
   return new RegExp(/[*?]/.test(glob) ? `^${re}$` : `^${re}(?:/.*)?$`)
 }
 
+// The runner's own untracked artifacts: worker-report.json (any depth) and node_modules links.
+function isRunnerArtifact(file) {
+  const segs = file.split('/')
+  return segs[segs.length - 1] === 'worker-report.json' || segs.includes('node_modules')
+}
+
+// The runner asks every worker for worker-report.json, so it can never count against --scope.
 export function scopeViolations(files, globs) {
   const res = globs.map(globToRegExp)
-  return files.filter((f) => !res.some((r) => r.test(f)))
+  return files.filter((f) => !isRunnerArtifact(f) && !res.some((r) => r.test(f)))
 }
 
 export function buildVerdict({ statusJson, metaJson, changedFilesJson, verifyResults, worktreeInfo = {} }) {

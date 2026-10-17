@@ -7,6 +7,18 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [6.4.1] — 2026-10-17
+
+### Düzeltildi
+
+- **`--scope` artık runner'ın kendi `worker-report.json` dosyası yüzünden run'ı düşürmüyor.**
+  Runner her worker'dan bu dosyayı yazmasını ister; scope kontrolü ise onu glob'ların dışındaki bir
+  değişiklik sayıyordu. Bu yüzden varsayılan worker raporuyla her scope'lu run, verify geçse ve
+  diff'te yalnız kapsam içi dosyalar olsa bile exit 2 ile bitiyordu. Kontrol artık patch'in ve
+  stranded kontrolünün zaten atladığı runner artifact'larını (`worker-report.json` her derinlikte,
+  `node_modules` link'leri) atlıyor. Mod'un `dispatch` aracı bir container'da canlı test edilirken
+  bulundu.
+
 ## [6.4.0] — 2026-10-13
 
 ### Eklendi

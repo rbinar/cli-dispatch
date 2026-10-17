@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [6.4.1] — 2026-10-17
+
+### Fixed
+
+- **`--scope` no longer fails a run over the runner's own `worker-report.json`.** The runner asks
+  every worker to write that file, and the scope check counted it as a change outside the globs, so
+  with the default worker report every scoped run ended in exit 2 even when verify passed and the
+  diff held only in-scope files. The check now skips the same runner artifacts (`worker-report.json`
+  at any depth, `node_modules` links) that the patch and the stranded check already skip. Found by
+  testing the mod's `dispatch` tool live in a container.
+
 ## [6.4.0] — 2026-10-13
 
 ### Added
