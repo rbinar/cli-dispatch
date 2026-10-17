@@ -6,9 +6,9 @@
 
 import {
   writeFileSync, readFileSync, openSync, writeSync, closeSync, mkdirSync, renameSync, unlinkSync,
-  readdirSync, statSync, copyFileSync, rmSync,
+  readdirSync, statSync, fstatSync, copyFileSync, rmSync,
 } from 'node:fs'
-import { basename, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 
 // ---- atomic full-file write ----
 //
@@ -227,24 +227,62 @@ export function createStatusWriter(statusFile, status, { throttleMs = 200 } = {}
 // Returns { writeTranscript, appendProgress, closeAll }. Optionally mirrors
 // each progress line to stderr when progressToStderr is true.
 export function openSessionFiles(transcriptFile, progressFile, isResume, { progressToStderr = false } = {}) {
-  let transcriptFd = -1, progressFd = -1
+  let transcriptFd = -1, progressFd = -1, idxFd = -1
   try { transcriptFd = openSync(transcriptFile, isResume ? 'a' : 'w') } catch { /* ignore */ }
   try { progressFd = openSync(progressFile, isResume ? 'a' : 'w') } catch { /* ignore */ }
+  try { idxFd = openSync(join(dirname(progressFile), 'progress.idx'), isResume ? 'a' : 'w') } catch { /* ignore */ }
 
-  const writeTranscript = (s) => { if (transcriptFd >= 0) { try { writeSync(transcriptFd, s) } catch { /* ignore */ } } }
+  // progress.idx maps each progress line (by its byte offset) to the transcript bytes of the
+  // event that produced it. On any anomaly the idx stops for the rest of the process: no
+  // record is better than a wrong one. progress.log and transcript.jsonl are unaffected.
+  const size = (fd) => { try { return fstatSync(fd).size } catch { return -1 } }
+  let idxOk = idxFd >= 0 && transcriptFd >= 0 && progressFd >= 0
+  let tOff = idxOk ? size(transcriptFd) : -1
+  let last = null // {o, l} of the transcript line written most recently
+  if (tOff < 0) idxOk = false
 
-  if (isResume && progressFd >= 0) {
-    try { writeSync(progressFd, `\n--- resume @ ${new Date().toISOString()} ---\n`) } catch { /* ignore */ }
+  const writeTranscript = (s) => {
+    if (transcriptFd < 0) return
+    try {
+      const n = writeSync(transcriptFd, s)
+      if (idxOk) {
+        const bytes = Buffer.byteLength(s)
+        if (n !== bytes) idxOk = false
+        else { last = { o: tOff, l: bytes - 1 }; tOff += n }
+      }
+    } catch { idxOk = false }
   }
 
-  const appendProgress = (line) => {
-    if (progressFd >= 0) { try { writeSync(progressFd, line + '\n') } catch { /* ignore */ } }
+  if (isResume && progressFd >= 0) {
+    try { writeSync(progressFd, `\n--- resume @ ${new Date().toISOString()} ---\n`) } catch { idxOk = false }
+  }
+  let pOff = idxOk ? size(progressFd) : -1
+  if (pOff < 0) idxOk = false
+
+  const appendProgress = (line, rec) => {
+    if (progressFd >= 0) {
+      try {
+        const n = writeSync(progressFd, line + '\n')
+        if (idxOk) {
+          if (n !== Buffer.byteLength(line) + 1) idxOk = false
+          else {
+            const r = rec ?? last
+            if (r) {
+              const w = JSON.stringify({ p: pOff, ...r }) + '\n'
+              if (writeSync(idxFd, w) !== Buffer.byteLength(w)) idxOk = false
+            }
+            pOff += n
+          }
+        }
+      } catch { idxOk = false }
+    }
     if (progressToStderr) { try { process.stderr.write(line + '\n') } catch { /* ignore */ } }
   }
 
   const closeAll = () => {
     if (transcriptFd >= 0) { try { closeSync(transcriptFd) } catch { /* ignore */ } transcriptFd = -1 }
     if (progressFd >= 0) { try { closeSync(progressFd) } catch { /* ignore */ } progressFd = -1 }
+    if (idxFd >= 0) { try { closeSync(idxFd) } catch { /* ignore */ } idxFd = -1 }
   }
 
   return { writeTranscript, appendProgress, closeAll }

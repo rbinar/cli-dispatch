@@ -32,8 +32,22 @@ but 7.0.0 is not tested on them.
   setup form and the pane.
 - **`userconfig-status.json`.** The SessionStart hook records which plugin-config keys are set
   (booleans only, 0600) so Bash paths can tell "set in the plugin config" from "not set".
+- **`/cli-dispatch-runs`, the run monitor pane.** Lists every run of this session, running and
+  finished (a quiet run whose worker is alive stays running). Selecting one shows two tabs:
+  **Summary**, the terse `progress.log` lines live with the status counters and the verdict, and
+  **Full flow**, every event of the run in order, untruncated, appending while the run runs.
+  Selecting a Summary line opens that line's full event (a long event is shown in pages, because
+  one drawing holds 100000 characters). Known key shapes and the values of the plugin-config keys
+  are masked in everything it draws. It reads files in bounded windows through
+  `scripts/cli-dispatch-pane-read.mjs` and costs no model tokens.
+- **`progress.idx` in the session dir.** Maps each `progress.log` line to the transcript bytes of the
+  event that produced it (the DeepSeek coalesced text carries its full text). Written beside the two
+  files by `openSessionFiles`; `progress.log` and every parser's output are unchanged.
 
 ### Changed
+
+- **The band keeps a quiet run whose worker is still alive as running** (`worker.pid` answers
+  `kill -0`) instead of dropping it after 90 seconds of silence, such as a long test command.
 
 - **`/cli-dispatch:setup` routes keys to `/plugin configure` when the mod is loaded**, and to
   `/cli-dispatch-config` for models and installs. The local browser form stays as the fallback when

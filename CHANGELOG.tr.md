@@ -33,9 +33,22 @@ Eski sürümler engellenmez ve config dosyası yollarının orada yüklenmeye de
 - **`userconfig-status.json`.** SessionStart hook'u hangi plugin-config key'lerinin tanımlı olduğunu
   (yalnızca boolean, 0600) kaydeder; Bash yolları böylece "plugin config'te tanımlı" ile "tanımsız"ı
   ayırt edebilir.
+- **`/cli-dispatch-runs`, run izleme paneli.** Bu oturumun tüm run'larını, çalışan ve biten,
+  listeler (worker'ı hâlâ yaşayan sessiz bir run çalışıyor sayılır). Birini seçince iki sekme açılır:
+  **Summary**, durum sayaçları ve verdict ile birlikte `progress.log`'un canlı kısa satırları, ve
+  **Full flow**, run'ın her olayı sırayla, kısaltmasız, run sürerken eklenerek. Bir Summary satırını
+  seçmek o satırın tam olayını açar (uzun bir olay sayfa sayfa gösterilir, çünkü bir çizim 100000
+  karakter alır). Bilinen key biçimleri ve plugin-config key'lerinin değerleri çizdiği her yerde
+  maskelenir. Dosyaları `scripts/cli-dispatch-pane-read.mjs` üzerinden sınırlı pencerelerle okur ve
+  model token'ı harcamaz.
+- **Oturum dizininde `progress.idx`.** Her `progress.log` satırını, onu üreten olayın transcript
+  baytlarına eşler (DeepSeek'in birleştirilmiş metni tam metnini taşır). `openSessionFiles` iki
+  dosyanın yanına yazar; `progress.log` ve her parser'ın çıktısı değişmez.
 
 ### Değişti
 
+- **Band, worker'ı hâlâ yaşayan sessiz bir run'ı çalışıyor sayar** (`worker.pid` `kill -0`'a
+  yanıt verir); uzun bir test komutu gibi 90 saniyelik sessizlikten sonra düşürmez.
 - **`/cli-dispatch:setup`, mod yüklüyken key'leri `/plugin configure`'a yönlendirir**, model ve kurulum
   için `/cli-dispatch-config`'e. Mod yüklü değilse yerel tarayıcı formu yedek yol olarak kalır.
 - **doctor, balance ve DeepSeek "tanımsız" mesajları plugin-config key'lerini bildirir.** Bash yolları

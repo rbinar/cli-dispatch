@@ -104,7 +104,7 @@ const flushPending = () => {
   const t = pendingText.trim()
   pendingText = ''
   if (!t) return
-  appendProgress(`· ${clip(t, 200)}`)
+  appendProgress(`· ${clip(t, 200)}`, { text: t })
 }
 
 // Derive a short, readable summary from a tool's input.
