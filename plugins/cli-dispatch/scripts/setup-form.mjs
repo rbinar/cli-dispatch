@@ -19,9 +19,9 @@
 // rendered or echoed (only a set/not-set badge); one-shot — the server exits after one save.
 import { spawn } from 'node:child_process'
 import crypto from 'node:crypto'
-import { chmodSync, existsSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import http from 'node:http'
-import path from 'node:path'
+import { applyValues, currentValue, isForbiddenValue, writeConfig } from './config-file.mjs'
 
 const BACKENDS = {
   deepseek: {
@@ -81,20 +81,6 @@ let port = 0
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 
-// Lines are split on \n only, as bash does: JS `^`/`$` with the m flag also break on U+2028/U+2029,
-// which once let a value smuggle a second assignment into its own line (security review).
-const keyLine = (key) => new RegExp(`^([ \\t]*)(export[ \\t]+)?${key}=(.*)$`)
-
-// Current value of KEY in the config (last assignment wins, as when sourced), or ''.
-function currentValue(text, key) {
-  let v = ''
-  for (const l of text.split('\n')) {
-    const m = keyLine(key).exec(l)
-    if (m) v = m[3].trim().replace(/^(["'])(.*)\1$/, '$2')
-  }
-  return v
-}
-
 const CSS = `:root{color-scheme:dark;--bg:#141413;--panel:#1a1a18;--fg:#faf9f5;--tx:#b0aea5;--mut:#87867f;--line:rgba(250,249,245,.09);--box:rgba(250,249,245,.16);--chip:rgba(250,249,245,.05);--ac:#d97757;--on-ac:#141413;--err:#e5786d;
 --sans:"Anthropic Sans",-apple-system,"Helvetica Neue",system-ui,sans-serif;--mono:"Anthropic Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace}
 @media(prefers-color-scheme:light){:root{color-scheme:light;--bg:#faf9f5;--panel:#f0eee6;--fg:#141413;--tx:#3d3d3a;--mut:#73726c;--line:rgba(20,20,19,.1);--box:rgba(20,20,19,.2);--chip:rgba(20,20,19,.04);--err:#b5402f}}
@@ -132,36 +118,6 @@ function renderForm(text) {
     return `<fieldset><legend>${esc(b.title)}</legend><div class="note">${b.note}</div>${rows}</fieldset>`
   }).join('')
   return page('cli-dispatch setup', `<div class="eyebrow">cli-dispatch · setup</div><h1>Worker keys and models</h1><p class="note">Values are written to your local config file only. This page works once.</p><form method="post" action="save">${sections}<button type="submit">Save</button></form>`)
-}
-
-// Replace EVERY line assigning KEY (keeping any indent/export prefix) — bash keeps the last
-// assignment, so rewriting only the first would save a key that never takes effect — or append
-// it. All other bytes are untouched.
-function applyValues(text, values) {
-  const lines = text.split('\n')
-  for (const [key, value] of Object.entries(values)) {
-    const line = `${key}="${value}"`
-    let hit = false
-    for (let i = 0; i < lines.length; i++) {
-      const m = keyLine(key).exec(lines[i])
-      if (m) { lines[i] = `${m[1]}${m[2] || ''}${line}`; hit = true }
-    }
-    if (!hit) {
-      if (lines[lines.length - 1] !== '') lines.push('')
-      lines[lines.length - 1] = line
-      lines.push('')
-    }
-  }
-  return lines.join('\n')
-}
-
-// Write through a symlinked config (a dotfiles setup) instead of replacing the link.
-function writeConfig(text) {
-  const target = existsSync(args.config) ? realpathSync(args.config) : args.config
-  const tmp = path.join(path.dirname(target), `.config.${process.pid}.tmp`)
-  writeFileSync(tmp, text, { mode: 0o600, flag: 'wx' })
-  renameSync(tmp, target)
-  chmodSync(target, 0o600)
 }
 
 const readConfig = () => (existsSync(args.config) ? readFileSync(args.config, 'utf8') : '')
@@ -211,13 +167,13 @@ const server = http.createServer((req, res) => {
       const f = FIELDS.get(key)
       if (!f) continue
       // Allowlist, not blocklist: printable ASCII minus what is live inside bash double quotes.
-      if (/[^\x20-\x7E]|["$`\\]/.test(value)) {
+      if (isForbiddenValue(value)) {
         return send(res, 400, page('Refused', `<p class="err">The field <b>${esc(key)}</b> contains a character that is not allowed (<code>" $ \` \\</code>, a line break, or anything outside printable ASCII). Go back and fix it; nothing was saved.</p>`))
       }
       if (f.secret && value === '') continue
       values[key] = value
     }
-    try { writeConfig(applyValues(readConfig(), values)) } catch (e) {
+    try { writeConfig(args.config, applyValues(readConfig(), values)) } catch (e) {
       return send(res, 500, page('Error', `<p class="err">Could not write the config: ${esc(e.message)}</p>`))
     }
     send(res, 200, page('Saved', '<div class="eyebrow">cli-dispatch · setup</div><h1>Saved</h1><p class="note">You can close this tab.</p>'))

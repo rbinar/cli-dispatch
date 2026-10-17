@@ -5,7 +5,7 @@
 > ⚠️ These commands are **slash commands** and must be run **from inside the Claude Code CLI** (not in a normal terminal/shell). First type `claude` to start a Claude Code session, then enter the commands at that session's prompt.
 
 **Before you start — you need:**
-- `claude` CLI installed and on your `PATH`
+- `claude` CLI installed and on your `PATH`, version **2.1.287 or newer** (Claude Code 2.1.287 is the first with mods; the plugin needs it)
 - `~/.local/bin` on your `PATH` — check: `echo $PATH | grep -q local && echo ok || echo 'add: export PATH="$HOME/.local/bin:$PATH" to ~/.zshrc'`
 - API key/auth for your backend — see the table below
 
@@ -55,7 +55,9 @@ The install output says `Run /reload-plugins to apply`. This step is required fo
 
 Native Windows: DeepSeek and Codex only — install the other three under WSL (see [Windows](windows.md#windows)). Sandbox: only Codex's `--read-only` is a kernel-enforced OS sandbox — the rest need worktree isolation (see [Security and data](security.md#security-and-data)).
 
-For DeepSeek and OpenCode, since you enter the key yourself, setup opens a **one-shot local web form** in your browser (loopback-only, per-run token) where you type keys and model names; they are written straight into the config file and never pass through Claude. The result is this file:
+**Keys and models (Claude Code 2.1.287+).** Enter API keys with `/plugin configure cli-dispatch@cli-dispatch`: the key is kept in Claude Code's secure store, not in a file, and never passes through Claude. The dialog masks a key but shows its **last 6 characters in clear**, so do not fill it in during a screen share or recording. Edit model names and install backends with `/cli-dispatch-config`. A key entered there reaches the `dispatch` tool only; `/cli-dispatch:run`, the runner agent and the `*-agent` scripts still read the config file, so add the key there too (or use the form below) if you use them.
+
+Where the mod is not loaded, the fallback is that setup opens a **one-shot local web form** in your browser (loopback-only, per-run token) where you type keys and model names; they are written straight into the config file and never pass through Claude. The result is this file:
 
 ```bash
 # ~/.config/cli-dispatch/config

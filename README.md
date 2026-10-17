@@ -19,7 +19,7 @@ Run these inside Claude Code (type `claude` first), one at a time:
 /cli-dispatch:setup
 ```
 
-Setup asks which backends you want and installs their wrappers. API keys go into a local browser form and never pass through Claude. Check the result with `/cli-dispatch:doctor`. Per-backend CLIs, sign-in and models: [Install](docs/install.md).
+Requires Claude Code 2.1.287 or newer. Setup asks which backends you want and installs their wrappers. Enter API keys with `/plugin configure cli-dispatch@cli-dispatch` (the dialog masks a key except its last 6 characters, so skip it during a screen share); models and backends go through `/cli-dispatch-config`. The local browser form is the fallback when the mod is not loaded. Keys never pass through Claude. Check the result with `/cli-dispatch:doctor`. Per-backend CLIs, sign-in and models: [Install](docs/install.md).
 
 ## Use
 

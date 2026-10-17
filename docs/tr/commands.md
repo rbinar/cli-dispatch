@@ -10,6 +10,7 @@ cli-dispatch'i **Claude Code'un içinden** kullanırsın — iki yol:
 | Komut | İş |
 |-------|-----|
 | `/cli-dispatch:setup` | Backend(ler) seç + kur + config iskeleti + smoke test |
+| `/cli-dispatch-config` | Kurulum paneli (Claude Code 2.1.287+): her backend için CLI ve wrapper kurulu mu, key tanımlı mı (asla gösterilmez); model adlarını düzenle; backend kur. Key'ler `/plugin configure cli-dispatch@cli-dispatch` ile girilir |
 | `/cli-dispatch:ask <backend> "<prompt>"` | Bir worker'a tek-atışlık soru/cevap, repo değişikliği yok (`ds`/`cx` `--read-only` koşar; `ag`/`oc`/`cp`'de yazma engeli yok, bu yüzden repo erişimsiz geçici bir dizinde koşarlar). `--model` / `--effort` gibi agent bayrakları prompt'tan önce gelir. Repo işi için `run` veya runner agent'ı |
 | `/cli-dispatch:run <backend> "<task>" --verify '<cmd>'` | Deterministik delegasyon, doğrudan çağrılır — sıfır LLM token. Bir orkestratörden varsayılan, bu runner'ı saran ince `cli-dispatch:runner` agent'ıdır |
 | `/cli-dispatch:sessions [backend]` | Geçmiş/aktif session'ları listele (tüm backend'ler; `backend` sütunu gösterir); isteğe bağlı backend filtresi |

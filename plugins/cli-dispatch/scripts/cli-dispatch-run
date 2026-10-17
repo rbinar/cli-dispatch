@@ -246,6 +246,7 @@ run_fix_resume() {
   # Background + wait, like the worktree runner: a foreground child would defer INT/TERM (on_signal).
   (
     cd "$dir" || exit 1
+    [ -z "$_RUN_KEY" ] || export "$_RUN_KEY_VAR=$_RUN_KEY"
     if [ "${#WORKTREE_BASE_VARS[@]}" -gt 0 ]; then
       for kv in "${WORKTREE_BASE_VARS[@]}"; do export "$kv"; done
     fi
@@ -303,6 +304,14 @@ trap on_exit EXIT
 # exit/summary with "exit: 0, no verdict" while the outer worker was still running.
 RUN_DIR_SELF="${CLI_DISPATCH_RUN_DIR:-}"
 unset CLI_DISPATCH_RUN_DIR
+
+# The dispatch tool hands the dispatched backend's plugin-config key over in this private name.
+# Capture it and take it out of the environment at once; it is exported again, under the real
+# variable name, only inside the worker subshells (never as WORKTREE_BASE_VARS: that is env(1)
+# argv, visible in ps), so verify, build-verdict and wait never hold it.
+_RUN_KEY="${CLI_DISPATCH_RUN_KEY:-}"
+unset CLI_DISPATCH_RUN_KEY
+_RUN_KEY_VAR=""
 
 BACKEND=""
 CWD=""
@@ -417,7 +426,11 @@ fi
   for _a in ${ORIG_ARGS[@]+"${ORIG_ARGS[@]}"}; do
     [ "$_a" = "--detach" ] || CHILD_ARGS+=("$_a")
   done
-  CLI_DISPATCH_RUN_DIR="$RUN_DIR" nohup bash "$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")" ${CHILD_ARGS[@]+"${CHILD_ARGS[@]}"} </dev/null >"$RUN_DIR/log" 2>&1 &
+  if [ -n "$_RUN_KEY" ]; then
+    CLI_DISPATCH_RUN_KEY="$_RUN_KEY" CLI_DISPATCH_RUN_DIR="$RUN_DIR" nohup bash "$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")" ${CHILD_ARGS[@]+"${CHILD_ARGS[@]}"} </dev/null >"$RUN_DIR/log" 2>&1 &
+  else
+    CLI_DISPATCH_RUN_DIR="$RUN_DIR" nohup bash "$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")" ${CHILD_ARGS[@]+"${CHILD_ARGS[@]}"} </dev/null >"$RUN_DIR/log" 2>&1 &
+  fi
   echo "$!" > "$RUN_DIR/pid"
   echo "run: $RUN_ID"
   exit 0
@@ -532,6 +545,14 @@ select_runner() {
 
 WORKTREE_RUN="$(select_runner "$BACKEND")"
 [ -n "$WORKTREE_RUN" ] && [ -x "$WORKTREE_RUN" ] || { echo "cli-dispatch-run: backend runner not found: $WORKTREE_RUN" >&2; exit 5; }
+
+case "$BACKEND" in
+  ds) _RUN_KEY_VAR=DEEPSEEK_API_KEY;;
+  ag) _RUN_KEY_VAR=GEMINI_API_KEY;;
+  cx) _RUN_KEY_VAR=CODEX_API_KEY;;
+  oc) _RUN_KEY_VAR=OPENROUTER_API_KEY;;
+  cp) _RUN_KEY_VAR=COPILOT_GITHUB_TOKEN;;
+esac
 
 WORKTREE_BASE_VARS=()
 if [ -n "$MODEL" ]; then
@@ -650,6 +671,7 @@ WORKER_REPORT
   # on_signal) for as long as the worker runs.
   set +e
   (
+    [ -z "$_RUN_KEY" ] || export "$_RUN_KEY_VAR=$_RUN_KEY"
     if [ "${#WORKTREE_BASE_VARS[@]}" -gt 0 ]; then
       env "${WORKTREE_BASE_VARS[@]}" "$WORKTREE_RUN" "$CWD" "$BRANCH" "$PROMPT_FILE" </dev/null 2>&1 >/dev/null | tee "$WORKTREE_STDERR" >&2
       _rc=${PIPESTATUS[0]}

@@ -227,7 +227,14 @@ $Config = if ($env:CLI_DISPATCH_CONFIG) {
 $cfg = Read-ConfigFile -Path $Config
 $key = $cfg["DEEPSEEK_API_KEY"]
 if ([string]::IsNullOrEmpty($key)) {
-  Write-Error "claude-ds-stream: DEEPSEEK_API_KEY not set. Add it to $Config (run /cli-dispatch:setup)."
+  # A key set only in the plugin's userConfig is passed by the dispatch tool alone (flags file, never a value).
+  $ucStatus = if ($env:CLI_DISPATCH_USERCONFIG_STATUS) { $env:CLI_DISPATCH_USERCONFIG_STATUS } else { Join-Path $(if ($env:XDG_CONFIG_HOME) { $env:XDG_CONFIG_HOME } else { Join-Path $HOME ".config" }) "cli-dispatch/userconfig-status.json" }
+  $ucSet = (Test-Path $ucStatus) -and ((Get-Content $ucStatus -Raw) -match '"DEEPSEEK_API_KEY": *true')
+  if ($ucSet) {
+    Write-Error "claude-ds-stream: DEEPSEEK_API_KEY is set in the plugin config, which only the dispatch tool passes to workers. Use the dispatch tool, or add the key to $Config (or run the setup form: /cli-dispatch:setup)."
+  } else {
+    Write-Error "claude-ds-stream: DEEPSEEK_API_KEY not set. Add it to $Config (run /cli-dispatch:setup), or /plugin configure cli-dispatch@cli-dispatch for the dispatch tool."
+  }
   exit 1
 }
 

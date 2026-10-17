@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [7.0.0] — 2026-10-18
+
+**Requires Claude Code 2.1.287+.** The first version with mods; older versions are no longer
+supported. Nothing older is blocked, and the config-file paths are expected to keep loading there,
+but 7.0.0 is not tested on them.
+
+### Added
+
+- **Worker API keys as sensitive plugin config.** The five keys (DeepSeek, OpenRouter, Gemini,
+  Codex, Copilot) are `userConfig` fields, entered with `/plugin configure cli-dispatch@cli-dispatch`
+  (or `claude plugin configure … --values-stdin`) and kept in Claude Code's secure store instead of
+  the plaintext config file. The dialog masks a key except its last 6 characters; `docs/security.md`
+  says so. The config file and the setup form keep working.
+- **`/cli-dispatch-config`, the setup pane.** For each backend it shows whether the worker CLI and
+  the cli-dispatch wrapper are installed and whether a key is set (a check or a cross, never the
+  value), lets you edit model names, and installs the backends you tick through
+  `install.sh --non-interactive` (never `--install-missing`). When a key is missing it shows the
+  `/plugin configure` command. A key is never typed into, drawn in, or stored by the pane.
+- **The `dispatch` tool hands the key to the worker only.** The dispatched backend's plugin-config
+  key travels in a private variable that `cli-dispatch-run` takes out of the environment and exports,
+  under the real name, inside the worker subshells alone. `--verify`, the wait call and every argv
+  and file lack it. `scripts/config-file.mjs` now holds the config file's write rules, shared by the
+  setup form and the pane.
+- **`userconfig-status.json`.** The SessionStart hook records which plugin-config keys are set
+  (booleans only, 0600) so Bash paths can tell "set in the plugin config" from "not set".
+
+### Changed
+
+- **`/cli-dispatch:setup` routes keys to `/plugin configure` when the mod is loaded**, and to
+  `/cli-dispatch-config` for models and installs. The local browser form stays as the fallback when
+  the mod is not loaded.
+- **doctor, balance and the DeepSeek "not set" messages report plugin-config keys.** Bash paths
+  (`/cli-dispatch:run`, the runner agent, `*-agent`) still read only the config file and the host
+  environment; when a key is set only in the plugin config they say to use the `dispatch` tool or
+  add the key to the config file.
+
 ## [6.4.1] — 2026-10-17
 
 ### Fixed

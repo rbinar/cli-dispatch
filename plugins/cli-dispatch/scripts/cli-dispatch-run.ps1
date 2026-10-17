@@ -11,6 +11,12 @@ if ($env:CLI_DISPATCH_WORKER -eq '1') {
   exit 5
 }
 
+# The dispatch tool hands the dispatched backend's plugin-config key over in this private name
+# (see the bash twin). Capture it and drop it from the environment at once; it is set under the
+# real variable name only around the worker call below, so verify never sees it.
+$runKey = $env:CLI_DISPATCH_RUN_KEY
+Remove-Item Env:CLI_DISPATCH_RUN_KEY -ErrorAction SilentlyContinue
+
 function Show-Usage {
   Write-Host 'usage: cli-dispatch-run --backend <ds|ag|cx|oc|cp> --cwd <repo> [--prompt <text> | --prompt-file <path>] [--branch <name>] [--model <slug>] [--effort low|medium|high] [--verify <cmd>] [--verify-timeout SECS] [--timeout SECS] [--resume <session-id>] [--cleanup-if-clean] [--scope <glob>]'
 }
@@ -449,6 +455,10 @@ honest empty `command` is more useful than a confident one that was never execut
   if ($Effort) {
     if ($Backend -eq 'ds') { $baseVars['CLAUDE_DS_EFFORT'] = $Effort }
     if ($Backend -eq 'cx') { $baseVars['CX_EFFORT'] = $Effort }
+  }
+  if ($runKey) {
+    if ($Backend -eq 'ds') { $baseVars['DEEPSEEK_API_KEY'] = $runKey }
+    if ($Backend -eq 'cx') { $baseVars['CODEX_API_KEY'] = $runKey }
   }
 
   function Set-TempEnv { param([hashtable]$Vars)

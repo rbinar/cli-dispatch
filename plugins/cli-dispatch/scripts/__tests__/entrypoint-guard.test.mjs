@@ -39,7 +39,8 @@ function makeLinkedRepo(t) {
 function runNode(scriptPath, { args = [], env = {} } = {}) {
   return spawnSync(process.execPath, [scriptPath, ...args], {
     cwd: REPO_ROOT,
-    env: { ...process.env, ...env },
+    // policy-inject.mjs writes a userConfig status file; keep it out of the real ~/.config.
+    env: { ...process.env, CLI_DISPATCH_USERCONFIG_STATUS: path.join(os.tmpdir(), `cd-ucs-${process.pid}.json`), ...env },
     encoding: 'utf8',
   })
 }

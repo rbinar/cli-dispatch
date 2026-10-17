@@ -5,7 +5,7 @@
 > ⚠️ Bu komutlar **slash komutudur** ve **Claude Code CLI'ın içinden** çalıştırılmalıdır (normal terminal/shell'de değil). Önce `claude` yazıp Claude Code oturumunu başlat, komutları o oturumun prompt'una gir.
 
 **Başlamadan önce — gerekenler:**
-- `claude` CLI kurulu ve `PATH`'te
+- `claude` CLI kurulu ve `PATH`'te, sürümü **2.1.287 veya daha yeni** (mod'lar Claude Code 2.1.287 ile geldi; plugin buna ihtiyaç duyar)
 - `~/.local/bin` `PATH`'te — kontrol: `echo $PATH | grep -q local && echo tamam || echo 'ekle: export PATH="$HOME/.local/bin:$PATH" → ~/.zshrc'`
 - Backend'ine göre API key/auth — aşağıdaki tabloya bak
 
@@ -55,7 +55,9 @@ Install çıktısı `Run /reload-plugins to apply` der. Komutların (`/cli-dispa
 
 Native Windows: yalnızca DeepSeek ve Codex — diğer üçü WSL altında kur (bkz. [Windows](windows.md#windows)). Sandbox: yalnızca Codex'in `--read-only`'si kernel-zorunlu bir OS sandbox'ıdır — gerisi worktree izolasyonu gerektirir (bkz. [Güvenlik ve veri](security.md#güvenlik-ve-veri)).
 
-DeepSeek ve OpenCode key'ini kendin girdiğin için setup, tarayıcında **tek kullanımlık yerel bir web formu** açar (yalnızca loopback, çalıştırmaya özel token). Key ve model adlarını bu forma yazarsın; değerler doğrudan config dosyasına gider, Claude'dan geçmez. Sonuçta dosya şuna benzer:
+**Key'ler ve modeller (Claude Code 2.1.287+).** API key'lerini `/plugin configure cli-dispatch@cli-dispatch` ile gir: key, Claude Code'un güvenli deposunda tutulur, bir dosyada durmaz ve Claude'dan geçmez. Diyalog key'i maskeler ama **son 6 karakterini açık gösterir**; ekran paylaşırken ya da kayıt alırken girme. Model adlarını düzenlemek ve backend kurmak için `/cli-dispatch-config` kullan. Orada girilen key yalnızca `dispatch` aracına ulaşır; `/cli-dispatch:run`, runner agent ve `*-agent` script'leri hâlâ config dosyasını okur, bunları kullanıyorsan key'i oraya da ekle (ya da aşağıdaki formu kullan).
+
+Mod yüklü değilse yedek yol: setup, key'i kendin girdiğin için tarayıcında **tek kullanımlık yerel bir web formu** açar (yalnızca loopback, çalıştırmaya özel token). Key ve model adlarını bu forma yazarsın; değerler doğrudan config dosyasına gider, Claude'dan geçmez. Sonuçta dosya şuna benzer:
 
 ```bash
 # ~/.config/cli-dispatch/config

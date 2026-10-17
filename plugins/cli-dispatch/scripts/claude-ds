@@ -8,7 +8,12 @@ if [ -f "$CONFIG" ]; then
   . "$CONFIG"
 fi
 if [ -z "${DEEPSEEK_API_KEY:-}" ]; then
-  echo "claude-ds: DEEPSEEK_API_KEY not set. Add it to $CONFIG (run /cli-dispatch:setup)." >&2
+  # A key set only in the plugin's userConfig is passed by the dispatch tool alone (flags file, never a value).
+  if grep -q '"DEEPSEEK_API_KEY": *true' "${CLI_DISPATCH_USERCONFIG_STATUS:-${XDG_CONFIG_HOME:-$HOME/.config}/cli-dispatch/userconfig-status.json}" 2>/dev/null; then
+    echo "claude-ds: DEEPSEEK_API_KEY is set in the plugin config, which only the dispatch tool passes to workers. Use the dispatch tool, or add the key to $CONFIG (or run the setup form: /cli-dispatch:setup)." >&2
+  else
+    echo "claude-ds: DEEPSEEK_API_KEY not set. Add it to $CONFIG (run /cli-dispatch:setup), or /plugin configure cli-dispatch@cli-dispatch for the dispatch tool." >&2
+  fi
   exit 1
 fi
 exec env \

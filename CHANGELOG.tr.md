@@ -7,6 +7,42 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [7.0.0] — 2026-10-18
+
+**Claude Code 2.1.287+ gerekir.** Mod'lara sahip ilk sürüm; daha eski sürümler artık desteklenmiyor.
+Eski sürümler engellenmez ve config dosyası yollarının orada yüklenmeye devam etmesi beklenir, ama
+7.0.0 onlarda test edilmedi.
+
+### Eklendi
+
+- **Worker API key'leri hassas plugin config'i olarak.** Beş key (DeepSeek, OpenRouter, Gemini,
+  Codex, Copilot) `userConfig` alanıdır; `/plugin configure cli-dispatch@cli-dispatch` (ya da
+  `claude plugin configure … --values-stdin`) ile girilir ve düz metin config dosyası yerine Claude
+  Code'un güvenli deposunda tutulur. Diyalog key'i son 6 karakteri hariç maskeler; bunu
+  `docs/security.md` söyler. Config dosyası ve setup formu çalışmaya devam eder.
+- **`/cli-dispatch-config`, kurulum paneli.** Her backend için worker CLI'ın ve cli-dispatch
+  wrapper'ının kurulu olup olmadığını ve key'in tanımlı olup olmadığını (tik ya da çarpı, asla değer)
+  gösterir, model adlarını düzenletir ve işaretlediğin backend'leri `install.sh --non-interactive` ile
+  kurar (`--install-missing` asla). Key eksikse `/plugin configure` komutunu gösterir. Panel key'i
+  ne yazdırır, ne çizer, ne de saklar.
+- **`dispatch` aracı key'i yalnızca worker'a verir.** Çalıştırılan backend'in plugin-config key'i,
+  `cli-dispatch-run`'ın ortamdan çıkarıp yalnızca worker alt kabuklarında gerçek adıyla export ettiği
+  özel bir değişkenle taşınır. `--verify`, wait çağrısı ve tüm argv ile dosyalar key'den uzak kalır.
+  `scripts/config-file.mjs` config dosyasının yazma kurallarını tutar; setup formu ve panel bunu
+  paylaşır.
+- **`userconfig-status.json`.** SessionStart hook'u hangi plugin-config key'lerinin tanımlı olduğunu
+  (yalnızca boolean, 0600) kaydeder; Bash yolları böylece "plugin config'te tanımlı" ile "tanımsız"ı
+  ayırt edebilir.
+
+### Değişti
+
+- **`/cli-dispatch:setup`, mod yüklüyken key'leri `/plugin configure`'a yönlendirir**, model ve kurulum
+  için `/cli-dispatch-config`'e. Mod yüklü değilse yerel tarayıcı formu yedek yol olarak kalır.
+- **doctor, balance ve DeepSeek "tanımsız" mesajları plugin-config key'lerini bildirir.** Bash yolları
+  (`/cli-dispatch:run`, runner agent, `*-agent`) hâlâ yalnızca config dosyasını ve host ortamını okur;
+  key yalnızca plugin config'te tanımlıysa `dispatch` aracını kullanmanı ya da key'i config dosyasına
+  eklemeni söylerler.
+
 ## [6.4.1] — 2026-10-17
 
 ### Düzeltildi

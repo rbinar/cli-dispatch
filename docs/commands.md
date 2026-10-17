@@ -10,6 +10,7 @@ You use cli-dispatch **from inside Claude Code** — two ways:
 | Command | What it does |
 |---------|--------------|
 | `/cli-dispatch:setup` | Pick backend(s) + install + config skeleton + smoke test |
+| `/cli-dispatch-config` | Setup pane (Claude Code 2.1.287+): per backend, is the CLI and wrapper installed and is a key set (never shown); edit model names; install backends. Keys are entered with `/plugin configure cli-dispatch@cli-dispatch` |
 | `/cli-dispatch:ask <backend> "<prompt>"` | One-shot question/answer to a worker, no repo changes (`ds`/`cx` run `--read-only`; `ag`/`oc`/`cp` have no write-deny, so they run in a throwaway temp dir with no repo access). Agent flags such as `--model` / `--effort` go before the prompt. For repo work use `run` or the runner agent |
 | `/cli-dispatch:run <backend> "<task>" --verify '<cmd>'` | Deterministic delegation, called directly — zero LLM tokens. From an orchestrator the default is the thin `cli-dispatch:runner` agent, which wraps this same runner |
 | `/cli-dispatch:sessions [backend]` | List past/active sessions (all backends; shows a `backend` column); optional backend filter |

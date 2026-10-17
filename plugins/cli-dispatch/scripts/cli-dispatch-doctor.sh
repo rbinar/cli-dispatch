@@ -30,6 +30,13 @@ ok()  { echo "  ✓ $*"; }
 bad() { echo "  ✗ $*"; }
 chk() { command -v "$1" >/dev/null 2>&1 && ok "$1 on PATH ($(command -v "$1"))" || bad "$1 not found — run /cli-dispatch:setup"; }
 
+# Keys set in the plugin's userConfig are invisible to Bash paths; the SessionStart hook records
+# only WHICH are set (flags, never a value) in this file. Read with grep, never sourced.
+UCS="${CLI_DISPATCH_USERCONFIG_STATUS:-${XDG_CONFIG_HOME:-$HOME/.config}/cli-dispatch/userconfig-status.json}"
+uc_set() { grep -q "\"$1\": *true" "$UCS" 2>/dev/null; }
+uc_note() { ok "$1 set in plugin config (used by the dispatch tool only; for Bash paths add it to $CFG or run /cli-dispatch:setup)"; }
+PLUGCFG="/plugin configure cli-dispatch@cli-dispatch"
+
 CFG="${CLI_DISPATCH_CONFIG:-${CLAUDE_DS_CONFIG:-}}"
 [ -n "$CFG" ] || { CFG="$HOME/.config/cli-dispatch/config"; [ -f "$CFG" ] || { [ -f "$HOME/.config/claude-ds/config" ] && CFG="$HOME/.config/claude-ds/config"; }; }
 
@@ -70,7 +77,14 @@ chk claude-ds
 chk claude-ds-stream
 chk ds-agent
 if [ -f "$CFG" ]; then
-  ( . "$CFG"; [ -n "${DEEPSEEK_API_KEY:-}" ] && ok "DEEPSEEK_API_KEY set" || bad "DEEPSEEK_API_KEY missing — add to $CFG" )
+  ( . "$CFG"
+    if [ -n "${DEEPSEEK_API_KEY:-}" ]; then ok "DEEPSEEK_API_KEY set"
+    elif uc_set DEEPSEEK_API_KEY; then uc_note DEEPSEEK_API_KEY
+    else bad "DEEPSEEK_API_KEY missing — add to $CFG or $PLUGCFG"
+    fi
+  )
+elif uc_set DEEPSEEK_API_KEY; then
+  uc_note DEEPSEEK_API_KEY
 else
   bad "config not found ($CFG) — run /cli-dispatch:setup"
 fi
@@ -92,6 +106,7 @@ if command -v ag-agent >/dev/null 2>&1; then
   [ -f "$CFG" ] && ( . "$CFG"
     if [ -n "${GEMINI_API_KEY:-}" ]; then ok "GEMINI_API_KEY set"
     elif [ -n "${ANTIGRAVITY_API_KEY:-}" ]; then ok "ANTIGRAVITY_API_KEY set"
+    elif uc_set GEMINI_API_KEY; then uc_note GEMINI_API_KEY
     else
       AG_LAST="$(ls -1dt "$SESS"/*/ 2>/dev/null | while read -r d; do
         grep -lq '"backend"[[:space:]]*:[[:space:]]*"antigravity"' "$d/status.json" 2>/dev/null \
@@ -122,6 +137,7 @@ if command -v cx-agent >/dev/null 2>&1; then
     [ -f "$CFG" ] && ( . "$CFG"
       if [ -n "${CODEX_API_KEY:-}" ]; then ok "CODEX_API_KEY set"
       elif [ -n "${OPENAI_API_KEY:-}" ]; then ok "OPENAI_API_KEY set"
+      elif uc_set CODEX_API_KEY; then uc_note CODEX_API_KEY
       else
         # A real probe, not a guess: `codex login status` reads ~/.codex/auth.json locally (~140ms)
         # and reports the METHOD, which matters — a ChatGPT subscription and an API key bill
@@ -131,7 +147,7 @@ if command -v cx-agent >/dev/null 2>&1; then
           *"Logged in"*ChatGPT*) ok "logged in via codex login (ChatGPT)" ;;
           *"Logged in"*"API key"*) ok "logged in via codex login (API key)" ;;
           *"Logged in"*) ok "logged in via codex login" ;;
-          *) bad "not logged in and no key in config — run: codex login" ;;
+          *) bad "not logged in and no key in config — run: codex login  (or $PLUGCFG)" ;;
         esac
       fi
     )
@@ -155,7 +171,12 @@ if command -v oc-agent >/dev/null 2>&1; then
   else
     bad "opencode CLI missing — npm i -g opencode-ai"
   fi
-  [ -f "$CFG" ] && ( . "$CFG"; [ -n "${OPENROUTER_API_KEY:-}" ] && ok "OPENROUTER_API_KEY set" || bad "OPENROUTER_API_KEY missing — add to $CFG (no OAuth fallback for OpenCode)" )
+  [ -f "$CFG" ] && ( . "$CFG"
+    if [ -n "${OPENROUTER_API_KEY:-}" ]; then ok "OPENROUTER_API_KEY set"
+    elif uc_set OPENROUTER_API_KEY; then uc_note OPENROUTER_API_KEY
+    else bad "OPENROUTER_API_KEY missing — add to $CFG or $PLUGCFG (no OAuth fallback for OpenCode)"
+    fi
+  )
 else
   echo "  – oc-agent not installed (optional — /cli-dispatch:setup to add)"
 fi
@@ -175,12 +196,13 @@ if command -v cp-agent >/dev/null 2>&1; then
   fi
   [ -f "$CFG" ] && ( . "$CFG"
     if [ -n "${COPILOT_GITHUB_TOKEN:-}" ]; then ok "COPILOT_GITHUB_TOKEN set"
+    elif uc_set COPILOT_GITHUB_TOKEN; then uc_note COPILOT_GITHUB_TOKEN
     elif [ -n "${GH_TOKEN:-}" ] || [ -n "${GITHUB_TOKEN:-}" ]; then ok "GH_TOKEN/GITHUB_TOKEN set"
     elif [ -z "${CLI_DISPATCH_NO_GH_TOKEN:-}" ] && command -v gh >/dev/null 2>&1 && [ -n "$(gh auth token 2>/dev/null)" ]; then
       # Not a guess: this is the repo's own definition of "logged in" for Copilot, and it reads the
       # keyring with no network round-trip (see stream-utils.sh's maybe_export_gh_token).
       ok "no token in config — using gh auth token (forwarded as GH_TOKEN); active Copilot subscription required"
-    else bad "no token in config and gh is not authenticated — run: gh auth login  (or set COPILOT_GITHUB_TOKEN)"
+    else bad "no token in config and gh is not authenticated — run: gh auth login  (or set COPILOT_GITHUB_TOKEN, or $PLUGCFG)"
     fi
   )
 else

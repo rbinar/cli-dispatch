@@ -187,3 +187,174 @@ describe('dispatch tool', () => {
     expect(h.registered).toEqual([])
   })
 })
+
+// ---- plugin-config keys: which one reaches which call ----------------------------------------
+
+describe('dispatch key hand-off', () => {
+  const KEYS = { codex_api_key: 'cx-S', deepseek_api_key: 'ds-S' }
+  const REAL_VARS = /DEEPSEEK_API_KEY|CODEX_API_KEY|GEMINI_API_KEY|OPENROUTER_API_KEY|COPILOT_GITHUB_TOKEN/
+
+  test('the dispatched backend key rides on the run call only, as the private variable', { options: KEYS }, async ($, on) => {
+    const h = stubDispatch(on, { waits: [124, 0] })
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    const r: any = await $.tool.call({ tool: 'mcp__cli-dispatch__dispatch', backend: 'cx', cwd: '/repo', task: 'fix it', verify: ['true'] } as any)
+    const run = h.calls.find(c => c.argv[0] === 'cli-dispatch-run')!
+    expect(run.env?.CLI_DISPATCH_RUN_KEY).toBe('cx-S')
+    expect(run.env?.CLAUDE_CODE_SESSION_ID).toBe(SID)
+    expect(Object.values(run.env ?? {})).not.toContain('ds-S')
+    expect(Object.keys(run.env ?? {}).filter(k => REAL_VARS.test(k))).toEqual([])
+    const waits = h.calls.filter(c => c.argv[0] === 'cli-dispatch-wait')
+    expect(waits.length).toBe(2)
+    for (const w of waits) expect(w.env).toEqual({ CLAUDE_CODE_SESSION_ID: SID })
+    // The key is in no argv, no written file and not in what the tool returns.
+    expect(JSON.stringify(h.calls.map(c => c.argv))).not.toContain('cx-S')
+    expect(JSON.stringify(h.written)).not.toContain('cx-S')
+    expect(JSON.stringify(r)).not.toContain('cx-S')
+  })
+
+  test('the plugin-copy fallback keeps the same scope', { options: KEYS }, async ($, on) => {
+    const h = stubDispatch(on, { noPath: true })
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    await $.tool.call({ tool: 'mcp__cli-dispatch__dispatch', backend: 'cx', cwd: '/repo', task: 't' } as any)
+    const withKey = h.calls.filter(c => c.env?.CLI_DISPATCH_RUN_KEY !== undefined)
+    expect(withKey.length).toBeGreaterThan(0)
+    for (const c of withKey) expect((c.argv[0] === 'bash' ? c.argv[1] : c.argv[0]) as string).toMatch(/cli-dispatch-run$/)
+  })
+
+  test('another backend gets no key, and an empty key injects nothing', { options: { codex_api_key: '', deepseek_api_key: 'ds-S' } }, async ($, on) => {
+    const h = stubDispatch(on)
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    await $.tool.call({ tool: 'mcp__cli-dispatch__dispatch', backend: 'cx', cwd: '/repo', task: 't' } as any)
+    expect(h.calls.find(c => c.argv[0] === 'cli-dispatch-run')!.env).toEqual({ CLAUDE_CODE_SESSION_ID: SID })
+  })
+})
+
+// ---- /cli-dispatch-config: the setup pane -----------------------------------------------------
+
+const STATUS = (keys: Record<string, boolean>) =>
+  JSON.stringify({ path: '/home/u/.config/cli-dispatch/config', exists: true, keys: { DEEPSEEK_API_KEY: false, GEMINI_API_KEY: false, CODEX_API_KEY: false, OPENROUTER_API_KEY: false, COPILOT_GITHUB_TOKEN: false, ...keys }, models: { DS_MODEL: 'deepseek-v4-pro', AG_MODEL: 'gemini-x' } })
+const PANE: any = { title: 'cli-dispatch setup', isFocused: true, bodyColumns: 100, placement: 'inline', scroll: { bodyRows: 20, offset: 0, total: 20 }, view: {} }
+
+function stubSetup(on: any, opts: { sh?: string; shThrows?: boolean; status?: string; worker?: boolean } = {}) {
+  const calls: { argv: string[]; init?: any }[] = []
+  const opened: any[] = []
+  const toasts: string[] = []
+  const registeredCommands: string[] = []
+  const stateWrites: unknown[] = []
+  on('state.set', ($: any, e: any, next: any) => {
+    stateWrites.push(e.value)
+    return next(e)
+  })
+  on('session.start', ($: any, e: any) => ({ cwd: e.cwd }))
+  on('env.get', ($: any, e: any) => ({ value: e.name === 'CLI_DISPATCH_WORKER' && opts.worker ? '1' : undefined }))
+  on('session.id', () => ({ value: SID }))
+  on('clock.now', () => ({ value: NOW }))
+  on('clock.every', () => ({ value: undefined }))
+  on('fs.exists', () => ({ value: false }))
+  on('fs.list', () => ({ value: [] }))
+  on('tool.register', ($: any, e: any) => ({ value: { tool: `mcp__cli-dispatch__${e.name}` } }))
+  on('command.register', ($: any, e: any) => {
+    registeredCommands.push(e.name)
+    return { value: { command: e.name } }
+  })
+  on('ui.open', ($: any, e: any) => {
+    opened.push(e)
+    return { value: { isPlaced: true } }
+  })
+  on('ui.toast', ($: any, e: any) => {
+    toasts.push(e.text)
+    return { value: undefined }
+  })
+  on('process.run', ($: any, e: any) => {
+    calls.push({ argv: [...e.argv], init: e.init })
+    const [a0, a1] = e.argv as string[]
+    if (a0 === 'sh') {
+      if (opts.shThrows) throw new Error('spawn sh ENOENT')
+      return { value: { exitCode: 0, stdout: opts.sh ?? '', stderr: '' } }
+    }
+    if (a0 === 'node') return { value: { exitCode: 0, stdout: opts.status ?? STATUS({}), stderr: '' } }
+    if (a0 === 'bash' && a1!.endsWith('resolve-plugin-root.sh')) return { value: { exitCode: 0, stdout: '/resolved/root\n', stderr: '' } }
+    if (a0 === 'bash' && a1!.endsWith('install.sh')) return { value: { exitCode: 0, stdout: 'noise\nDone.\n', stderr: '' } }
+    return { value: { exitCode: 1, stdout: '', stderr: '' } }
+  })
+  return { calls, opened, toasts, registeredCommands, stateWrites }
+}
+
+describe('setup pane', () => {
+  for (const surface of ['terminal', 'desktop'] as const) {
+    test(`shows CLI, wrapper, key and model state per backend (${surface})`, { options: { deepseek_api_key: 'x' } }, async ($, on) => {
+      const h = stubSetup(on, { sh: 'claude\ncodex\nds-agent\ncx-agent\n', status: STATUS({ CODEX_API_KEY: true }) })
+      await $.session.start({ surface, isInteractive: true, cwd: '/work' } as any)
+      expect(h.registeredCommands).toEqual(['cli-dispatch-config'])
+      await $.command.run({ command: 'cli-dispatch-config' } as any)
+      expect(h.opened.map(o => o.id)).toEqual(['setup'])
+      const ui = await $.ui.mount({ plugin: 'cli-dispatch', surface, component: 'Pane', requestId: 'setup', props: PANE })
+      expect(await ui.find({ type: 'Text', text: /agy ✗/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /codex ✓/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /✓ plugin config/ })).toBeDefined() // DeepSeek
+      expect(await ui.find({ type: 'Text', text: /✓ config file/ })).toBeDefined() // Codex
+      expect(await ui.find({ type: 'Text', text: /missing.*\/plugin configure cli-dispatch@cli-dispatch/ })).toBeDefined() // OpenCode
+      expect(await ui.find({ type: 'Input', key: 'DS_MODEL' })).toBeDefined()
+      await ui.unmount()
+    })
+  }
+
+  test('a key value is never drawn, stored, or typed into an Input', { options: { deepseek_api_key: 'SENTINEL-UC', codex_api_key: 'SENTINEL-UC2' } }, async ($, on) => {
+    const h = stubSetup(on, { sh: 'claude\nds-agent\n', status: STATUS({}) })
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    await $.command.run({ command: 'cli-dispatch-config' } as any)
+    const ui = await $.ui.mount({ plugin: 'cli-dispatch', surface: 'terminal', component: 'Pane', requestId: 'setup', props: PANE })
+    expect(JSON.stringify(await ui.drawn())).not.toMatch(/SENTINEL/)
+    expect(await ui.find({ type: 'Text', text: /SENTINEL/ })).toBeUndefined()
+    // The kit's key matcher takes a string, not a pattern: list every Input and look at the keys.
+    expect((await ui.findAll({ type: 'Input' })).filter(i => /API_KEY|TOKEN/.test(i.key ?? ''))).toEqual([])
+    expect(h.stateWrites.length).toBeGreaterThan(0)
+    expect(JSON.stringify(h.stateWrites)).not.toMatch(/SENTINEL/)
+    await ui.unmount()
+  })
+
+  test('Install selected runs the resolved installer non-interactively, never with --install-missing', async ($, on) => {
+    const h = stubSetup(on, { sh: 'claude\nds-agent\n' })
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    await $.command.run({ command: 'cli-dispatch-config' } as any)
+    const ui = await $.ui.mount({ plugin: 'cli-dispatch', surface: 'terminal', component: 'Pane', requestId: 'setup', props: PANE })
+    await ui.press({ key: 'install:oc' })
+    await ui.press({ key: 'install:ds' })
+    await ui.press({ key: 'install' })
+    const bash = h.calls.filter(c => c.argv[0] === 'bash')
+    expect(bash.length).toBe(2)
+    expect(bash[0]!.argv[1]).toMatch(/\/scripts\/resolve-plugin-root\.sh$/)
+    expect(bash[1]!.argv).toEqual(['bash', '/resolved/root/scripts/install.sh', '--backends', 'deepseek,opencode', '--non-interactive'])
+    expect(JSON.stringify(h.calls.map(c => c.argv))).not.toContain('--install-missing')
+    expect(h.toasts.some(t => /Done\./.test(t))).toBe(true)
+    await ui.unmount()
+  })
+
+  test('with no sh there are no install controls', async ($, on) => {
+    stubSetup(on, { shThrows: true })
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    await $.command.run({ command: 'cli-dispatch-config' } as any)
+    const ui = await $.ui.mount({ plugin: 'cli-dispatch', surface: 'terminal', component: 'Pane', requestId: 'setup', props: PANE })
+    expect((await ui.findAll({ type: 'Button' })).filter(b => (b.key ?? '').startsWith('install'))).toEqual([])
+    expect(await ui.find({ type: 'Text', text: /agy \?/ })).toBeDefined()
+    await ui.unmount()
+  })
+
+  test('a model Input saves through config-file.mjs set', async ($, on) => {
+    const h = stubSetup(on, { sh: 'claude\n' })
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    await $.command.run({ command: 'cli-dispatch-config' } as any)
+    const ui = await $.ui.mount({ plugin: 'cli-dispatch', surface: 'terminal', component: 'Pane', requestId: 'setup', props: PANE })
+    await ui.input({ key: 'DS_MODEL', text: ' deepseek-v5 ' })
+    const set = h.calls.find(c => c.argv[2] === 'set')!
+    expect(set.argv.slice(2)).toEqual(['set', 'DS_MODEL', 'deepseek-v5'])
+    expect(set.argv[1]).toMatch(/\/scripts\/config-file\.mjs$/)
+    await ui.unmount()
+  })
+
+  test('the command is offered inside a worker session too', async ($, on) => {
+    const h = stubSetup(on, { worker: true })
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    expect(h.registeredCommands).toEqual(['cli-dispatch-config'])
+  })
+})

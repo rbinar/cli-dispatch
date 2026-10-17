@@ -346,3 +346,55 @@ test('16. integration: junk cache entries never produce a warning', () => {
   const out = runInject(file, stalenessEnv('junk', '4.16.0', ['latest', 'tmp', 'v4.17.0']))
   assert.ok(!JSON.parse(out).hookSpecificOutput.additionalContext.includes('STALE'))
 })
+
+// ============================================================================
+// userconfig-status.json — which plugin-config keys are set, flags only
+// ============================================================================
+
+// The tests above spawn the hook without pinning the status path; without this pin they would
+// write the DEVELOPER's real ~/.config/cli-dispatch/userconfig-status.json (all false).
+process.env.CLI_DISPATCH_USERCONFIG_STATUS = path.join(fixtureDir, 'default-userconfig-status.json')
+
+const ALL_KEYS = ['DEEPSEEK_API_KEY', 'OPENROUTER_API_KEY', 'GEMINI_API_KEY', 'CODEX_API_KEY', 'COPILOT_GITHUB_TOKEN']
+
+test('17. status file: flags only, 0600, SENTINEL never written', () => {
+  const file = writeFixture('uc-policy.json', { enabled: true })
+  const status = path.join(fixtureDir, 'uc17', 'status.json')
+  runInject(file, {
+    CLI_DISPATCH_USERCONFIG_STATUS: status,
+    CLAUDE_PLUGIN_OPTION_DEEPSEEK_API_KEY: 'SENTINEL',
+    CLAUDE_PLUGIN_OPTION_CODEX_API_KEY: '',
+  })
+  const text = fs.readFileSync(status, 'utf8')
+  assert.ok(!text.includes('SENTINEL'))
+  const j = JSON.parse(text)
+  assert.equal(j.schemaVersion, 1)
+  assert.deepEqual(Object.keys(j.keys).sort(), [...ALL_KEYS].sort())
+  assert.equal(j.keys.DEEPSEEK_API_KEY, true)
+  for (const k of ALL_KEYS.filter((k) => k !== 'DEEPSEEK_API_KEY')) assert.equal(j.keys[k], false, k)
+  assert.equal(fs.statSync(status).mode & 0o777, 0o600)
+})
+
+test('18. status file: hook stdout is byte-identical with and without the option variables', () => {
+  const file = writeFixture('uc-policy2.json', { enabled: true })
+  const base = { CLI_DISPATCH_USERCONFIG_STATUS: path.join(fixtureDir, 'uc18.json') }
+  const without = runInject(file, base)
+  const withOpts = runInject(file, { ...base, CLAUDE_PLUGIN_OPTION_DEEPSEEK_API_KEY: 'SENTINEL' })
+  assert.equal(withOpts, without)
+  assert.ok(!withOpts.includes('SENTINEL'))
+})
+
+test('19. status file: nothing is written inside a worker', () => {
+  const file = writeFixture('uc-policy3.json', { enabled: true })
+  const status = path.join(fixtureDir, 'uc19.json')
+  runInject(file, { CLI_DISPATCH_USERCONFIG_STATUS: status, CLI_DISPATCH_WORKER: '1', CLAUDE_PLUGIN_OPTION_DEEPSEEK_API_KEY: 'x' })
+  assert.equal(fs.existsSync(status), false)
+})
+
+test('20. status file: an unwritable path still yields the policy output', () => {
+  const file = writeFixture('uc-policy4.json', { enabled: true })
+  const blocker = path.join(fixtureDir, 'uc20-blocker')
+  fs.writeFileSync(blocker, 'a file where a directory is needed')
+  const out = runInject(file, { CLI_DISPATCH_USERCONFIG_STATUS: path.join(blocker, 'sub', 'status.json') })
+  assert.ok(JSON.parse(out).hookSpecificOutput.additionalContext.includes('[cli-dispatch policy] '))
+})

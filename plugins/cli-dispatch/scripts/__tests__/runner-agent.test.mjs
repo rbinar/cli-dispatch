@@ -289,7 +289,7 @@ test('inside a worker the SessionStart hook injects nothing', () => {
     fs.writeFileSync(policy, JSON.stringify({ schemaVersion: 1, enabled: true }))
     const hook = (extra) => spawnSync(process.execPath, [path.join(SCRIPTS, 'policy-inject.mjs')], {
       encoding: 'utf8', input: '{"hook_event_name":"SessionStart","source":"startup"}',
-      env: { ...process.env, CLI_DISPATCH_POLICY_FILE: policy, ...extra },
+      env: { ...process.env, CLI_DISPATCH_POLICY_FILE: policy, CLI_DISPATCH_USERCONFIG_STATUS: path.join(dir, 'ucs.json'), ...extra },
     })
     assert.match(hook({}).stdout, /cli-dispatch policy/, 'control: an orchestrator session gets the policy')
     const worker = hook({ CLI_DISPATCH_WORKER: '1' })

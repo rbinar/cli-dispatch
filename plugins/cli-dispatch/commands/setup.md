@@ -119,8 +119,21 @@ Follow these steps:
    > places the binary on `PATH`; it never signs the user in or writes a key. The steps below
    > (the key/model form, Antigravity `agy` sign-in, `codex login`, Copilot gh/token auth)
    > are unaffected by whether the CLI arrived via auto-install or was already present.
-   - **API keys and model names (DeepSeek, OpenCode, and any optional keys) go through a local
-     one-shot web form** — never through you. Run it as a background Bash task
+   - **First pick the path for API keys.** Is the `mcp__cli-dispatch__dispatch` tool in your
+     tool list (Claude Code 2.1.287+ with the plugin's mod loaded)?
+     - **Yes** — do not run the form. Tell the user to enter keys themselves with
+       `/plugin configure cli-dispatch@cli-dispatch`; it works in any terminal, a container or an
+       SSH session included, and needs no browser. Warn them first that the dialog masks a key
+       but shows its **last 6 characters in clear**, so it should not be filled in during a screen
+       share or recording. Model names and installs go through `/cli-dispatch-config`. A key
+       entered there reaches the `dispatch` tool only; `/cli-dispatch:run`, the runner agent and
+       the `*-agent` scripts still read the config file, so if the user uses those, the key
+       belongs in the config file too (that is what the form below writes). You (Claude) never
+       write or paste a key.
+     - **No** (no mod: native Windows without mod support, or a mod that failed to load) — run
+       the form below exactly as before.
+   - **When the mod is not loaded, API keys and model names (DeepSeek, OpenCode, and any optional
+     keys) go through a local one-shot web form** — never through you. Run it as a background Bash task
      (`run_in_background: true`), resolving `PLUGIN_ROOT` exactly as in step 4:
      ```bash
      PLUGIN_ROOT="$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/resolve-plugin-root.sh" "${CLAUDE_PLUGIN_ROOT}")"

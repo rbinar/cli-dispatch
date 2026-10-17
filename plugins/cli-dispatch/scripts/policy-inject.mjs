@@ -9,7 +9,7 @@
 // LLM babysitter subagents, removed in 4.0.0 — issue #114). The field is ignored for
 // back-compat; no value from it is ever interpolated into the context.
 
-import { accessSync, constants, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs'
+import { accessSync, constants, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { pathToFileURL } from 'node:url'
@@ -155,9 +155,42 @@ export function buildPolicyContext(policyJson) {
   return `[cli-dispatch policy] ` + parts.join(' ')
 }
 
+// userConfig field -> the variable the streams and doctor/balance know it by.
+export const USERCONFIG_KEYS = {
+  deepseek_api_key: 'DEEPSEEK_API_KEY',
+  openrouter_api_key: 'OPENROUTER_API_KEY',
+  gemini_api_key: 'GEMINI_API_KEY',
+  codex_api_key: 'CODEX_API_KEY',
+  copilot_github_token: 'COPILOT_GITHUB_TOKEN',
+}
+
+// Hook processes get the sensitive userConfig values as CLAUDE_PLUGIN_OPTION_<FIELD>; Bash
+// paths (doctor, balance, the *-agent scripts) do not. Record only WHICH keys are set, as
+// booleans, so those paths can tell "set in the plugin config" from "not set" without ever
+// holding a value. Atomic (tmp + rename), mode 0600.
+export function writeUserconfigStatus(env = process.env) {
+  const file = env.CLI_DISPATCH_USERCONFIG_STATUS
+    ? env.CLI_DISPATCH_USERCONFIG_STATUS
+    : path.join(env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'cli-dispatch', 'userconfig-status.json')
+  const keys = {}
+  for (const [field, name] of Object.entries(USERCONFIG_KEYS)) {
+    const v = env['CLAUDE_PLUGIN_OPTION_' + field.toUpperCase()]
+    keys[name] = v !== undefined && v !== ''
+  }
+  mkdirSync(path.dirname(file), { recursive: true })
+  const tmp = `${file}.${process.pid}.tmp`
+  writeFileSync(tmp, JSON.stringify({ schemaVersion: 1, writtenAt: new Date().toISOString(), keys }, null, 2) + '\n', { mode: 0o600 })
+  renameSync(tmp, file)
+}
+
 function main() {
   // Inside a worker (set by every *-stream): the worker must do its task, not delegate it again.
   if (process.env.CLI_DISPATCH_WORKER === '1') return
+  try {
+    writeUserconfigStatus()
+  } catch {
+    // swallow — policy output must never depend on the status file
+  }
   try {
     const policyPath = process.env.CLI_DISPATCH_POLICY_FILE
       ? process.env.CLI_DISPATCH_POLICY_FILE
