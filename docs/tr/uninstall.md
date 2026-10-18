@@ -17,7 +17,7 @@ Tam temizlik için sırayla: (1) plugin'i kaldır, (2) wrapper + config dosyalar
 ```bash
 # macOS / Linux / WSL / Git Bash
 rm -f  ~/.local/bin/claude-ds ~/.local/bin/claude-ds-stream ~/.local/bin/ds-agent
-rm -f  ~/.local/bin/{ag,cx,oc,cp}-agent ~/.local/bin/{ag,cx,oc,cp}-stream
+rm -f  ~/.local/bin/{ag,cx,oc,cp,ol}-agent ~/.local/bin/{ag,cx,oc,cp}-stream   # ol-agent = Ollama
 rm -f  ~/.local/bin/cli-dispatch-{run,wait,clean,gain}
 rm -f  ~/.local/bin/{ds,ag,cx,oc,cp}-worktree-run.* ~/.local/bin/stream-utils.sh ~/.local/bin/version-check.sh
 rm -rf ~/.local/share/cli-dispatch ~/.local/share/claude-ds   # engine/parser'lar (eski yol dahil)

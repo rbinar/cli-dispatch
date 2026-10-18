@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   cat <<'USAGE' >&2
-usage: cli-dispatch-run --backend <ds|ag|cx|oc|cp> --cwd <repo> [--prompt <text> | --prompt-file <path>] [--branch <name>] [--model <slug>] [--effort low|medium|high] [--verify <cmd>] [--verify-timeout SECS] [--timeout SECS] [--resume <session-id>] [--cleanup-if-clean] [--fix-attempts N] [--scope <glob>] [--detach]
+usage: cli-dispatch-run --backend <ds|ag|cx|oc|cp|ol> --cwd <repo> [--prompt <text> | --prompt-file <path>] [--branch <name>] [--model <slug>] [--effort low|medium|high] [--verify <cmd>] [--verify-timeout SECS] [--timeout SECS] [--resume <session-id>] [--cleanup-if-clean] [--fix-attempts N] [--scope <glob>] [--detach]
   --fix-attempts N  on a verify FAIL, resume the worker up to N times with the verify tail, re-verify (default 0)
   --scope <glob>    repeatable; a changed file outside every glob fails the run with exit 2, even if verify passes
   --detach          return at once with "run: <id>"; block on it with: cli-dispatch-wait --run <id> (bash-only)
@@ -216,6 +216,9 @@ write_run_result() {
   else
     echo "exit: $rc" > "$d/summary.txt.tmp"
   fi
+  # No verdict (a setup error, a crash before the verdict): the reason is only in the run log, which
+  # a waiter never prints, so the summary carries its last lines.
+  if [ -z "$vp" ] && [ -f "$d/log" ]; then tail -n 3 "$d/log" | sed 's/^/log: /' >> "$d/summary.txt.tmp" || true; fi
   mv "$d/summary.txt.tmp" "$d/summary.txt" || true
   printf '%s\n' "$rc" > "$d/exit.tmp" && mv "$d/exit.tmp" "$d/exit" || true
 }
@@ -267,7 +270,7 @@ run_fix_resume() {
       for kv in "${WORKTREE_BASE_VARS[@]}"; do export "$kv"; done
     fi
     case "$BACKEND" in
-      ds) run_worker_cmd claude-ds-stream --resume "$SESSION_ID" --prompt-file "$fix_file" ;;
+      ds|ol) run_worker_cmd claude-ds-stream --resume "$SESSION_ID" --prompt-file "$fix_file" ;;
       ag) run_worker_cmd ag-agent --resume "$SESSION_ID" --prompt-file "$fix_file" ;;
       cx) run_worker_cmd cx-agent --resume "$SESSION_ID" --prompt-file "$fix_file" ;;
       oc) run_worker_cmd oc-agent --resume "$SESSION_ID" --prompt-file "$fix_file" ;;
@@ -506,7 +509,7 @@ if [ -n "$PROMPT_FILE" ] && [ ! -f "$PROMPT_FILE" ]; then
 fi
 
 case "$BACKEND" in
-  ds|ag|cx|oc|cp) ;;
+  ds|ag|cx|oc|cp|ol) ;;
   *) echo "cli-dispatch-run: unknown backend '$BACKEND'" >&2; exit 5;;
 esac
 
@@ -559,6 +562,7 @@ select_runner() {
     cx) echo "$SCRIPT_DIR/cx-worktree-run.sh" ;;
     oc) echo "$SCRIPT_DIR/oc-worktree-run.sh" ;;
     cp) echo "$SCRIPT_DIR/cp-worktree-run.sh" ;;
+    ol) echo "$SCRIPT_DIR/ds-worktree-run.sh" ;;   # the DeepSeek pipeline, switched by CLAUDE_DS_BACKEND
   esac
 }
 
@@ -571,6 +575,7 @@ case "$BACKEND" in
   cx) _RUN_KEY_VAR=CODEX_API_KEY;;
   oc) _RUN_KEY_VAR=OPENROUTER_API_KEY;;
   cp) _RUN_KEY_VAR=COPILOT_GITHUB_TOKEN;;
+  ol) _RUN_KEY="";;   # Ollama has no key: nothing is ever handed to its worker
 esac
 
 WORKTREE_BASE_VARS=()
@@ -581,6 +586,7 @@ if [ -n "$MODEL" ]; then
     cx) WORKTREE_BASE_VARS+=("CX_MODEL=$MODEL");;
     oc) WORKTREE_BASE_VARS+=("OC_MODEL=$MODEL");;
     cp) WORKTREE_BASE_VARS+=("CP_MODEL=$MODEL");;
+    ol) WORKTREE_BASE_VARS+=("OL_MODEL=$MODEL");;
   esac
 fi
 if [ -n "$EFFORT" ]; then
@@ -589,7 +595,20 @@ if [ -n "$EFFORT" ]; then
     ag) WORKTREE_BASE_VARS+=("AG_EFFORT=$EFFORT");;
     cx) WORKTREE_BASE_VARS+=("CX_EFFORT=$EFFORT");;
     cp) WORKTREE_BASE_VARS+=("CP_EFFORT=$EFFORT");;
+    ol) WORKTREE_BASE_VARS+=("CLAUDE_DS_EFFORT=$EFFORT");;
   esac
+fi
+if [ "$BACKEND" = ol ]; then WORKTREE_BASE_VARS+=("CLAUDE_DS_BACKEND=ollama"); fi
+
+# Ollama: server reachable and the model pulled, BEFORE a worktree, branch or session exists (exit 5,
+# the setup-error code). --resume launches no worker, so it is not checked.
+if [ "$BACKEND" = ol ] && [ -z "$RESUME" ]; then
+  # Subshell: sourcing stream-utils.sh exports CLI_DISPATCH_WORKER=1 and the config's variables,
+  # neither of which may reach the verify commands that run from this shell.
+  ( for kv in "${WORKTREE_BASE_VARS[@]}"; do export "$kv"; done
+    . "$SCRIPT_DIR/stream-utils.sh" && source_config
+    CLI_DISPATCH_NODE="$NODE_BIN" ollama_preflight "${OLLAMA_BASE_URL:-http://127.0.0.1:11434}" "${OL_MODEL:-}" >/dev/null ) \
+    || { echo "cli-dispatch-run: ollama backend not ready (see the line above) — no worktree was created" >&2; exit 5; }
 fi
 
 if [ -n "$RESUME" ]; then
@@ -680,6 +699,7 @@ WORKER_REPORT
     ag) MARKER='conv:';;
     oc) MARKER='session:';;
     cp) MARKER='session:';;
+    ol) MARKER='claude-ds session:';;
   esac
 
   # Pipe (not process substitution): the pipeline only returns once tee has flushed

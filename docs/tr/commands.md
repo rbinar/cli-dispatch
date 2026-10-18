@@ -12,7 +12,7 @@ cli-dispatch'i **Claude Code'un içinden** kullanırsın — iki yol:
 | `/cli-dispatch:setup` | Backend(ler) seç + kur + config iskeleti + smoke test |
 | `/cli-dispatch-runs` | Run izleme paneli (Claude Code 2.1.287+): bu oturumun run'ları, çalışan ve biten; Summary ve Full flow sekmeleri, her satırın arkasındaki tam olay; sırlar maskelenir. Model token'ı harcamaz |
 | `/cli-dispatch-config` | Kurulum paneli (Claude Code 2.1.287+): her backend için CLI ve wrapper kurulu mu, key tanımlı mı (asla gösterilmez); model adlarını düzenle; backend kur. Key'ler `/plugin configure cli-dispatch@cli-dispatch` ile girilir |
-| `/cli-dispatch:ask <backend> "<prompt>"` | Bir worker'a tek-atışlık soru/cevap, repo değişikliği yok (`ds`/`cx` `--read-only` koşar; `ag`/`oc`/`cp`'de yazma engeli yok, bu yüzden repo erişimsiz geçici bir dizinde koşarlar). `--model` / `--effort` gibi agent bayrakları prompt'tan önce gelir. Repo işi için `run` veya runner agent'ı |
+| `/cli-dispatch:ask <backend> "<prompt>"` | Bir worker'a tek-atışlık soru/cevap, repo değişikliği yok (`ds`/`cx`/`ol` `--read-only` koşar; `ag`/`oc`/`cp`'de yazma engeli yok, bu yüzden repo erişimsiz geçici bir dizinde koşarlar). `--model` / `--effort` gibi agent bayrakları prompt'tan önce gelir. Repo işi için `run` veya runner agent'ı |
 | `/cli-dispatch:run <backend> "<task>" --verify '<cmd>'` | Deterministik delegasyon, doğrudan çağrılır — sıfır LLM token. Bir orkestratörden varsayılan, bu runner'ı saran ince `cli-dispatch:runner` agent'ıdır |
 | `/cli-dispatch:sessions [backend]` | Geçmiş/aktif session'ları listele (tüm backend'ler; `backend` sütunu gösterir); isteğe bağlı backend filtresi |
 | `/cli-dispatch:watch <id> [--wait [--timeout S]]` | Bir session'ın canlı durumunu göster (maliyet-odaklı; her backend). `--wait` ile bitene (veya timeout'a) kadar blokla ve kompakt bir özet bas — yoklama yerine tek bloklayan çağrı |
@@ -20,10 +20,10 @@ cli-dispatch'i **Claude Code'un içinden** kullanırsın — iki yol:
 | `/cli-dispatch:kill <id>` | Çalışan bir worker session'ını durdur (SIGTERM + state → killed) |
 | `/cli-dispatch:clean` | Stale worker dizinlerini sil (`running` ama ölü); varsayılan dry-run, silmek için `--remove`. Silinen session'lar `verdict.json` ve `verdict-diff.patch` dosyalarını varsayılan olarak `<sessions-root>/verdict-archive/` altına arşivler; vazgeçmek için `--no-preserve-verdicts`. `--schedule [install|status|uninstall]` OS zamanlayıcısıyla (launchd / cron / Scheduled Tasks) günlük otomatik temizliği yönetir; yalın `--schedule` = `status` |
 | `/cli-dispatch:doctor [backend]` | Sağlık kontrolü — PATH, API key'ler, CLI auth ✓/✗, backend başına yapılandırılmış model, bayat-kurulum uyarısı; isteğe bağlı backend filtresi |
-| `/cli-dispatch:balance [backend]` | DeepSeek bakiyesi + Antigravity kotası + Codex rate limit'leri + OpenCode kredileri + Copilot kullanım notu; isteğe bağlı backend filtresi (bkz. [Kota](quota.md)) |
+| `/cli-dispatch:balance [backend]` | DeepSeek bakiyesi + Antigravity kotası + Codex rate limit'leri + OpenCode kredileri + Copilot kullanım notu + Ollama (yok: yerel); isteğe bağlı backend filtresi (bkz. [Kota](quota.md)) |
 | `/cli-dispatch:gain [--drift]` | Backend başına worker token toplamlarını, `cli-dispatch:runner` agent'ının ve legacy runner-subagent session'larının Anthropic maliyetiyle birlikte raporla; `--drift` drift raporunu ekler |
 | `/cli-dispatch:help` | Tek ekranda komut referans tablosu |
 
-`backend` kısa ya da uzun slug alır: `ds`|`deepseek`, `ag`|`antigravity`, `cx`|`codex`, `oc`|`opencode`, `cp`|`copilot`.
+`backend` kısa ya da uzun slug alır: `ds`|`deepseek`, `ag`|`antigravity`, `cx`|`codex`, `oc`|`opencode`, `cp`|`copilot`, `ol`|`ollama` (yerel bir Ollama modeli, yalnız Unix).
 
 Codex'te `ask` gerçek bir OS read-only sandbox'ı kullanır; DeepSeek `--effort` alır.

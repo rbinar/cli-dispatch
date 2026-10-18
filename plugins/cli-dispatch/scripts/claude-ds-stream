@@ -6,6 +6,10 @@
 # progress.log / status.json / meta.json to a session directory and prints the
 # final text to stdout.
 #
+# CLAUDE_DS_BACKEND=ollama (set by ol-agent / cli-dispatch-run --backend ol) runs the same worker
+# against a local Ollama instead: OLLAMA_BASE_URL (default http://127.0.0.1:11434) and OL_MODEL
+# (required), checked by ollama_preflight (stream-utils.sh) before anything starts. Bash only.
+#
 # Usage:
 #   claude-ds-stream [--cwd <dir>] [--resume <id>] [--read-only] [--effort low|medium|high] \
 #                    [--max-runtime <s>] [--idle-timeout <s>] [--verify-cmd <cmd>] \
@@ -37,6 +41,13 @@ source_config
 # Forward the host's gh auth (macOS keyring) into the worker env (issue #56).
 maybe_export_gh_token
 
+# Provider switch (7.1.0): the same claude worker against DeepSeek (default) or a local Ollama.
+# The Ollama worker gets CLAUDE_CODE_MAX_CONTEXT_TOKENS = the server's context × this factor / 100
+# (Ollama truncates an overlong prompt SILENTLY, and Claude Code assumes 200K for an unknown model).
+OL_CONTEXT_PCT=100
+DS_BACKEND="${CLAUDE_DS_BACKEND:-deepseek}"
+case "$DS_BACKEND" in
+  deepseek)
 if [ -z "${DEEPSEEK_API_KEY:-}" ]; then
   # A key set only in the plugin's userConfig is passed by the dispatch tool alone (flags file, never a value).
   if grep -q '"DEEPSEEK_API_KEY": *true' "${CLI_DISPATCH_USERCONFIG_STATUS:-${XDG_CONFIG_HOME:-$HOME/.config}/cli-dispatch/userconfig-status.json}" 2>/dev/null; then
@@ -46,6 +57,21 @@ if [ -z "${DEEPSEEK_API_KEY:-}" ]; then
   fi
   exit 1
 fi
+    BASE_URL="https://api.deepseek.com/anthropic"
+    AUTH="$DEEPSEEK_API_KEY"
+    MODEL="${DS_MODEL:-deepseek-v4-pro}"
+    FLASH="${DS_FLASH_MODEL:-deepseek-flash}"
+    ;;
+  ollama)
+    # No key: Ollama ignores the token, claude only needs one set.
+    BASE_URL="${OLLAMA_BASE_URL:-http://127.0.0.1:11434}"
+    BASE_URL="${BASE_URL%/}"
+    AUTH="ollama"
+    MODEL="${OL_MODEL-}"   # required, no default: cli-dispatch never picks or pulls a model
+    FLASH="$MODEL"         # one local model fills every slot
+    ;;
+  *) echo "claude-ds-stream: unknown CLAUDE_DS_BACKEND '$DS_BACKEND' (deepseek|ollama)" >&2; exit 1;;
+esac
 
 # Required for the node parser (claude-code already runs in a node environment).
 if ! command -v node >/dev/null 2>&1; then
@@ -131,6 +157,13 @@ case "$RESUME_ID" in
   */*|*\\*|*..*) echo "claude-ds-stream: invalid --resume id" >&2; exit 1;;
 esac
 
+# Ollama: server reachable and OL_MODEL pulled, BEFORE any session dir or worker exists.
+if [ "$DS_BACKEND" = ollama ]; then
+  OL_PRE="$(ollama_preflight "$BASE_URL" "$MODEL" "claude-ds-stream: ")" || exit 1
+  read -r OL_CTX OL_CTX_SRC <<<"$OL_PRE"
+  OL_MAX_CTX=$(( OL_CTX * OL_CONTEXT_PCT / 100 ))
+fi
+
 # ---- prepare the session directory ----
 # Sessions root: cli-dispatch cache, with legacy claude-ds fallback (env wins).
 SESSIONS_ROOT="$(resolve_sessions_root)"
@@ -170,7 +203,6 @@ printf '%s' "$PROMPT" > "$SESSION_DIR/prompt.txt" 2>/dev/null || true
 PREEXISTING_DIRTY="$(run_preexisting_dirty "${RESUME_ID:-}" "$CWD")"
 
 BRANCH="$(git -C "$CWD" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-MODEL="${DS_MODEL:-deepseek-v4-pro}"
 
 # --effort low|medium|high → thinking budget via MAX_THINKING_TOKENS. Best-effort:
 # claude honors the env; whether DeepSeek's Anthropic-compatible API applies the
@@ -191,6 +223,9 @@ echo "  cwd:    $CWD" >&2
 echo "  dir:    $SESSION_DIR" >&2
 echo "  status: $SESSION_DIR/status.json" >&2
 echo "  log:    $SESSION_DIR/progress.log" >&2
+if [ "$DS_BACKEND" = ollama ]; then
+  echo "  context: $OL_CTX ($OL_CTX_SRC) → CLAUDE_CODE_MAX_CONTEXT_TOKENS=$OL_MAX_CTX" >&2
+fi
 
 # ---- claude arguments (same core as octo-ai buildClaudeArgs) ----
 CLAUDE_ARGS=(
@@ -315,14 +350,28 @@ printf '%s' "$PROMPT" > "$PROMPT_TMP"
 set +e
 ( cd "$CWD" || exit 127
   # Exported inside the subshell, not passed through env(1): the key must never ride on a command line.
-  export ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic"
-  export ANTHROPIC_AUTH_TOKEN="$DEEPSEEK_API_KEY"
-  export ANTHROPIC_MODEL="${DS_MODEL:-deepseek-v4-pro}"
-  export ANTHROPIC_DEFAULT_OPUS_MODEL="${DS_MODEL:-deepseek-v4-pro}"
-  export ANTHROPIC_DEFAULT_SONNET_MODEL="${DS_MODEL:-deepseek-v4-pro}"
-  export ANTHROPIC_DEFAULT_HAIKU_MODEL="${DS_FLASH_MODEL:-deepseek-flash}"
-  export CLAUDE_CODE_SUBAGENT_MODEL="${DS_FLASH_MODEL:-deepseek-flash}"
+  export ANTHROPIC_BASE_URL="$BASE_URL"
+  export ANTHROPIC_AUTH_TOKEN="$AUTH"
+  export ANTHROPIC_MODEL="$MODEL"
+  export ANTHROPIC_DEFAULT_OPUS_MODEL="$MODEL"
+  export ANTHROPIC_DEFAULT_SONNET_MODEL="$MODEL"
+  export ANTHROPIC_DEFAULT_HAIKU_MODEL="$FLASH"
+  export CLAUDE_CODE_SUBAGENT_MODEL="$FLASH"
   if [ -n "${THINK:-}" ]; then export MAX_THINKING_TOKENS="$THINK"; fi
+  if [ "$DS_BACKEND" = ollama ]; then
+    # Tell Claude Code the server's real window so it compacts before Ollama truncates.
+    export CLAUDE_CODE_MAX_CONTEXT_TOKENS="$OL_MAX_CTX"
+    # Prompt reducers: a fresh worktree has no useful memory, the runner never commits, a brief
+    # names its task, subagents would share the one local model, a headless worker has no browser.
+    # CLAUDE_CODE_DISABLE_CLAUDE_MDS stays off: the target repo's CLAUDE.md may carry its conventions.
+    export CLAUDE_CODE_DISABLE_AUTO_MEMORY=1
+    export CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS=1
+    export CLAUDE_CODE_DISABLE_BUNDLED_SKILLS=1
+    export CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS=1
+    export CLAUDE_CODE_DISABLE_CFC_PROMPT=1
+    # Never inherited: it makes Claude Code wait for an API rejection, and Ollama never rejects.
+    unset CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT
+  fi
   claude "${CLAUDE_ARGS[@]}" < "$PROMPT_TMP" &
   CPID=$!
   echo "$CPID" > "$PIDFILE"
@@ -333,6 +382,7 @@ set +e
       CLAUDE_DS_BRANCH="$BRANCH" \
       CLAUDE_DS_MODEL="$MODEL${THINK:+ (${EFFORT})}" \
       CLAUDE_DS_RESUME="$RESUME" \
+      CLAUDE_DS_BACKEND="$DS_BACKEND" \
         node "$PARSER"; touch "$PARSER_DONE"; }
 # PIPESTATUS: [0]=claude subshell (via wait), [1]=node parser. We want claude's exit.
 CLAUDE_RC=${PIPESTATUS[0]}

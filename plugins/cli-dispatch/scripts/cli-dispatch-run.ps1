@@ -18,7 +18,7 @@ $runKey = $env:CLI_DISPATCH_RUN_KEY
 Remove-Item Env:CLI_DISPATCH_RUN_KEY -ErrorAction SilentlyContinue
 
 function Show-Usage {
-  Write-Host 'usage: cli-dispatch-run --backend <ds|ag|cx|oc|cp> --cwd <repo> [--prompt <text> | --prompt-file <path>] [--branch <name>] [--model <slug>] [--effort low|medium|high] [--verify <cmd>] [--verify-timeout SECS] [--timeout SECS] [--resume <session-id>] [--cleanup-if-clean] [--scope <glob>]'
+  Write-Host 'usage: cli-dispatch-run --backend <ds|ag|cx|oc|cp|ol> --cwd <repo> [--prompt <text> | --prompt-file <path>] [--branch <name>] [--model <slug>] [--effort low|medium|high] [--verify <cmd>] [--verify-timeout SECS] [--timeout SECS] [--resume <session-id>] [--cleanup-if-clean] [--scope <glob>]'
 }
 
 function Need-Value {
@@ -103,6 +103,7 @@ switch ($Backend) {
   'ag' { Write-Host "cli-dispatch-run: Unix-only backend '$Backend' requested"; exit 5 }
   'oc' { Write-Host "cli-dispatch-run: Unix-only backend '$Backend' requested"; exit 5 }
   'cp' { Write-Host "cli-dispatch-run: Unix-only backend '$Backend' requested"; exit 5 }
+  'ol' { Write-Host "cli-dispatch-run: Unix-only backend '$Backend' requested"; exit 5 }
   default {
     Write-Host "cli-dispatch-run: unknown backend '$Backend'"
     exit 5

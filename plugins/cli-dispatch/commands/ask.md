@@ -1,14 +1,15 @@
 ---
-description: One-shot question or generation to a worker backend (no repo changes) — ds, ag, cx, oc or cp
-argument-hint: <ds|ag|cx|oc|cp> "<prompt>" [agent flags, e.g. --effort high --model <m>]
+description: One-shot question or generation to a worker backend (no repo changes) — ds, ag, cx, oc, cp or ol
+argument-hint: <ds|ag|cx|oc|cp|ol> "<prompt>" [agent flags, e.g. --effort high --model <m>]
 allowed-tools: Bash
 ---
 
 # Ask a worker: $ARGUMENTS
 
 A one-shot prompt to one backend's `*-agent` CLI, for analysis or generation where the answer
-is the output. It never touches the caller's repo: `ds` and `cx` run with `--read-only` (a real
-read-only mode); `ag`, `oc` and `cp` have no write-deny, so they run in a throwaway directory.
+is the output. It never touches the caller's repo: `ds`, `cx` and `ol` (Ollama, a local model) run
+with `--read-only` (a real read-only mode); `ag`, `oc` and `cp` have no write-deny, so they run in a
+throwaway directory.
 Repo changes go through `/cli-dispatch:run` or the `cli-dispatch:runner` agent instead.
 
 Run it as a **background task** (a worker can take minutes), then continue the session with
@@ -29,8 +30,9 @@ case "$BACKEND" in
   ag) AGENT=ag-agent; SAFE=(--cwd "$(mktemp -d)") ;;
   oc) AGENT=oc-agent; SAFE=(--cwd "$(mktemp -d)") ;;
   cp) AGENT=cp-agent; SAFE=(--cwd "$(mktemp -d)") ;;
+  ol) AGENT=ol-agent; SAFE=(--read-only) ;;
   *)
-    echo "usage: /cli-dispatch:ask <ds|ag|cx|oc|cp> \"<prompt>\" [agent flags]"
+    echo "usage: /cli-dispatch:ask <ds|ag|cx|oc|cp|ol> \"<prompt>\" [agent flags]"
     exit 1 ;;
 esac
 if [ -z "$PROMPT" ]; then
@@ -44,6 +46,6 @@ fi
 "$AGENT" -q "${SAFE[@]}" "$@" "$PROMPT"
 ```
 
-Agent flags go before the prompt: `--effort low|medium|high` (ds, ag, cx, cp), `--model <m>`
-(ag, cx, oc, cp), `--max-runtime <s>`, `--idle-timeout <s>`. The worker's output is a claim, not
-evidence: verify it before relying on it.
+Agent flags go before the prompt: `--effort low|medium|high` (ds, ag, cx, cp, ol), `--model <m>`
+(ag, cx, oc, cp; `ol` reads `OL_MODEL` from the config), `--max-runtime <s>`, `--idle-timeout <s>`.
+The worker's output is a claim, not evidence: verify it before relying on it.

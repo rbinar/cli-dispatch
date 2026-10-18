@@ -7,10 +7,10 @@
 #
 # Read-only. Reads only meta.json + status.json; transcript.jsonl is NEVER read.
 #
-# Usage: cli-dispatch-sessions.sh [ds|ag|cx|oc|cp|deepseek|antigravity|codex|opencode|copilot]
+# Usage: cli-dispatch-sessions.sh [ds|ag|cx|oc|cp|ol|deepseek|antigravity|codex|opencode|copilot|ollama]
 
 if [ "$#" -gt 1 ]; then
-  echo "Usage: cli-dispatch-sessions.sh [ds|ag|cx|oc|cp|deepseek|antigravity|codex|opencode|copilot]" >&2
+  echo "Usage: cli-dispatch-sessions.sh [ds|ag|cx|oc|cp|ol|deepseek|antigravity|codex|opencode|copilot|ollama]" >&2
   exit 2
 fi
 
@@ -21,7 +21,8 @@ case "${1:-}" in
   cx|codex) _BACKEND="codex" ;;
   oc|opencode) _BACKEND="opencode" ;;
   cp|copilot) _BACKEND="copilot" ;;
-  *) echo "Usage: cli-dispatch-sessions.sh [ds|ag|cx|oc|cp|deepseek|antigravity|codex|opencode|copilot]" >&2; exit 2 ;;
+  ol|ollama) _BACKEND="ollama" ;;
+  *) echo "Usage: cli-dispatch-sessions.sh [ds|ag|cx|oc|cp|ol|deepseek|antigravity|codex|opencode|copilot|ollama]" >&2; exit 2 ;;
 esac
 
 node - "$_BACKEND" <<'EOF'

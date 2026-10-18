@@ -29,7 +29,7 @@ if [ -d "$_OLD_LIBEXEC" ] && [ "$_OLD_LIBEXEC" != "$LIBEXEC_DIR" ]; then
 fi
 
 # ---- which worker backends to install --------------------------------------
-# Usage: install.sh [--backends deepseek,antigravity,codex,opencode,copilot | all] [--install-missing]
+# Usage: install.sh [--backends deepseek,antigravity,codex,opencode,copilot,ollama | all] [--install-missing]
 # Default: deepseek (preserves prior behavior). Other backends are opt-in.
 # --install-missing: best-effort auto-install any missing backend CLI (via npm/brew/
 # curl, whichever applies) before falling back to the manual-install warning. Never
@@ -46,13 +46,14 @@ while [ "$#" -gt 0 ]; do
     *) echo "install.sh: unknown arg '$1'" >&2; exit 1;;
   esac
 done
-[ "$BACKENDS" = "all" ] && BACKENDS="deepseek,antigravity,codex,opencode,copilot"
+[ "$BACKENDS" = "all" ] && BACKENDS="deepseek,antigravity,codex,opencode,copilot,ollama"
 case ",$BACKENDS," in *,deepseek,*) WANT_DS=1;; *) WANT_DS=0;; esac
 case ",$BACKENDS," in *,antigravity,*) WANT_AG=1;; *) WANT_AG=0;; esac
 case ",$BACKENDS," in *,codex,*) WANT_CX=1;; *) WANT_CX=0;; esac
 case ",$BACKENDS," in *,opencode,*) WANT_OC=1;; *) WANT_OC=0;; esac
 case ",$BACKENDS," in *,copilot,*) WANT_CP=1;; *) WANT_CP=0;; esac
-[ "$WANT_DS" -eq 1 ] || [ "$WANT_AG" -eq 1 ] || [ "$WANT_CX" -eq 1 ] || [ "$WANT_OC" -eq 1 ] || [ "$WANT_CP" -eq 1 ] || { echo "install.sh: no known backend in '--backends $BACKENDS' (deepseek,antigravity,codex,opencode,copilot)" >&2; exit 1; }
+case ",$BACKENDS," in *,ollama,*) WANT_OL=1;; *) WANT_OL=0;; esac
+[ "$WANT_DS" -eq 1 ] || [ "$WANT_AG" -eq 1 ] || [ "$WANT_CX" -eq 1 ] || [ "$WANT_OC" -eq 1 ] || [ "$WANT_CP" -eq 1 ] || [ "$WANT_OL" -eq 1 ] || { echo "install.sh: no known backend in '--backends $BACKENDS' (deepseek,antigravity,codex,opencode,copilot,ollama)" >&2; exit 1; }
 
 # >>> ensure_config_block >>>
 # Idempotently append one backend's config block to $cfg. Self-contained (no reliance on
@@ -149,6 +150,24 @@ COPILOT_GITHUB_TOKEN=""
 CP_MODEL=""
 # No sandbox: --allow-all-tools --no-ask-user enables headless use, not a safety opt-in.
 # Use --cwd + a git worktree for a no-writes guarantee.
+BLOCK
+)
+      ;;
+    ollama)
+      marker='OLLAMA_BASE_URL='
+      block=$(cat <<'BLOCK'
+
+# --- Ollama backend (ol-agent: a local model through claude) --- OPTIONAL. No API key.
+# Base URL of a running Ollama, without /v1. Pointing it at another host sends your prompt
+# and code there over plain HTTP.
+OLLAMA_BASE_URL="http://127.0.0.1:11434"
+# REQUIRED: a model already pulled on that Ollama (ollama pull <name>), e.g. qwen3.8:27b.
+# There is no default and cli-dispatch never pulls a model. Sessions longer than the server's
+# effective context are truncated SILENTLY — set OLLAMA_CONTEXT_LENGTH on the server (see docs).
+OL_MODEL=""
+# OPTIONAL: the server's context in tokens (its OLLAMA_CONTEXT_LENGTH). Empty = read it from
+# /api/ps when the model is loaded, else assume 32768.
+OL_CONTEXT=""
 BLOCK
 )
       ;;
@@ -267,11 +286,15 @@ done
 echo "Installed deterministic runner -> cli-dispatch-run (+ per-backend worktree runners, verdict engine -> $LIBEXEC_DIR/verdict-writer.mjs)"
 
 # ---- DeepSeek backend (claude-ds family) -----------------------------------
-if [ "$WANT_DS" -eq 1 ]; then
-  install -m 0755 "$SCRIPT_DIR/claude-ds"        "$BIN_DIR/claude-ds"
+# The stream, ds-agent and parser also serve Ollama (ol-agent switches them to it); claude-ds
+# (the interactive DeepSeek wrapper) is DeepSeek-only.
+if [ "$WANT_DS" -eq 1 ] || [ "$WANT_OL" -eq 1 ]; then
   install -m 0755 "$SCRIPT_DIR/claude-ds-stream" "$BIN_DIR/claude-ds-stream"
   install -m 0755 "$SCRIPT_DIR/ds-agent"         "$BIN_DIR/ds-agent"
   install -m 0644 "$SCRIPT_DIR/ds-stream-parse.mjs" "$LIBEXEC_DIR/ds-stream-parse.mjs"
+fi
+if [ "$WANT_DS" -eq 1 ]; then
+  install -m 0755 "$SCRIPT_DIR/claude-ds"        "$BIN_DIR/claude-ds"
   echo "Installed DeepSeek backend -> claude-ds, claude-ds-stream, ds-agent (parser -> $LIBEXEC_DIR/ds-stream-parse.mjs)"
   if command -v claude >/dev/null 2>&1; then
     echo "  claude CLI: found"
@@ -281,6 +304,24 @@ if [ "$WANT_DS" -eq 1 ]; then
       echo "  claude CLI: found"
     else
       echo "  WARNING: 'claude' CLI not found in PATH (the DeepSeek worker wraps it)."
+    fi
+  fi
+fi
+
+# ---- Ollama backend (ol-agent: the DeepSeek pipeline against a local model) --
+# No `ollama` CLI check: the worker needs `claude` and a reachable Ollama server, which may run
+# on another host.
+if [ "$WANT_OL" -eq 1 ]; then
+  install -m 0755 "$SCRIPT_DIR/ol-agent" "$BIN_DIR/ol-agent"
+  echo "Installed Ollama backend -> ol-agent (uses claude-ds-stream, ds-agent, parser -> $LIBEXEC_DIR/ds-stream-parse.mjs)"
+  if command -v claude >/dev/null 2>&1; then
+    echo "  claude CLI: found"
+  else
+    if [ "$INSTALL_MISSING" -eq 1 ]; then try_install_missing_cli claude || true; fi
+    if command -v claude >/dev/null 2>&1; then
+      echo "  claude CLI: found"
+    else
+      echo "  WARNING: 'claude' CLI not found in PATH (the Ollama worker wraps it)."
     fi
   fi
 fi
@@ -384,8 +425,8 @@ if [ ! -f "$CONFIG" ]; then
 else
   CFG_CREATED=0
 fi
-# Add all platform-supported backend blocks idempotently (all five on Unix).
-for _b in deepseek antigravity codex opencode copilot; do
+# Add all platform-supported backend blocks idempotently (all six on Unix).
+for _b in deepseek antigravity codex opencode copilot ollama; do
   if ensure_config_block "$CONFIG" "$_b"; then CFG_CHANGED=1; fi
 done
 if [ "$CFG_CREATED" -eq 1 ]; then
@@ -450,6 +491,7 @@ echo "Done."
 [ "$WANT_CX" -eq 1 ] && echo "  Codex:       run 'codex login' (or set CODEX_API_KEY), then test: cx-agent --read-only -q 'Reply with exactly: OK'"
 [ "$WANT_OC" -eq 1 ] && echo "  OpenCode:    add your OPENROUTER_API_KEY to $CONFIG, then test: oc-agent -q 'Reply with exactly: OK'"
 [ "$WANT_CP" -eq 1 ] && echo "  Copilot:     run 'gh auth login' or 'copilot login --device-code' (or set COPILOT_GITHUB_TOKEN/GH_TOKEN), ensure Copilot subscription, then test: cp-agent -q 'Reply with exactly: OK'"
+[ "$WANT_OL" -eq 1 ] && echo "  Ollama:      needs a running Ollama at OLLAMA_BASE_URL with OL_MODEL pulled; test: ol-agent --read-only -q 'Reply with exactly: OK' (the first call can take ~40 s)"
 # The `[ … ] && echo` lines above leave a failed test as the script's status when the last
 # backend was not chosen; a completed install must still exit 0 (setup reads the exit code).
 exit 0

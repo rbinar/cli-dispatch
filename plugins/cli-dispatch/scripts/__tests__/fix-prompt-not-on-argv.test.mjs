@@ -103,3 +103,86 @@ if [ -n "\${F:-}" ] && [ -f "$F" ]; then printf '%s' "$F" > "${rec}/pf-path"; cp
     } finally { rmSync(dir, { recursive: true, force: true }) }
   })
 }
+
+// ---- 7.1.0: the Ollama backend (ol) -------------------------------------------------------------
+// ol-agent is a shim over ds-agent; the stream is stubbed, so ds-agent must be the plugin's own copy
+// (PATH without ~/.local/bin).
+const HERMETIC_PATH = (process.env.PATH || '').split(':').filter((p) => p && !p.includes('/.local/bin')).join(':')
+
+test('ol-agent: --prompt-file is forwarded to claude-ds-stream (with CLAUDE_DS_BACKEND=ollama), task text never on argv', () => {
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'agent-pf-ol-')))
+  try {
+    const bin = path.join(root, 'bin'); mkdirSync(bin)
+    writeFileSync(path.join(bin, 'claude-ds-stream'), `#!/bin/bash\nprintf '%s\\n' "$@" > "${root}/stream.argv"\nprintf '%s' "$CLAUDE_DS_BACKEND" > "${root}/stream.backend"\nexit 0\n`)
+    chmodSync(path.join(bin, 'claude-ds-stream'), 0o755)
+    const brief = path.join(root, 'brief.txt'); writeFileSync(brief, `${SENTINEL}\n`, { mode: 0o600 })
+    const r = spawnSync('bash', [path.join(SCRIPTS, 'ol-agent'), '-q', '--prompt-file', brief], { cwd: root, encoding: 'utf8', timeout: 60000, input: '', env: { PATH: `${bin}:${HERMETIC_PATH}`, HOME: root, CLI_DISPATCH_CONFIG: '/dev/null' } })
+    assert.equal(r.status, 0, r.stderr)
+    const argv = readFileSync(path.join(root, 'stream.argv'), 'utf8').split('\n')
+    const i = argv.indexOf('--prompt-file')
+    assert.ok(i >= 0 && argv[i + 1] === brief, `no --prompt-file <path> in:\n${argv.join('\n')}`)
+    assert.ok(!argv.includes('-p'), '-p still passed')
+    assert.ok(!argv.join('\n').includes(SENTINEL))
+    assert.equal(readFileSync(path.join(root, 'stream.backend'), 'utf8'), 'ollama')
+  } finally { rmSync(root, { recursive: true, force: true }) }
+})
+
+// cli-dispatch-run checks Ollama before the worktree; the fixture answers only while the event loop
+// runs, so the runner is spawned async here.
+test('--fix-attempts (ol): the resume gets --prompt-file and CLAUDE_DS_BACKEND=ollama, the fix prompt is not on argv, the file is removed', async () => {
+  const { createServer } = await import('node:http')
+  const { spawn } = await import('node:child_process')
+  const srv = createServer((req, res) => res.end(JSON.stringify({ models: [{ name: 'm', model: 'm' }] })))
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r))
+  const dir = realpathSync(mkdtempSync(path.join(tmpdir(), 'cd-fixpf-ol-')))
+  try {
+    const bin = path.join(dir, 'bin'); mkdirSync(bin)
+    for (const f of ['cli-dispatch-run', 'cli-dispatch-wait', 'cli-dispatch-run-summary.sh', 'stream-utils.sh']) {
+      copyFileSync(path.join(SCRIPTS, f), path.join(bin, f)); chmodSync(path.join(bin, f), 0o755)
+    }
+    const repo = path.join(dir, 'repo'), sessions = path.join(dir, 'sessions'), rec = path.join(dir, 'rec'), tmp = path.join(dir, 'tmp')
+    for (const d of [sessions, rec, tmp]) mkdirSync(d)
+    execSync(`mkdir -p "${repo}" && cd "${repo}" && git init -q && echo seed > note.txt && git add -A && git -c user.name=t -c user.email=t@e commit -qm seed`)
+    const sid = 'ol-fix-session'
+    // ol runs through the DeepSeek worktree runner.
+    writeFileSync(path.join(bin, 'ds-worktree-run.sh'), `#!/usr/bin/env bash
+REPO="$1"; S="${sessions}/${sid}"; mkdir -p "$S"
+printf '{"state":"done","sessionId":"${sid}","backend":"ollama"}' > "$S/status.json"
+printf '{"backend":"ollama","cwd":"%s","model":"m"}' "$REPO" > "$S/meta.json"
+printf '{"files":[],"diffstat":""}' > "$S/changed-files.json"
+echo "claude-ds session: ${sid}" >&2
+exit 0
+`)
+    chmodSync(path.join(bin, 'ds-worktree-run.sh'), 0o755)
+    writeFileSync(path.join(bin, 'claude-ds-stream'), `#!/usr/bin/env bash
+printf '%s\\n' "$@" > "${rec}/resume-argv"
+printf '%s' "$CLAUDE_DS_BACKEND" > "${rec}/backend"
+while [ "$#" -gt 0 ]; do [ "$1" = --prompt-file ] && F="$2"; shift; done
+if [ -n "\${F:-}" ] && [ -f "$F" ]; then printf '%s' "$F" > "${rec}/pf-path"; cp "$F" "${rec}/pf-content"; fi
+: > fixed.txt
+`)
+    chmodSync(path.join(bin, 'claude-ds-stream'), 0o755)
+    const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, TMPDIR: tmp, CLI_DISPATCH_SESSIONS_DIR: sessions, CLI_DISPATCH_VERDICT_WRITER: path.join(SCRIPTS, 'verdict-writer.mjs'), CLI_DISPATCH_NO_IN_PLACE: '1',
+      CLI_DISPATCH_CONFIG: '/dev/null', OLLAMA_BASE_URL: `http://127.0.0.1:${srv.address().port}`, OL_MODEL: 'm' }
+    delete env.CLI_DISPATCH_WORKER
+    const verify = `echo ${SENTINEL}-verify-out; test -f fixed.txt`
+    const r = await new Promise((resolve) => {
+      const c = spawn('bash', [path.join(bin, 'cli-dispatch-run'), '--backend', 'ol', '--cwd', repo, '--prompt', 'x', '--fix-attempts', '1', '--verify', verify], { env })
+      let stderr = ''
+      c.stderr.on('data', (d) => { stderr += d })
+      c.on('close', (status) => resolve({ status, stderr }))
+      c.stdin.end()
+    })
+    assert.equal(r.status, 0, r.stderr.slice(-600))
+    const read = (n) => (existsSync(path.join(rec, n)) ? readFileSync(path.join(rec, n), 'utf8') : '')
+    const argv = read('resume-argv').split('\n')
+    assert.ok(argv.includes('--resume') && argv.includes(sid), `resume not launched:\n${argv.join('\n')}`)
+    assert.ok(argv.includes('--prompt-file'), `no --prompt-file in:\n${argv.join('\n')}`)
+    assert.ok(!argv.includes('-p'), '-p on the resume argv')
+    assert.ok(!argv.join('\n').includes(SENTINEL), 'verify output is on the resume argv')
+    assert.equal(read('backend'), 'ollama')
+    assert.ok(read('pf-content').includes(`${SENTINEL}-verify-out`), 'file lacks the verify output')
+    assert.ok(!existsSync(read('pf-path')), 'fix-prompt file was not removed')
+    assert.deepEqual(readdirSync(tmp), [], 'temp files left behind')
+  } finally { srv.closeAllConnections?.(); srv.close(); rmSync(dir, { recursive: true, force: true }) }
+})

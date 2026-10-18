@@ -21,9 +21,9 @@ CLI_DISPATCH_ARGS_EOF_9f2c
 _AF="$(mktemp)"; printf '%s' "$ARGS_RAW" | node "${CLAUDE_PLUGIN_ROOT}/scripts/cli-dispatch-args.mjs" > "$_AF" || { rm -f "$_AF"; exit 2; }
 set --; while IFS= read -r -d '' a; do set -- "$@" "$a"; done < "$_AF"; rm -f "$_AF"
 BACKEND="${1:-}"; PROMPT="${2:-}"; shift 2 2>/dev/null || true
-case "$BACKEND" in ds|ag|cx|oc|cp) ;; *)
+case "$BACKEND" in ds|ag|cx|oc|cp|ol) ;; *)
   echo "usage: /cli-dispatch:run <backend> \"<prompt>\" [--verify '<cmd>'] [--cleanup-if-clean] [more flags]"
-  echo "backend: ds | ag | cx | oc | cp     tip: /cli-dispatch:setup to install backends"
+  echo "backend: ds | ag | cx | oc | cp | ol     tip: /cli-dispatch:setup to install backends"
   exit 1 ;; esac
 if [ -z "$PROMPT" ]; then
   echo "usage: /cli-dispatch:run <backend> \"<prompt>\" [flags]"

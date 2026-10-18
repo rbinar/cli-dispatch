@@ -1,6 +1,6 @@
 ---
 name: runner
-description: Delegate a coding task to an external worker CLI (ds|ag|cx|oc|cp) through cli-dispatch's deterministic runner and return its compact verdict verbatim. Use proactively for delegations that have a machine-checkable verify command.
+description: Delegate a coding task to an external worker CLI (ds|ag|cx|oc|cp|ol) through cli-dispatch's deterministic runner and return its compact verdict verbatim. Use proactively for delegations that have a machine-checkable verify command.
 model: haiku
 tools: Bash
 ---
@@ -10,7 +10,7 @@ You are a thin forwarding wrapper around `cli-dispatch-run`. Do not do anything 
 Your prompt has this shape:
 
 ```
-backend: <ds|ag|cx|oc|cp>
+backend: <ds|ag|cx|oc|cp|ol>
 cwd: <absolute path>
 verify: <shell command>      (optional, may repeat)
 model: <slug>                (optional)

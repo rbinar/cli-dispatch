@@ -15,6 +15,7 @@
 //   CLAUDE_DS_SESSION_DIR   (required) — session directory
 //   CLAUDE_DS_PROMPT_PREVIEW, CLAUDE_DS_CWD, CLAUDE_DS_BRANCH, CLAUDE_DS_MODEL
 //   CLAUDE_DS_RESUME        ("1" → append to transcript/progress, keep existing meta)
+//   CLAUDE_DS_BACKEND       ("ollama" → backend label "ollama"; anything else → "deepseek")
 
 import { readFileSync, existsSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
@@ -34,6 +35,8 @@ makeSessionDir(dir)
 try { pruneSessionRoot(path.dirname(dir), { keepDir: dir }) } catch { /* never fatal */ }
 
 const isResume = process.env.CLAUDE_DS_RESUME === '1'
+// The same claude stream-json from DeepSeek or a local Ollama; only the label differs.
+const BACKEND = process.env.CLAUDE_DS_BACKEND === 'ollama' ? 'ollama' : 'deepseek'
 const transcriptFile = path.join(dir, 'transcript.jsonl')
 const progressFile = path.join(dir, 'progress.log')
 const statusFile = path.join(dir, 'status.json')
@@ -47,7 +50,7 @@ if (isResume && existsSync(metaFile)) {
 meta = {
   ...meta,
   sessionId: path.basename(dir),
-  backend: 'deepseek',
+  backend: BACKEND,
   parentSessionId: meta.parentSessionId || process.env.CLAUDE_CODE_SESSION_ID || '',
   promptPreview: process.env.CLAUDE_DS_PROMPT_PREVIEW ?? meta.promptPreview ?? '',
   cwd: process.env.CLAUDE_DS_CWD ?? meta.cwd ?? '',
@@ -74,7 +77,7 @@ const { writeTranscript, appendProgress, closeAll } = openSessionFiles(
 // ---- rolling state ----
 const status = {
   sessionId: path.basename(dir),
-  backend: 'deepseek',
+  backend: BACKEND,
   state: 'running', // running | done | error
   lastTool: null,
   toolCounts: {},
@@ -143,6 +146,11 @@ function handleEvent(ev) {
         streamedText += delta.text
         pendingText += delta.text
         touch()
+      } else if (delta?.type === 'thinking_delta') {
+        // Thinking is activity (status stays fresh for the band/statusline/clean), never
+        // progress: its text stays in transcript.jsonl only.
+        touch()
+        writeStatus()
       }
     }
     return
@@ -178,6 +186,9 @@ function handleEvent(ev) {
         finalText += block.text
         pendingText += block.text
         touch()
+      } else if (block.type === 'thinking') {
+        touch()
+        writeStatus()
       }
     }
     return

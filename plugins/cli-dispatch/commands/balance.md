@@ -1,10 +1,10 @@
 ---
-description: Show usage/balance for all backends, or one (DeepSeek + Antigravity + Codex + OpenCode + Copilot)
-argument-hint: "[ds|ag|cx|oc|cp]"
+description: Show usage/balance for all backends, or one (DeepSeek + Antigravity + Codex + OpenCode + Copilot + Ollama)
+argument-hint: "[ds|ag|cx|oc|cp|ol]"
 allowed-tools: Bash
 ---
 
-Run this once with the Bash tool. With no argument it covers every backend; `ds`/`ag`/`cx`/`oc`/`cp`
+Run this once with the Bash tool. With no argument it covers every backend; `ds`/`ag`/`cx`/`oc`/`cp`/`ol`
 (or the long name) limits it to one.
 
 ```bash
@@ -32,6 +32,7 @@ Summarize one headline number per `==` section and nothing more:
   as a 429 from opencode itself.
 - **Copilot** — no numeric balance exists from the CLI; do not call any GitHub billing
   API, point the user at https://github.com/settings/billing.
+- **Ollama** — no balance (local model); report the line as-is.
 
 **Never print any key VALUE** — only the balance/quota figures. An unconfigured or
 offline backend prints a short note instead of a number; report that note as-is

@@ -2,7 +2,7 @@
 
 [← README](../../README.tr.md)
 
-Native Windows'ta (WSL kullanmıyorsan) PowerShell varyantları devreye girer. **DeepSeek ve Codex** native çalışır; Antigravity bir pseudo-TTY gerektirdiğinden, OpenCode/Copilot ise v1'de Unix-only olduğundan WSL altında kurulmalı.
+Native Windows'ta (WSL kullanmıyorsan) PowerShell varyantları devreye girer. **DeepSeek ve Codex** native çalışır; Antigravity bir pseudo-TTY gerektirdiğinden, OpenCode/Copilot/Ollama ise v1'de Unix-only olduğundan WSL altında kurulmalı.
 
 - `/cli-dispatch:setup` → `install.ps1 -Backends <deepseek,codex|all>` çalışır (varsayılan `deepseek`):
   - **DeepSeek**: `claude-ds.ps1` + `claude-ds-stream.ps1` + `ds-agent.ps1` ve `.cmd` shim'lerini `~/.local/bin`'e, parser'ı (`ds-stream-parse.mjs`) `~/.local/share/cli-dispatch`'e kurar.

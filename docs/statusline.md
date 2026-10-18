@@ -9,7 +9,7 @@
 `~/.claude/hooks/statusline.sh` wrapper pipes the statusline's stdin JSON to it and appends
 its output. From Claude Code's snake_case `session_id`, it counts only fresh, running workers
 spawned by **this Claude Code session** and groups them by backend in a yellow suffix, such as
-`[CD](ds:1,ag:2,cx:1)`. The fixed group order is `ds`, `ag`, `cx`, `oc`, `cp`; empty groups are
+`[CD](ds:1,ag:2,cx:1)`. The fixed group order is `ds`, `ag`, `cx`, `oc`, `cp`, `ol`; empty groups are
 omitted. The cyan `[CD]` badge appears when policy injection is enabled or this session has a
 live worker, and nothing is printed when inactive. Legacy workers without `parentSessionId` are
 excluded. Callers without a non-empty `session_id` retain the legacy global yellow `▶N` counter.

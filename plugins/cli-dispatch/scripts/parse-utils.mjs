@@ -178,13 +178,13 @@ function pruneDetachedRuns(root, max, result) {
 
 // ---- backend name normalization ----
 
-// Two spellings of the same five backends coexist on disk: the stream parsers write the LONG
+// Two spellings of the same six backends coexist on disk: the stream parsers write the LONG
 // name into status.json/meta.json ("codex"), while cli-dispatch-run and verdict.json use the
 // SHORT form ("cx"). Any consumer that reads both files needs the mapping, so it lives here in
 // the shared-contract module rather than in verdict-writer.mjs.
 // Returns null for an unrecognised value; callers decide whether that is fatal.
-const VALID_BACKENDS = new Set(['ds', 'ag', 'cx', 'oc', 'cp'])
-const BACKEND_ALIASES = { deepseek: 'ds', antigravity: 'ag', codex: 'cx', opencode: 'oc', copilot: 'cp' }
+const VALID_BACKENDS = new Set(['ds', 'ag', 'cx', 'oc', 'cp', 'ol'])
+const BACKEND_ALIASES = { deepseek: 'ds', antigravity: 'ag', codex: 'cx', opencode: 'oc', copilot: 'cp', ollama: 'ol' }
 export function normalizeBackend(value) {
   const b = String(value ?? '').toLowerCase()
   if (VALID_BACKENDS.has(b)) return b

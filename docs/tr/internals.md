@@ -18,6 +18,7 @@ normalde bunları **sen çağırmazsın**, Claude Code yönetir:
 | `oc-agent` | opencode için tek-komut senkron sarmalayıcı: görev → çalış → cevap (stdout) |
 | `cp-stream` | Session-takipli GitHub Copilot wrapper (copilot'ın JSON stream'ini parser'dan geçirir) |
 | `cp-agent` | copilot için tek-komut senkron sarmalayıcı: görev → çalış → cevap (stdout) |
+| `ol-agent` | İnce katman: Ollama'ya karşı `ds-agent` (`CLAUDE_DS_BACKEND=ollama`) — aynı `claude-ds-stream`, parser ve worktree runner, `OLLAMA_BASE_URL` ve `OL_MODEL` ile |
 
 İstersen terminalden de doğrudan kullanabilirsin (ör. plugin dışı script'lerde):
 

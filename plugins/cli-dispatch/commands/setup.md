@@ -1,11 +1,11 @@
 ---
-description: Install and configure cli-dispatch worker backends (DeepSeek / Antigravity / Codex / OpenCode / Copilot)
+description: Install and configure cli-dispatch worker backends (DeepSeek / Antigravity / Codex / OpenCode / Copilot / Ollama)
 allowed-tools: Bash, AskUserQuestion
 ---
 
 # cli-dispatch setup
 
-cli-dispatch is a multi-backend delegation hub. Five worker backends are available:
+cli-dispatch is a multi-backend delegation hub. Six worker backends are available:
 
 | Backend | Worker CLI it wraps | Auth | Installs |
 |---|---|---|---|
@@ -14,6 +14,7 @@ cli-dispatch is a multi-backend delegation hub. Five worker backends are availab
 | **Codex** | `codex` (OpenAI Codex CLI) | `codex login` (ChatGPT/OAuth) or `CODEX_API_KEY` | `cx-stream`, `cx-agent` |
 | **OpenCode** | `opencode` (OpenCode CLI, via OpenRouter) | OpenRouter API key (paste yourself, no OAuth) | `oc-stream`, `oc-agent` |
 | **GitHub Copilot** | `copilot` (GitHub Copilot CLI) | `gh auth login` / `COPILOT_GITHUB_TOKEN` / `GH_TOKEN` + active Copilot subscription | `cp-stream`, `cp-agent` |
+| **Ollama** | `claude` (Claude Code) pointed at a running Ollama (a local model) | none (no key) | `ol-agent` (+ `claude-ds-stream`, `ds-agent`) |
 
 Follow these steps:
 
@@ -27,23 +28,25 @@ Follow these steps:
    ```
 
 2. **Ask the user which backend(s) to install** with ONE `AskUserQuestion` call carrying TWO
-   multiSelect questions — the tool allows at most 4 options per question, so the five backends
+   multiSelect questions — the tool allows at most 4 options per question, so the six backends
    never fit in one:
    - Question 1 (header "Login CLIs"): **Antigravity (Gemini)**, **Codex (OpenAI)**,
      **GitHub Copilot**, **None of these**.
-   - Question 2 (header "Key CLIs"): **OpenCode (OpenRouter)**, **DeepSeek**, **None of these**.
+   - Question 2 (header "Key/local CLIs"): **OpenCode (OpenRouter)**, **DeepSeek**, **Ollama (local)**,
+     **None of these**.
    In the option descriptions, note which underlying CLI each needs and whether it was found in
    step 1 (e.g. if `codex` is MISSING, say it can be installed after). OpenCode needs an
    OpenRouter API key (paste-yourself, no OAuth); Copilot needs an active GitHub Copilot
    subscription plus `gh auth login`, `copilot login --device-code` or `COPILOT_GITHUB_TOKEN`; DeepSeek needs a
-   DeepSeek API key. Ignore "None of these" when combining the answers, and map the rest to a
+   DeepSeek API key; Ollama needs no key but a running Ollama (local by default) with a model
+   already pulled. Ignore "None of these" when combining the answers, and map the rest to a
    comma-list: DeepSeek→`deepseek`, Antigravity→`antigravity`, Codex→`codex`,
-   OpenCode→`opencode`, Copilot→`copilot` (all five → `all`). If both questions come back
+   OpenCode→`opencode`, Copilot→`copilot`, Ollama→`ollama` (all six → `all`). If both questions come back
    "None of these", stop: nothing to install.
 
 3. **Cross-reference step 2's picks against step 1's detection, and offer to auto-install any missing CLI(s):**
    - Map each backend chosen in step 2 to the underlying CLI step 1 checked: DeepSeek→`claude`,
-     Antigravity→`agy`, Codex→`codex`, OpenCode→`opencode`, Copilot→`copilot`. Determine which of the *chosen*
+     Antigravity→`agy`, Codex→`codex`, OpenCode→`opencode`, Copilot→`copilot`, Ollama→`claude`. Determine which of the *chosen*
      backends' CLIs came back `MISSING` in step 1.
    - **If none are missing, skip this step entirely** and run the installer in step 4 exactly
      as today, with no new flag.
@@ -85,15 +88,15 @@ Follow these steps:
      PLUGIN_ROOT="$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/resolve-plugin-root.sh" "${CLAUDE_PLUGIN_ROOT}")"
      bash "$PLUGIN_ROOT/scripts/install.sh" --backends <comma-list|all>
      ```
-     The comma-list may include `deepseek`, `antigravity`, `codex`, `opencode`, `copilot` (or `all`).
-     Note: OpenCode and Copilot are Unix-only for now (macOS/Linux/WSL) — no native Windows support v1.
+     The comma-list may include `deepseek`, `antigravity`, `codex`, `opencode`, `copilot`, `ollama` (or `all`).
+     Note: OpenCode, Copilot and Ollama are Unix-only for now (macOS/Linux/WSL) — no native Windows support v1.
      **If the user approved auto-install in step 3**, append `--install-missing`:
      ```bash
      bash "$PLUGIN_ROOT/scripts/install.sh" --backends <comma-list|all> --install-missing
      ```
    - **Native Windows (PowerShell)** — supports **DeepSeek and Codex** (both run natively).
      The Antigravity backend needs a pseudo-TTY (`script`) not present on native Windows, so
-     install it under WSL instead. OpenCode and Copilot are likewise Unix-only for now —
+     install it under WSL instead. OpenCode, Copilot and Ollama are likewise Unix-only for now —
      install them under WSL instead of natively. Pass `-Backends` (default `deepseek`; `all` = both):
      ```powershell
      $PluginRoot = & powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/resolve-plugin-root.ps1" -SessionRoot "${CLAUDE_PLUGIN_ROOT}"
@@ -148,7 +151,9 @@ Follow these steps:
      key, default model and model-list fields for each chosen backend (DeepSeek key from
      platform.deepseek.com; OpenRouter key from openrouter.ai/keys; the OpenCode model is a form
      field too — do not ask for it yourself). Antigravity, Codex and Copilot keys are optional
-     there (see their bullets below).
+     there (see their bullets below). Ollama has no key: its form fields are the base URL, the
+     model (`OL_MODEL`, **required** — a model already pulled on that Ollama; cli-dispatch never
+     pulls one) and an optional context size (`OL_CONTEXT`).
      **You (Claude) must NEVER write/paste the API key** — only the user enters it, in the form.
      **The form listens on `127.0.0.1` of the machine it runs on.** If that is not the user's
      machine — a Docker container without that port published, a remote/SSH or cloud session —
@@ -173,6 +178,12 @@ Follow these steps:
      environment (a fine-grained PAT with "Copilot Requests"; classic `ghp_` tokens are not
      accepted). Do **not**
      treat Copilot like a paste-a-raw-key backend for the auto-open-editor prompt.
+   - **Ollama** — no key. Needs a running Ollama at `OLLAMA_BASE_URL` (default
+     `http://127.0.0.1:11434`) and `OL_MODEL` set to a model already pulled there (`ollama pull
+     <name>`). Ollama truncates an overlong conversation **silently**, so tell the user to set
+     `OLLAMA_CONTEXT_LENGTH` on the server (its default depends on VRAM); the worker is told the
+     server's real window (`OL_CONTEXT`, else `/api/ps`, else 32768). With the mod loaded, the
+     three values can also be set in `/cli-dispatch-config`.
 
 6. **Optional smoke test** (only for backends the user enabled), as a background task:
    ```bash
@@ -181,6 +192,7 @@ Follow these steps:
    cx-agent --read-only -q "Reply with exactly: OK"   # Codex (after codex login)
    oc-agent -q "Reply with exactly: OK"        # OpenCode (after key added)
    cp-agent -q "Reply with exactly: OK"        # Copilot (after gh/token auth + subscription)
+   ol-agent --read-only -q "Reply with exactly: OK"   # Ollama (OL_MODEL pulled; first call ~40 s)
    ```
 
 7. **Configure per-session policy injection, then optionally a static CLAUDE.md block** so

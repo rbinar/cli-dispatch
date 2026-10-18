@@ -8,7 +8,7 @@ allowed-tools: Bash
 
 Usage: `/cli-dispatch:resume <session-id> <follow-up prompt>`
 
-Auto-detects backend (DeepSeek / Antigravity / Codex / OpenCode / Copilot) from the session's `status.json`.
+Auto-detects backend (DeepSeek / Antigravity / Codex / OpenCode / Copilot / Ollama) from the session's `status.json`.
 
 ```bash
 # The user's text is pasted into this script before bash parses it (never mention the
@@ -70,6 +70,9 @@ case "$BACKEND" in
   copilot|cp)
     cp-agent --resume "$SID" "$PROMPT"
     ;;
+  ollama|ol)
+    CLAUDE_DS_BACKEND=ollama claude-ds-stream --resume "$SID" -p "$PROMPT"
+    ;;
   *)
     echo "unknown backend '$BACKEND' — run manually:"
     echo "  deepseek:    claude-ds-stream --resume $SID -p \"$PROMPT\""
@@ -77,6 +80,7 @@ case "$BACKEND" in
     echo "  codex:       cx-agent --resume $SID \"$PROMPT\""
     echo "  opencode:    oc-agent --resume $SID \"$PROMPT\""
     echo "  copilot:     cp-agent --resume $SID \"$PROMPT\""
+    echo "  ollama:      CLAUDE_DS_BACKEND=ollama claude-ds-stream --resume $SID -p \"$PROMPT\""
     exit 1
     ;;
 esac

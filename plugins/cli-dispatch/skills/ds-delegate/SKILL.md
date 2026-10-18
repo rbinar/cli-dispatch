@@ -10,15 +10,16 @@ description: |
   cli-dispatch is multi-backend: a second worker, **Antigravity (agy / Gemini)**, is
   available via `ag-agent` / `ag-stream`, a third, **Codex (OpenAI Codex CLI)**, via
   `cx-agent` / `cx-stream`, a fourth, **OpenCode (via OpenRouter)**, via
-  `oc-agent` / `oc-stream`, and a fifth, **GitHub Copilot**, via `cp-agent` /
-  `cp-stream` (see the "Other backends" section below).
+  `oc-agent` / `oc-stream`, a fifth, **GitHub Copilot**, via `cp-agent` /
+  `cp-stream`, and a sixth, **Ollama (a local model through claude)**, via `ol-agent`
+  (see the "Other backends" section below).
   Codex adds a real OS-level read-only sandbox (`cx-agent --read-only`).
   Triggers: "claude-ds", "delegate to claude-ds", "run with deepseek", "delegate to
   antigravity/gemini", "run with agy", "delegate to codex", "run with codex/openai",
   "delegate to opencode", "run with opencode/openrouter", "delegate to copilot",
-  "run with github copilot" (also
+  "run with github copilot", "delegate to ollama", "run with a local model" (also
   Turkish: "deepseek ile yap/çalıştır", "gemini/antigravity ile yap", "codex/openai ile
-  yap", "opencode/openrouter ile yap", "copilot ile yap/çalıştır", "delegate to copilot",
+  yap", "opencode/openrouter ile yap", "copilot ile yap/çalıştır", "ollama ile yap", "delegate to copilot",
   "delege et claude-ds").
 user-invocable: true
 ---
@@ -164,10 +165,12 @@ Then **YOU are the reviewer:**
    Note in the commit body that "implementation was delegated to claude-ds (DeepSeek)" (transparency).
 4. Cleanup: `rm <worktree>/node_modules` → `git worktree remove <worktree> --force` → `git worktree prune`.
 
-## Other backends — Antigravity, Codex, OpenCode, GitHub Copilot
+## Other backends — Antigravity, Codex, OpenCode, GitHub Copilot, Ollama
 
 Each is a *different binary* from `claude`, with its own auth/config — the DeepSeek "swap the
-env var" trick does NOT apply to any of them. Enable any at `/cli-dispatch:setup`. Every
+env var" trick does NOT apply to any of them. The exception is **Ollama** (`ol-agent`): it IS that
+trick — the same `claude` worker and the same `ds-agent`/`claude-ds-stream`, pointed at a local
+Ollama. Enable any at `/cli-dispatch:setup`. Every
 `*-agent`/`*-stream` family mirrors `ds-agent`/`claude-ds-stream` exactly (same flags, same
 Modes 1/1-safe/2, same session dir/format) — only the command name and the specifics below
 differ:
@@ -177,6 +180,7 @@ ag-agent "<task>"      # Antigravity/Gemini
 cx-agent "<task>"      # Codex/OpenAI
 oc-agent "<task>"      # OpenCode/OpenRouter
 cp-agent "<task>"      # GitHub Copilot
+ol-agent "<task>"      # Ollama (a local model)
 <prefix>-agent -q "<task>"                   # answer only on stdout
 <prefix>-agent --cwd <dir> "<task>"          # agentic, isolated dir
 <prefix>-agent --resume <id> "<follow-up>"   # continue the same session
@@ -188,17 +192,18 @@ cp-agent "<task>"      # GitHub Copilot
 | **Antigravity** (`ag-*`) | `--model "<slug or display name>"` / `AG_MODEL` — e.g. `--model gemini-3.6-flash-high` or `--model "Gemini 3.6 Flash (High)"` (agy accepts both); live list: `agy models` (proxies multiple families, incl. Claude — verified cross-vendor routing) | Google sign-in (run `agy` once) or `GEMINI_API_KEY`/`ANTIGRAVITY_API_KEY` | **None** — `--read-only` is rejected (tested: `--sandbox` restricts the terminal, not writes) | Runs under a pseudo-TTY (`script`) tailing agy's on-disk JSONL (needs `script` + `node`; no `--output-format json` on agy). `--max-runtime` is enforced via agy's own `--print-timeout` — a best-effort backstop only, since agy spawns detached workers under a pty and an external tree-kill is unreliable (verified); wall time may exceed the cap and a capped run may report `done` with partial output instead of a guaranteed `error`. Worktree isolation also avoids agy's per-workspace conv-id race. |
 | **Codex** (`cx-*`) | `--model <name>` / `CX_MODEL` — e.g. `--model gpt-5.4-mini`; no CLI list command, check `~/.codex/models_cache.json` or `/model` inside codex | `codex login` (ChatGPT/OAuth) or `CODEX_API_KEY` (takes precedence over `OPENAI_API_KEY`) | **Real OS-level** — `--read-only` passes `-s read-only` → macOS Seatbelt / Linux bwrap+seccomp, a kernel-enforced hard-block on writes; genuine no-writes guarantee, no worktree needed for pure analysis. Default `workspace-write` for agentic work; override with `--sandbox read-only\|workspace-write\|danger-full-access`. | `codex exec --json` emits a clean JSONL stream — no pseudo-TTY/file-tail needed. Session id is the codex **thread-id**; `--resume` does not accept `--cwd`. |
 | **OpenCode** (`oc-*`) | `--model <bare-slug>` / `OC_MODEL` — e.g. `--model google/gemma-4-31b-it:free`; live list: `OPENROUTER_API_KEY=<key> opencode models openrouter` | `OPENROUTER_API_KEY` in the config (pasted by the user — never written by Claude) | **None** — `--auto` (always passed) is a functional headless requirement, not a safety opt-in | Unix-only (macOS/Linux/WSL). Invalid slugs fail loudly with an OpenRouter API error. `--resume` verified to target the named session. |
+| **Ollama** (`ol-agent`) | `OL_MODEL` in the config — **required**, no default, a model already pulled on that Ollama (`ollama pull <name>`; cli-dispatch never pulls); `--model` on `/cli-dispatch:run`/dispatch sets it per run. `OLLAMA_BASE_URL` (default `http://127.0.0.1:11434`) | **None** — no key | Same as DeepSeek: `--read-only` is a real read-only tool set | Unix-only. The first turn takes ~40 s (Claude Code's ~29k start prompt is processed locally). Ollama truncates an overlong conversation **silently** (HTTP 200, no error), so the worker is told the server's real window (`OL_CONTEXT` → `/api/ps` → 32768) — set `OLLAMA_CONTEXT_LENGTH` on the server. Prefer `ol` for small briefs with a `--verify`. An unreachable server or unpulled model fails before any worktree (runner exit 5). |
 | **GitHub Copilot** (`cp-*`) | `--model <slug>` / `CP_MODEL` (e.g. `gpt-5.4`, `auto`); `--effort low\|medium\|high` → `--reasoning-effort=<level>` | `COPILOT_GITHUB_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN` (cli-dispatch reuses `gh auth token` when available); active Copilot subscription required | **None** — `--allow-all-tools --no-ask-user` always passed for headless use, not a safety opt-in | Unix-only. Model list only visible via `/model` in the copilot TUI or GitHub Copilot docs — slugs change over time. Balance not queryable from the CLI; use https://github.com/settings/billing. |
 
-**Same session dir as DeepSeek** for all four (`…/cli-dispatch/sessions/<id>/`), so
+**Same session dir as DeepSeek** for all five (`…/cli-dispatch/sessions/<id>/`), so
 `sessions`/`watch`/`resume`/`kill` work across every backend. **Isolation:** the same worktree
 rule applies (`--cwd <worktree>`, review the diff yourself) — for Antigravity, OpenCode, and
 Copilot, worktree isolation is the *only* safety boundary, since none of the three has any
 OS- or tool-level write-deny.
 
-**Delegation path (all four):** use the `mcp__cli-dispatch__dispatch` tool with
-`backend: "ag"|"cx"|"oc"|"cp"` when available, else `Agent(subagent_type: "cli-dispatch:runner")` with
-`backend: ag|cx|oc|cp` for mechanical work (or `/cli-dispatch:run <backend> "<task>" --verify '<cmd>'`
+**Delegation path (all five):** use the `mcp__cli-dispatch__dispatch` tool with
+`backend: "ag"|"cx"|"oc"|"cp"|"ol"` when available, else `Agent(subagent_type: "cli-dispatch:runner")` with
+`backend: ag|cx|oc|cp|ol` for mechanical work (or `/cli-dispatch:run <backend> "<task>" --verify '<cmd>'`
 directly), or the escalation path (call the `*-agent` CLI directly and verify the result yourself) for judgment-heavy work.
 
 ## Triviality gate
@@ -222,13 +227,13 @@ overhead for no benefit.
 
 ## Role
 The worker (claude-ds = DeepSeek, ag-agent = Antigravity/Gemini, cx-agent = Codex/OpenAI,
-oc-agent = OpenCode/OpenRouter, or cp-agent = GitHub Copilot) does the work; you =
+oc-agent = OpenCode/OpenRouter, cp-agent = GitHub Copilot, or ol-agent = a local Ollama model) does the work; you =
 orchestrator + reviewer + git/merge owner.
 Don't trust any output until verified.
 
 ## Commands
-- `/cli-dispatch:setup` — install worker backends (DeepSeek / Antigravity / Codex / OpenCode / Copilot); choose at setup + config + smoke test.
-- `/cli-dispatch:ask <backend> "<prompt>"` — one-shot question to a worker, no repo changes (`ds`/`cx` run `--read-only`; `ag`/`oc`/`cp` run in a throwaway temp dir). Backend: `ds|deepseek`, `ag|antigravity`, `cx|codex`, `oc|opencode`, `cp|copilot`. For repo work use `run` or the runner agent.
+- `/cli-dispatch:setup` — install worker backends (DeepSeek / Antigravity / Codex / OpenCode / Copilot / Ollama); choose at setup + config + smoke test.
+- `/cli-dispatch:ask <backend> "<prompt>"` — one-shot question to a worker, no repo changes (`ds`/`cx`/`ol` run `--read-only`; `ag`/`oc`/`cp` run in a throwaway temp dir). Backend: `ds|deepseek`, `ag|antigravity`, `cx|codex`, `oc|opencode`, `cp|copilot`, `ol|ollama`. For repo work use `run` or the runner agent.
 - `/cli-dispatch:run <backend> "<task>" --verify '<cmd>'` — the deterministic runner: launch + worktree-isolate + block + verify, zero LLM tokens. The direct path; the default from an orchestrator is the `cli-dispatch:runner` agent (see above).
 - `/cli-dispatch:sessions` — list past/active sessions (all backends; shows a `backend` column). Optional backend filter: `/cli-dispatch:sessions <backend>`.
 - `/cli-dispatch:watch <id> [--wait [--timeout S]]` — show a session's compact live status (cost-conscious); `--wait` blocks until a terminal state (or timeout) and prints a compact summary — one blocking call instead of polling.
