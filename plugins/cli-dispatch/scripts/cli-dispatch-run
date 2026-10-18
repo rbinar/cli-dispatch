@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # cli-dispatch-run — bootstrap worker sessions and write deterministic verdict artifacts.
 set -euo pipefail
+# Session files, the run log and the dirs holding them are private to this user (multi-user Linux).
+umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -19,6 +21,13 @@ need_val() {
     usage
     exit 5
   fi
+}
+
+# A sessions dir given by env that someone else owns is refused: they could plant files in it.
+require_owned_root() {
+  [ -z "${CLI_DISPATCH_SESSIONS_DIR:-${CLAUDE_DS_SESSIONS_DIR:-}}" ] || [ ! -e "$1" ] || [ -O "$1" ] && return 0
+  echo "cli-dispatch: session root $1 is not owned by you (CLI_DISPATCH_SESSIONS_DIR) - refusing to use it. Point it at a directory you own." >&2
+  exit 5
 }
 
 cleanup_tmp() {
@@ -242,19 +251,27 @@ run_fix_resume() {
   ' "$SESSION_DIR/verdict.json" 2>/dev/null)" || fix_prompt=""
   [ -n "$fix_prompt" ] || fix_prompt="[cli-dispatch] The verify command(s) failed after your last turn: ${VERIFY[*]}. Fix the cause, do not widen scope, do not change the semantics of existing tests. Stop when done."
   echo "cli-dispatch-run: verify FAILED — fix attempt $FIX_USED/$FIX_MAX: resuming $SESSION_ID in $dir" >&2
+  # The fix prompt carries the verify output: hand it over as a file, never on a command line
+  # (ps shows argv to every local user; #215). TEMP_FILES also covers the INT/TERM/EXIT paths.
+  local fix_file
+  fix_file="$(mktemp)" || fix_file=""
+  [ -n "$fix_file" ] || { echo "cli-dispatch-run: cannot create the fix-prompt file — skipping the fix attempt" >&2; return 0; }
+  TEMP_FILES+=("$fix_file")
+  printf '%s\n' "$fix_prompt" > "$fix_file"
   set +e
   # Background + wait, like the worktree runner: a foreground child would defer INT/TERM (on_signal).
   (
     cd "$dir" || exit 1
+    [ -z "$_RUN_KEY" ] || export "$_RUN_KEY_VAR=$_RUN_KEY"
     if [ "${#WORKTREE_BASE_VARS[@]}" -gt 0 ]; then
       for kv in "${WORKTREE_BASE_VARS[@]}"; do export "$kv"; done
     fi
     case "$BACKEND" in
-      ds) run_worker_cmd claude-ds-stream --resume "$SESSION_ID" -p "$fix_prompt" ;;
-      ag) run_worker_cmd ag-agent --resume "$SESSION_ID" "$fix_prompt" ;;
-      cx) run_worker_cmd cx-agent --resume "$SESSION_ID" "$fix_prompt" ;;
-      oc) run_worker_cmd oc-agent --resume "$SESSION_ID" "$fix_prompt" ;;
-      cp) run_worker_cmd cp-agent --resume "$SESSION_ID" "$fix_prompt" ;;
+      ds) run_worker_cmd claude-ds-stream --resume "$SESSION_ID" --prompt-file "$fix_file" ;;
+      ag) run_worker_cmd ag-agent --resume "$SESSION_ID" --prompt-file "$fix_file" ;;
+      cx) run_worker_cmd cx-agent --resume "$SESSION_ID" --prompt-file "$fix_file" ;;
+      oc) run_worker_cmd oc-agent --resume "$SESSION_ID" --prompt-file "$fix_file" ;;
+      cp) run_worker_cmd cp-agent --resume "$SESSION_ID" --prompt-file "$fix_file" ;;
     esac
   ) </dev/null &
   RUNNER_PID=$!
@@ -262,6 +279,7 @@ run_fix_resume() {
   local resume_rc=$?
   RUNNER_PID=""
   set -e
+  rm -f "$fix_file"
   [ "$resume_rc" -eq 0 ] || echo "cli-dispatch-run: fix-attempt resume exited $resume_rc — re-verifying anyway" >&2
   return 0
 }
@@ -303,6 +321,14 @@ trap on_exit EXIT
 # exit/summary with "exit: 0, no verdict" while the outer worker was still running.
 RUN_DIR_SELF="${CLI_DISPATCH_RUN_DIR:-}"
 unset CLI_DISPATCH_RUN_DIR
+
+# The dispatch tool hands the dispatched backend's plugin-config key over in this private name.
+# Capture it and take it out of the environment at once; it is exported again, under the real
+# variable name, only inside the worker subshells (never as WORKTREE_BASE_VARS: that is env(1)
+# argv, visible in ps), so verify, build-verdict and wait never hold it.
+_RUN_KEY="${CLI_DISPATCH_RUN_KEY:-}"
+unset CLI_DISPATCH_RUN_KEY
+_RUN_KEY_VAR=""
 
 BACKEND=""
 CWD=""
@@ -406,6 +432,7 @@ if [ "$DETACH" -eq 1 ]; then
   # `session`, `summary.txt` and `exit` there; `cli-dispatch-wait --run <id>` blocks on it.
   ROOT="${CLI_DISPATCH_SESSIONS_DIR:-${CLAUDE_DS_SESSIONS_DIR:-}}"
   [ -n "$ROOT" ] || { _c="${XDG_CACHE_HOME:-$HOME/.cache}"; ROOT="$_c/cli-dispatch/sessions"; [ -d "$ROOT" ] || [ ! -d "$_c/claude-ds/sessions" ] || ROOT="$_c/claude-ds/sessions"; }
+require_owned_root "$ROOT"
 if ! { mkdir -p "$ROOT" 2>/dev/null && : > "$ROOT/.write-probe-$$" 2>/dev/null && rm -f "$ROOT/.write-probe-$$"; }; then
   echo "cli-dispatch: session root $ROOT is not writable (managed sandbox?). Set CLI_DISPATCH_SESSIONS_DIR to a writable directory, e.g. CLI_DISPATCH_SESSIONS_DIR=${TMPDIR:-/tmp}/cli-dispatch-sessions" >&2
   exit 5
@@ -417,7 +444,11 @@ fi
   for _a in ${ORIG_ARGS[@]+"${ORIG_ARGS[@]}"}; do
     [ "$_a" = "--detach" ] || CHILD_ARGS+=("$_a")
   done
-  CLI_DISPATCH_RUN_DIR="$RUN_DIR" nohup bash "$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")" ${CHILD_ARGS[@]+"${CHILD_ARGS[@]}"} </dev/null >"$RUN_DIR/log" 2>&1 &
+  if [ -n "$_RUN_KEY" ]; then
+    CLI_DISPATCH_RUN_KEY="$_RUN_KEY" CLI_DISPATCH_RUN_DIR="$RUN_DIR" nohup bash "$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")" ${CHILD_ARGS[@]+"${CHILD_ARGS[@]}"} </dev/null >"$RUN_DIR/log" 2>&1 &
+  else
+    CLI_DISPATCH_RUN_DIR="$RUN_DIR" nohup bash "$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")" ${CHILD_ARGS[@]+"${CHILD_ARGS[@]}"} </dev/null >"$RUN_DIR/log" 2>&1 &
+  fi
   echo "$!" > "$RUN_DIR/pid"
   echo "run: $RUN_ID"
   exit 0
@@ -490,6 +521,7 @@ fi
 
 ROOT="${CLI_DISPATCH_SESSIONS_DIR:-${CLAUDE_DS_SESSIONS_DIR:-}}"
 [ -n "$ROOT" ] || { _c="${XDG_CACHE_HOME:-$HOME/.cache}"; ROOT="$_c/cli-dispatch/sessions"; [ -d "$ROOT" ] || [ ! -d "$_c/claude-ds/sessions" ] || ROOT="$_c/claude-ds/sessions"; }
+require_owned_root "$ROOT"
 if ! { mkdir -p "$ROOT" 2>/dev/null && : > "$ROOT/.write-probe-$$" 2>/dev/null && rm -f "$ROOT/.write-probe-$$"; }; then
   echo "cli-dispatch: session root $ROOT is not writable (managed sandbox?). Set CLI_DISPATCH_SESSIONS_DIR to a writable directory, e.g. CLI_DISPATCH_SESSIONS_DIR=${TMPDIR:-/tmp}/cli-dispatch-sessions" >&2
   exit 5
@@ -532,6 +564,14 @@ select_runner() {
 
 WORKTREE_RUN="$(select_runner "$BACKEND")"
 [ -n "$WORKTREE_RUN" ] && [ -x "$WORKTREE_RUN" ] || { echo "cli-dispatch-run: backend runner not found: $WORKTREE_RUN" >&2; exit 5; }
+
+case "$BACKEND" in
+  ds) _RUN_KEY_VAR=DEEPSEEK_API_KEY;;
+  ag) _RUN_KEY_VAR=GEMINI_API_KEY;;
+  cx) _RUN_KEY_VAR=CODEX_API_KEY;;
+  oc) _RUN_KEY_VAR=OPENROUTER_API_KEY;;
+  cp) _RUN_KEY_VAR=COPILOT_GITHUB_TOKEN;;
+esac
 
 WORKTREE_BASE_VARS=()
 if [ -n "$MODEL" ]; then
@@ -650,6 +690,7 @@ WORKER_REPORT
   # on_signal) for as long as the worker runs.
   set +e
   (
+    [ -z "$_RUN_KEY" ] || export "$_RUN_KEY_VAR=$_RUN_KEY"
     if [ "${#WORKTREE_BASE_VARS[@]}" -gt 0 ]; then
       env "${WORKTREE_BASE_VARS[@]}" "$WORKTREE_RUN" "$CWD" "$BRANCH" "$PROMPT_FILE" </dev/null 2>&1 >/dev/null | tee "$WORKTREE_STDERR" >&2
       _rc=${PIPESTATUS[0]}

@@ -49,7 +49,7 @@ function fixture() {
   const bin = mkdtemp('cd-agent-bin-')
   const log = path.join(bin, 'calls.log')
   fs.writeFileSync(path.join(bin, 'claude-ds-stream'),
-    `#!/usr/bin/env bash\nprintf '%s\\n' "cwd=$PWD" "$@" >> "${log}"\n[ -n "\${STUB_NO_FIX:-}" ] || : > fixed.txt\nexit 0\n`)
+    `#!/usr/bin/env bash\nprintf '%s\\n' "cwd=$PWD" "$@" >> "${log}"\nwhile [ "$#" -gt 0 ]; do [ "$1" = --prompt-file ] && cat "$2" >> "${log}"; shift; done\n[ -n "\${STUB_NO_FIX:-}" ] || : > fixed.txt\nexit 0\n`)
   fs.chmodSync(path.join(bin, 'claude-ds-stream'), 0o755)
   const envOut = {
     ...process.env,
@@ -289,7 +289,7 @@ test('inside a worker the SessionStart hook injects nothing', () => {
     fs.writeFileSync(policy, JSON.stringify({ schemaVersion: 1, enabled: true }))
     const hook = (extra) => spawnSync(process.execPath, [path.join(SCRIPTS, 'policy-inject.mjs')], {
       encoding: 'utf8', input: '{"hook_event_name":"SessionStart","source":"startup"}',
-      env: { ...process.env, CLI_DISPATCH_POLICY_FILE: policy, ...extra },
+      env: { ...process.env, CLI_DISPATCH_POLICY_FILE: policy, CLI_DISPATCH_USERCONFIG_STATUS: path.join(dir, 'ucs.json'), ...extra },
     })
     assert.match(hook({}).stdout, /cli-dispatch policy/, 'control: an orchestrator session gets the policy')
     const worker = hook({ CLI_DISPATCH_WORKER: '1' })

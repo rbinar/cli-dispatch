@@ -21,14 +21,14 @@
 
 import { readFileSync, existsSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
-import { writeMetaFile, createStatusWriter, openSessionFiles, clip, readJsonFile, TERMINAL_STATES, pruneSessionRoot } from './parse-utils.mjs'
+import { writeMetaFile, createStatusWriter, openSessionFiles, clip, readJsonFile, TERMINAL_STATES, pruneSessionRoot, makeSessionDir } from './parse-utils.mjs'
 
 const dir = process.env.CX_SESSION_DIR
 if (!dir) {
   process.stderr.write('cx-stream-parse: CX_SESSION_DIR not set\n')
   process.exit(2)
 }
-mkdirSync(dir, { recursive: true })
+makeSessionDir(dir)
 
 // Passive cap on finished session dirs (see parse-utils.mjs's pruneSessionRoot). Runs once
 // per session, right after this dir exists so it is never its own prune target. Live

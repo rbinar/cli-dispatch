@@ -45,8 +45,7 @@ function hasStrandedChanges(worktree) {
     return String(status ?? '').split('\n').some((line) => {
       if (!line.trim()) return false
       if (!line.startsWith('?? ')) return true
-      const segs = line.slice(3).replace(/^"|"$/g, '').split('/')
-      return !(segs[segs.length - 1] === 'worker-report.json' || segs.includes('node_modules'))
+      return !isRunnerArtifact(line.slice(3).replace(/^"|"$/g, ''))
     })
   } catch {
     return false
@@ -251,9 +250,24 @@ function globToRegExp(glob) {
   return new RegExp(/[*?]/.test(glob) ? `^${re}$` : `^${re}(?:/.*)?$`)
 }
 
+// The runner's own artifacts: worker-report.json (any depth) and node_modules links. Only an
+// UNTRACKED (`??`) entry is one: a tracked file under a node_modules directory, or a tracked
+// worker-report.json, is the worker's change like any other. A bare path string carries no status
+// and keeps the old reading (exempt).
+function isRunnerArtifact(file) {
+  const p = typeof file === 'string' ? file : file.path
+  if (typeof file !== 'string' && file.status !== '??') return false
+  const segs = p.split('/')
+  return segs[segs.length - 1] === 'worker-report.json' || segs.includes('node_modules')
+}
+
+// The runner asks every worker for worker-report.json, so it can never count against --scope.
+// `files` are {path, status} (changed-files.json) or bare paths; returns the violating paths.
 export function scopeViolations(files, globs) {
   const res = globs.map(globToRegExp)
-  return files.filter((f) => !res.some((r) => r.test(f)))
+  return files
+    .filter((f) => !isRunnerArtifact(f) && !res.some((r) => r.test(typeof f === 'string' ? f : f.path)))
+    .map((f) => (typeof f === 'string' ? f : f.path))
 }
 
 export function buildVerdict({ statusJson, metaJson, changedFilesJson, verifyResults, worktreeInfo = {} }) {
@@ -294,7 +308,7 @@ export function buildVerdict({ statusJson, metaJson, changedFilesJson, verifyRes
     timeoutExpired: Boolean(worktreeInfo.timeoutExpired),
   })
   const scope = Array.isArray(worktreeInfo.scope) && worktreeInfo.scope.length ? worktreeInfo.scope : null
-  const outOfScope = scope ? scopeViolations(files, scope) : []
+  const outOfScope = scope ? scopeViolations(Array.isArray(changedFiles.files) ? changedFiles.files.filter((f) => typeof (f && typeof f === 'object' ? f.path : f) === 'string') : [], scope) : []
   // A leak (worker wrote outside its worktree), or a change outside --scope, is a worker error
   // even when verify passed.
   const exitCode = (worktreeInfo.leak || outOfScope.length) && mappedExit === 0 ? 2 : mappedExit

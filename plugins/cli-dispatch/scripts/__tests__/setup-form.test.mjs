@@ -259,3 +259,14 @@ test('sections are ordered with OpenCode and DeepSeek last, whatever order --bac
     assert.deepEqual([...order].sort((a, b) => a - b), order)
   } finally { s.cleanup() }
 })
+
+test('save refuses to rewrite a line carrying a second assignment and writes nothing', async () => {
+  const bad = 'DS_MODEL=old DEEPSEEK_API_KEY=sk-live-abcdefghij\n'
+  const s = start({ backends: 'deepseek', config: bad })
+  try {
+    const { port, token } = await s.ready
+    const res = await request({ port, method: 'POST', pathname: `/${token}/save`, body: form({ DS_MODEL: 'new' }) })
+    assert.notEqual(res.status, 200)
+    assert.equal(readFileSync(s.cfg, 'utf8'), bad)
+  } finally { s.cleanup() }
+})

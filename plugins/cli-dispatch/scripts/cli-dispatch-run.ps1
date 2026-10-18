@@ -11,6 +11,12 @@ if ($env:CLI_DISPATCH_WORKER -eq '1') {
   exit 5
 }
 
+# The dispatch tool hands the dispatched backend's plugin-config key over in this private name
+# (see the bash twin). Capture it and drop it from the environment at once; it is set under the
+# real variable name only around the worker call below, so verify never sees it.
+$runKey = $env:CLI_DISPATCH_RUN_KEY
+Remove-Item Env:CLI_DISPATCH_RUN_KEY -ErrorAction SilentlyContinue
+
 function Show-Usage {
   Write-Host 'usage: cli-dispatch-run --backend <ds|ag|cx|oc|cp> --cwd <repo> [--prompt <text> | --prompt-file <path>] [--branch <name>] [--model <slug>] [--effort low|medium|high] [--verify <cmd>] [--verify-timeout SECS] [--timeout SECS] [--resume <session-id>] [--cleanup-if-clean] [--scope <glob>]'
 }
@@ -124,6 +130,18 @@ else {
   $newRoot = Join-Path $cacheRoot 'cli-dispatch/sessions'
   $oldRoot = Join-Path $cacheRoot 'claude-ds/sessions'
   if ((Test-Path $newRoot) -or (-not (Test-Path $oldRoot))) { $newRoot } else { $oldRoot }
+}
+
+# A sessions dir given by env that someone else owns is refused. Best effort: when the owner cannot
+# be read the check is skipped, and BUILTIN\Administrators (the owner of a dir an elevated user made) passes.
+if (($env:CLI_DISPATCH_SESSIONS_DIR -or $env:CLAUDE_DS_SESSIONS_DIR) -and (Test-Path $SessionsRoot)) {
+  $rootOwner = $null
+  try { $rootOwner = (Get-Acl -LiteralPath $SessionsRoot -ErrorAction Stop).Owner } catch {}
+  $me = try { [System.Security.Principal.WindowsIdentity]::GetCurrent().Name } catch { $null }
+  if ($rootOwner -and $me -and ($rootOwner -ne $me) -and ($rootOwner -ne 'BUILTIN\Administrators')) {
+    [Console]::Error.WriteLine("cli-dispatch: session root $SessionsRoot is not owned by you (CLI_DISPATCH_SESSIONS_DIR) - refusing to use it. Point it at a directory you own.")
+    exit 5
+  }
 }
 
 $sessionsProbe = Join-Path $SessionsRoot ".write-probe-$PID"
@@ -449,6 +467,10 @@ honest empty `command` is more useful than a confident one that was never execut
   if ($Effort) {
     if ($Backend -eq 'ds') { $baseVars['CLAUDE_DS_EFFORT'] = $Effort }
     if ($Backend -eq 'cx') { $baseVars['CX_EFFORT'] = $Effort }
+  }
+  if ($runKey) {
+    if ($Backend -eq 'ds') { $baseVars['DEEPSEEK_API_KEY'] = $runKey }
+    if ($Backend -eq 'cx') { $baseVars['CODEX_API_KEY'] = $runKey }
   }
 
   function Set-TempEnv { param([hashtable]$Vars)

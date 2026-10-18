@@ -11,6 +11,7 @@ Session directory: `${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<id>/`
 | `status.json` | Compact summary (state, last tool, tool counts, result preview) — **the only file read to watch** |
 | `progress.log` | Terse human-readable stream (`▸ Edit foo.ts`, `✓ / ✗`, truncated text) |
 | `transcript.jsonl` | Raw stream-json (resume/audit; not read while watching) |
+| `progress.idx` | Maps each `progress.log` line (by byte offset) to the transcript bytes of the event behind it; read only by the `/cli-dispatch-runs` pane |
 | `meta.json` | Prompt preview, cwd, branch, model, start/end |
 | `prompt.txt` | The **full** task prompt (untruncated) |
 | `changed-files.json` | `{files, diffstat, preexistingDirty}` — files the run changed, written after a repo-changing run finishes |

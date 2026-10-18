@@ -22,11 +22,12 @@ set -euo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/version-check.sh" 2>/dev/null || true
 command -v cli_dispatch_warn_if_stale >/dev/null 2>&1 && cli_dispatch_warn_if_stale
 
-usage() { echo 'usage: cp-agent [--cwd <dir>] [--resume <session-id>] [--model <slug>] [--effort low|medium|high] [--max-runtime <s>] [--idle-timeout <s>] [-q] "<task>"' >&2; }
+usage() { echo 'usage: cp-agent [--cwd <dir>] [--resume <session-id>] [--model <slug>] [--effort low|medium|high] [--max-runtime <s>] [--idle-timeout <s>] [-q] ("<task>" | --prompt-file <path>)' >&2; }
 
 QUIET=0
 TASK=""
 HAVE_TASK=0
+PROMPT_FILE=""
 FWD=()
 need_val() { [ "$2" -ge 2 ] || { echo "cp-agent: $1 requires a value." >&2; exit 1; }; }
 while [ "$#" -gt 0 ]; do
@@ -38,6 +39,8 @@ while [ "$#" -gt 0 ]; do
     --max-runtime)    need_val --max-runtime "$#";  FWD+=(--max-runtime "$2"); shift 2;;
     --idle-timeout)   need_val --idle-timeout "$#"; FWD+=(--idle-timeout "$2"); shift 2;;
     -q|--quiet)       QUIET=1; shift;;
+    --prompt-file)    need_val "$1" "$#"; PROMPT_FILE="$2"; shift 2;;
+    --prompt-file=*)  PROMPT_FILE="${1#*=}"; shift;;
     -p|--prompt)      need_val "$1" "$#"; TASK="$2"; HAVE_TASK=1; shift 2;;
     -h|--help)        usage; exit 0;;
     -*)               FWD+=("$1"); shift;;
@@ -45,10 +48,13 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-if [ "$HAVE_TASK" -eq 0 ]; then
+if [ -n "$PROMPT_FILE" ] && [ "$HAVE_TASK" -eq 1 ]; then
+  echo "cp-agent: --prompt-file and a task (-p/positional) are mutually exclusive." >&2; exit 2
+fi
+if [ -z "$PROMPT_FILE" ] && [ "$HAVE_TASK" -eq 0 ]; then
   if [ ! -t 0 ]; then TASK="$(cat)"; else usage; exit 1; fi
 fi
-if [ -z "${TASK//[[:space:]]/}" ]; then echo "cp-agent: empty task — nothing to delegate." >&2; exit 1; fi
+if [ -z "$PROMPT_FILE" ] && [ -z "${TASK//[[:space:]]/}" ]; then echo "cp-agent: empty task — nothing to delegate." >&2; exit 1; fi
 
 STREAM="$(command -v cp-stream 2>/dev/null || true)"
 [ -z "$STREAM" ] && STREAM="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cp-stream"
@@ -63,7 +69,11 @@ set +e
 # On macOS bash 3.2 under `set -u`, expanding an EMPTY "${FWD[@]}" is an unbound-variable
 # error — which would break the common no-flags `cp-agent "task"` call. The ${arr[@]+...}
 # idiom expands to nothing when FWD is empty and to the quoted elements otherwise.
-"$STREAM" ${FWD[@]+"${FWD[@]}"} -p "$TASK"
+if [ -n "$PROMPT_FILE" ]; then
+  "$STREAM" ${FWD[@]+"${FWD[@]}"} --prompt-file "$PROMPT_FILE"
+else
+  "$STREAM" ${FWD[@]+"${FWD[@]}"} -p "$TASK"
+fi
 rc=$?
 set -e
 exit "$rc"

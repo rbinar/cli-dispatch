@@ -345,6 +345,10 @@ resolve_sessions_root() {
 # consumer must agree on ONE root, so this never falls back to another directory.
 require_writable_sessions_root() {
   local root="$1" probe
+  if [ -n "${CLI_DISPATCH_SESSIONS_DIR:-${CLAUDE_DS_SESSIONS_DIR:-}}" ] && [ -e "$root" ] && [ ! -O "$root" ]; then
+    echo "cli-dispatch: session root $root is not owned by you (CLI_DISPATCH_SESSIONS_DIR) - refusing to use it. Point it at a directory you own." >&2
+    exit 5
+  fi
   probe="$root/.write-probe-$$"
   if mkdir -p "$root" 2>/dev/null && : > "$probe" 2>/dev/null; then
     rm -f "$probe" 2>/dev/null || true

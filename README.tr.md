@@ -19,7 +19,7 @@ Bunları Claude Code içinde (önce `claude` yaz) sırayla, tek tek çalıştır
 /cli-dispatch:setup
 ```
 
-Setup hangi backend'leri istediğini sorar ve wrapper'larını kurar. API key'leri yerel bir tarayıcı formuna girersin; Claude'dan hiç geçmezler. Sonucu `/cli-dispatch:doctor` ile kontrol et. Backend başına CLI, giriş ve model ayrıntıları: [Kurulum](docs/tr/install.md).
+Claude Code 2.1.287 veya daha yenisi gerekir. Setup hangi backend'leri istediğini sorar ve wrapper'larını kurar. API key'lerini `/plugin configure cli-dispatch@cli-dispatch` ile gir (diyalog key'i son 6 karakter hariç maskeler, o yüzden ekran paylaşırken girme); model ve backend ayarları `/cli-dispatch-config` üzerinden yapılır. Mod yüklü değilse yerel tarayıcı formu yedek yoldur. Key'ler Claude'dan hiç geçmez. Sonucu `/cli-dispatch:doctor` ile kontrol et. Backend başına CLI, giriş ve model ayrıntıları: [Kurulum](docs/tr/install.md).
 
 ## Kullanım
 

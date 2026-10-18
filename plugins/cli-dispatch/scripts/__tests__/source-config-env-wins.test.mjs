@@ -69,6 +69,40 @@ for (const bash of BASHES) {
   })
 }
 
+// The dispatch tool hands a plugin-config key to the stream as the real variable, in the
+// environment; that is what makes it beat a key already written in the config file.
+const KEY_VARS = ['DEEPSEEK_API_KEY', 'GEMINI_API_KEY', 'CODEX_API_KEY', 'OPENROUTER_API_KEY', 'COPILOT_GITHUB_TOKEN']
+
+function runKeyConfig(bash, kv, env) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'src-cfg-'))
+  try {
+    const config = path.join(dir, 'config')
+    writeFileSync(config, kv + '\n')
+    const result = spawnSync(bash, ['-c', `set -euo pipefail\n. "${STREAM_UTILS}"\nsource_config\necho "\${${env.__var}:-}"\n`], {
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH, HOME: dir, CLI_DISPATCH_CONFIG: config, ...env.vars },
+    })
+    assert.equal(result.status, 0, `bash failed: ${result.stderr}`)
+    return result.stdout.trim()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+for (const bash of BASHES) {
+  for (const v of KEY_VARS) {
+    test(`${bash}: ${v} from the environment beats the config's value`, () => {
+      assert.equal(runKeyConfig(bash, `${v}="file-v"`, { __var: v, vars: { [v]: 'env-v' } }), 'env-v')
+    })
+    test(`${bash}: ${v} from the environment beats an empty config assignment`, () => {
+      assert.equal(runKeyConfig(bash, `${v}=""`, { __var: v, vars: { [v]: 'env-v' } }), 'env-v')
+    })
+    test(`${bash}: ${v} unset in the environment takes the config's value`, () => {
+      assert.equal(runKeyConfig(bash, `${v}="file-v"`, { __var: v, vars: {} }), 'file-v')
+    })
+  }
+}
+
 const PWSH = spawnSync('pwsh', ['-NoProfile', '-Command', 'exit 0']).status === 0
 
 // Pull the model-precedence block out of the shipped .ps1, so the assertion grades the real

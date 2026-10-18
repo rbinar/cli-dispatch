@@ -227,7 +227,14 @@ $Config = if ($env:CLI_DISPATCH_CONFIG) {
 $cfg = Read-ConfigFile -Path $Config
 $key = $cfg["DEEPSEEK_API_KEY"]
 if ([string]::IsNullOrEmpty($key)) {
-  Write-Error "claude-ds-stream: DEEPSEEK_API_KEY not set. Add it to $Config (run /cli-dispatch:setup)."
+  # A key set only in the plugin's userConfig is passed by the dispatch tool alone (flags file, never a value).
+  $ucStatus = if ($env:CLI_DISPATCH_USERCONFIG_STATUS) { $env:CLI_DISPATCH_USERCONFIG_STATUS } else { Join-Path $(if ($env:XDG_CONFIG_HOME) { $env:XDG_CONFIG_HOME } else { Join-Path $HOME ".config" }) "cli-dispatch/userconfig-status.json" }
+  $ucSet = (Test-Path $ucStatus) -and ((Get-Content $ucStatus -Raw) -match '"DEEPSEEK_API_KEY": *true')
+  if ($ucSet) {
+    Write-Error "claude-ds-stream: DEEPSEEK_API_KEY is set in the plugin config, which only the dispatch tool passes to workers. Use the dispatch tool, or add the key to $Config (or run the setup form: /cli-dispatch:setup)."
+  } else {
+    Write-Error "claude-ds-stream: DEEPSEEK_API_KEY not set. Add it to $Config (run /cli-dispatch:setup), or /plugin configure cli-dispatch@cli-dispatch for the dispatch tool."
+  }
   exit 1
 }
 
@@ -257,6 +264,7 @@ $cwd = (Get-Location).Path
 $cwdExplicit = $false
 $resumeId = ""
 $prompt = $null
+$promptFile = $null
 $readOnly = 0
 $effort = if ($env:CLAUDE_DS_EFFORT) { $env:CLAUDE_DS_EFFORT } else { "" }
 $maxRuntime = ConvertTo-Int $env:CLAUDE_DS_MAX_RUNTIME
@@ -309,6 +317,17 @@ while ($i -lt $argc) {
     }
     '^--prompt=(.*)$' {
       $prompt = $matches[1]
+      $i += 1
+      continue
+    }
+    '^--prompt-file$' {
+      Need-Val $a $i $argc
+      $promptFile = $args[$i + 1]
+      $i += 2
+      continue
+    }
+    '^--prompt-file=(.*)$' {
+      $promptFile = $matches[1]
       $i += 1
       continue
     }
@@ -367,6 +386,14 @@ while ($i -lt $argc) {
       continue
     }
   }
+}
+
+# --prompt-file <path>: read the prompt from a file (keeps a long brief off the command line).
+# Mutually exclusive with -p.
+if ($promptFile) {
+  if ($null -ne $prompt) { Write-Error "claude-ds-stream: --prompt-file and -p are mutually exclusive."; exit 2 }
+  if (-not (Test-Path -LiteralPath $promptFile -PathType Leaf)) { Write-Error "claude-ds-stream: --prompt-file not found: $promptFile"; exit 1 }
+  $prompt = (Get-Content -Raw -LiteralPath $promptFile)
 }
 
 if ($null -eq $prompt) {

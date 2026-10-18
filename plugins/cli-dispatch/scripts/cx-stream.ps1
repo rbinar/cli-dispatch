@@ -181,6 +181,7 @@ function Write-DiffArtifacts($dir, $cwd, $preexistingDirty = @()) {
 $cwd = (Get-Location).Path
 $resumeId = ""
 $prompt = $null
+$promptFile = $null
 $readOnly = 0
 $sandbox = ""
 $effort = if ($env:CX_EFFORT) { $env:CX_EFFORT } else { "" }
@@ -224,6 +225,8 @@ while ($i -lt $argc) {
     '^--sandbox=(.*)'  { $sandbox = $matches[1]; $i += 1; continue }
     '^(-p|--prompt)$'  { Need-Val $a $i $argc; $prompt = $args[$i+1]; $i += 2; continue }
     '^--prompt=(.*)'   { $prompt = $matches[1]; $i += 1; continue }
+    '^--prompt-file$'  { Need-Val '--prompt-file' $i $argc; $promptFile = $args[$i+1]; $i += 2; continue }
+    '^--prompt-file=(.*)' { $promptFile = $matches[1]; $i += 1; continue }
     '^--read-only$'    { $readOnly = 1; $i += 1; continue }
     '^(--network|--net)$'  { $network = 1; $i += 1; continue }
     '^(--no-network|--no-net)$' { $network = 0; $i += 1; continue }
@@ -237,6 +240,13 @@ while ($i -lt $argc) {
   }
 }
 
+# --prompt-file <path>: read the prompt from a file (keeps a long brief off the command line).
+# Mutually exclusive with -p.
+if ($promptFile) {
+  if ($null -ne $prompt) { Write-Error "cx-stream: --prompt-file and -p are mutually exclusive."; exit 2 }
+  if (-not (Test-Path -LiteralPath $promptFile -PathType Leaf)) { Write-Error "cx-stream: --prompt-file not found: $promptFile"; exit 1 }
+  $prompt = (Get-Content -Raw -LiteralPath $promptFile)
+}
 if ($null -eq $prompt) {
   if (-not [Console]::IsInputRedirected) { Write-Error "cx-stream: no prompt. Use -p `"<prompt>`" or pipe via stdin."; exit 1 }
   $prompt = [Console]::In.ReadToEnd()

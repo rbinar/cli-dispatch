@@ -57,11 +57,20 @@ esac
 CFG="${CLI_DISPATCH_CONFIG:-${CLAUDE_DS_CONFIG:-}}"
 [ -n "$CFG" ] || { CFG="$HOME/.config/cli-dispatch/config"; [ -f "$CFG" ] || [ ! -f "$HOME/.config/claude-ds/config" ] || CFG="$HOME/.config/claude-ds/config"; }
 
+# A key set only in the plugin's userConfig is invisible here (only the dispatch tool gets it).
+# The SessionStart hook records WHICH keys are set as flags in this file; never sourced.
+UCS="${CLI_DISPATCH_USERCONFIG_STATUS:-${XDG_CONFIG_HOME:-$HOME/.config}/cli-dispatch/userconfig-status.json}"
+uc_set() { grep -q "\"$1\": *true" "$UCS" 2>/dev/null; }
+uc_msg() { echo "key: set in plugin config, which balance cannot read — add $1 to $CFG (or run /cli-dispatch:setup) to check the balance"; }
+
 deepseek_balance() {
-if [ ! -f "$CFG" ]; then echo "config: MISSING ($CFG) — run /cli-dispatch:setup"; exit 1; fi
+if [ ! -f "$CFG" ]; then if uc_set DEEPSEEK_API_KEY; then uc_msg DEEPSEEK_API_KEY; else echo "config: MISSING ($CFG) — run /cli-dispatch:setup"; fi; exit 1; fi
 # shellcheck disable=SC1090
 . "$CFG"
-if [ -z "${DEEPSEEK_API_KEY:-}" ]; then echo "key: MISSING — add it to the config (/cli-dispatch:setup)"; exit 1; fi
+if [ -z "${DEEPSEEK_API_KEY:-}" ]; then
+  if uc_set DEEPSEEK_API_KEY; then uc_msg DEEPSEEK_API_KEY; else echo "key: MISSING — add it to the config (/cli-dispatch:setup) or run /plugin configure cli-dispatch@cli-dispatch"; fi
+  exit 1
+fi
 printf 'Authorization: Bearer %s\n' "$DEEPSEEK_API_KEY" | curl -sS --max-time 20 https://api.deepseek.com/user/balance \
   -H @- \
   -H "Accept: application/json"
@@ -133,10 +142,13 @@ EOF
 }
 
 opencode_balance() {
-if [ ! -f "$CFG" ]; then echo "config: MISSING ($CFG) — run /cli-dispatch:setup"; exit 1; fi
+if [ ! -f "$CFG" ]; then if uc_set OPENROUTER_API_KEY; then uc_msg OPENROUTER_API_KEY; else echo "config: MISSING ($CFG) — run /cli-dispatch:setup"; fi; exit 1; fi
 # shellcheck disable=SC1090
 . "$CFG"
-if [ -z "${OPENROUTER_API_KEY:-}" ]; then echo "key: MISSING — add OPENROUTER_API_KEY to the config (/cli-dispatch:setup)"; exit 1; fi
+if [ -z "${OPENROUTER_API_KEY:-}" ]; then
+  if uc_set OPENROUTER_API_KEY; then uc_msg OPENROUTER_API_KEY; else echo "key: MISSING — add OPENROUTER_API_KEY to the config (/cli-dispatch:setup) or run /plugin configure cli-dispatch@cli-dispatch"; fi
+  exit 1
+fi
 printf 'Authorization: Bearer %s\n' "$OPENROUTER_API_KEY" | curl -sS --max-time 20 https://openrouter.ai/api/v1/credits \
   -H @- \
   -H "Accept: application/json"
@@ -161,10 +173,10 @@ esac
 
 # ── DeepSeek (account balance) ──────────────────────────────────────────
 echo "== DeepSeek =="
-if [ ! -f "$CFG" ]; then echo "config: MISSING ($CFG) — run /cli-dispatch:setup"; else
+if [ ! -f "$CFG" ]; then if uc_set DEEPSEEK_API_KEY; then uc_msg DEEPSEEK_API_KEY; else echo "config: MISSING ($CFG) — run /cli-dispatch:setup"; fi; else
   # shellcheck disable=SC1090
   . "$CFG"
-  if [ -z "${DEEPSEEK_API_KEY:-}" ]; then echo "key: not set (skip)"; else
+  if [ -z "${DEEPSEEK_API_KEY:-}" ]; then if uc_set DEEPSEEK_API_KEY; then uc_msg DEEPSEEK_API_KEY; else echo "key: not set (skip)"; fi; else
     printf 'Authorization: Bearer %s\n' "$DEEPSEEK_API_KEY" | curl -sS --max-time 20 https://api.deepseek.com/user/balance \
       -H @- -H "Accept: application/json"; echo
   fi
@@ -230,10 +242,10 @@ EOF
 
 # ── OpenCode (OpenRouter, account-wide paid-credit balance) ─────────────
 echo "== OpenCode =="
-if [ ! -f "$CFG" ]; then echo "config: MISSING ($CFG) — run /cli-dispatch:setup"; else
+if [ ! -f "$CFG" ]; then if uc_set OPENROUTER_API_KEY; then uc_msg OPENROUTER_API_KEY; else echo "config: MISSING ($CFG) — run /cli-dispatch:setup"; fi; else
   # shellcheck disable=SC1090
   . "$CFG"
-  if [ -z "${OPENROUTER_API_KEY:-}" ]; then echo "key: not set (skip)"; else
+  if [ -z "${OPENROUTER_API_KEY:-}" ]; then if uc_set OPENROUTER_API_KEY; then uc_msg OPENROUTER_API_KEY; else echo "key: not set (skip)"; fi; else
     printf 'Authorization: Bearer %s\n' "$OPENROUTER_API_KEY" | curl -sS --max-time 20 https://openrouter.ai/api/v1/credits \
       -H @- -H "Accept: application/json"; echo
   fi

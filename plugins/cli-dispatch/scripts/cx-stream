@@ -6,8 +6,8 @@
 # clean JSONL event stream on stdout. So this wrapper is closer to the DeepSeek backend: it
 # PIPES codex's stdout through cx-stream-parse.mjs for live progress + a rolling status.json.
 # Two codex specifics shape the call:
-#   1. Prompt-as-arg blocks on stdin → we redirect </dev/null so codex does not wait for
-#      "Reading additional input from stdin...".
+#   1. The prompt goes in on stdin (`-` positional, from a 0600 temp file), not argv, so a long
+#      brief is not visible in `ps`.
 #   2. -o <file> writes the final agent message cleanly → we print THAT on stdout (falling
 #      back to the parser's last agent_message if the file is empty).
 # Codex HAS a real sandbox (`-s read-only`), so --read-only is a genuine guarantee here.
@@ -60,6 +60,7 @@ CWD="$(pwd)"
 RESUME_ID=""
 PROMPT=""
 HAVE_PROMPT=0
+PROMPT_FILE=""
 READ_ONLY=0
 SANDBOX=""                       # explicit --sandbox passthrough (overrides default/--read-only)
 # Network access inside the workspace-write sandbox. Codex disables it by DEFAULT — every
@@ -92,6 +93,8 @@ while [ "$#" -gt 0 ]; do
     -p|--prompt)      need_val "$1" "$#";     PROMPT="$2"; HAVE_PROMPT=1; shift 2;;
     -p=*)             PROMPT="${1#*=}"; HAVE_PROMPT=1; shift;;
     --prompt=*)       PROMPT="${1#*=}"; HAVE_PROMPT=1; shift;;
+    --prompt-file)  need_val "$1" "$#";     PROMPT_FILE="$2"; shift 2;;
+    --prompt-file=*) PROMPT_FILE="${1#*=}"; shift;;
     --read-only)      READ_ONLY=1; shift;;
     --network|--net)  NETWORK=1; shift;;
     --no-network|--no-net) NETWORK=0; shift;;
@@ -105,6 +108,13 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+# --prompt-file <path>: read the prompt from a file (keeps a long brief off the runner's
+# command line, where `ps` shows it). Mutually exclusive with -p.
+if [ -n "$PROMPT_FILE" ]; then
+  [ "$HAVE_PROMPT" -eq 0 ] || { echo "cx-stream: --prompt-file and -p are mutually exclusive." >&2; exit 2; }
+  [ -f "$PROMPT_FILE" ] || { echo "cx-stream: --prompt-file not found: $PROMPT_FILE" >&2; exit 1; }
+  PROMPT="$(cat "$PROMPT_FILE")"; HAVE_PROMPT=1
+fi
 if [ "$HAVE_PROMPT" -eq 0 ]; then
   if [ ! -t 0 ]; then PROMPT="$(cat)"; else
     echo "cx-stream: no prompt. Use -p \"<prompt>\" or pipe via stdin." >&2; exit 1
@@ -219,7 +229,7 @@ fi
 # ---- build the codex command ----
 # `codex exec [resume <id>] [flags] "<prompt>"`. We always emit --json (parser input) and
 # -o <file> (clean final answer), pass --skip-git-repo-check (works outside git). Prompt is
-# the LAST positional, fed </dev/null at run time.
+# the LAST positional, passed as `-` so codex reads it from stdin (a file redirect) — never argv.
 #
 # IMPORTANT: `codex exec resume` accepts a DIFFERENT flag set than plain `codex exec`.
 # resume does NOT accept -s/--sandbox, -C/--cd, or --color; passing them errors with
@@ -234,6 +244,10 @@ if [ -n "$EFFORT" ]; then
 fi
 
 OUTFILE="$(mktemp -t cx-out-XXXXXX)"
+# The prompt reaches codex on stdin (`-` positional), never on argv, where `ps` would show it.
+# mktemp creates the file 0600; the EXIT trap removes it.
+PROMPT_TMP="$(mktemp -t cx-prompt-XXXXXX)"
+printf '%s' "$PROMPT" > "$PROMPT_TMP"
 RESUME=0
 if [ -n "$RESUME_ID" ]; then
   RESUME=1
@@ -243,14 +257,14 @@ if [ -n "$RESUME_ID" ]; then
   CODEX_ARGS+=(-c "sandbox_mode=$SANDBOX_MODE")
   [ "${#NET_ARGS[@]}" -gt 0 ] && CODEX_ARGS+=("${NET_ARGS[@]}")
   [ "${#PASS_ARGS[@]}" -gt 0 ] && CODEX_ARGS+=("${PASS_ARGS[@]}")
-  CODEX_ARGS+=("$RESUME_ID" "$PROMPT")
+  CODEX_ARGS+=("$RESUME_ID" -)
 else
   CODEX_ARGS=(exec --json -o "$OUTFILE" --skip-git-repo-check --color never -C "$CWD" -s "$SANDBOX_MODE")
   [ -n "$MODEL" ] && CODEX_ARGS+=(-m "$MODEL")
   [ -n "$EFFORT" ] && CODEX_ARGS+=(-c "model_reasoning_effort=$EFFORT")
   [ "${#NET_ARGS[@]}" -gt 0 ] && CODEX_ARGS+=("${NET_ARGS[@]}")
   [ "${#PASS_ARGS[@]}" -gt 0 ] && CODEX_ARGS+=("${PASS_ARGS[@]}")
-  CODEX_ARGS+=("$PROMPT")
+  CODEX_ARGS+=(-)
 fi
 
 # ---- session bookkeeping ----
@@ -320,7 +334,7 @@ cleanup() {
   [ -n "${WATCHDOG_PID:-}" ] && kill "$WATCHDOG_PID" 2>/dev/null || true
   [ -n "${CODEX_PID:-}" ] && kill -TERM "$CODEX_PID" 2>/dev/null || true
   [ -n "${PARSER_PID:-}" ] && kill_tree "$PARSER_PID" -TERM 2>/dev/null || true
-  rm -f "$OUTFILE" "$PARSER_OUT" "$PARSER_DONE" 2>/dev/null || true
+  rm -f "$OUTFILE" "$PARSER_OUT" "$PARSER_DONE" "$PROMPT_TMP" 2>/dev/null || true
   [ -n "${PARSER_FIFO_DIR:-}" ] && rm -rf "$PARSER_FIFO_DIR" 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -382,8 +396,8 @@ fi
 EFFECTIVE_EFFORT="${EFFORT:-$META_EFFORT}"
 
 # codex's stdout → parser (process substitution); codex's stderr passes through to our stderr.
-# Prompt-as-arg → redirect stdin from /dev/null (the documented gotcha; without it codex blocks
-# on "Reading additional input from stdin..."). The `{ node ...; touch DONE; }` wrapper lets us
+# Prompt on stdin (`-` positional; `codex exec --help`: "if `-` is used, instructions are read from
+# stdin") → redirect stdin from the 0600 prompt file so the brief never shows in `ps`. The `{ node ...; touch DONE; }` wrapper lets us
 # detect when the parser has fully drained + written status.json.
 # The parser is started FIRST (a background `cat FIFO | node` group) so the FIFO has a reader;
 # codex is then a DIRECT background job writing to the FIFO, so `$!` is codex's real pid.
@@ -400,7 +414,7 @@ EFFECTIVE_EFFORT="${EFFORT:-$META_EFFORT}"
   touch "$PARSER_DONE"
 ) &
 PARSER_PID=$!
-codex "${CODEX_ARGS[@]}" </dev/null > "$PARSER_FIFO_DIR/out" &
+codex "${CODEX_ARGS[@]}" < "$PROMPT_TMP" > "$PARSER_FIFO_DIR/out" &
 CODEX_PID=$!
 
 # The watchdog watches codex itself for liveness and TARGETS the real codex pid for the kill.

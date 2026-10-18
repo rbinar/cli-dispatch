@@ -26,6 +26,12 @@ if ($pluginJson -and (Test-Path $installedVerFile) -and (Test-Path $pluginJson))
 if (Get-Command claude-ds -ErrorAction SilentlyContinue) { 'wrapper: installed' } else { 'wrapper: MISSING' }
 if (Get-Command claude-ds-stream -ErrorAction SilentlyContinue) { 'stream wrapper: installed' } else { 'stream wrapper: MISSING' }
 $cfg = if ($env:CLI_DISPATCH_CONFIG) { $env:CLI_DISPATCH_CONFIG } elseif ($env:CLAUDE_DS_CONFIG) { $env:CLAUDE_DS_CONFIG } elseif (Test-Path (Join-Path $HOME '.config/cli-dispatch/config')) { Join-Path $HOME '.config/cli-dispatch/config' } else { Join-Path $HOME '.config/claude-ds/config' }
-if (Test-Path $cfg) { if ((Get-Content $cfg -Raw) -match 'DEEPSEEK_API_KEY="..*"') { 'key: set' } else { 'key: MISSING' } } else { 'config: MISSING' }
+$ucStatus = if ($env:CLI_DISPATCH_USERCONFIG_STATUS) { $env:CLI_DISPATCH_USERCONFIG_STATUS } else { Join-Path $(if ($env:XDG_CONFIG_HOME) { $env:XDG_CONFIG_HOME } else { Join-Path $HOME '.config' }) 'cli-dispatch/userconfig-status.json' }
+$ucSet = (Test-Path $ucStatus) -and ((Get-Content $ucStatus -Raw) -match '"DEEPSEEK_API_KEY": *true')
+if (Test-Path $cfg) {
+  if ((Get-Content $cfg -Raw) -match 'DEEPSEEK_API_KEY="..*"') { 'key: set' }
+  elseif ($ucSet) { "DEEPSEEK_API_KEY set in plugin config (used by the dispatch tool only; for Bash paths add it to $cfg or run /cli-dispatch:setup)" }
+  else { 'key: MISSING - add it to the config or run /plugin configure cli-dispatch@cli-dispatch' }
+} elseif ($ucSet) { "DEEPSEEK_API_KEY set in plugin config (used by the dispatch tool only; for Bash paths add it to $cfg or run /cli-dispatch:setup)" } else { 'config: MISSING' }
 if (Get-Command claude -ErrorAction SilentlyContinue) { 'claude CLI: found' } else { 'claude CLI: MISSING' }
 if (Get-Command node -ErrorAction SilentlyContinue) { 'node: found' } else { 'node: MISSING (claude-ds-stream needs it)' }

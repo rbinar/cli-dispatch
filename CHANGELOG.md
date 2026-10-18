@@ -7,6 +7,106 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [7.0.0] — 2026-10-18
+
+**Requires Claude Code 2.1.287+.** The first version with mods; older versions are no longer
+supported. Nothing older is blocked, and the config-file paths are expected to keep loading there,
+but 7.0.0 is not tested on them.
+
+### Added
+
+- **Worker API keys as sensitive plugin config.** The five keys (DeepSeek, OpenRouter, Gemini,
+  Codex, Copilot) are `userConfig` fields, entered with `/plugin configure cli-dispatch@cli-dispatch`
+  (or `claude plugin configure … --values-stdin`) and kept in Claude Code's secure store instead of
+  the plaintext config file. The dialog masks a key except its last 6 characters; `docs/security.md`
+  says so. The config file and the setup form keep working.
+- **`/cli-dispatch-config`, the setup pane.** For each backend it shows whether the worker CLI and
+  the cli-dispatch wrapper are installed and whether a key is set (a check or a cross, never the
+  value), lets you edit model names, and installs the backends you tick through
+  `install.sh --non-interactive` (never `--install-missing`). When a key is missing it shows the
+  `/plugin configure` command. A key is never typed into, drawn in, or stored by the pane.
+- **The `dispatch` tool hands the key to the worker only.** The dispatched backend's plugin-config
+  key travels in a private variable that `cli-dispatch-run` takes out of the environment and exports,
+  under the real name, inside the worker subshells alone. `--verify`, the wait call and every argv
+  and file lack it. `scripts/config-file.mjs` now holds the config file's write rules, shared by the
+  setup form and the pane.
+- **`userconfig-status.json`.** The SessionStart hook records which plugin-config keys are set
+  (booleans only, 0600) so Bash paths can tell "set in the plugin config" from "not set".
+- **`/cli-dispatch-runs`, the run monitor pane.** Lists every run of this session, running and
+  finished (a quiet run whose worker is alive stays running). Selecting one shows two tabs:
+  **Summary**, the terse `progress.log` lines live with the status counters and the verdict, and
+  **Full flow**, every event of the run in order, untruncated, appending while the run runs.
+  Selecting a Summary line opens that line's full event (a long event is shown in pages, because
+  one drawing holds 100000 characters). Known key shapes and the values of the plugin-config keys
+  are masked in everything it draws. It reads files in bounded windows through
+  `scripts/cli-dispatch-pane-read.mjs` and costs no model tokens.
+- **`progress.idx` in the session dir.** Maps each `progress.log` line to the transcript bytes of the
+  event that produced it (the DeepSeek coalesced text carries its full text). Written beside the two
+  files by `openSessionFiles`; `progress.log` and every parser's output are unchanged.
+
+### Changed
+
+- **The band keeps a quiet run whose worker is still alive as running** (`worker.pid` answers
+  `kill -0`) instead of dropping it after 90 seconds of silence, such as a long test command, for as
+  long as it stays within the band's 10-minute window.
+
+- **`/cli-dispatch:setup` routes keys to `/plugin configure` when the mod is loaded**, and to
+  `/cli-dispatch-config` for models and installs. The local browser form stays as the fallback when
+  the mod is not loaded.
+- **doctor, balance and the DeepSeek "not set" messages report plugin-config keys.** Bash paths
+  (`/cli-dispatch:run`, the runner agent, `*-agent`) still read only the config file and the host
+  environment; when a key is set only in the plugin config they say to use the `dispatch` tool or
+  add the key to the config file.
+
+### Fixed
+
+- **The setup pane and the setup form only touch a model line they fully understand.** A right-hand
+  side other than one quoted or bare token (optionally followed by a `#comment`), such as
+  `DS_MODEL=a DEEPSEEK_API_KEY=k`, is now unparseable: `config-file.mjs status` reports that model as
+  empty (and lists the variable under `unparsed`) instead of drawing the key, and `set` or the form's
+  save refuses and changes nothing instead of rewriting the line.
+- **The DeepSeek key no longer rides on `env(1)`'s command line.** `claude-ds` and `claude-ds-stream`
+  export the variables and run `claude` directly, so the key is in `claude`'s environment only.
+- **Full flow no longer stalls behind a large gap, and the dispatch tool survives a missing `kill`.**
+  Full flow keeps reading until it reaches the end of the file, and returning to it catches up at
+  once. A refresh of the band can no longer turn a started `dispatch` call into a failure. A
+  Copilot token split across streamed deltas is masked, and worker-written status, verdict and
+  meta fields are sanitized before they are drawn.
+- **A recycled worker PID no longer makes a dead run look alive (#208).** The band, the run list and the
+  edit guard accept a quiet run's `worker.pid` only when the process's command line is a cli-dispatch
+  worker (as `kill` does); without `ps` the status-age rule decides.
+- **The run monitor masks a key cut at a truncation limit, caps `event` output and stops rescanning (#209,
+  #210, #211).** The token touching the end of a clipped `progress.log` line or the 4 KiB head of a big
+  record is masked. A coalesced DeepSeek text comes in pages and `progress.idx` is scanned in bounded
+  chunks, not read whole. A finished run with no runner record is looked up once, not every 5 s.
+- **`doctor` and `balance` report a plugin-config key without a config file (#212).** Every backend checks
+  the flags file whether or not the config file exists.
+- **A session without plugin options no longer clears `userconfig-status.json` (#213).** The hook rewrites
+  the flags only when it was given at least one `CLAUDE_PLUGIN_OPTION_*` variable.
+- **Multi-user hardening (#214).** Session dirs are 0700 and their files, and a detached run's dir and
+  log, 0600; the `dispatch` tool deletes its brief file when the run is over; a
+  `CLI_DISPATCH_SESSIONS_DIR` owned by another user is refused (the mod does not check: the engine
+  gives no owner).
+- **A worker brief no longer rides on a command line (#215).** Every `*-worktree-run.sh` hands its
+  stream the brief as `--prompt-file <path>` (the 0600 brief file), a new option on all five `*-stream`
+  scripts (and the `claude-ds-stream`/`cx-stream` `.ps1` twins), mutually exclusive with `-p`, which
+  still works for hand use. `cx-stream` passes the prompt to `codex` on stdin (`-`), for `exec` and
+  `exec resume`; `claude-ds-stream` already did. `ag-stream`, `oc-stream` and `cp-stream` still pass it
+  as an argument because `agy`, `opencode` and `copilot` document no stdin or file prompt input;
+  `docs/security.md` says so.
+
+## [6.4.1] — 2026-10-17
+
+### Fixed
+
+- **`--scope` no longer fails a run over the runner's own `worker-report.json`.** The runner asks
+  every worker to write that file, and the scope check counted it as a change outside the globs, so
+  with the default worker report every scoped run ended in exit 2 even when verify passed and the
+  diff held only in-scope files. The check now skips the runner's own artifacts, and only while they are
+  untracked (`??`): `worker-report.json` at any depth and `node_modules` links. A tracked file under a
+  `node_modules` directory, or a tracked `worker-report.json`, still counts against `--scope`. Found by
+  testing the mod's `dispatch` tool live in a container.
+
 ## [6.4.0] — 2026-10-13
 
 ### Added

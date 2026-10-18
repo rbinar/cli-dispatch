@@ -13,13 +13,14 @@ if (Test-Path $__versionCheckPs1) {
   try { . $__versionCheckPs1 } catch {}
 }
 
-function Show-Usage { [Console]::Error.WriteLine('usage: ds-agent [--read-only] [--cwd <dir>] [--resume <id>] [--effort low|medium|high] [--max-runtime <s>] [--idle-timeout <s>] [-q] "<task>"') }
+function Show-Usage { [Console]::Error.WriteLine('usage: ds-agent [--read-only] [--cwd <dir>] [--resume <id>] [--effort low|medium|high] [--max-runtime <s>] [--idle-timeout <s>] [-q] ("<task>" | --prompt-file <path>)') }
 function Need-Val($name, $idx, $argc) { if ($idx + 1 -ge $argc) { [Console]::Error.WriteLine("ds-agent: $name requires a value."); exit 1 } }
 
 $quiet = $false
 $agentic = $true
 $task = $null
 $haveTask = $false
+$promptFile = $null
 $workdir = $null
 $fwd = @()
 
@@ -38,13 +39,16 @@ while ($i -lt $argc) {
     '^--idle-timeout$' { Need-Val '--idle-timeout' $i $argc; $fwd += @('--idle-timeout', $args[$i + 1]); $i += 2; continue }
     '^-q$|^--quiet$' { $quiet = $true; $i += 1; continue }
     '^--help$|^-h$' { Show-Usage; exit 0 }
+    '^--prompt-file$' { Need-Val '--prompt-file' $i $argc; $promptFile = $args[$i + 1]; $i += 2; continue }
+    '^--prompt-file=(.*)' { $promptFile = $matches[1]; $i += 1; continue }
     '^-p$|^--prompt$' { Need-Val $arg $i $argc; $task = $args[$i + 1]; $haveTask = $true; $i += 2; continue }
     '^-' { $fwd += $arg; $i += 1; continue }
     default { $task = $arg; $haveTask = $true; $i += 1; continue }
   }
 }
 
-if (-not $haveTask) {
+if ($promptFile -and $haveTask) { [Console]::Error.WriteLine("ds-agent: --prompt-file and a task (-p/positional) are mutually exclusive."); exit 2 }
+if ((-not $promptFile) -and (-not $haveTask)) {
   if ([Console]::IsInputRedirected) { $task = [Console]::In.ReadToEnd() } else { Show-Usage; exit 1 }
 }
 if ($agentic) { $fwd += '--dangerously-skip-permissions' }
@@ -100,5 +104,5 @@ if (-not $quiet) {
   $env:CLAUDE_DS_PROGRESS_STDERR = '1'
 }
 
-& $stream @fwd -p $task
+if ($promptFile) { & $stream @fwd --prompt-file $promptFile } else { & $stream @fwd -p $task }
 exit $LASTEXITCODE

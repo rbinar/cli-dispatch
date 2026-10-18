@@ -7,6 +7,104 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [7.0.0] — 2026-10-18
+
+**Claude Code 2.1.287+ gerekir.** Mod'lara sahip ilk sürüm; daha eski sürümler artık desteklenmiyor.
+Eski sürümler engellenmez ve config dosyası yollarının orada yüklenmeye devam etmesi beklenir, ama
+7.0.0 onlarda test edilmedi.
+
+### Eklendi
+
+- **Worker API key'leri hassas plugin config'i olarak.** Beş key (DeepSeek, OpenRouter, Gemini,
+  Codex, Copilot) `userConfig` alanıdır; `/plugin configure cli-dispatch@cli-dispatch` (ya da
+  `claude plugin configure … --values-stdin`) ile girilir ve düz metin config dosyası yerine Claude
+  Code'un güvenli deposunda tutulur. Diyalog key'i son 6 karakteri hariç maskeler; bunu
+  `docs/security.md` söyler. Config dosyası ve setup formu çalışmaya devam eder.
+- **`/cli-dispatch-config`, kurulum paneli.** Her backend için worker CLI'ın ve cli-dispatch
+  wrapper'ının kurulu olup olmadığını ve key'in tanımlı olup olmadığını (tik ya da çarpı, asla değer)
+  gösterir, model adlarını düzenletir ve işaretlediğin backend'leri `install.sh --non-interactive` ile
+  kurar (`--install-missing` asla). Key eksikse `/plugin configure` komutunu gösterir. Panel key'i
+  ne yazdırır, ne çizer, ne de saklar.
+- **`dispatch` aracı key'i yalnızca worker'a verir.** Çalıştırılan backend'in plugin-config key'i,
+  `cli-dispatch-run`'ın ortamdan çıkarıp yalnızca worker alt kabuklarında gerçek adıyla export ettiği
+  özel bir değişkenle taşınır. `--verify`, wait çağrısı ve tüm argv ile dosyalar key'den uzak kalır.
+  `scripts/config-file.mjs` config dosyasının yazma kurallarını tutar; setup formu ve panel bunu
+  paylaşır.
+- **`userconfig-status.json`.** SessionStart hook'u hangi plugin-config key'lerinin tanımlı olduğunu
+  (yalnızca boolean, 0600) kaydeder; Bash yolları böylece "plugin config'te tanımlı" ile "tanımsız"ı
+  ayırt edebilir.
+- **`/cli-dispatch-runs`, run izleme paneli.** Bu oturumun tüm run'larını, çalışan ve biten,
+  listeler (worker'ı hâlâ yaşayan sessiz bir run çalışıyor sayılır). Birini seçince iki sekme açılır:
+  **Summary**, durum sayaçları ve verdict ile birlikte `progress.log`'un canlı kısa satırları, ve
+  **Full flow**, run'ın her olayı sırayla, kısaltmasız, run sürerken eklenerek. Bir Summary satırını
+  seçmek o satırın tam olayını açar (uzun bir olay sayfa sayfa gösterilir, çünkü bir çizim 100000
+  karakter alır). Bilinen key biçimleri ve plugin-config key'lerinin değerleri çizdiği her yerde
+  maskelenir. Dosyaları `scripts/cli-dispatch-pane-read.mjs` üzerinden sınırlı pencerelerle okur ve
+  model token'ı harcamaz.
+- **Oturum dizininde `progress.idx`.** Her `progress.log` satırını, onu üreten olayın transcript
+  baytlarına eşler (DeepSeek'in birleştirilmiş metni tam metnini taşır). `openSessionFiles` iki
+  dosyanın yanına yazar; `progress.log` ve her parser'ın çıktısı değişmez.
+
+### Değişti
+
+- **Band, worker'ı hâlâ yaşayan sessiz bir run'ı çalışıyor sayar** (`worker.pid` `kill -0`'a
+  yanıt verir); uzun bir test komutu gibi 90 saniyelik sessizlikten sonra düşürmez, ama yalnızca
+  band'in 10 dakikalık penceresi içinde kaldığı sürece tutar.
+- **`/cli-dispatch:setup`, mod yüklüyken key'leri `/plugin configure`'a yönlendirir**, model ve kurulum
+  için `/cli-dispatch-config`'e. Mod yüklü değilse yerel tarayıcı formu yedek yol olarak kalır.
+- **doctor, balance ve DeepSeek "tanımsız" mesajları plugin-config key'lerini bildirir.** Bash yolları
+  (`/cli-dispatch:run`, runner agent, `*-agent`) hâlâ yalnızca config dosyasını ve host ortamını okur;
+  key yalnızca plugin config'te tanımlıysa `dispatch` aracını kullanmanı ya da key'i config dosyasına
+  eklemeni söylerler.
+
+### Düzeltildi
+
+- **Kurulum paneli ve formu yalnızca tam anladığı bir model satırına dokunur.** Tek bir tırnaklı ya da
+  çıplak token'dan (ardından isteğe bağlı `#yorum`) başka bir sağ taraf, örneğin
+  `DS_MODEL=a DEEPSEEK_API_KEY=k`, artık ayrıştırılamaz sayılır: `config-file.mjs status` o modeli boş
+  bildirir (değişkeni `unparsed` altında listeler), key'i çizmez; `set` ya da formun kaydı satırı
+  yeniden yazmak yerine reddeder ve hiçbir şeyi değiştirmez.
+- **DeepSeek key'i artık `env(1)`'in komut satırında taşınmaz.** `claude-ds` ve `claude-ds-stream`
+  değişkenleri export edip `claude`'u doğrudan çalıştırır; key yalnızca `claude`'un ortamındadır.
+- **Full flow büyük bir boşlukta takılmaz, `dispatch` aracı `kill` eksikliğinde ayakta kalır.** Full
+  flow dosyanın sonuna ulaşana kadar okumaya devam eder, ona dönünce hemen yetişir. Band yenilemesi
+  başlamış bir `dispatch` çağrısını artık başarısızlığa çevirmez. Akan delta'lara bölünmüş bir Copilot
+  token'ı maskelenir; worker'ın yazdığı status, verdict ve meta alanları çizilmeden önce temizlenir.
+- **Geri dönüşen bir worker PID'si artık ölü bir run'ı canlı göstermez (#208).** Band, run listesi ve
+  düzenleme koruması, sessiz bir run'ın `worker.pid`'ini yalnızca sürecin komut satırı bir cli-dispatch
+  worker'ıysa kabul eder (`kill` gibi); `ps` yoksa status-yaşı kuralı karar verir.
+- **Run monitörü kesme sınırında bölünmüş key'i maskeler, `event` çıktısını sınırlar, yeniden taramaz
+  (#209, #210, #211).** Kırpılmış bir `progress.log` satırının ya da büyük kaydın ilk 4 KiB'ının sonuna
+  değen token maskelenir. Birleşik bir DeepSeek metni sayfa sayfa gelir, `progress.idx` bütün okunmak
+  yerine sınırlı parçalarla taranır. Runner kaydı olmayan bitmiş bir run 5 sn'de bir değil, bir kez aranır.
+- **`doctor` ve `balance`, config dosyası olmadan da plugin-config key'ini bildirir (#212).** Her backend,
+  config dosyası olsun olmasın bayrak dosyasına bakar.
+- **Plugin seçeneği almayan bir oturum `userconfig-status.json`'u artık sıfırlamaz (#213).** Hook,
+  bayrakları yalnızca en az bir `CLAUDE_PLUGIN_OPTION_*` değişkeni verildiyse yeniden yazar.
+- **Çok kullanıcılı sertleştirme (#214).** Oturum dizinleri 0700, dosyaları ve ayrık run'ın dizini ile
+  log'u 0600; `dispatch` aracı run bitince brief dosyasını siler; başka bir kullanıcıya ait
+  `CLI_DISPATCH_SESSIONS_DIR` reddedilir (mod kontrol etmez: engine sahibi vermiyor).
+- **Worker brief'i artık komut satırında taşınmaz (#215).** Her `*-worktree-run.sh` stream'ine brief'i
+  `--prompt-file <yol>` (0600 brief dosyası) olarak verir; bu seçenek beş `*-stream` betiğinde (ve
+  `claude-ds-stream`/`cx-stream` `.ps1` ikizlerinde) yenidir, `-p` ile birlikte kullanılamaz, `-p` elle
+  kullanım için çalışmaya devam eder. `cx-stream` prompt'u `codex`'e stdin'den (`-`) verir (`exec` ve
+  `exec resume` için); `claude-ds-stream` zaten öyleydi. `ag-stream`, `oc-stream` ve `cp-stream` prompt'u
+  hâlâ argüman olarak geçirir, çünkü `agy`, `opencode` ve `copilot` stdin ya da dosyayla prompt girişi
+  belgelemez; `docs/tr/security.md` bunu söyler.
+
+## [6.4.1] — 2026-10-17
+
+### Düzeltildi
+
+- **`--scope` artık runner'ın kendi `worker-report.json` dosyası yüzünden run'ı düşürmüyor.**
+  Runner her worker'dan bu dosyayı yazmasını ister; scope kontrolü ise onu glob'ların dışındaki bir
+  değişiklik sayıyordu. Bu yüzden varsayılan worker raporuyla her scope'lu run, verify geçse ve
+  diff'te yalnız kapsam içi dosyalar olsa bile exit 2 ile bitiyordu. Kontrol artık runner'ın kendi
+  artifact'larını yalnız izlenmiyorken (`??`) atlıyor: her derinlikte `worker-report.json` ve
+  `node_modules` link'leri. `node_modules` altındaki izlenen bir dosya ya da izlenen bir
+  `worker-report.json` `--scope`'a karşı yine sayılır. Mod'un `dispatch` aracı bir container'da canlı test edilirken
+  bulundu.
+
 ## [6.4.0] — 2026-10-13
 
 ### Eklendi

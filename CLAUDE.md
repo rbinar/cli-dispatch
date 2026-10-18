@@ -46,7 +46,8 @@ Everything the plugin installs lives under `plugins/cli-dispatch/`:
   cache and are **not** installed, so they can never go stale relative to the plugin — do
   not add them to `install.sh`. `setup-form.mjs` (the one-shot browser form for keys and model
   names) follows the same rule — `install.sh`/`install.ps1`/`setup.md` run it from the plugin
-  dir — and being node it has no `.ps1` twin. Bash/PowerShell
+  dir — and being node it has no `.ps1` twin; `cli-dispatch-pane-read.mjs` (the `/cli-dispatch-runs`
+  pane's byte-range file reader, run by the mod) follows it too. Bash/PowerShell
   wrappers around Node engines (`*-stream-parse.mjs` parsers, `verdict-writer.mjs`,
   `gain-report.mjs`, `drift-report.mjs`, `cli-dispatch-clean.mjs`).
   `install.sh`/`install.ps1` copy these into `~/.local/bin` (wrappers) and
@@ -60,7 +61,8 @@ Everything the plugin installs lives under `plugins/cli-dispatch/`:
   would blame the worker); and the `mcp__cli-dispatch__dispatch` tool (6.3.0), which runs
   `cli-dispatch-run --detach` + `cli-dispatch-wait --run` itself in one tool call — the runner agent's
   job with no LLM turns. It is not registered inside a worker (`CLI_DISPATCH_WORKER=1`). Its state contract is `types/index.d.ts` (named as `types` in
-  `plugin.json`); its tests are `tests/mod.test.ts`. It reads session dirs with the same root
+  `plugin.json`); its tests are `tests/mod.test.ts`. `/cli-dispatch-runs` is its run monitor pane
+  (this session's runs, Summary and Full flow tabs, masked); the band's liveness test is `isRunAlive`. It reads session dirs with the same root
   resolution and 90 s liveness window as `cli-dispatch-statusline.sh`.
 - `skills/ds-delegate/SKILL.md` — the `ds-delegate` skill.
 
@@ -123,6 +125,9 @@ run — regardless of backend — creates `~/.cache/cli-dispatch/sessions/<id>/`
   are explicitly warned in-repo against reading it in a hot loop; it's the main cost sink
   this repo optimizes against.
 - `progress.log` — terse human-readable tail, safe to read a few lines of.
+- `progress.idx` — JSONL sidecar, one record per `progress.log` line (`{p, o, l}`: the line's byte offset
+  and the transcript bytes `[o, o+l)` of its event; ds coalesced text carries `{p, text}`). Written only
+  by `openSessionFiles`; read only by the `/cli-dispatch-runs` pane through `cli-dispatch-pane-read.mjs`.
 - `changed-files.json` — `{files, diffstat, preexistingDirty}`, written after a repo-changing run
   finishes. `files` is `[{path, status}]` with git's `M`/`A`/`D`/`??` codes; `preexistingDirty`
   lists paths that were already dirty *before* the worker started and are therefore excluded

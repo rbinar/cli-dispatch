@@ -34,7 +34,7 @@ function fixture(changed) {
   fs.mkdirSync(dir, { recursive: true })
   fs.writeFileSync(path.join(dir, 'status.json'), JSON.stringify({ state: 'done', sessionId: SID }))
   fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({ backend: 'deepseek', cwd: repo, model: 'test-model' }))
-  fs.writeFileSync(path.join(dir, 'changed-files.json'), JSON.stringify({ files: changed.map((p) => ({ path: p, status: 'M' })), diffstat: '' }))
+  fs.writeFileSync(path.join(dir, 'changed-files.json'), JSON.stringify({ files: changed.map((p) => (typeof p === 'string' ? { path: p, status: 'M' } : p)), diffstat: '' }))
   const envOut = { ...process.env, CLI_DISPATCH_SESSIONS_DIR: root, CLI_DISPATCH_VERDICT_WRITER: WRITER }
   return { dir, env: envOut, repo, cleanup: () => { rmrf(repo); rmrf(root) } }
 }
@@ -74,6 +74,40 @@ test('--scope: every change inside a glob passes; --scope repeats', () => {
     assert.equal(v.exitCode, 0)
     assert.deepEqual(v.scopeViolations, [])
   } finally { f.cleanup() }
+})
+
+test("scopeViolations: the runner's own artifacts are never out of scope", () => {
+  const files = ['sum.mjs', 'worker-report.json', 'sub/worker-report.json', 'node_modules', 'pkg/node_modules/x.js']
+  assert.deepEqual(scopeViolations(files, ['sum.mjs']), [])
+})
+
+test('--scope: the worker-report.json the runner asks for does not fail the run', () => {
+  // A real run reports the report as untracked (`??`), the only status the exemption covers.
+  const f = fixture(['sum.mjs', { path: 'worker-report.json', status: '??' }])
+  try {
+    const r = runner(f, ['--verify', 'true', '--scope', 'sum.mjs'])
+    assert.equal(r.status, 0, r.stdout + r.stderr)
+    assert.deepEqual(verdictOf(f.dir).scopeViolations, [])
+  } finally { f.cleanup() }
+})
+
+test('--scope: a TRACKED file under node_modules, or a tracked worker-report.json, is a violation', () => {
+  const f = fixture(['sum.mjs', { path: 'vendor/node_modules/x.js', status: 'M' }, { path: 'lib/worker-report.json', status: 'M' }])
+  try {
+    const r = runner(f, ['--verify', 'true', '--scope', 'sum.mjs'])
+    assert.equal(r.status, 2, r.stdout + r.stderr)
+    assert.deepEqual(verdictOf(f.dir).scopeViolations, ['vendor/node_modules/x.js', 'lib/worker-report.json'])
+  } finally { f.cleanup() }
+})
+
+test('scopeViolations: only untracked runner artifacts are exempt', () => {
+  const files = [
+    { path: 'sum.mjs', status: 'M' },
+    { path: 'worker-report.json', status: '??' },
+    { path: 'node_modules', status: '??' },
+    { path: 'vendor/node_modules/x.js', status: 'M' },
+  ]
+  assert.deepEqual(scopeViolations(files, ['sum.mjs']), ['vendor/node_modules/x.js'])
 })
 
 test('--scope: a verify FAIL stays exit 1 (scope does not mask it)', () => {

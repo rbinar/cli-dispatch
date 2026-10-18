@@ -72,6 +72,7 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --cwd) CWD="$2"; shift 2;;
     -p) BRIEF="$2"; shift 2;;
+    --prompt-file) BRIEF="$(cat "$2")"; shift 2;;
     *) shift;;
   esac
 done

@@ -11,11 +11,12 @@ if (Test-Path $__versionCheckPs1) {
   try { . $__versionCheckPs1; Show-VersionWarning } catch {}
 }
 
-function Show-Usage { [Console]::Error.WriteLine('usage: cx-agent [--cwd <dir>] [--resume <id>] [--read-only] [--sandbox <mode>] [--network] [--no-network] [--model <m>] [--effort low|medium|high] [--max-runtime <s>] [--idle-timeout <s>] [-q] "<task>"') }
+function Show-Usage { [Console]::Error.WriteLine('usage: cx-agent [--cwd <dir>] [--resume <id>] [--read-only] [--sandbox <mode>] [--network] [--no-network] [--model <m>] [--effort low|medium|high] [--max-runtime <s>] [--idle-timeout <s>] [-q] ("<task>" | --prompt-file <path>)') }
 function Need-Val($name, $idx, $argc) { if ($idx + 1 -ge $argc) { [Console]::Error.WriteLine("cx-agent: $name requires a value."); exit 1 } }
 
 $quiet = $false
 $task = $null
+$promptFile = $null
 $fwd = @()
 $i = 0
 $argc = $args.Count
@@ -33,6 +34,8 @@ while ($i -lt $argc) {
     '^--max-runtime$'  { Need-Val '--max-runtime' $i $argc; $fwd += @('--max-runtime', $args[$i+1]); $i += 2; continue }
     '^--idle-timeout$' { Need-Val '--idle-timeout' $i $argc; $fwd += @('--idle-timeout', $args[$i+1]); $i += 2; continue }
     '^(-q|--quiet)$'   { $quiet = $true; $i += 1; continue }
+    '^--prompt-file$'  { Need-Val '--prompt-file' $i $argc; $promptFile = $args[$i+1]; $i += 2; continue }
+    '^--prompt-file=(.*)' { $promptFile = $matches[1]; $i += 1; continue }
     '^(-p|--prompt)$'  { Need-Val $a $i $argc; $task = $args[$i+1]; $i += 2; continue }
     '^(-h|--help)$'    { Show-Usage; exit 0 }
     '^-'               { $fwd += $a; $i += 1; continue }
@@ -40,10 +43,11 @@ while ($i -lt $argc) {
   }
 }
 
-if ($null -eq $task) {
+if ($promptFile -and ($null -ne $task)) { [Console]::Error.WriteLine("cx-agent: --prompt-file and a task (-p/positional) are mutually exclusive."); exit 2 }
+if ((-not $promptFile) -and ($null -eq $task)) {
   if ([Console]::IsInputRedirected) { $task = [Console]::In.ReadToEnd() } else { Show-Usage; exit 1 }
 }
-if ([string]::IsNullOrWhiteSpace($task)) { [Console]::Error.WriteLine("cx-agent: empty task — nothing to delegate."); exit 1 }
+if ((-not $promptFile) -and [string]::IsNullOrWhiteSpace($task)) { [Console]::Error.WriteLine("cx-agent: empty task — nothing to delegate."); exit 1 }
 
 $stream = "cx-stream"
 if (-not (Get-Command $stream -ErrorAction SilentlyContinue)) {
@@ -56,5 +60,5 @@ if (-not $quiet) {
   $env:CX_PROGRESS_STDERR = '1'
 }
 
-& $stream @fwd -p $task
+if ($promptFile) { & $stream @fwd --prompt-file $promptFile } else { & $stream @fwd -p $task }
 exit $LASTEXITCODE
