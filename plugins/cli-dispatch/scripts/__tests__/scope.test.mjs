@@ -144,3 +144,22 @@ test('the PowerShell twin takes --scope too (parity)', () => {
   assert.match(ps1, /'--scope'/)
   assert.match(ps1, /CLI_DISPATCH_SCOPE/)
 })
+
+test('--scope: untracked Python cache files from running the tests do not fail the run (#217)', () => {
+  const f = fixture(['calc.py', { path: '__pycache__/calc.cpython-311.pyc', status: '??' }, { path: 'pkg/stray.pyc', status: '??' }])
+  try {
+    const r = runner(f, ['--verify', 'true', '--scope', 'calc.py'])
+    assert.equal(r.status, 0, r.stdout + r.stderr)
+    assert.deepEqual(verdictOf(f.dir).scopeViolations, [])
+  } finally { f.cleanup() }
+})
+
+test('scopeViolations: a tracked .pyc, or an untracked source file beside __pycache__, is a violation (#217)', () => {
+  const files = [
+    { path: 'calc.py', status: 'M' },
+    { path: '__pycache__/calc.cpython-311.pyc', status: 'M' },
+    { path: 'lib/old.pyc', status: 'M' },
+    { path: 'helper.py', status: '??' },
+  ]
+  assert.deepEqual(scopeViolations(files, ['calc.py']), ['__pycache__/calc.cpython-311.pyc', 'lib/old.pyc', 'helper.py'])
+})

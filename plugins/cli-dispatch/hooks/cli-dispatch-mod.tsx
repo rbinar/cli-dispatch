@@ -347,13 +347,13 @@ function keyCell(b: (typeof SETUP_BACKENDS)[number], s: SetupState['backends'][n
 
 const PANE_ID = 'cli-dispatch-runs'
 const PANE_TICK_MS = 1000
-const SUMMARY_WINDOW = 256 * 1024
 const FLOW_WINDOW = 512 * 1024
 const MASK = '••••'
 // One drawing draws 100000 characters in all (anything past it is cut, and the cut is the newest
 // end), so a view draws the newest entries that fit DRAW_MAX and an event is shown in pages.
 const DRAW_MAX = 90_000
 const EVENT_PAGE = 80_000
+const LINE_MAX = 200 // a step's title (a command is cut here); all of it is in the step's body
 // The userConfig fields whose configured values are masked wherever they would be drawn.
 const SECRET_OPTIONS = ['deepseek_api_key', 'openrouter_api_key', 'gemini_api_key', 'codex_api_key', 'copilot_github_token']
 
@@ -416,11 +416,18 @@ function renderEvent(ev: unknown): string {
 const CLAUDE_STREAM = new Set(['deepseek', 'ollama'])
 
 type Rec = { o: number; t: string; l?: number; big?: true }
-type Line = { o: number; t: string }
-type Tag = 'model' | 'komut' | 'other'
+// A tool call as one step: what it is (icon, title), all of it (body: the input, then the output once
+// there is one) and how it went. `id` pairs a call with its result.
+type StepPart = { icon: string; title: string; body: string; status: 'ok' | 'fail' | 'run'; id?: string }
+type ResultPart = { id?: string; body: string; fail: boolean }
 // `key` + `pending`: a started/running record that a later finished one with the same key replaces.
-type Entry = { o: number; kind: 'event' | 'skip' | 'delta' | 'hidden'; type: string; head: string; text: string; l?: number; big?: boolean; tag: Tag; exit?: number; key?: string; pending?: boolean }
-type Block = { o: number; n: number; head: string; text: string; l?: number; big?: boolean; skipped?: number; tag: Tag; exit?: number }
+// `think`: the model's thinking, drawn apart from its text; `user`: text the worker was given.
+type Entry = { o: number; kind: 'event' | 'skip' | 'delta' | 'hidden'; type: string; text: string; think?: string; user?: boolean; steps?: StepPart[]; results?: ResultPart[]; l?: number; big?: boolean; key?: string; pending?: boolean }
+// What the flow draws, oldest first: model output (a note), or a step with its result folded in.
+// `at` addresses a step: one event can hold several.
+type Note = { kind: 'note'; o: number; n: number; text: string; think?: string; user?: boolean }
+type Step = StepPart & { kind: 'step'; o: number; n: number; at: string; l?: number; big?: boolean }
+type Item = Note | Step
 // n0: how many records before items[0] were dropped from the front while following; the ordinal of items[i] is n0 + i + 1.
 type Win<T> = { from: number; to: number; size: number; follow: boolean; items: T[]; n0?: number }
 type Run = {
@@ -446,7 +453,6 @@ runNone: number // the status mtime at which a scan found no runner record: not 
   verdictM: number
   alive: boolean
 }
-type Tab = 'summary' | 'flow'
 
 // A number a worker wrote, drawn only as a finite number; anything else is `dflt`.
 const num = (v: unknown, dflt = '?') => (typeof v === 'number' && Number.isFinite(v) ? String(v) : dflt)
@@ -460,18 +466,17 @@ const ago = (ms: number): string => {
 }
 
 let clean = makeClean({})
-// Text cut at a limit (a progress.log line a parser clipped, the 4 KiB head of a big record) can end
-// inside a key, which no exact or shape mask matches: the token touching the cut is masked.
+// Text cut at a limit (the 4 KiB head of a big record) can end inside a key, which no exact or
+// shape mask matches: the token touching the cut is masked.
 const cutEnd = (s: string) => s.replace(/[A-Za-z0-9_-]{8,}(…?)$/, `${MASK}$1`)
 const seen = new Map<string, Run | 'other'>()
 let rows: Run[] = []
 let view: 'list' | 'run' = 'list'
 let sel: Run | null = null
-let tab: Tab = 'summary'
-let sum: Win<Line> | null = null
 let flow: Win<Entry> | null = null
-let flowBlocks: Block[] = []
-let event: { o: number; n?: number; pages: string[]; page: number } | null = null
+let flowItems: Item[] = []
+// The step expanded in place (by its `at`), its text in pages.
+let event: { at: string; n?: number; pages: string[]; page: number } | null = null
 let gone = false
 let timer: Timer | null = null
 let busy = false
@@ -586,13 +591,12 @@ async function refreshList($: EngineInterface) {
   rows = [...seen.values()].filter((r): r is Run => r !== 'other' && r.status !== null).sort((a, b) => (a.startedAt < b.startedAt ? 1 : a.startedAt > b.startedAt ? -1 : a.name < b.name ? 1 : -1))
 }
 
-// ---- windows over progress.log and transcript.jsonl ----
+// ---- the window over transcript.jsonl ----
 
-const fileOf = (r: Run, t: Tab) => `${r.dir}/${t === 'summary' ? 'progress.log' : 'transcript.jsonl'}`
-const budgetOf = (t: Tab) => (t === 'summary' ? SUMMARY_WINDOW : FLOW_WINDOW)
+const fileOf = (r: Run) => `${r.dir}/transcript.jsonl`
 
 // One transcript line becomes one entry the moment it arrives; only masked text is kept. A delta is
-// only sanitized here: a key split across deltas is masked once, on the merged text (blocksOf).
+// only sanitized here: a key split across deltas is masked once, on the merged text (itemsOf).
 function toEntry(r: Run, rec: Rec): Entry {
   let ev: any
   try {
@@ -601,27 +605,46 @@ function toEntry(r: Run, rec: Rec): Entry {
     ev = undefined
   }
   const base = { o: rec.o, l: rec.l, big: rec.big === true }
-  if (ev === undefined || ev === null || typeof ev !== 'object') return { ...base, kind: 'event', type: '?', head: '', text: rec.big ? cutEnd(clean(rec.t)) : clean(rec.t), tag: 'other' }
+  if (ev === undefined || ev === null || typeof ev !== 'object') {
+    const text = rec.big ? cutEnd(clean(rec.t)) : clean(rec.t)
+    return { ...base, kind: 'event', type: '?', text: '', steps: [{ icon: '', title: titleOf(text), body: text, status: 'ok' }] }
+  }
   const type = String(ev.type ?? ev.kind ?? '?')
-  const { tag, exit } = classify(type, ev)
-  if (CLAUDE_STREAM.has(r.backend) && type === 'stream_event') return { ...base, kind: 'skip', type, head: '', text: '', tag }
-  if (r.label === 'cp' && type === 'assistant.message_delta') return { ...base, kind: 'skip', type, head: '', text: '', tag }
-  if (r.label === 'cp' && type.endsWith('_delta')) return { ...base, kind: 'delta', type, head: '', text: sanitize(String(ev.deltaContent ?? ev.data?.deltaContent ?? '')), tag }
-  const shown = contentOf(type, ev)
-  if (shown === 'hide') return { ...base, kind: 'hidden', type, head: '', text: '', tag }
-  if (shown) return { ...base, kind: 'event', type, head: clean(shown.head), text: clean(shown.text), tag: shown.tag, exit: shown.exit, key: shown.key, pending: shown.pending }
-  return { ...base, kind: 'event', type, head: clean(type), text: clean(renderEvent(ev)), tag, exit }
+  if (CLAUDE_STREAM.has(r.backend) && type === 'stream_event') return { ...base, kind: 'skip', type, text: '' }
+  // claude's closing `result` repeats the last assistant text, which the flow already holds.
+  if (CLAUDE_STREAM.has(r.backend) && type === 'result') return { ...base, kind: 'hidden', type, text: '' }
+  if (r.label === 'cp' && type === 'assistant.message_delta') return { ...base, kind: 'skip', type, text: '' }
+  if (r.label === 'cp' && type.endsWith('_delta')) return { ...base, kind: 'delta', type, text: sanitize(String(ev.deltaContent ?? ev.data?.deltaContent ?? '')) }
+  // An unknown shape is a step under its own type name, its fields the body: never swallowed.
+  const shown = contentOf(type, ev) ?? { text: '', steps: [{ icon: '', title: `${type} ${renderEvent(ev)}`, body: renderEvent(ev), status: 'ok' }] }
+  if (shown === 'hide') return { ...base, kind: 'hidden', type, text: '' }
+  return {
+    ...base,
+    kind: 'event',
+    type,
+    text: clean(shown.text),
+    think: shown.think === undefined ? undefined : clean(shown.think),
+    user: shown.user,
+    steps: shown.steps?.map(s => ({ ...s, title: titleOf(clean(s.title)), body: clean(s.body) })),
+    results: shown.results?.map(x => ({ ...x, body: clean(x.body) })),
+    key: shown.key,
+    pending: shown.pending,
+  }
 }
 
-// ---- Full flow content: what an event SAYS, not its fields ----
+// ---- Flow content: what an event SAYS, not its fields ----
 // Shapes are the ones the parsers read: codex item.*, claude stream-json (deepseek, ollama), copilot
-// assistant.*/tool.*, opencode part events, antigravity transcript steps. null = unknown shape, which
-// falls back to renderEvent's field listing; 'hide' = an event with no content.
-type Shown = { tag: Tag; head: string; text: string; exit?: number; key?: string; pending?: boolean }
+// assistant.*/tool.*, opencode part events, antigravity transcript steps. null = unknown shape;
+// 'hide' = an event with no content.
+type Shown = { text: string; think?: string; user?: boolean; steps?: StepPart[]; results?: ResultPart[]; key?: string; pending?: boolean }
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : '')
 const lines = (...parts: string[]) => parts.filter(p => p !== '').join('\n')
-const indented = (s: string) => s.split('\n').map(l => `  ${l}`).join('\n')
+// A step's title is one line; the command, the path and the rest are in its body. Masked before it is cut.
+const titleOf = (s: string) => clip(s.replace(/\s+/g, ' ').trim(), LINE_MAX)
+const baseName = (p: string) => p.replace(/\/+$/, '').split('/').pop() || p
+// An output joins the input under it; a finished step never has an empty body.
+const withOutput = (head: string, out: string) => lines(head, out.trim() ? out : '(no output)')
 
 // A tool's input: its command line when that is all there is, else its fields.
 function inputText(v: unknown): string {
@@ -640,9 +663,28 @@ function contentText(c: unknown): string {
   return c === undefined || c === null ? '' : String(c)
 }
 
+// A tool call, by its name: a command line (⌘), a file read (📄 its name), a file write (✎ its
+// name), a search (🔎 its pattern), else the tool's own name and a short input. `summary` stands in
+// where the input has no such field (antigravity's toolSummary).
+function callOf(name: string, input: unknown, summary = ''): StepPart {
+  const i: any = input && typeof input === 'object' ? input : {}
+  const raw = typeof input === 'string' ? input : ''
+  const path = str(i.file_path ?? i.filePath ?? i.path ?? i.notebook_path ?? i.AbsolutePath ?? i.TargetFile ?? i.file) || (/\*\*\* (?:Update|Add|Delete) File: (\S+)/.exec(raw || str(i.patch ?? i.input))?.[1] ?? '')
+  const n = name.toLowerCase()
+  const step = (icon: string, title: string, head: string): StepPart => ({ icon, title: title || summary || name, body: head || summary || name, status: 'run' })
+  if (/^(bash|shell|sh|command|run_command|run_shell_command|exec|execute|local_shell)$/.test(n)) {
+    const cmd = str(i.command ?? i.cmd ?? i.CommandLine) || raw
+    return step('⌘', cmd, cmd ? `$ ${cmd}` : '')
+  }
+  if (/^(read|view|view_file|read_file|cat)$/.test(n)) return step('📄', baseName(path), inputText(input))
+  if (/^(edit|write|create|multiedit|notebookedit|apply_patch|patch|str_replace|str_replace_editor|write_to_file|replace_file_content)$/.test(n)) return step('✎', baseName(path), inputText(input))
+  if (/grep|glob|search|find|web|fetch/.test(n)) return step('🔎', str(i.pattern ?? i.query ?? i.q ?? i.url ?? i.Query ?? i.Pattern), inputText(input))
+  return step('⚙', `${name} ${summary || inputText(input)}`, inputText(input))
+}
+
 function contentOf(type: string, ev: any): Shown | 'hide' | null {
-  const model = (text: string): Shown | 'hide' => (text.trim() ? { tag: 'model', head: 'model', text } : 'hide')
-  const tool = (name: string, text: string, extra: Partial<Shown> = {}): Shown | 'hide' => (text.trim() || name ? { tag: 'other', head: `tool ${name}`.trim(), text, ...extra } : 'hide')
+  const model = (text: string, think = ''): Shown | 'hide' => (text.trim() || think.trim() ? { text, ...(think.trim() ? { think } : {}) } : 'hide')
+  const steps = (...s: StepPart[]): Shown => ({ text: '', steps: s })
 
   // codex
   if (/^(thread|turn)\.(started|completed)$/.test(type)) return 'hide'
@@ -650,223 +692,203 @@ function contentOf(type: string, ev: any): Shown | 'hide' | null {
   if (/^item\.(started|updated|completed)$/.test(type) && item && typeof item === 'object') {
     const pending = type !== 'item.completed'
     const key = item.id != null ? `${item.type}:${item.id}` : undefined
+    const status: StepPart['status'] = pending ? 'run' : item.status === 'failed' || item.error != null ? 'fail' : 'ok'
+    const one = (s: Omit<StepPart, 'status'>, st = status): Shown => ({ text: '', steps: [{ ...s, status: st }], key, pending })
     switch (item.type) {
       case 'agent_message':
       case 'reasoning': {
-        const m = model(str(item.text) || str(item.summary))
+        const said = str(item.text) || str(item.summary)
+        const m = item.type === 'reasoning' ? model('', said) : model(said)
         return m === 'hide' ? m : { ...m, key, pending }
       }
       case 'command_execution': {
+        const cmd = str(item.command ?? item.cmd)
         const out = str(item.aggregated_output)
         const x = item.exit_code ?? item.exitCode
-        return { tag: 'komut', head: 'komut', text: lines(`$ ${str(item.command ?? item.cmd)}`, out), exit: typeof x === 'number' ? x : undefined, key, pending }
+        const code = typeof x === 'number' ? x : undefined
+        const head = `$ ${cmd}`
+        return one({ icon: '⌘', title: cmd, body: pending && code === undefined ? lines(head, out) : `${withOutput(head, out)}${code !== undefined ? `\n\nexit ${code}` : ''}` }, code === undefined ? status : code === 0 ? 'ok' : 'fail')
       }
       case 'file_change': {
-        const ch = Array.isArray(item.changes) ? item.changes : []
-        return { tag: 'other', head: 'file_change', text: ch.map((c: any) => `${str(c?.kind)} ${str(c?.path ?? c?.file)}`.trim()).join('\n') || str(item.path), key, pending }
+        const ch: any[] = Array.isArray(item.changes) ? item.changes : []
+        const paths = ch.map(c => str(c?.path ?? c?.file)).filter(Boolean)
+        return one({ icon: '✎', title: (paths.length ? paths : [str(item.path)]).map(baseName).join(', '), body: ch.map(c => `${str(c?.kind)} ${str(c?.path ?? c?.file)}`.trim()).join('\n') || str(item.path) || 'file_change' })
       }
-      case 'mcp_tool_call':
-        return { tag: 'other', head: `tool ${item.server ? `${item.server}/` : ''}${str(item.tool ?? item.name)}`, text: lines(inputText(item.arguments ?? item.input), contentText(item.result?.content ?? item.result ?? item.error?.message ?? '')), key, pending }
-      case 'web_search':
-        return { tag: 'other', head: 'web_search', text: str(item.query ?? item.q), key, pending }
+      case 'mcp_tool_call': {
+        const s = callOf(`${item.server ? `${item.server}/` : ''}${str(item.tool ?? item.name)}`, item.arguments ?? item.input)
+        return one({ ...s, body: pending ? s.body : withOutput(s.body, contentText(item.result?.content ?? item.result ?? item.error?.message ?? '')) })
+      }
+      case 'web_search': {
+        const q = str(item.query ?? item.q)
+        return one({ icon: '🔎', title: q, body: q || 'web_search' })
+      }
       case 'todo_list': {
-        const li = Array.isArray(item.items) ? item.items : Array.isArray(item.todos) ? item.todos : []
-        return { tag: 'other', head: 'todo_list', text: li.map((t: any) => `[${t?.completed ? 'x' : ' '}] ${str(t?.text)}`).join('\n'), key, pending }
+        const li: any[] = Array.isArray(item.items) ? item.items : Array.isArray(item.todos) ? item.todos : []
+        return one({ icon: '⚙', title: `todo_list (${li.length})`, body: li.map(t => `[${t?.completed ? 'x' : ' '}] ${str(t?.text)}`).join('\n') || 'todo_list' })
       }
-      case 'error':
-        return { tag: 'other', head: 'error', text: str(item.message) || str(item.error?.message) || str(item.error) }
+      case 'error': {
+        const msg = str(item.message) || str(item.error?.message) || str(item.error) || 'error'
+        return { text: '', steps: [{ icon: '', title: msg, body: msg, status: 'fail' }] }
+      }
       default:
         return null
     }
   }
 
-  // claude stream-json
+  // claude stream-json: a tool_use is a call, its tool_result (same id) the result
   if ((type === 'assistant' || type === 'user') && ev.message && typeof ev.message === 'object') {
     const c = ev.message.content
     const blocks: any[] = typeof c === 'string' ? [{ type: 'text', text: c }] : Array.isArray(c) ? c : []
     if (blocks.length === 0) return null
     if (type === 'assistant') {
       const say: string[] = []
-      const tools: string[] = []
-      const names: string[] = []
+      const think: string[] = []
+      const calls: StepPart[] = []
       for (const b of blocks) {
         if (b?.type === 'text') say.push(str(b.text))
-        else if (b?.type === 'thinking') say.push(`✻ ${str(b.thinking)}`)
-        else if (b?.type === 'tool_use') {
-          names.push(str(b.name))
-          tools.push(lines(`▸ ${str(b.name)}`, indented(inputText(b.input))))
-        } else return null
+        else if (b?.type === 'thinking') { if (str(b.thinking).trim()) think.push(str(b.thinking)) }
+        else if (b?.type === 'tool_use') calls.push({ ...callOf(str(b.name), b.input), ...(str(b.id) ? { id: str(b.id) } : {}) })
+        else return null
       }
-      const text = lines(...say, ...tools)
-      if (say.length) return model(text)
-      return tool(names.join(', '), tools.length === 1 ? inputText(blocks[0].input) : text)
+      if (!say.join('').trim() && !think.length && !calls.length) return 'hide'
+      return { text: lines(...say), ...(think.length ? { think: think.join('\n') } : {}), ...(calls.length ? { steps: calls } : {}) }
     }
-    const out: string[] = []
-    let head = 'result'
+    const said: string[] = []
+    const results: ResultPart[] = []
     for (const b of blocks) {
-      if (b?.type === 'tool_result') {
-        out.push(contentText(b.content))
-        if (b.is_error) head = 'result (error)'
-      } else if (b?.type === 'text') {
-        out.push(str(b.text))
-        head = 'user'
-      } else return null
+      if (b?.type === 'tool_result') results.push({ ...(str(b.tool_use_id) ? { id: str(b.tool_use_id) } : {}), body: contentText(b.content), fail: b.is_error === true })
+      else if (b?.type === 'text') said.push(str(b.text))
+      else return null
     }
-    return { tag: 'other', head, text: out.join('\n') }
+    return { text: lines(...said), user: true, results }
   }
   if (type === 'system') return 'hide'
 
-  // copilot
+  // copilot: tool.execution_start is a call, tool.execution_complete (same toolCallId) the result
   const d = ev.data && typeof ev.data === 'object' ? ev.data : {}
   if (/^session\./.test(type) || /^assistant\.turn_(start|end)$/.test(type)) return 'hide'
   if (type === 'assistant.message') return model(str(d.content))
-  if (type === 'assistant.reasoning') return model(str(d.content) ? `✻ ${str(d.content)}` : '')
-  if (type === 'user.message') return str(d.content) ? { tag: 'other', head: 'user', text: str(d.content) } : 'hide'
-  if (type === 'tool.execution_start') return tool(str(d.toolName ?? d.name), inputText(d.arguments ?? d.input))
+  if (type === 'assistant.reasoning') return model('', str(d.content))
+  if (type === 'user.message') return str(d.content) ? { text: str(d.content), user: true } : 'hide'
+  if (type === 'tool.execution_start') return steps({ ...callOf(str(d.toolName ?? d.name), d.arguments ?? d.input), ...(str(d.toolCallId) ? { id: str(d.toolCallId) } : {}) })
   if (type === 'tool.execution_complete') {
     const res = d.result
     const body = typeof res === 'string' ? res : res && typeof res === 'object' ? contentText(res.content ?? res.detailedContent ?? res) : contentText(d.error?.message ?? d.error ?? '')
-    return { tag: 'other', head: d.success === false ? 'result (error)' : 'result', text: body }
+    return { text: '', results: [{ ...(str(d.toolCallId) ? { id: str(d.toolCallId) } : {}), body, fail: d.success === false }] }
   }
 
-  // opencode
+  // opencode: one tool_use part per call, re-sent under the same callID as its state moves
   if (type === 'step_start' || type === 'step_finish') return 'hide'
   if (type === 'text' && ev.part && typeof ev.part === 'object') return model(str(ev.part.text))
   if (type === 'tool_use' && ev.part && typeof ev.part === 'object') {
     const p = ev.part
     const st = p.state && typeof p.state === 'object' ? p.state : {}
-    const name = str(p.tool) || 'tool'
-    const key = p.callID ? `oc:${p.callID}` : undefined
-    if (st.status === 'error') return tool(`${name} (error)`, contentText(st.error ?? st.output ?? ''), { key })
+    const s = callOf(str(p.tool) || 'tool', st.input)
     const done = st.status === 'completed'
-    return tool(name, lines(inputText(st.input), done ? contentText(st.output ?? '') : ''), { key, pending: !done })
+    const failed = st.status === 'error'
+    const body = done ? withOutput(s.body, contentText(st.output ?? '')) : failed ? withOutput(s.body, contentText(st.error ?? st.output ?? '')) : s.body
+    return { text: '', steps: [{ ...s, body, status: done ? 'ok' : failed ? 'fail' : 'run' }], key: p.callID ? `oc:${p.callID}` : undefined, pending: !done && !failed }
   }
 
-  // antigravity
+  // antigravity: a PLANNER_RESPONSE's tool calls, each answered by the next CODE_ACTION in turn
   if (ev.source !== undefined && typeof ev.type === 'string' && /^[A-Z_]+$/.test(ev.type)) {
     if (ev.type === 'USER_INPUT' || ev.type === 'CONVERSATION_HISTORY' || ev.type === 'CHECKPOINT') return 'hide'
     if (ev.type === 'PLANNER_RESPONSE') {
-      const calls = (Array.isArray(ev.tool_calls) ? ev.tool_calls : []).map((tc: any) => `▸ ${str(tc?.name) || 'tool'}${str(tc?.args?.toolSummary ?? tc?.args?.toolAction) ? ` ${str(tc?.args?.toolSummary ?? tc?.args?.toolAction)}` : ''}`)
-      const text = lines(...(str(ev.thinking) ? [`✻ ${str(ev.thinking)}`] : []), str(ev.content), ...calls)
-      if (str(ev.content).trim() || str(ev.thinking).trim()) return model(text)
-      return calls.length ? { tag: 'other', head: 'tool', text: calls.join('\n') } : 'hide'
+      const calls: StepPart[] = (Array.isArray(ev.tool_calls) ? ev.tool_calls : []).map((tc: any) => callOf(str(tc?.name) || 'tool', tc?.args, str(tc?.args?.toolSummary ?? tc?.args?.toolAction)))
+      if (!str(ev.content).trim() && !str(ev.thinking).trim() && !calls.length) return 'hide'
+      return { text: str(ev.content), ...(str(ev.thinking).trim() ? { think: str(ev.thinking) } : {}), ...(calls.length ? { steps: calls } : {}) }
     }
-    if (ev.type === 'CODE_ACTION') return str(ev.content) ? { tag: 'other', head: 'result', text: str(ev.content) } : 'hide'
+    if (ev.type === 'CODE_ACTION') return { text: '', results: [{ body: str(ev.content), fail: false }] }
   }
   return null
 }
 
-// What a full-flow block is called: a command (with its exit code, once known), a model turn, or
-// anything else under its own type name.
-function classify(type: string, ev: any): { tag: Tag; exit?: number } {
-  const item = ev?.item
-  if (item?.type === 'command_execution' || /tool|command|exec/i.test(type)) {
-    const x = item?.exit_code ?? ev?.exit_code ?? ev?.exitCode ?? ev?.data?.exitCode
-    return { tag: 'komut', exit: typeof x === 'number' ? x : undefined }
-  }
-  if (item?.type === 'agent_message' || item?.type === 'reasoning' || /assistant|message|reasoning|thinking|text/i.test(type)) return { tag: 'model' }
-  return { tag: 'other' }
-}
-
-// progress.log writes `$ cmd` when a command starts and `$ cmd (exit K)` when it ends. The pane shows
-// one line per command: a start line gives way to the next completion of the same command (FIFO),
-// and a start with no completion yet stays, dim, as the running one.
-function mergeCommands(ls: Line[]): Line[] {
-  const open = new Map<string, number[]>()
-  const drop = new Set<number>()
-  ls.forEach((l, i) => {
-    const done = /^\$ (.*) \(exit [^)]*\)\s*$/.exec(l.t)
-    if (done) {
-      const q = open.get(done[1]!)
-      if (q?.length) drop.add(q.shift()!)
-    } else if (l.t.startsWith('$ ')) {
-      const q = open.get(l.t.slice(2)) ?? []
-      q.push(i)
-      open.set(l.t.slice(2), q)
-    }
-  })
-  return drop.size ? ls.filter((_, i) => !drop.has(i)) : ls
-}
-
-// Skipped runs become one dim row; consecutive deltas of one kind become one block. Hidden events
-// draw nothing (and do not split a skipped run); a started record gives way to its finished one.
-// A block's n is the ordinal of its first event among the loaded ones (n0 for those dropped before).
-function blocksOf(items: Entry[], n0 = 0): Block[] {
-  const numbered = items.map((e, i) => ({ e, n: n0 + i + 1 })).filter(x => x.e.kind !== 'hidden')
+// The window's entries as the flow's items, oldest first. Skipped and hidden events draw nothing; a
+// started record gives way to its finished one; consecutive deltas of one kind are merged (reasoning
+// deltas as thinking). A result folds into its call: by id, else (antigravity) the oldest open call
+// without one; a result with no call left in the window is a step of its own. An item's n is the
+// ordinal of its event among the loaded ones (n0 for those dropped before).
+function itemsOf(entries: Entry[], n0 = 0): Item[] {
+  const numbered = entries.map((e, i) => ({ e, n: n0 + i + 1 })).filter(x => x.e.kind !== 'hidden' && x.e.kind !== 'skip')
   const finished = new Set(numbered.filter(x => x.e.key && !x.e.pending).map(x => x.e.key))
   const shown = numbered.filter(x => !(x.e.pending && x.e.key && finished.has(x.e.key)))
-  const out: Block[] = []
+  const out: Item[] = []
+  const open: Step[] = []
   let i = 0
   while (i < shown.length) {
     const { e, n } = shown[i]!
-    if (e.kind === 'skip') {
-      let c = 0
-      while (i < shown.length && shown[i]!.e.kind === 'skip') { c++; i++ }
-      out.push({ o: e.o, n, head: '', text: '', skipped: c, tag: 'other' })
-    } else if (e.kind === 'delta') {
+    if (e.kind === 'delta') {
       let text = ''
       while (i < shown.length && shown[i]!.e.kind === 'delta' && shown[i]!.e.type === e.type) { text += shown[i]!.e.text; i++ }
-      out.push({ o: e.o, n, head: clean(`${e.type} (merged)`), text: clean(text), tag: e.tag })
-    } else {
-      out.push({ o: e.o, n, head: e.head, text: e.text, l: e.l, big: e.big, tag: e.tag, exit: e.exit })
-      i++
+      if (/reasoning/.test(e.type)) out.push({ kind: 'note', o: e.o, n, text: '', think: clean(text) })
+      else out.push({ kind: 'step', o: e.o, n, at: String(e.o), icon: '', title: titleOf(clean(`${e.type} (merged) ${text}`)), body: clean(text), status: 'ok' })
+      continue
     }
+    i++
+    if (e.text.trim() || e.think) out.push({ kind: 'note', o: e.o, n, text: e.text, think: e.think, user: e.user })
+    ;(e.steps ?? []).forEach((s, k) => {
+      const step: Step = { ...s, kind: 'step', o: e.o, n, at: k ? `${e.o}.${k}` : String(e.o), l: e.l, big: e.big }
+      out.push(step)
+      if (s.status === 'run') open.push(step)
+    })
+    ;(e.results ?? []).forEach((res, k) => {
+      const at = open.findIndex(s => (res.id ? s.id === res.id : !s.id))
+      if (at < 0) return void out.push({ kind: 'step', o: e.o, n, at: `${e.o}.r${k}`, icon: '', title: 'result', body: res.body.trim() ? res.body : '(no output)', status: res.fail ? 'fail' : 'ok' })
+      const call = open.splice(at, 1)[0]!
+      call.body = withOutput(call.body, res.body)
+      call.status = res.fail ? 'fail' : 'ok'
+    })
   }
   return out
 }
 
-function setWin(t: Tab, w: Win<any>) {
-  if (t === 'summary') sum = w
-  else {
-    flow = w
-    flowBlocks = blocksOf(w.items, w.n0 ?? 0)
-  }
+function setFlow(w: Win<Entry>) {
+  flow = w
+  flowItems = itemsOf(w.items, w.n0 ?? 0)
 }
-const winOf = (t: Tab): Win<any> | null => (t === 'summary' ? sum : flow)
-const convert = (r: Run, t: Tab, rec: Rec) => (t === 'summary' ? ({ o: rec.o, t: rec.t.endsWith('…') ? cutEnd(clean(rec.t)) : clean(rec.t) } as Line) : toEntry(r, rec))
 
-async function loadBack($: EngineInterface, r: Run, t: Tab, end: number, follow: boolean) {
-  const res = await helper($, 'back', fileOf(r, t), end, budgetOf(t))
+async function loadBack($: EngineInterface, r: Run, end: number, follow: boolean) {
+  const res = await helper($, 'back', fileOf(r), end, FLOW_WINDOW)
   if (!res) return
   const [h, ...rows] = res
-  setWin(t, { from: h.from, to: h.to, size: h.size, follow, items: rows.map((x: Rec) => convert(r, t, x)) })
+  setFlow({ from: h.from, to: h.to, size: h.size, follow, items: rows.map((x: Rec) => toEntry(r, x)) })
 }
 
-async function openTab($: EngineInterface, r: Run, t: Tab) {
-  if (winOf(t)) return
+async function openFlow($: EngineInterface, r: Run) {
+  if (flow) return
   let size = 0
   try {
-    size = (await $.fs.stat(fileOf(r, t))).size
+    size = (await $.fs.stat(fileOf(r))).size
   } catch {
     /* not written yet: the tick picks it up */
   }
-  if (size > 0) await loadBack($, r, t, size, true)
-  else setWin(t, { from: 0, to: 0, size: 0, follow: true, items: [] })
+  if (size > 0) await loadBack($, r, size, true)
+  else setFlow({ from: 0, to: 0, size: 0, follow: true, items: [] })
 }
 
-// The shown tab's file only; nothing is read when the window already reaches the file's end. A
-// window that was capped at its budget (a tab left alone while the run wrote on) keeps reading
-// in budget-sized steps until it reaches the tail, a few steps per call.
-async function followTab($: EngineInterface, r: Run, t: Tab) {
+// Nothing is read when the window already reaches the file's end. A window that was capped at its
+// budget (the run wrote on faster than a tick reads) keeps reading in budget-sized steps until it
+// reaches the tail, a few steps per call.
+async function followFlow($: EngineInterface, r: Run) {
   for (let step = 0; step < 16; step++) {
-    const w = winOf(t)
+    const w = flow
     if (!w || !w.follow) return
     let size: number
     try {
-      size = (await $.fs.stat(fileOf(r, t))).size
+      size = (await $.fs.stat(fileOf(r))).size
     } catch {
       return
     }
-    if (size < w.to) return loadBack($, r, t, size, true) // rewritten by a fresh run in a reused dir
+    if (size < w.to) return loadBack($, r, size, true) // rewritten by a fresh run in a reused dir
     if (size === w.to) return
-    const res = await helper($, 'fwd', fileOf(r, t), w.to, budgetOf(t))
+    const res = await helper($, 'fwd', fileOf(r), w.to, FLOW_WINDOW)
     if (!res) return
     const [h, ...rows] = res
     if (!h || h.to <= w.to) return // only an unfinished last line so far
-    const items = [...w.items, ...rows.map((x: Rec) => convert(r, t, x))]
+    const items = [...w.items, ...rows.map((x: Rec) => toEntry(r, x))]
     let n0 = w.n0 ?? 0
-    while (items.length > 1 && h.to - items[0]!.o > budgetOf(t)) { items.shift(); n0++ }
-    setWin(t, { from: items.length ? items[0]!.o : h.to, to: h.to, size: h.size, follow: true, items, n0 })
+    while (items.length > 1 && h.to - items[0]!.o > FLOW_WINDOW) { items.shift(); n0++ }
+    setFlow({ from: items.length ? items[0]!.o : h.to, to: h.to, size: h.size, follow: true, items, n0 })
   }
 }
 
@@ -891,9 +913,8 @@ async function reresolve($: EngineInterface, r: Run): Promise<boolean> {
     r.statusM = -1
     r.verdictM = -1
     seen.set(r.name, r)
-    sum = null
     flow = null
-    flowBlocks = []
+    flowItems = []
     return true
   }
   return false
@@ -905,14 +926,14 @@ async function refreshRun($: EngineInterface) {
   let present = await sync($, r, await $.clock.now())
   if (!present && (await reresolve($, r))) {
     present = await sync($, r, await $.clock.now())
-    if (present) await openTab($, r, tab)
+    if (present) await openFlow($, r)
   }
   if (!present) {
     gone = true
     return
   }
   await checkVerifying($, r, await $.clock.now())
-  await followTab($, r, tab)
+  await followFlow($, r)
 }
 
 async function tick($: EngineInterface) {
@@ -931,7 +952,7 @@ async function tick($: EngineInterface) {
 
 // ---- events ----
 
-function setEvent(o: number, text: string, n?: number) {
+function setEvent(at: string, text: string, n?: number) {
   const pages: string[] = []
   let rest = text
   while (rest.length > EVENT_PAGE) {
@@ -941,8 +962,11 @@ function setEvent(o: number, text: string, n?: number) {
     rest = rest.slice(cut === nl ? cut + 1 : cut)
   }
   pages.push(rest)
-  event = { o, n, pages, page: 0 }
+  event = { at, n, pages, page: 0 }
 }
+
+// A whole event's text: the thinking, the text, each step's body, each result.
+const fullOf = (s: Shown) => lines(s.think ? `✻ ${s.think}` : '', s.text, ...(s.steps ?? []).map(x => x.body), ...(s.results ?? []).map(x => x.body))
 
 // The newest entries whose text fits one drawing (at least one).
 function tailFit<T>(items: T[], size: (x: T) => number): T[] {
@@ -952,8 +976,8 @@ function tailFit<T>(items: T[], size: (x: T) => number): T[] {
   return items.slice(i)
 }
 
-async function range($: EngineInterface, file: string, off: number, len: number, first = ''): Promise<string | null> {
-  let out = first
+async function range($: EngineInterface, file: string, off: number, len: number): Promise<string | null> {
+  let out = ''
   let cur = off
   for (let i = 0; i < 64 && cur < off + len; i++) {
     const res = await helper($, 'chunk', file, cur, off + len - cur)
@@ -966,45 +990,23 @@ async function range($: EngineInterface, file: string, off: number, len: number,
 }
 
 // Masking runs on the assembled text, so a key split across a chunk edge is still caught.
-function showRaw(o: number, raw: string, n?: number) {
+function showRaw(at: string, raw: string, n?: number) {
   let text: string
   try {
-    // The same content view as Full flow; an unknown shape keeps the field listing.
+    // The same content as the flow; an unknown shape keeps the field listing.
     const ev = JSON.parse(raw)
     const shown = ev && typeof ev === 'object' ? contentOf(String(ev.type ?? ev.kind ?? '?'), ev) : null
-    text = shown && shown !== 'hide' ? `${shown.text}${shown.exit !== undefined ? `\n\nexit ${shown.exit}` : ''}` : renderEvent(ev)
+    text = shown && shown !== 'hide' ? fullOf(shown) : renderEvent(ev)
   } catch {
     text = raw
   }
-  setEvent(o, clean(text), n)
+  setEvent(at, clean(text), n)
 }
 
-async function openLine($: EngineInterface, r: Run, o: number) {
-  const res = await helper($, 'event', r.dir, o)
-  const first = res?.[0]
-  if (!res || !first || first.none) return setEvent(o, 'No full event recorded for this line.')
-  if (typeof first.text === 'string') {
-    // A coalesced text over the helper's output cap comes in pages: ask again from `next`.
-    let text: string = first.text
-    let next = first.next
-    for (let i = 0; i < 64 && typeof next === 'number'; i++) {
-      const more = (await helper($, 'event', r.dir, o, next))?.[0]
-      if (typeof more?.text !== 'string') return setEvent(o, 'The event could not be read.')
-      text += more.text
-      next = more.next
-    }
-    return setEvent(o, clean(text))
-  }
-  const part = res[1] ?? { t: '', next: null }
-  const raw = part.next == null ? part.t : await range($, `${r.dir}/transcript.jsonl`, part.next, first.o + first.l - part.next, part.t)
-  if (raw === null) setEvent(o, 'The event could not be read.')
-  else showRaw(o, raw)
-}
-
-async function openBig($: EngineInterface, r: Run, b: Block) {
-  const raw = await range($, `${r.dir}/transcript.jsonl`, b.o, b.l ?? 0)
-  if (raw === null) setEvent(b.o, 'The event could not be read.', b.n)
-  else showRaw(b.o, raw, b.n)
+async function openBig($: EngineInterface, r: Run, s: Step) {
+  const raw = await range($, `${r.dir}/transcript.jsonl`, s.o, s.l ?? 0)
+  if (raw === null) setEvent(s.at, 'The event could not be read.', s.n)
+  else showRaw(s.at, raw, s.n)
 }
 
 // The worker is done but the run is still verifying: no verdict yet and the detached runner's process
@@ -1037,7 +1039,7 @@ async function checkVerifying($: EngineInterface, r: Run, now: number) {
   try {
     r.verifying = /^\d+$/.test(pid) && (await $.process.run(['kill', '-0', pid])).exitCode === 0
   } catch {
-    r.verifying = false // no kill to ask: show "bitti" rather than break the pane's tick
+    r.verifying = false // no kill to ask: show "finished" rather than break the pane's tick
   }
 }
 
@@ -1054,9 +1056,8 @@ async function readText($: EngineInterface, path: string): Promise<string | null
 async function openRuns($: EngineInterface) {
   view = 'list'
   sel = null
-  sum = null
   flow = null
-  flowBlocks = []
+  flowItems = []
   event = null
   gone = false
   await refreshList($)
@@ -1071,9 +1072,34 @@ function closeRuns() {
 // Table columns, in characters; the hotkey prefix a plain Button draws ("1: ") is three more.
 const COLS = [12, 16, 9, 10] as const
 const PREFIX = '   '
-const FOOTER = '↑↓ / tık: run seç · satır: tam metin · b: geri · Esc: kapat'
+const FOOTER = '↑↓ / click: select run · click line: full text · b: back · Esc: close'
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
+// The inline markdown the flow draws: `code`, **bold**, [text](url).
+const INLINE = /`([^`\n]+)`|\*\*([^*\n]+)\*\*|\[([^\]\n]+)\]\(([^)\s]+)\)/g
 const cell = (s: string, i: number) => clip(s, COLS[i]! - 1).padEnd(COLS[i]!)
+
+// The flow as drawn, newest first: a finished run's last model text as the answer on top, then notes
+// and clusters of consecutive steps (steps newest first within a cluster). The answer's thinking
+// stays where it was.
+type Group = { kind: 'note'; note: Note } | { kind: 'cluster'; steps: Step[] }
+function layout(items: Item[], finished: boolean): { answer: string; groups: Group[] } {
+  let answer = ''
+  let rest = items
+  const k = finished ? items.findLastIndex(x => x.kind === 'note' && !x.user && x.text.trim() !== '') : -1
+  if (k >= 0) {
+    const a = items[k] as Note
+    answer = a.text
+    rest = [...items.slice(0, k), ...(a.think ? [{ ...a, text: '' }] : []), ...items.slice(k + 1)]
+  }
+  const groups: Group[] = []
+  for (const x of rest) {
+    const last = groups[groups.length - 1]
+    if (x.kind === 'note') groups.push({ kind: 'note', note: x })
+    else if (last?.kind === 'cluster') last.steps.push(x)
+    else groups.push({ kind: 'cluster', steps: [x] })
+  }
+  return { answer, groups: groups.reverse().map(g => (g.kind === 'cluster' ? { kind: 'cluster', steps: [...g.steps].reverse() } : g)) }
+}
 
 async function renderRuns($: EngineInterface, e: any) {
   const now = await $.clock.now()
@@ -1089,7 +1115,7 @@ async function renderRuns($: EngineInterface, e: any) {
   // The run table: one selectable row per run, the open run inverted, its prompt dim beneath.
   const table = (
     <Box flexDirection="column">
-      <Text dimColor>{`${PREFIX}${'BACKEND'.padEnd(COLS[0])}${'REPO'.padEnd(COLS[1])}${'STATE'.padEnd(COLS[2])}${'VERIFY'.padEnd(COLS[3])}SÜRE`}</Text>
+      <Text dimColor>{`${PREFIX}${'BACKEND'.padEnd(COLS[0])}${'REPO'.padEnd(COLS[1])}${'STATE'.padEnd(COLS[2])}${'VERIFY'.padEnd(COLS[3])}TIME`}</Text>
       {rows.length === 0 ? <Text>No cli-dispatch runs in this session yet.</Text> : null}
       {rows.map((r, i) => {
         const running = r.status.state === 'running'
@@ -1106,14 +1132,12 @@ async function renderRuns($: EngineInterface, e: any) {
               hotkey={i < 9 ? String(i + 1) : undefined}
               onPress={go(async () => {
                 sel = r
-                tab = 'summary'
-                sum = null
                 flow = null
-                flowBlocks = []
+                flowItems = []
                 event = null
                 gone = false
                 view = 'run'
-                await openTab($, r, 'summary')
+                await openFlow($, r)
                 await checkVerifying($, r, await $.clock.now())
               })}
             >
@@ -1149,22 +1173,22 @@ async function renderRuns($: EngineInterface, e: any) {
     </Box>
   )
   const back = (
-    <Button key="back" plain hotkey="b" onPress={go(() => { if (event) event = null; else view = 'list' })}>
-      geri
+    <Button key="back" plain hotkey="b" onPress={go(() => { event = null; view = 'list' })}>
+      back
     </Button>
   )
 
-  // Run detail: header and facts, the view switch, the opened event, the shown view, the verdict once there is one.
+  // Run detail: header and facts, back, the flow (an opened event expanded under its entry), the verdict once there is one.
   const st = r.status ?? {}
   const running = st.state === 'running'
   const counts = Object.entries(st.toolCounts ?? {}).map(([k, n]) => `${k}×${n}`)
   const commands = Object.values(st.toolCounts ?? {}).reduce((a: number, n) => a + (typeof n === 'number' ? n : 0), 0)
-  const idle = st.lastActivityAt ? `${ago(now - Date.parse(st.lastActivityAt))} önce` : '–'
+  const idle = st.lastActivityAt ? `${ago(now - Date.parse(st.lastActivityAt))} ago` : '–'
   const hasTokens = st.usage && (st.usage.input_tokens != null || st.usage.output_tokens != null)
   const facts = [
     kv('session', <Text>{clean(String(st.sessionId ?? r.name))}</Text>),
-    kv('olay', <Text>{num(st.events, '0')}</Text>, <Text dimColor>{' · komut '}</Text>, <Text>{String(commands)}</Text>, counts.length ? <Text dimColor>{` (${clean(counts.join(' '))})`}</Text> : null),
-    kv('son aktivite', <Text>{running ? clean(idle) : r.verifying && !r.verdict ? 'verify sürüyor' : 'bitti'}</Text>, running && st.lastTool ? <Text dimColor>{clean(` · ${st.lastTool}`)}</Text> : null),
+    kv('events', <Text>{num(st.events, '0')}</Text>, <Text dimColor>{' · tool calls '}</Text>, <Text>{String(commands)}</Text>, counts.length ? <Text dimColor>{` (${clean(counts.join(' '))})`}</Text> : null),
+    kv('last activity', <Text>{running ? clean(idle) : r.verifying && !r.verdict ? 'verifying' : 'finished'}</Text>, running && st.lastTool ? <Text dimColor>{clean(` · ${st.lastTool}`)}</Text> : null),
     hasTokens ? kv('tokens', <Text>{`in ${num(st.usage.input_tokens)} · out ${num(st.usage.output_tokens)}`}</Text>) : null,
     st.toolErrors ? kv('tool errors', <Text color="red">{num(st.toolErrors)}</Text>) : null,
   ]
@@ -1189,64 +1213,116 @@ async function renderRuns($: EngineInterface, e: any) {
     }
   }
 
-  const w = winOf(tab)
-  const merged = tab === 'summary' ? mergeCommands(sum?.items ?? []) : []
-  const shownLines = tab === 'summary' ? tailFit(merged, l => l.t.length + 1) : []
-  const shownBlocks = tab === 'flow' ? tailFit(flowBlocks, b => b.head.length + b.text.length + 40) : []
-  // Entries above the drawn ones are reached with `earlier`, which ends where the drawn ones begin.
-  const shownFrom = tab === 'summary' ? shownLines[0]?.o : shownBlocks[0]?.o
-  const hidden = tab === 'summary' ? shownLines.length < merged.length : shownBlocks.length < flowBlocks.length
-  const nav = (
-    <Box flexDirection="row" gap={2}>
-      {w && (w.from > 0 || hidden) && shownFrom !== undefined && shownFrom > 0 ? (
-        <Button key="earlier" plain hotkey="e" onPress={go(async () => {
-          const res = await helper($, 'back', fileOf(r, tab), shownFrom, budgetOf(tab))
-          if (!res) return
-          const [h, ...rs] = res
-          setWin(tab, { from: h.from, to: h.to, size: h.size, follow: false, items: rs.map((x: Rec) => convert(r, tab, x)) })
-        })}>
-          earlier
+  const w = flow
+  const shownItems = tailFit(flowItems, x => (x.kind === 'note' ? x.text.length + (x.think?.length ?? 0) : x.title.length) + 40)
+  // Items older than the drawn ones (below them) are reached with `earlier`, which ends where the drawn ones begin.
+  const shownFrom = shownItems[0]?.o
+  const hidden = shownItems.length < flowItems.length
+  const earlier =
+    w && (w.from > 0 || hidden) && shownFrom !== undefined && shownFrom > 0 ? (
+      <Button key="earlier" plain hotkey="e" onPress={go(async () => {
+        const res = await helper($, 'back', fileOf(r), shownFrom, FLOW_WINDOW)
+        if (!res) return
+        const [h, ...rs] = res
+        setFlow({ from: h.from, to: h.to, size: h.size, follow: false, items: rs.map((x: Rec) => toEntry(r, x)) })
+      })}>
+        earlier
+      </Button>
+    ) : null
+  const latest =
+    w && !w.follow ? (
+      <Button key="latest" plain hotkey="l" onPress={go(async () => {
+        let size = 0
+        try { size = (await $.fs.stat(fileOf(r))).size } catch { /* gone */ }
+        await loadBack($, r, size, true)
+      })}>
+        latest
+      </Button>
+    ) : null
+
+  const streaming = running && r.alive ? <Text color="yellow">▍ flow running…</Text> : null
+  // A click expands a step's full text under it, a second click collapses it; one at a time.
+  const openStep = (s: Step) => go(() => (event?.at === s.at ? void (event = null) : s.big ? openBig($, r, s) : setEvent(s.at, s.body, s.n)))
+  // A step's Buttons carry a short label: by default it repeats the children, and a drawing holds
+  // 100000 characters in all.
+  const stepView = (s: Step) => (
+    <Box key={`blk:${s.at}`} flexDirection="column">
+      <Button key={`line:${s.at}`} label={`event ${s.n}`} plain onPress={openStep(s)}>
+        {s.icon ? <Text>{`${s.icon} `}</Text> : null}
+        <Text wrap="truncate-end" dimColor={s.status === 'run'}>{s.title}</Text>
+        {s.status === 'run' ? null : <Text color={s.status === 'ok' ? 'green' : 'red'}>{s.status === 'ok' ? '  ✓' : '  ✗'}</Text>}
+      </Button>
+      {s.big ? (
+        <Button key={`big:${s.at}`} plain onPress={openStep(s)}>
+          {`open full event (${Math.ceil((s.l ?? 0) / 1024)} KiB)`}
         </Button>
       ) : null}
-      {w && !w.follow ? (
-        <Button key="latest" plain hotkey="l" onPress={go(async () => {
-          let size = 0
-          try { size = (await $.fs.stat(fileOf(r, tab))).size } catch { /* gone */ }
-          await loadBack($, r, tab, size, true)
-        })}>
-          latest
-        </Button>
-      ) : null}
+      {event?.at === s.at ? eventBox : null}
     </Box>
   )
-
-  const streaming = running && r.alive ? <Text color="yellow">▍ akış sürüyor…</Text> : null
-  const lineView = (l: Line) => {
-    const exit = /\(exit (\d+)\)\s*$/.exec(l.t)
-    const cmd = l.t.startsWith('$ ')
-    const color = !cmd ? undefined : exit ? (exit[1] === '0' ? 'green' : 'red') : undefined
-    return (
-      <Button key={`line:${l.o}`} plain onPress={go(() => openLine($, r, l.o))}>
-        {l.t.startsWith('· ') ? <Text dimColor>{'· '}</Text> : null}
-        <Text wrap="truncate-end" color={color} dimColor={cmd && !exit}>{l.t.startsWith('· ') ? l.t.slice(2) : l.t}</Text>
-      </Button>
-    )
+  // A small markdown subset for model text (the answer and notes): a heading and **bold** bold, `code`
+  // cyan, a fenced block dim and verbatim, a list item with a hanging indent, a quote dim, a link's url
+  // dim after its text; anything else plain. The text is masked already; a line whose visible text
+  // (the markers dropped) masks differently is drawn plain, so markers cannot split a key past the mask.
+  const inline = (s: string): any[] => {
+    const shown = s.replace(INLINE, (_m, code, bold, label, url) => code ?? bold ?? `${label} (${url})`)
+    if (clean(shown) !== shown) return [clean(shown)]
+    const out: any[] = []
+    let last = 0
+    for (const m of s.matchAll(INLINE)) {
+      out.push(s.slice(last, m.index))
+      if (m[1] !== undefined) out.push(<Text color="cyan">{m[1]}</Text>)
+      else if (m[2] !== undefined) out.push(<Text bold>{m[2]}</Text>)
+      else out.push(m[3]!, <Text dimColor>{` (${m[4]})`}</Text>)
+      last = m.index + m[0].length
+    }
+    out.push(s.slice(last))
+    return out.filter(x => x !== '')
   }
-  const blockHead = (b: Block) =>
-    b.tag === 'model' ? (
-      <Box flexDirection="row">
-        <Text color="cyan">model</Text>
-        <Text dimColor>{` · olay ${b.n}`}</Text>
-      </Box>
-    ) : b.tag === 'komut' ? (
-      <Box flexDirection="row">
-        <Text color="yellow">komut</Text>
-        <Text dimColor>{` · olay ${b.n}`}</Text>
-        {b.exit !== undefined ? <Text dimColor>{' · exit '}</Text> : null}
-        {b.exit !== undefined ? <Text color={b.exit === 0 ? 'green' : 'red'}>{String(b.exit)}</Text> : null}
+  const markdown = (text: string) => {
+    const out: any[] = []
+    const ls = text.split('\n')
+    for (let i = 0; i < ls.length; i++) {
+      const l = ls[i]!
+      if (/^\s*```/.test(l)) {
+        const code: string[] = []
+        while (++i < ls.length && !/^\s*```/.test(ls[i]!)) code.push(ls[i]!)
+        out.push(<Box paddingLeft={2}><Text dimColor wrap="wrap">{code.join('\n') || ' '}</Text></Box>)
+        continue
+      }
+      const head = /^#{1,3}\s+(.*)$/.exec(l)
+      const li = /^(\s*)([-*]|\d+\.)\s+(.*)$/.exec(l)
+      const q = /^>\s?(.*)$/.exec(l)
+      if (head) out.push(<Text bold wrap="wrap">{inline(head[1]!)}</Text>)
+      else if (li) {
+        out.push(
+          <Box flexDirection="row" paddingLeft={li[1]!.length}>
+            <Text>{/\d/.test(li[2]!) ? `${li[2]} ` : '• '}</Text>
+            <Text wrap="wrap">{inline(li[3]!)}</Text>
+          </Box>,
+        )
+      } else if (q) out.push(<Text dimColor wrap="wrap">{inline(q[1]!)}</Text>)
+      else out.push(<Text wrap="wrap">{l.trim() ? inline(l) : ' '}</Text>)
+    }
+    return <Box flexDirection="column">{out}</Box>
+  }
+  const { answer, groups } = layout(shownItems, !running)
+  const groupView = (g: Group, i: number) =>
+    g.kind === 'note' ? (
+      <Box key={`note:${g.note.o}`} flexDirection="column">
+        {!g.note.text.trim() ? null : g.note.user ? <Text wrap="wrap" dimColor>{g.note.text}</Text> : markdown(g.note.text)}
+        {g.note.think ? <Text dimColor wrap="wrap">{`✻ ${g.note.think}`}</Text> : null}
       </Box>
     ) : (
-      <Text dimColor>{`${b.head ? `${b.head} · ` : ''}olay ${b.n}`}</Text>
+      // Only the newest cluster of a run still going can be running.
+      <Box key={`cluster:${g.steps[0]!.at}`} flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
+        <Box flexDirection="row">
+          <Text>{'▸ '}</Text>
+          <Text bold>{running && i === 0 ? 'Running' : 'Done'}</Text>
+          <Text dimColor>{` · ${g.steps.length} step${g.steps.length === 1 ? '' : 's'}`}</Text>
+        </Box>
+        {g.steps.map(stepView)}
+      </Box>
     )
 
   const ev = event
@@ -1256,10 +1332,7 @@ async function renderRuns($: EngineInterface, e: any) {
   const eventBox = ev ? (
     <Box key="eventbox" flexDirection="column" borderStyle="round" paddingX={1}>
       <Box flexDirection="row" gap={2}>
-        <Text bold>{`Tam metin${ev.n ? ` · olay ${ev.n}` : ''} · transcript.jsonl`}</Text>
-        <Button key="event-back" plain hotkey="g" onPress={go(() => { event = null })}>
-          geri
-        </Button>
+        <Text bold>{`Full text${ev.n ? ` · event ${ev.n}` : ''} · transcript.jsonl`}</Text>
         {pages.length > 1 ? (
           <Button key="prev" plain hotkey="p" onPress={turn(-1)}>
             previous page
@@ -1276,7 +1349,6 @@ async function renderRuns($: EngineInterface, e: any) {
     </Box>
   ) : null
 
-  const pick = (t: Tab) => go(async () => { tab = t; event = null; await openTab($, r, t); await followTab($, r, t) })
   return (
     <Box flexDirection="column" paddingX={1}>
       {table}
@@ -1290,44 +1362,27 @@ async function renderRuns($: EngineInterface, e: any) {
         {gone ? <Text color="red">session dir is gone</Text> : null}
         <Box flexDirection="row" gap={2} marginTop={1}>
           {back}
-          <Button key="tab:summary" hotkey="s" variant={tab === 'summary' ? 'primary' : 'secondary'} onPress={pick('summary')}>
-            {tab === 'summary' ? '● Özet' : 'Özet'}
-          </Button>
-          <Button key="tab:flow" hotkey="f" variant={tab === 'flow' ? 'primary' : 'secondary'} onPress={pick('flow')}>
-            {tab === 'flow' ? '● Tüm akış' : 'Tüm akış'}
-          </Button>
         </Box>
-        {eventBox}
-        {nav}
-        {tab === 'summary' ? (
-          <Box flexDirection="column">
-            <Text dimColor>Özet (progress.log) · satıra tıklayınca o olayın tam hali açılır</Text>
-            <Box flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
-              {shownLines.map(lineView)}
-              {streaming}
-            </Box>
+        <Box flexDirection="column">
+          <Box flexDirection="row" gap={2}>
+            <Text bold>Flow</Text>
+            <Text dimColor>transcript.jsonl · newest first · click a step for its full text</Text>
+            {latest}
           </Box>
-        ) : (
-          <Box flexDirection="column">
-            <Text dimColor>Tüm akış (transcript.jsonl) · her olay kırpılmadan, sırayla</Text>
-            {shownBlocks.map(b =>
-              b.skipped ? (
-                <Text key={`skip:${b.o}`} dimColor>{`${b.skipped} stream events skipped`}</Text>
-              ) : (
-                <Box key={`blk:${b.o}`} flexDirection="column" marginTop={1}>
-                  {blockHead(b)}
-                  <Text wrap="wrap">{b.text}</Text>
-                  {b.big ? (
-                    <Button key={`big:${b.o}`} plain onPress={go(() => openBig($, r, b))}>
-                      {`open full event (${Math.ceil((b.l ?? 0) / 1024)} KiB)`}
-                    </Button>
-                  ) : null}
-                </Box>
-              ),
-            )}
+          <Box key="flow" flexDirection="column">
             {streaming}
+            {answer ? (
+              <Box key="answer" flexDirection="column">
+                <Text bold>Answer</Text>
+                <Box paddingLeft={2}>
+                  {markdown(answer)}
+                </Box>
+              </Box>
+            ) : null}
+            {groups.map(groupView)}
           </Box>
-        )}
+          {earlier}
+        </Box>
         {verdict.length ? rule : null}
         {verdict}
       </Box>
@@ -1344,9 +1399,8 @@ function resetRuns(options: PluginOptions) {
   rows = []
   view = 'list'
   sel = null
-  sum = null
   flow = null
-  flowBlocks = []
+  flowItems = []
   event = null
   gone = false
   timer = null

@@ -147,47 +147,6 @@ test('back with a last line longer than the budget returns that line alone (as b
   assert.equal(recs[1].l, 200_000)
 })
 
-test('event returns text, an offset pair, or none, per progress.idx', () => {
-  const s = path.join(dir, 'sess')
-  rmSync(s, { recursive: true, force: true })
-  const ev = { type: 'x', out: 'ğüş✓ full output', n: 'a'.repeat(6000) }
-  const evLine = JSON.stringify(ev)
-  writeFileSync(path.join(s + '-t'), '')
-  const sd = mkdtempSync(path.join(dir, 'sd-'))
-  writeFileSync(path.join(sd, 'transcript.jsonl'), 'junk\n' + evLine + '\n')
-  writeFileSync(
-    path.join(sd, 'progress.idx'),
-    [{ p: 0, o: 5, l: Buffer.byteLength(evLine) }, { p: 10, text: 'full coalesced text' }, { p: 100, o: 5, l: Buffer.byteLength(evLine) }].map((r) => JSON.stringify(r)).join('\n') + '\n',
-  )
-  const a = read('event', sd, 0).recs
-  assert.deepEqual(a[0], { o: 5, l: Buffer.byteLength(evLine) })
-  assert.deepEqual(JSON.parse(a[1].t), ev)
-  assert.equal(a[1].next, null)
-  assert.deepEqual(read('event', sd, 10).recs, [{ text: 'full coalesced text' }])
-  assert.deepEqual(read('event', sd, 1).recs, [{ none: true }]) // a prefix of 10/100 is not a match
-  assert.deepEqual(read('event', sd, 55).recs, [{ none: true }])
-  const noIdx = mkdtempSync(path.join(dir, 'noidx-'))
-  assert.deepEqual(read('event', noIdx, 0).recs, [{ none: true }])
-})
-
-test('event: a huge coalesced text comes in pages that rebuild it; a record deep in progress.idx is found', () => {
-  const sd = mkdtempSync(path.join(dir, 'evbig-'))
-  const huge = 'ğ'.repeat(3 * 1024 * 1024) // 6 MiB of text in one idx record
-  const filler = Array.from({ length: 3000 }, (_, i) => JSON.stringify({ p: i + 1000, o: 0, l: 1 })).join('\n') + '\n'
-  writeFileSync(path.join(sd, 'progress.idx'), filler + JSON.stringify({ p: 7, text: huge }) + '\n' + JSON.stringify({ p: 8, text: 'after' }) + '\n')
-  let text = ''
-  let skip = 0
-  for (let n = 0; n < 20; n++) {
-    const [r] = read('event', sd, 7, skip).recs
-    assert.equal(typeof r.text, 'string')
-    text += r.text
-    if (r.next == null) break
-    skip = r.next
-  }
-  assert.equal(text, huge)
-  assert.deepEqual(read('event', sd, 8).recs, [{ text: 'after' }])
-})
-
 test('a missing file is an error line and a non-zero exit, not a crash trace', () => {
   const r = read('fwd', path.join(dir, 'nope'), 0, 100)
   assert.equal(r.status, 2)
@@ -195,9 +154,7 @@ test('a missing file is an error line and a non-zero exit, not a crash trace', (
 })
 
 test('no mode exceeds OUT_MAX even for an enormous budget', () => {
-  const evBig = mkdtempSync(path.join(dir, 'evcap-'))
-  writeFileSync(path.join(evBig, 'progress.idx'), JSON.stringify({ p: 1, text: 'x'.repeat(5 * 1024 * 1024) }) + '\n')
-  for (const args of [['fwd', transcript, 0, 50_000_000], ['back', transcript, SIZE, 50_000_000], ['chunk', transcript, 0, 50_000_000], ['event', evBig, 1]]) {
+  for (const args of [['fwd', transcript, 0, 50_000_000], ['back', transcript, SIZE, 50_000_000], ['chunk', transcript, 0, 50_000_000]]) {
     const r = spawnSync('node', [helper, ...args.map(String)], { maxBuffer: 64 * 1024 * 1024 })
     assert.ok(r.stdout.length <= OUT_MAX, `${args[0]}: ${r.stdout.length}`)
     assert.equal(r.status, 0)

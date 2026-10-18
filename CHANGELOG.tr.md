@@ -7,6 +7,40 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [7.2.0] — 2026-10-18
+
+### Değişti
+
+- **`/cli-dispatch-runs` iki sekme yerine tek bir Flow görünümü gösteriyor.** Özet ve Tüm akış
+  sekmeleri kalktı. Run görünümü `transcript.jsonl`'i okuyup en yeniden eskiye çiziyor: en üstte
+  biten run'ın son model metni **Answer** bloğu olarak, ardından `▸ Done · N steps` başlıklı
+  (canlı bir run'ın en yeni kümesinde `Running`) çerçeveli kümelere toplanmış araç adımları; kümeleri
+  modelin metni ve soluk `✻` ile düşünmesi böler. Bir araç çağrısı ile sonucu tek adımdır: simge,
+  kısa başlık (kabuk çağrısında komut, okuma/düzenleme/yazma araçlarında yalnız dosya adı, arama
+  araçlarında desen, diğerlerinde aracın kendi adı) ve yeşil ✓ ya da kırmızı ✗ (copilot hataları
+  `success:false`'tan gelir). Bir adıma tıklamak tam girdisini ve çıktısını yerinde açar, ikinci
+  tıklama kapatır. Eşleme her backend'in kendi kimliklerini izler (claude `tool_use_id`, codex
+  `item.id`, copilot `toolCallId`, opencode `callID`; antigravity sırayla). Answer ve model notları
+  kütüphanesiz küçük bir markdown alt kümesiyle çizilir (başlık, kalın, satır içi kod, kod bloğu,
+  liste, alıntı, bağlantı); maskeleme önce kaynak metinde, sonra çizilen her satırda yeniden
+  çalışır, böylece markdown işaretleri bir anahtarı maskenin dışına bölemez. Claude'un kapanış
+  `result` olayı ve akış çerçevesi atlama satırları artık çizilmiyor. Pane'deki her metin İngilizce.
+
+### Kaldırıldı
+
+- **`progress.idx`.** Onu yalnız eski Özet sekmesi okuyordu (`cli-dispatch-pane-read.mjs`'in `event`
+  modu üzerinden). `openSessionFiles`'taki yazıcı ve `event` modu silindi; `progress.log`'un kendisi
+  değişmedi.
+
+### Düzeltildi
+
+- **`--scope` artık Python'un bytecode önbelleği yüzünden run'ı düşürmüyor (#217).** Testleri
+  çalıştırmak (worker ya da `--verify`) `__pycache__/*.pyc` yazar; `.gitignore`'u olmayan bir repoda
+  bu takip edilmeyen dosyalar `--scope` dışı değişiklik sayılıyordu ve doğru tek satırlık bir
+  düzeltme 2 ile çıkıyordu. Takip edilmeyen `__pycache__/` girdileri ve `*.pyc` dosyaları artık
+  `worker-report.json` gibi muaf; değişen takipli bir `.pyc` ya da takip edilmeyen bir kaynak dosya
+  hâlâ ihlal sayılır.
+
 ## [7.1.0] — 2026-10-18
 
 ### Eklendi

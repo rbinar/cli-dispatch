@@ -64,7 +64,7 @@ Everything the plugin installs lives under `plugins/cli-dispatch/`:
   `cli-dispatch-run --detach` + `cli-dispatch-wait --run` itself in one tool call — the runner agent's
   job with no LLM turns. It is not registered inside a worker (`CLI_DISPATCH_WORKER=1`). Its state contract is `types/index.d.ts` (named as `types` in
   `plugin.json`); its tests are `tests/mod.test.ts`. `/cli-dispatch-runs` is its run monitor pane
-  (this session's runs, Summary and Full flow tabs, masked); the band's liveness test is `isRunAlive`. It reads session dirs with the same root
+  (this session's runs, one newest-first Flow view built from `transcript.jsonl`, masked); the band's liveness test is `isRunAlive`. It reads session dirs with the same root
   resolution and 90 s liveness window as `cli-dispatch-statusline.sh`.
 - `skills/ds-delegate/SKILL.md` — the `ds-delegate` skill.
 
@@ -127,9 +127,6 @@ run — regardless of backend — creates `~/.cache/cli-dispatch/sessions/<id>/`
   are explicitly warned in-repo against reading it in a hot loop; it's the main cost sink
   this repo optimizes against.
 - `progress.log` — terse human-readable tail, safe to read a few lines of.
-- `progress.idx` — JSONL sidecar, one record per `progress.log` line (`{p, o, l}`: the line's byte offset
-  and the transcript bytes `[o, o+l)` of its event; ds coalesced text carries `{p, text}`). Written only
-  by `openSessionFiles`; read only by the `/cli-dispatch-runs` pane through `cli-dispatch-pane-read.mjs`.
 - `changed-files.json` — `{files, diffstat, preexistingDirty}`, written after a repo-changing run
   finishes. `files` is `[{path, status}]` with git's `M`/`A`/`D`/`??` codes; `preexistingDirty`
   lists paths that were already dirty *before* the worker started and are therefore excluded

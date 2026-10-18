@@ -524,6 +524,14 @@ function strings(node: any, out: string[] = []): string[] {
   return out
 }
 const drawnText = async (ui: any) => strings(await ui.drawn()).join('\n')
+// The drawn flow, top to bottom: `Answer: …`; a note's text | ✻ thinking; a cluster's head / its steps.
+const shapeOf = async (ui: any): Promise<string[]> =>
+  (((await ui.find({ key: 'flow' }))?.children ?? []) as any[]).filter(c => c && typeof c === 'object').map(c => {
+    const k = String(c.props?.key)
+    if (k === 'answer') return `Answer: ${strings(c.children[1]).join('')}`
+    if (k.startsWith('cluster:')) return [strings(c.children[0]).join(''), ...(c.children.slice(1) as any[]).map(b => strings(b.children[0].children).join(''))].join(' / ')
+    return strings(c).join(' | ')
+  })
 const indent = (s: string) => s.split('\n').map(l => `  ${l}`).join('\n')
 const countOf = (hay: string, needle: string) => hay.split(needle).length - 1
 // A run's table cells, trimmed of their padding: the Button's children are one Text per column.
@@ -538,7 +546,7 @@ const rowProps = async (ui: any, name: string) =>
   ((await ui.find({ type: 'Button', key: `run:${name}` }))?.children as any[]).filter(c => typeof c === 'object').map(c => c.props ?? {})
 // Every string under the open run's detail (the table above it is not part of it).
 const detailText = async (ui: any) => strings(await ui.find({ key: 'detail' })).join('\n')
-const FOOTER = '↑↓ / tık: run seç · satır: tam metin · b: geri · Esc: kapat'
+const FOOTER = '↑↓ / click: select run · click line: full text · b: back · Esc: close'
 
 const open = async ($: any, surface: 'terminal' | 'desktop' = 'terminal') => {
   await $.session.start({ surface, isInteractive: true, cwd: '/work' } as any)
@@ -644,19 +652,19 @@ describe('run monitor pane', () => {
     await band.unmount()
   })
 
-  // ---- Run detail: Summary ----
+  // ---- Run detail: Flow ----
 
   const RUN_A = (extra: Partial<RunFix> = {}): RunFix => ({
     meta: { backend: 'codex', model: 'gpt-x', branch: 'cd/run-1', parentSessionId: SID, startedAt: new Date(NOW - 125_000).toISOString(), promptPreview: 'do it' },
     status: { state: 'running', events: 7, lastTool: 'Bash', toolCounts: { Bash: 5, Edit: 3 }, usage: { input_tokens: 100, output_tokens: 20 }, lastActivityAt: new Date(NOW - 4000).toISOString() },
     mtimeMs: NOW - 2_000,
     progress: 400,
-    transcript: 5000,
+    transcript: 400,
     ...extra,
   })
   const win = (from: number, to: number, size: number, ...recs: unknown[]) => jl({ from, to, size }, ...recs)
 
-  test('Summary shows the helper lines and counters; a tick appends only what grew, and reads nothing when nothing did', async ($, on) => {
+  test('Flow shows the helper lines and counters; a tick appends only what grew, and reads nothing when nothing did', async ($, on) => {
     const h = stubRuns(on, { a: RUN_A() }, {
       helper: (mode, args) => {
         if (mode === 'back') return win(0, 400, 400, { o: 0, t: '$ npm test' }, { o: 12, t: '· started' })
@@ -670,17 +678,17 @@ describe('run monitor pane', () => {
     expect(t).toMatch(/\$ npm test/)
     const d = await detailText(ui)
     expect(await rowCells(ui, 'a')).toContain('running')
-    expect(d).toMatch(/olay +\n7\n · komut \n8\n \(Bash×5 Edit×3\)/)
-    expect(d).toMatch(/son aktivite +\n4s önce\n · Bash/)
+    expect(d).toMatch(/events +\n7\n · tool calls \n8\n \(Bash×5 Edit×3\)/)
+    expect(d).toMatch(/last activity +\n4s ago\n · Bash/)
     expect(d).toMatch(/tokens +\nin 100 · out 20/)
     expect(t).toMatch(/gpt-x/)
-    expect(helperCalls(h)).toEqual([['back', `${ROOT}/a/progress.log`, '400', '262144']])
+    expect(helperCalls(h)).toEqual([['back', `${ROOT}/a/transcript.jsonl`, '400', '524288']])
 
-    h.stats[`${ROOT}/a/progress.log`] = { size: 460, mtimeMs: NOW }
+    h.stats[`${ROOT}/a/transcript.jsonl`] = { size: 460, mtimeMs: NOW }
     await h.tick()
-    expect(helperCalls(h).slice(1)).toEqual([['fwd', `${ROOT}/a/progress.log`, '400', '262144']])
+    expect(helperCalls(h).slice(1)).toEqual([['fwd', `${ROOT}/a/transcript.jsonl`, '400', '524288']])
     t = await drawnText(ui)
-    expect(t).toMatch(/· \nnew line/)
+    expect(t).toMatch(/· new line/)
     expect(t).toMatch(/\$ npm test/)
 
     const before = h.rec.runs.length
@@ -722,67 +730,39 @@ describe('run monitor pane', () => {
     })
     const ui = await open($)
     await ui.press({ key: 'run:a' })
-    h.stats[`${ROOT}/a/progress.log`] = { size: 460, mtimeMs: NOW }
+    h.stats[`${ROOT}/a/transcript.jsonl`] = { size: 460, mtimeMs: NOW }
     await h.tick()
     expect(helperCalls(h).filter(c => c[0] === 'fwd').length).toBe(1)
-    expect(await drawnText(ui)).toContain('· \ngrown')
+    expect(await drawnText(ui)).toContain('· grown')
     await ui.unmount()
   })
 
   // ---- Line -> full event ----
 
-  test('pressing a line opens its full event: the whole cx output and exit code, the ds text, or the no-record message', async ($, on) => {
+  test('pressing a step opens its full event: the whole cx output and exit code; ds text is drawn whole', async ($, on) => {
     const out = Array.from({ length: 1200 }, (_, i) => `out-${i}`).join('\n')
     const ev = { type: 'item.completed', item: { type: 'command_execution', command: 'npm run build --long', aggregated_output: out, exit_code: 1 } }
-    const evText = JSON.stringify(ev)
     const dsFull = `ds-start ${'long text '.repeat(80)}ds-end`
-    const h = stubRuns(on, { a: RUN_A() }, {
+    const h = stubRuns(on, { a: RUN_A(), b: RUN_A({ meta: { ...RUN_A().meta, backend: 'deepseek' } }) }, {
       helper: (mode, args) => {
-        if (mode === 'back') return win(0, 400, 400, { o: 0, t: '$ npm run build --long (exit 1)' }, { o: 40, t: `· ds-start …` }, { o: 80, t: '--- resume @ 2026-10-12T10:00:00.000Z ---' })
-        if (mode === 'event' && args[1] === '0') return jl({ o: 7, l: evText.length }, { t: evText, next: null })
-        if (mode === 'event' && args[1] === '40') return jl({ text: dsFull })
-        if (mode === 'event') return jl({ none: true })
-        return ''
+        if (mode !== 'back') return ''
+        if (args[0]!.split('/').at(-2) === 'a') return win(0, 400, 400, { o: 0, t: JSON.stringify(ev) })
+        return win(0, 400, 400, { o: 40, t: JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: dsFull }] } }) })
       },
     })
     const ui = await open($)
     await ui.press({ key: 'run:a' })
+    expect(await drawnText(ui)).not.toContain('out-1199') // the list draws the command line only
     await ui.press({ key: 'line:0' })
     let t = await drawnText(ui)
-    // Content view (same as Full flow): the command, its whole output, the exit code — not the fields.
+    // Content view: the command, its whole output, the exit code — not the fields.
     expect(t).toContain(`$ npm run build --long\n${out}`)
     expect(t).toMatch(/\nexit 1(\n|$)/)
     expect(t).not.toMatch(/item\.command:/)
-    expect(helperCalls(h).filter(c => c[0] === 'event')).toEqual([['event', `${ROOT}/a`, '0']])
+    expect(helperCalls(h).filter(c => c[0] !== 'back')).toEqual([]) // the entry is already in memory
     await ui.press({ key: 'back' })
-    await ui.press({ key: 'line:40' })
-    t = await drawnText(ui)
-    expect(t).toContain(dsFull)
-    await ui.press({ key: 'back' })
-    await ui.press({ key: 'line:80' })
-    expect(await drawnText(ui)).toContain('No full event recorded for this line.')
-    await ui.unmount()
-  })
-
-  test('a coalesced text the helper pages is fetched on from `next` and shown whole (#210)', { options: { deepseek_api_key: 'dsk-EXACT-1111-2222' } }, async ($, on) => {
-    const h = stubRuns(on, { a: RUN_A() }, {
-      helper: (mode, args) => {
-        if (mode === 'back') return win(0, 400, 400, { o: 40, t: '· ds-start …' })
-        if (mode === 'event' && args[1] === '40') {
-          if (args[2] === undefined) return jl({ text: 'page-one dsk-EXACT-11', next: 21 })
-          return jl({ text: '11-2222 page-two' })
-        }
-        return ''
-      },
-    })
-    const ui = await open($)
-    await ui.press({ key: 'run:a' })
-    await ui.press({ key: 'line:40' })
-    const t = await drawnText(ui)
-    expect(t).toContain('page-one ••••')
-    expect(t).toContain('•••• page-two')
-    expect(t).not.toContain('EXACT')
-    expect(helperCalls(h).filter(c => c[0] === 'event')).toEqual([['event', `${ROOT}/a`, '40'], ['event', `${ROOT}/a`, '40', '21']])
+    await ui.press({ key: 'run:b' })
+    expect(await drawnText(ui)).toContain(dsFull)
     await ui.unmount()
   })
 
@@ -791,19 +771,19 @@ describe('run monitor pane', () => {
     const cut = evText.indexOf('1111') // the key is split across the chunk edge
     const h = stubRuns(on, { a: RUN_A() }, {
       helper: (mode, args) => {
-        if (mode === 'back') return win(0, 400, 400, { o: 0, t: '· x' })
-        if (mode === 'event') return jl({ o: 7, l: evText.length }, { t: evText.slice(0, cut), next: 7 + cut })
+        if (mode === 'back') return win(0, 400, 400, { o: 7, l: evText.length, big: true, t: evText.slice(0, 20) })
+        if (mode === 'chunk' && args[1] === '7') return jl({ next: 7 + cut }, { t: evText.slice(0, cut) })
         if (mode === 'chunk') return jl({ next: null }, { t: evText.slice(cut) })
         return ''
       },
     })
     const ui = await open($)
     await ui.press({ key: 'run:a' })
-    await ui.press({ key: 'line:0' })
+    await ui.press({ key: 'line:7' })
     const t = await drawnText(ui)
     expect(t).toContain('A •••• B')
     expect(t).not.toContain('EXACT')
-    expect(helperCalls(h).filter(c => c[0] === 'chunk')).toEqual([['chunk', `${ROOT}/a/transcript.jsonl`, String(7 + cut), String(evText.length - cut)]])
+    expect(helperCalls(h).filter(c => c[0] === 'chunk')).toEqual([['chunk', `${ROOT}/a/transcript.jsonl`, '7', String(evText.length)], ['chunk', `${ROOT}/a/transcript.jsonl`, String(7 + cut), String(evText.length - cut)]])
     await ui.unmount()
   })
 
@@ -842,13 +822,13 @@ describe('run monitor pane', () => {
     await ui.unmount()
   })
 
-  // ---- Full flow ----
+  // ---- Flow window ----
 
   const flowFix = (extra: Partial<RunFix> = {}) => RUN_A({ progress: undefined, transcript: 600_000, ...extra })
   const T = `${ROOT}/a/transcript.jsonl`
   const cxEvent = (o: number, text: string, extra: object = {}) => ({ o, t: JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text, ...extra } }) })
 
-  test('Full flow loads the tail once, appends by fwd, trims to its window, and earlier/latest restore following; transcript is never read whole', async ($, on) => {
+  test('Flow loads the tail once, appends by fwd, trims to its window, and earlier/latest restore following; transcript is never read whole', async ($, on) => {
     let size = 600_000
     const h = stubRuns(on, { a: flowFix() }, {
       helper: (mode, args) => {
@@ -861,11 +841,9 @@ describe('run monitor pane', () => {
     })
     const ui = await open($)
     await ui.press({ key: 'run:a' })
-    h.rec.runs.length = 0
-    await ui.press({ key: 'tab:flow' })
     expect(helperCalls(h)).toEqual([['back', T, '600000', '524288']])
     let t = await drawnText(ui)
-    expect(t).toMatch(/FIRST-MSG[\s\S]*SECOND-MSG/)
+    expect(t).toMatch(/SECOND-MSG[\s\S]*FIRST-MSG/) // newest first
     expect(t).toContain('earlier')
 
     size = 600_200
@@ -895,7 +873,6 @@ describe('run monitor pane', () => {
     })
     const ui = await open($)
     await ui.press({ key: 'run:a' })
-    await ui.press({ key: 'tab:flow' })
     await ui.press({ key: 'earlier' })
     expect(await drawnText(ui)).toContain('HEAD-MSG')
     expect(await ui.find({ type: 'Button', key: 'earlier' })).toBeUndefined()
@@ -915,7 +892,7 @@ describe('run monitor pane', () => {
     await ui.unmount()
   })
 
-  test('while Summary is shown no tick touches transcript.jsonl', async ($, on) => {
+  test('the flow view never touches progress.log', async ($, on) => {
     const h = stubRuns(on, { a: RUN_A() }, { helper: mode => (mode === 'back' ? win(0, 400, 400, { o: 0, t: '· x' }) : '') })
     const ui = await open($)
     await ui.press({ key: 'run:a' })
@@ -923,12 +900,12 @@ describe('run monitor pane', () => {
     h.rec.runs.length = 0
     await h.tick()
     await h.tick()
-    expect(h.rec.stats.filter(p => p.endsWith('transcript.jsonl'))).toEqual([])
-    expect(helperCalls(h).filter(c => (c[1] ?? '').endsWith('transcript.jsonl'))).toEqual([])
+    expect(h.rec.stats.filter(p => p.endsWith('progress.log'))).toEqual([])
+    expect(helperCalls(h).filter(c => (c[1] ?? '').endsWith('progress.log'))).toEqual([])
     await ui.unmount()
   })
 
-  test('Full flow content: cx output in full; ds and ollama stream frames skipped; cp deltas skipped or merged', async ($, on) => {
+  test('Flow content: a cx command is one line; ds and ollama stream frames skipped; cp deltas skipped or merged', async ($, on) => {
     const out = Array.from({ length: 1200 }, (_, i) => `row-${i}`).join('\n')
     const dsWindow = [
       ...Array.from({ length: 12 }, (_, i) => ({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: `DELTA-${i}` } } })),
@@ -965,36 +942,32 @@ describe('run monitor pane', () => {
     })
     const ui = await open($)
     await ui.press({ key: 'run:a' })
-    await ui.press({ key: 'tab:flow' })
     let t = await drawnText(ui)
-    expect(t).toContain(out)
-    expect(t).toMatch(/exit \n2\n/)
+    expect(t).toContain('⌘ \nmake\n  ✗')
+    expect(t).not.toContain('row-1199') // the output is a click away
     await ui.press({ key: 'back' })
 
     await ui.press({ key: 'run:b' })
-    await ui.press({ key: 'tab:flow' })
     t = await drawnText(ui)
     expect(countOf(t, 'HELLO-ONCE')).toBe(1)
     expect(t).not.toMatch(/DELTA-\d/)
-    expect(t).toContain('15 stream events skipped')
-    expect(t).toContain(out)
+    expect(t).not.toContain('stream events skipped') // skipped frames draw no row
+    expect(t).toContain('result\n  ✓') // a result whose call is not in the window is a step of its own
     await ui.press({ key: 'back' })
 
     await ui.press({ key: 'run:c' })
-    await ui.press({ key: 'tab:flow' })
     t = await drawnText(ui)
     expect(countOf(t, 'HELLO-ONCE')).toBe(1)
     expect(countOf(t, 'THINK-ONCE')).toBe(1)
     expect(t).not.toContain('THINK-DELTA')
-    expect(t).toContain('16 stream events skipped')
+    expect(t).not.toContain('stream events skipped') // skipped frames draw no row
     await ui.press({ key: 'back' })
 
     await ui.press({ key: 'run:d' })
-    await ui.press({ key: 'tab:flow' })
     t = await drawnText(ui)
     expect(countOf(t, 'FINAL-MSG')).toBe(1)
     expect(t).not.toContain('MSGDELTA')
-    expect(t).toContain('5 stream events skipped')
+    expect(t).not.toContain('stream events skipped') // skipped frames draw no row
     expect(t).toContain('rea1rea2rea3')
     await ui.unmount()
   })
@@ -1010,7 +983,6 @@ describe('run monitor pane', () => {
     })
     const ui = await open($)
     await ui.press({ key: 'run:a' })
-    await ui.press({ key: 'tab:flow' })
     expect(await drawnText(ui)).toMatch(/open full event \(293 KiB\)/)
     await ui.press({ key: 'big:5' })
     expect(helperCalls(h).filter(c => c[0] === 'chunk')).toEqual([['chunk', T, '5', '300000']])
@@ -1038,8 +1010,7 @@ describe('run monitor pane', () => {
     const ev = JSON.stringify({ type: 'x', out: 'a\r\nb\x1b]0;evil title\x07c' })
     stubRuns(on, { a: RUN_A() }, {
       helper: (mode, args) => {
-        if (mode === 'back') return win(0, 400, 400, { o: 0, t: '\x1b[31mred\x1b[0m\x07' })
-        if (mode === 'event') return jl({ o: 7, l: ev.length }, { t: ev, next: null })
+        if (mode === 'back') return win(0, 400, 400, { o: 0, t: '\x1b[31mred\x1b[0m\x07' }, { o: 10, t: ev })
         return ''
       },
     })
@@ -1048,7 +1019,7 @@ describe('run monitor pane', () => {
     let t = await drawnText(ui)
     expect(t).toContain('red')
     expect(t).not.toMatch(/[\x00-\x09\x0b-\x1f\x7f]/)
-    await ui.press({ key: 'line:0' })
+    await ui.press({ key: 'line:10' })
     t = await drawnText(ui)
     expect(t).toContain('bc')
     expect(t).not.toMatch(/[\x00-\x09\x0b-\x1f\x7f]/)
@@ -1082,7 +1053,6 @@ describe('run monitor pane', () => {
         if (mode === 'back' && args[0]!.endsWith('progress.log')) return win(0, 400, 400, { o: 0, t: LEAK }, { o: 500, t: `{"env":{"X_TOKEN":"JJJJJJJJ"}} ${LEAK}` })
         if (mode === 'back' && dir === 'a') return win(0, 9000, 9000, { o: 0, t: leakEvent }, { o: 5, l: 300_000, big: true, t: `{"a":"${LEAK}` })
         if (mode === 'back') return win(0, 9000, 9000, ...splitAt(LEAK, 7).map((d, i) => ({ o: i * 10, t: JSON.stringify({ type: 'assistant.reasoning_delta', data: { deltaContent: d } }) })))
-        if (mode === 'event') return jl({ text: LEAK })
         return ''
       },
     })
@@ -1096,12 +1066,10 @@ describe('run monitor pane', () => {
     expect(t).toContain('OPENROUTER_API_KEY=••••')
     await ui.press({ key: 'line:0' })
     await expectMasked(ui) // the event view
-    await ui.press({ key: 'back' })
-    await ui.press({ key: 'tab:flow' })
+    await ui.press({ key: 'line:0' }) // collapse it
     await expectMasked(ui) // a cx output and a big head
     await ui.press({ key: 'back' })
     await ui.press({ key: 'run:b' })
-    await ui.press({ key: 'tab:flow' })
     await expectMasked(ui) // merged cp reasoning deltas, the key split across fragments
     t = await drawnText(ui)
     expect(t).toContain('sk-ant-••••')
@@ -1125,7 +1093,7 @@ describe('run monitor pane', () => {
       c: done('codex', 300_000, withCwd('/home/x/repo-leak', { state: 'done', exitCode: 2, leak: true })),
     })
     const ui = await open($)
-    const head = await ui.find({ type: 'Text', text: /BACKEND +REPO +STATE +VERIFY +SÜRE/ })
+    const head = await ui.find({ type: 'Text', text: /BACKEND +REPO +STATE +VERIFY +TIME/ })
     expect(head?.props.dimColor).toBe(true)
     expect(await ui.findAll({ type: 'Button' }).then((bs: any[]) => bs.filter(b => String(b.key).startsWith('run:')).length)).toBe(3)
     expect(await rowCells(ui, 'a')).toEqual(['■ cx', 'repo-one', 'done', 'PASS', '40s'])
@@ -1157,43 +1125,380 @@ describe('run monitor pane', () => {
     await ui.unmount()
   })
 
-  test('the view switch is two Buttons, Özet and Tüm akış, and the active one is marked and primary', async ($, on) => {
+  test('the run detail is one view, headed Flow: no tab Buttons and no tab hotkeys', async ($, on) => {
     stubRuns(on, { a: RUN_A() }, { helper: mode => (mode === 'back' ? win(0, 400, 400, { o: 0, t: '· x' }) : '') })
     const ui = await open($)
     await ui.press({ key: 'run:a' })
-    let sm = await ui.find({ type: 'Button', key: 'tab:summary' })
-    let fl = await ui.find({ type: 'Button', key: 'tab:flow' })
-    expect(sm?.text).toBe('● Özet')
-    expect(sm?.props.variant).toBe('primary')
-    expect(fl?.text).toBe('Tüm akış')
-    expect(fl?.props.variant).toBe('secondary')
-    expect(await drawnText(ui)).toContain('Özet (progress.log) · satıra tıklayınca o olayın tam hali açılır')
-    await ui.press({ key: 'tab:flow' })
-    sm = await ui.find({ type: 'Button', key: 'tab:summary' })
-    fl = await ui.find({ type: 'Button', key: 'tab:flow' })
-    expect(sm?.text).toBe('Özet')
-    expect(sm?.props.variant).toBe('secondary')
-    expect(fl?.text).toBe('● Tüm akış')
-    expect(fl?.props.variant).toBe('primary')
-    expect(await drawnText(ui)).toContain('Tüm akış (transcript.jsonl) · her olay kırpılmadan, sırayla')
+    expect(await ui.find({ type: 'Button', key: 'tab:summary' })).toBeUndefined()
+    expect(await ui.find({ type: 'Button', key: 'tab:flow' })).toBeUndefined()
+    const hotkeys = (await ui.findAll({ type: 'Button' })).map((b: any) => b.props.hotkey).filter(Boolean)
+    expect(hotkeys).not.toContain('s')
+    expect(hotkeys).not.toContain('f')
+    expect((await ui.find({ type: 'Text', text: 'Flow' }))?.props.bold).toBe(true)
+    const d = await detailText(ui)
+    expect(countOf(d, 'Flow')).toBe(1)
+    expect(d).toContain('newest first')
     await ui.unmount()
   })
 
-  test('Summary lines: model text has a dim bullet, a command is green on exit 0, red on another exit, dim with none yet; a running run ends in a yellow streaming line', async ($, on) => {
+  test('the flow is newest first: latest above it, earlier (the older entries) below it', async ($, on) => {
+    const h = stubRuns(on, { a: flowFix() }, {
+      helper: (mode, args) => {
+        if (mode === 'back' && args[1] === '600000') return win(100_000, 600_000, 600_000, cxEvent(100_000, 'OLD-MSG'), cxEvent(200_000, 'MID-MSG'), cxEvent(300_000, 'NEW-MSG'))
+        if (mode === 'back') return win(0, 100_000, 600_000, cxEvent(0, 'ANCIENT-MSG'))
+        return ''
+      },
+    })
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    let t = await drawnText(ui)
+    expect(t.indexOf('NEW-MSG')).toBeGreaterThan(-1)
+    expect(t.indexOf('NEW-MSG')).toBeLessThan(t.indexOf('MID-MSG'))
+    expect(t.indexOf('MID-MSG')).toBeLessThan(t.indexOf('OLD-MSG'))
+    expect(t.indexOf('earlier')).toBeGreaterThan(t.indexOf('OLD-MSG')) // older entries are further down
+    await ui.press({ key: 'earlier' })
+    expect(helperCalls(h).at(-1)).toEqual(['back', T, '100000', '524288'])
+    t = await drawnText(ui)
+    expect(t).toContain('ANCIENT-MSG')
+    expect(t.indexOf('latest')).toBeGreaterThan(-1)
+    expect(t.indexOf('latest')).toBeLessThan(t.indexOf('ANCIENT-MSG')) // back to the newest end: up
+    await ui.unmount()
+  })
+
+  test('ds and ollama model output is drawn whole and wrapped, its thinking dim under ✻', async ($, on) => {
+    const say = `SAY-START ${Array.from({ length: 30 }, (_, i) => `sentence ${i} of a long answer`).join('\n')} SAY-END`
+    const think = `THINK-START ${'pondering '.repeat(60)}THINK-END`
+    const turn = [
+      rec(0, { type: 'assistant', message: { content: [{ type: 'thinking', thinking: think }] } }),
+      rec(10, { type: 'assistant', message: { content: [{ type: 'text', text: say }] } }),
+    ]
+    stubRuns(on, { a: flowFix({ meta: { ...RUN_A().meta, backend: 'deepseek' } }), b: flowFix({ meta: { ...RUN_A().meta, backend: 'ollama' } }) }, {
+      helper: mode => (mode === 'back' ? win(0, 9000, 9000, ...turn) : ''),
+    })
+    const ui = await open($)
+    for (const k of ['a', 'b']) {
+      await ui.press({ key: `run:${k}` })
+      const t = await drawnText(ui)
+      expect(t).toContain(say)
+      expect(t).toContain(`✻ ${think}`)
+      expect(t.indexOf('SAY-START')).toBeLessThan(t.indexOf('THINK-START')) // the text came after the thinking
+      const thought = (await ui.find({ key: 'note:0' }))?.children as any[]
+      expect(thought[0].props).toMatchObject({ dimColor: true, wrap: 'wrap' })
+      const said = ((await ui.find({ key: 'note:10' }))?.children as any[])[0].children as any[] // the markdown lines
+      expect(said[0].props.wrap).toBe('wrap')
+      expect(said[0].props.dimColor).toBeFalsy()
+      await ui.press({ key: 'back' })
+    }
+    await ui.unmount()
+  })
+
+  test('a ds turn as a real session writes it: final text on top, each thinking a dim ✻ entry, no empty ✻, no skip rows, no closing result', async ($, on) => {
+    let o = 0
+    const recs: { o: number; t: string }[] = []
+    const add = (ev: unknown) => { recs.push({ o, t: JSON.stringify(ev) }); o += 100 }
+    const say = (...content: unknown[]) => add({ type: 'assistant', message: { content } })
+    const frame = () => add({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'x' } } })
+    const call = (id: string, name: string, input: object, out: string) => {
+      say({ type: 'tool_use', id, name, input })
+      add({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: out }] } })
+    }
+    frame()
+    say({ type: 'thinking', thinking: 'THINK-1 look around' })
+    call('t1', 'Bash', { command: 'ls' }, 'a\nb')
+    call('t2', 'Read', { file_path: '/r/a.ts' }, 'A')
+    call('t3', 'Read', { file_path: '/r/b.ts' }, 'B')
+    frame()
+    say({ type: 'thinking', thinking: 'THINK-2 plan' }, { type: 'text', text: 'TEXT-1 I will edit' })
+    call('t4', 'Edit', { file_path: '/r/a.ts', old_string: 'x', new_string: 'y' }, 'ok')
+    say({ type: 'thinking', thinking: 'THINK-3 check' })
+    call('t5', 'Bash', { command: 'npm test' }, 'pass')
+    frame()
+    say({ type: 'thinking', thinking: '' }, { type: 'text', text: 'FINAL-TEXT done' })
+    add({ type: 'result', subtype: 'success', result: 'FINAL-TEXT done', usage: { input_tokens: 1 } })
+    const at = (i: number) => recs[i]!.o
+    stubRuns(on, { a: flowFix({ meta: { ...RUN_A().meta, backend: 'deepseek' } }) }, { helper: mode => (mode === 'back' ? win(0, 9000, 9000, ...recs) : '') })
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    // records: 0 frame, 1 THINK-1, 2-7 three calls + results, 8 frame, 9 THINK-2 + TEXT-1, 10-11 Edit, 12 THINK-3, 13-14 Bash, 15 frame, 16 final, 17 result
+    expect(await shapeOf(ui)).toEqual([
+      '▍ flow running…',
+      'FINAL-TEXT done',
+      '▸ Done · 1 step / ⌘ npm test  ✓',
+      '✻ THINK-3 check',
+      '▸ Done · 1 step / ✎ a.ts  ✓',
+      'TEXT-1 I will edit | ✻ THINK-2 plan',
+      '▸ Done · 3 steps / 📄 b.ts  ✓ / 📄 a.ts  ✓ / ⌘ ls  ✓',
+      '✻ THINK-1 look around',
+    ])
+    for (const i of [12, 9, 1]) expect(((await ui.find({ key: `note:${at(i)}` }))?.children as any[]).at(-1).props.dimColor).toBe(true)
+    const t = await drawnText(ui)
+    expect(t).not.toMatch(/✻\s*(\n|$)/) // no empty thinking row
+    expect(t).not.toContain('stream events skipped')
+    expect(countOf(t, '  ✓')).toBe(5) // the five tool results; the closing result draws nothing
+    expect(countOf(t, 'FINAL-TEXT done')).toBe(1)
+    await ui.unmount()
+  })
+
+  // ---- Flow steps, cluster by cluster, per backend family ----
+
+  const finishedFix = (backend: string) => flowFix({ meta: { ...RUN_A().meta, backend }, status: { state: 'done', events: 9 }, mtimeMs: NOW - 60_000 })
+  const liveFix = (backend: string) => flowFix({ meta: { ...RUN_A().meta, backend }, pid: ALIVE_PID })
+  const flowFor = (recs: unknown[]) => (mode: string) => (mode === 'back' ? win(0, 9000, 9000, ...recs.map((ev, i) => rec(i * 100, ev))) : '')
+  const bodyOf = async (ui: any, at: string) => {
+    await ui.press({ key: `line:${at}` })
+    const t = strings(await ui.find({ key: 'eventbox' })).join('\n')
+    await ui.press({ key: `line:${at}` })
+    return t
+  }
+
+  test('codex: commands and file changes cluster between messages; a finished run puts its last message on top as the Answer', async ($, on) => {
+    const item = (type: string, it: object) => ({ type, item: it })
+    const cmd = (id: string, command: string, out: string, exit_code: number) => item('item.completed', { id, type: 'command_execution', command, aggregated_output: out, exit_code })
+    stubRuns(on, { a: finishedFix('codex') }, {
+      helper: flowFor([
+        item('item.completed', { id: 'r1', type: 'reasoning', text: 'CX-THINK find the bug' }),
+        item('item.started', { id: 'c1', type: 'command_execution', command: 'pwd && ls' }),
+        cmd('c1', 'pwd && ls', 'calc.py', 0),
+        cmd('c2', 'cat calc.py', '', 0),
+        item('item.completed', { id: 'm1', type: 'agent_message', text: 'The bug is on line 2' }),
+        item('item.completed', { id: 'f1', type: 'file_change', changes: [{ kind: 'update', path: '/w/src/calc.py' }] }),
+        cmd('c3', 'python3 test_calc.py', 'FAIL', 1),
+        item('item.completed', { id: 'm2', type: 'agent_message', text: 'Fixed calc.py:2' }),
+      ]),
+    })
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    expect(await shapeOf(ui)).toEqual([
+      'Answer: Fixed calc.py:2',
+      '▸ Done · 2 steps / ⌘ python3 test_calc.py  ✗ / ✎ calc.py  ✓',
+      'The bug is on line 2',
+      '▸ Done · 2 steps / ⌘ cat calc.py  ✓ / ⌘ pwd && ls  ✓',
+      '✻ CX-THINK find the bug',
+    ])
+    expect(await bodyOf(ui, '300')).toContain('$ cat calc.py\n(no output)\n\nexit 0')
+    expect(await bodyOf(ui, '500')).toContain('update /w/src/calc.py') // the full path is in the body
+    await ui.unmount()
+  })
+
+  test('ds: a tool_use and its tool_result (same id) are one step; file tools show the file name, search its pattern, another tool its name; the newest cluster of a live run is Running', async ($, on) => {
+    const use = (id: string, name: string, input: object) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name, input }] } })
+    const done = (id: string, content: string) => ({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content }] } })
+    stubRuns(on, { a: liveFix('deepseek') }, {
+      helper: flowFor([
+        use('r1', 'Read', { file_path: '/w/src/calc.py' }),
+        done('r1', 'def add(a, b): return a - b'),
+        use('g1', 'Grep', { pattern: 'def add' }),
+        done('g1', 'calc.py:1'),
+        use('e1', 'Edit', { file_path: '/w/src/calc.py', old_string: 'a - b', new_string: 'a + b' }),
+        done('e1', 'ok'),
+        use('x1', 'TodoWrite', { todos: [{ content: 'fix add' }] }),
+        done('x1', 'ok'),
+        { type: 'assistant', message: { content: [{ type: 'text', text: 'Now testing' }] } },
+        use('b1', 'Bash', { command: 'python3 test_calc.py' }),
+      ]),
+    })
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    expect(await shapeOf(ui)).toEqual([
+      '▍ flow running…',
+      '▸ Running · 1 step / ⌘ python3 test_calc.py',
+      'Now testing',
+      '▸ Done · 4 steps / ⚙ TodoWrite todos[0].content: fix add  ✓ / ✎ calc.py  ✓ / 🔎 def add  ✓ / 📄 calc.py  ✓',
+    ])
+    expect(((await ui.find({ type: 'Button', key: 'line:900' }))?.children as any[])[1].props.dimColor).toBe(true) // still running
+    expect(await bodyOf(ui, '0')).toContain('file_path: /w/src/calc.py\ndef add(a, b): return a - b')
+    await ui.unmount()
+  })
+
+  test('copilot: tool.execution_start/complete pair by toolCallId, in any order; success:false is ✗ whatever the exit code', async ($, on) => {
+    const start = (id: string, toolName: string, args: object) => ({ type: 'tool.execution_start', data: { toolCallId: id, toolName, arguments: args } })
+    const complete = (id: string, success: boolean, content: string, exitCode?: number) => ({ type: 'tool.execution_complete', data: { toolCallId: id, success, result: { content }, ...(exitCode === undefined ? {} : { exitCode }) } })
+    stubRuns(on, { a: finishedFix('copilot') }, {
+      helper: flowFor([
+        start('c1', 'view', { path: '/w/calc.py' }),
+        start('c2', 'bash', { command: 'python3 -I test_calc.py' }),
+        complete('c2', false, 'ModuleNotFoundError', 0),
+        complete('c1', true, 'def add'),
+        start('c3', 'create', { path: '/w/worker-report.json' }),
+        complete('c3', true, ''),
+        { type: 'assistant.message', data: { content: 'All done' } },
+      ]),
+    })
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    expect(await shapeOf(ui)).toEqual([
+      'Answer: All done',
+      '▸ Done · 3 steps / ✎ worker-report.json  ✓ / ⌘ python3 -I test_calc.py  ✗ / 📄 calc.py  ✓',
+    ])
+    expect(await bodyOf(ui, '100')).toContain('$ python3 -I test_calc.py\nModuleNotFoundError')
+    await ui.unmount()
+  })
+
+  test('opencode: a tool_use part re-sent under one callID is one step: running, then ✓ or ✗; a live run\'s newest cluster is Running', async ($, on) => {
+    const part = (callID: string, tool: string, state: object) => ({ type: 'tool_use', part: { callID, tool, state } })
+    stubRuns(on, { a: liveFix('opencode') }, {
+      helper: flowFor([
+        { type: 'text', part: { text: 'Looking' } },
+        part('k1', 'read', { status: 'running', input: { filePath: '/w/a.ts' } }),
+        part('k1', 'read', { status: 'completed', input: { filePath: '/w/a.ts' }, output: 'A' }),
+        part('k2', 'bash', { status: 'running', input: { command: 'npm test' } }),
+        part('k2', 'bash', { status: 'error', input: { command: 'npm test' }, error: 'exit 1' }),
+        part('k3', 'glob', { status: 'running', input: { pattern: '**/*.ts' } }),
+      ]),
+    })
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    expect(await shapeOf(ui)).toEqual(['▍ flow running…', '▸ Running · 3 steps / 🔎 **/*.ts / ⌘ npm test  ✗ / 📄 a.ts  ✓', 'Looking'])
+    await ui.unmount()
+  })
+
+  test('antigravity: a PLANNER_RESPONSE\'s tool calls are answered by the next CODE_ACTIONs in turn; its thinking stays a ✻ note', async ($, on) => {
+    stubRuns(on, { a: finishedFix('antigravity') }, {
+      helper: flowFor([
+        { source: 'MODEL', type: 'PLANNER_RESPONSE', step_index: 1, thinking: 'AG-THINK', content: '', tool_calls: [{ name: 'view_file', args: { AbsolutePath: '/w/calc.py', toolSummary: 'read calc' } }, { name: 'run_command', args: { CommandLine: 'python3 t.py', toolSummary: 'run tests' } }] },
+        { source: 'MODEL', type: 'CODE_ACTION', step_index: 2, content: 'file text' },
+        { source: 'MODEL', type: 'CODE_ACTION', step_index: 3, content: '' },
+        { source: 'MODEL', type: 'PLANNER_RESPONSE', step_index: 4, content: 'AG done' },
+      ]),
+    })
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    expect(await shapeOf(ui)).toEqual(['Answer: AG done', '▸ Done · 2 steps / ⌘ python3 t.py  ✓ / 📄 calc.py  ✓', '✻ AG-THINK'])
+    expect(await bodyOf(ui, '0.1')).toContain('$ python3 t.py\n(no output)')
+    expect(await bodyOf(ui, '0')).toContain('file text')
+    await ui.unmount()
+  })
+
+  // ---- markdown in the answer and model notes ----
+
+  // The answer of a finished codex run whose last message is `text`: its markdown lines.
+  const mdOf = async ($: any, on: any, text: string) => {
+    stubRuns(on, { a: finishedFix('codex') }, { helper: flowFor([{ type: 'item.completed', item: { id: 'm', type: 'agent_message', text } }]) })
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    const lines = ((await ui.find({ key: 'answer' }))?.children[1].children[0].children ?? []) as any[]
+    return { ui, lines }
+  }
+
+  test('markdown: a #, ## or ### heading is one bold line without its #', async ($, on) => {
+    const { ui, lines } = await mdOf($, on, '# One\n## Two\n### Three\n#### Four')
+    expect(lines.slice(0, 3).map(l => [strings(l).join(''), l.props.bold])).toEqual([['One', true], ['Two', true], ['Three', true]])
+    expect(strings(lines[3]).join('')).toBe('#### Four') // past ###: plain
+    await ui.unmount()
+  })
+
+  test('markdown: **bold** is a bold run without its stars', async ($, on) => {
+    const { ui, lines } = await mdOf($, on, 'a **strong** word')
+    expect(strings(lines[0])).toEqual(['a ', 'strong', ' word'])
+    expect(lines[0].children[1].props.bold).toBe(true)
+    await ui.unmount()
+  })
+
+  test('markdown: `inline code` is cyan without its backticks', async ($, on) => {
+    const { ui, lines } = await mdOf($, on, 'run `npm test` now')
+    expect(strings(lines[0])).toEqual(['run ', 'npm test', ' now'])
+    expect(lines[0].children[1].props.color).toBe('cyan')
+    await ui.unmount()
+  })
+
+  test('markdown: a fenced block is one dim block, its lines verbatim with no inline markdown', async ($, on) => {
+    const { ui, lines } = await mdOf($, on, 'before\n```js\nconst a = **b**\n  `c`\n```\nafter')
+    expect(lines.map(l => strings(l).join(''))).toEqual(['before', 'const a = **b**\n  `c`', 'after'])
+    expect(lines[1].children[0].props.dimColor).toBe(true)
+    await ui.unmount()
+  })
+
+  test('markdown: - / * / 1. items get a • or number prefix and a hanging indent', async ($, on) => {
+    const { ui, lines } = await mdOf($, on, '- first\n* second\n12. twelfth\n  - nested')
+    expect(lines.map(l => (l.children as any[]).map(c => strings(c).join('')))).toEqual([['• ', 'first'], ['• ', 'second'], ['12. ', 'twelfth'], ['• ', 'nested']])
+    expect(lines.map(l => [l.props.flexDirection, l.props.paddingLeft])).toEqual([['row', 0], ['row', 0], ['row', 0], ['row', 2]])
+    expect(lines[0].children[1].props.wrap).toBe('wrap') // the item wraps beside its prefix
+    await ui.unmount()
+  })
+
+  test('markdown: a > quote is dim without its >', async ($, on) => {
+    const { ui, lines } = await mdOf($, on, '> quoted line')
+    expect(strings(lines[0]).join('')).toBe('quoted line')
+    expect(lines[0].props.dimColor).toBe(true)
+    await ui.unmount()
+  })
+
+  test('markdown: [text](url) is the text then the url dim; a plain URL stays as written', async ($, on) => {
+    const { ui, lines } = await mdOf($, on, 'see [the docs](https://x.dev/a) or https://y.dev/b')
+    expect(strings(lines[0])).toEqual(['see ', 'the docs', ' (https://x.dev/a)', ' or https://y.dev/b'])
+    expect(lines[0].children[2].props.dimColor).toBe(true)
+    await ui.unmount()
+  })
+
+  test('markdown: a mixed answer as a live run writes it', async ($, on) => {
+    const { ui, lines } = await mdOf($, on, '**Working directory:** `/tmp/x`\n\nVerification:\n- `python3 test_calc.py` → ok')
+    expect(lines.map(l => strings(l).join(''))).toEqual(['Working directory: /tmp/x', ' ', 'Verification:', '• python3 test_calc.py → ok'])
+    expect(lines[0].children.map((c: any) => (typeof c === 'string' ? c : c.props))).toEqual([{ bold: true }, ' ', { color: 'cyan' }])
+    expect(lines[3].children[1].children[0].props.color).toBe('cyan')
+    await ui.unmount()
+  })
+
+  test('markdown: a key inside or split by markers is still masked when drawn', { options: EXACT }, async ($, on) => {
+    const { ui } = await mdOf($, on, '**sk-ant-api03-AAAAAAAAAAAAAAAAAAAA** and `ghp_CCCCCCCCCCCCCCCCCCCCCCCC`\nsplit sk-abcd**efghijklmnopqrstu**vwxyz and dsk-EXACT-**1111**-2222')
+    const tree = JSON.stringify(await ui.drawn())
+    for (const b of ['AAAAAAAAAAAAAAAAAAAA', 'CCCCCCCCCCCCCCCCCCCCCCCC', 'efghijklmnopqrstu', '1111']) expect(tree).not.toContain(b)
+    expect(tree).toContain('••••')
+    await ui.unmount()
+  })
+
+  test('markdown: thinking stays plain and dim', async ($, on) => {
+    stubRuns(on, { a: liveFix('deepseek') }, { helper: flowFor([{ type: 'assistant', message: { content: [{ type: 'thinking', thinking: 'think **this**' }, { type: 'text', text: 'say **this**' }] } }]) })
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    const note = (await ui.find({ key: 'note:0' }))?.children as any[]
+    expect(strings(note[1])).toEqual(['✻ think **this**'])
+    expect(strings(note[0])).toEqual(['say ', 'this'])
+    await ui.unmount()
+  })
+
+  test('every string the runs pane draws is English: list, detail, flow, event box', async ($, on) => {
+    const TURKISH = /Özet|Tüm akış|SÜRE|olay|komut|son aktivite|bitti|geri|kapat|satır|tık|sürüyor|önce|açılır|kırpılmadan|sırayla|Tam metin|[çğışöüÇĞİŞÖÜ]/
+    stubRuns(on, { a: RUN_A({ pid: ALIVE_PID }), b: done('codex', 1000) }, {
+      helper: mode => (mode === 'back' ? win(0, 400, 400, cxEvent(0, 'hello'), rec(10, { type: 'item.completed', item: { id: 'c', type: 'command_execution', command: 'ls', aggregated_output: 'x', exit_code: 0 } })) : ''),
+    })
+    const ui = await open($)
+    expect(await drawnText(ui)).not.toMatch(TURKISH)
+    await ui.press({ key: 'run:a' })
+    let t = await drawnText(ui)
+    expect(t).toContain('last activity')
+    expect(t).toContain('▍ flow running…')
+    expect(t).not.toMatch(TURKISH)
+    await ui.press({ key: 'line:10' })
+    t = await drawnText(ui)
+    expect(t).toContain('Full text · event 2 · transcript.jsonl')
+    expect(t).not.toMatch(TURKISH)
+    await ui.press({ key: 'back' })
+    await ui.press({ key: 'run:b' })
+    t = await drawnText(ui)
+    expect(t).toContain('finished')
+    expect(t).not.toMatch(TURKISH)
+    await ui.unmount()
+  })
+
+  test('Flow steps: model text is plain, a command is ✓ green on exit 0, ✗ red on another exit, dim with no mark while it runs; a running run starts with a yellow streaming line', async ($, on) => {
+    const cmd = (o: number, command: string, exit?: number) => ({ o, t: JSON.stringify({ type: exit === undefined ? 'item.started' : 'item.completed', item: { id: `i${o}`, type: 'command_execution', command, aggregated_output: '', ...(exit === undefined ? {} : { exit_code: exit }) } }) })
     stubRuns(on, { a: RUN_A({ pid: ALIVE_PID }) }, {
-      helper: mode => (mode === 'back' ? win(0, 400, 400, { o: 0, t: '$ ok (exit 0)' }, { o: 10, t: '$ bad (exit 3)' }, { o: 20, t: '$ going' }, { o: 30, t: '· said it' }) : ''),
+      helper: mode => (mode === 'back' ? win(0, 400, 400, cmd(0, 'ok', 0), cmd(10, 'bad', 3), cmd(20, 'going'), cxEvent(30, 'said it')) : ''),
     })
     const ui = await open($)
     await ui.press({ key: 'run:a' })
     const textOf = async (o: number) => ((await ui.find({ type: 'Button', key: `line:${o}` }))?.children as any[]).map((c: any) => c.props)
-    expect((await textOf(0))[0].color).toBe('green')
-    expect((await textOf(10))[0].color).toBe('red')
-    expect((await textOf(20))[0]).toMatchObject({ dimColor: true })
-    expect((await textOf(20))[0].color).toBeUndefined()
-    expect((await textOf(30))[0].dimColor).toBe(true) // the bullet
-    expect((await textOf(30))[1].dimColor).toBeFalsy() // the text
-    const stream = await ui.find({ type: 'Text', text: '▍ akış sürüyor…' })
+    expect((await textOf(0))[2]).toMatchObject({ color: 'green' }) // [icon, title, mark]
+    expect((await textOf(10))[2]).toMatchObject({ color: 'red' })
+    expect((await textOf(20))[1]).toMatchObject({ dimColor: true })
+    expect((await textOf(20)).length).toBe(2) // no mark yet
+    const said = ((await ui.find({ key: 'note:30' }))?.children as any[])[0].children[0].props // the model text's line
+    expect(said.dimColor).toBeFalsy()
+    expect(said.color).toBeUndefined()
+    const stream = await ui.find({ type: 'Text', text: '▍ flow running…' })
     expect(stream?.props.color).toBe('yellow')
+    const t = await drawnText(ui)
+    expect(t.indexOf('▍ flow running…')).toBeLessThan(t.indexOf('said it')) // the newest end is on top
     await ui.unmount()
   })
 
@@ -1201,60 +1506,59 @@ describe('run monitor pane', () => {
     stubRuns(on, { a: done('codex', 1000, { progress: 400 }) }, { helper: mode => (mode === 'back' ? win(0, 400, 400, { o: 0, t: '· x' }) : '') })
     const ui = await open($)
     await ui.press({ key: 'run:a' })
-    expect(await ui.find({ type: 'Text', text: /akış sürüyor/ })).toBeUndefined()
-    expect((await detailText(ui))).toMatch(/son aktivite +\nbitti/)
+    expect(await ui.find({ type: 'Text', text: /flow running/ })).toBeUndefined()
+    expect((await detailText(ui))).toMatch(/last activity +\nfinished/)
     await ui.unmount()
   })
 
-  test('clicking a line opens the Tam metin box above the stream; its own geri closes just the box, b closes the box first and then the detail', async ($, on) => {
-    const evText = JSON.stringify({ type: 'item.completed', item: { type: 'command_execution', command: 'ls', exit_code: 0 } })
+  test('clicking a line expands its full text in place, under that line; a second click collapses it; b goes back to the run list', async ($, on) => {
+    const cmd = (o: number, command: string, out: string) => ({ o, t: JSON.stringify({ type: 'item.completed', item: { id: `i${o}`, type: 'command_execution', command, aggregated_output: out, exit_code: 0 } }) })
     stubRuns(on, { a: RUN_A() }, {
-      helper: (mode, args) => {
-        if (mode === 'back') return win(0, 400, 400, { o: 0, t: '$ ls (exit 0)' })
-        if (mode === 'event') return jl({ o: 7, l: evText.length }, { t: evText, next: null })
-        return ''
-      },
+      helper: mode => (mode === 'back' ? win(0, 400, 400, cmd(0, 'ls', 'OUT-LS'), cmd(10, 'pwd', 'OUT-PWD')) : ''),
     })
     const ui = await open($)
     await ui.press({ key: 'run:a' })
     expect(await ui.find({ key: 'eventbox' })).toBeUndefined()
+    expect(await drawnText(ui)).not.toContain('OUT-LS') // collapsed: one line
     await ui.press({ key: 'line:0' })
     const box = await ui.find({ key: 'eventbox' })
     expect(box?.props.borderStyle).toBeDefined()
     const bt = strings(box).join('\n')
-    expect(bt).toContain('Tam metin · transcript.jsonl')
-    expect(bt).toContain('$ ls')
+    expect(bt).toContain('Full text · event 1 · transcript.jsonl')
+    expect(bt).toContain('$ ls\nOUT-LS')
     expect(bt).toMatch(/exit 0/)
-    expect(await ui.find({ type: 'Button', key: 'line:0' })).toBeDefined() // the stream stays, below the box
-    await ui.press({ key: 'event-back' })
+    expect(strings(await ui.find({ key: 'blk:0' })).join('\n')).toContain('OUT-LS') // inside the clicked entry
+    expect(strings(await ui.find({ key: 'blk:10' })).join('\n')).not.toContain('OUT-LS')
+    await ui.press({ key: 'line:10' }) // another entry: one expanded at a time
+    expect(strings(await ui.find({ key: 'blk:10' })).join('\n')).toContain('OUT-PWD')
+    expect(await drawnText(ui)).not.toContain('OUT-LS')
+    await ui.press({ key: 'line:10' }) // the same entry again: collapsed
     expect(await ui.find({ key: 'eventbox' })).toBeUndefined()
     await ui.press({ key: 'line:0' })
     await ui.press({ key: 'back' })
-    expect(await ui.find({ key: 'eventbox' })).toBeUndefined()
-    expect(await ui.find({ key: 'detail' })).toBeDefined() // still in the detail
-    await ui.press({ key: 'back' })
-    expect(await ui.find({ key: 'detail' })).toBeUndefined() // now the list
+    expect(await ui.find({ key: 'detail' })).toBeUndefined() // b goes straight to the run list
     await ui.unmount()
   })
 
-  test('Full flow blocks are headed "model · olay N" in cyan or "komut · olay N · exit K" in yellow with the exit green or red, and a running run ends in the streaming line', async ($, on) => {
-    const cmd = (o: number, exit: number) => ({ o, t: JSON.stringify({ type: 'item.completed', item: { type: 'command_execution', command: 'x', aggregated_output: 'out', exit_code: exit } }) })
-    stubRuns(on, { a: flowFix({ pid: ALIVE_PID }) }, {
-      helper: mode => (mode === 'back' ? win(0, 600_000, 600_000, cxEvent(100, 'HELLO'), cmd(200, 0), cmd(300, 2)) : ''),
+  test('a tool call and its result are one step: ✓, or ✗ in red; the output (or "(no output)") is in its body', async ($, on) => {
+    const use = (o: number, id: string, command: string) => rec(o, { type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'Bash', input: { command } }] } })
+    const result = (o: number, id: string, content: string, is_error = false) => rec(o, { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content, is_error }] } })
+    stubRuns(on, { a: flowFix({ meta: { ...RUN_A().meta, backend: 'ollama' } }) }, {
+      helper: mode => (mode === 'back' ? win(0, 9000, 9000, use(0, 't1', 'pwd && ls'), result(10, 't1', ''), use(20, 't2', 'false\nsecond line'), result(30, 't2', 'boom: it broke\nmore', true)) : ''),
     })
     const ui = await open($)
     await ui.press({ key: 'run:a' })
-    await ui.press({ key: 'tab:flow' })
-    const t = await drawnText(ui)
-    expect(t).toMatch(/model\n · olay 1\n/)
-    expect(t).toMatch(/komut\n · olay 2\n · exit \n0\n/)
-    expect(t).toMatch(/komut\n · olay 3\n · exit \n2\n/)
-    const colored = async (text: string) => (await ui.findAll({ type: 'Text', text })).map((x: any) => x.props.color)
-    expect(await colored('model')).toEqual(['cyan'])
-    expect((await colored('komut')).filter(Boolean)).toEqual(['yellow', 'yellow'])
-    expect(await colored('0')).toContain('green')
-    expect(await colored('2')).toContain('red')
-    expect((await ui.find({ type: 'Text', text: '▍ akış sürüyor…' }))?.props.color).toBe('yellow')
+    const keys = (await ui.findAll({ type: 'Button' })).map((b: any) => String(b.key)).filter((k: string) => k.startsWith('line:'))
+    expect(keys).toEqual(['line:20', 'line:0']) // newest first; the results are folded into their calls
+    const kids = async (o: number) => (await ui.find({ type: 'Button', key: `line:${o}` }))?.children as any[]
+    expect(strings(await kids(0))).toEqual(['⌘ ', 'pwd && ls', '  ✓'])
+    expect(strings(await kids(20))).toEqual(['⌘ ', 'false second line', '  ✗'])
+    expect((await kids(20))[2].props.color).toBe('red')
+    expect((await kids(0))[1].props.wrap).toBe('truncate-end')
+    await ui.press({ key: 'line:20' })
+    expect(strings(await ui.find({ key: 'eventbox' })).join('\n')).toContain('$ false\nsecond line\nboom: it broke\nmore')
+    await ui.press({ key: 'line:0' })
+    expect(strings(await ui.find({ key: 'eventbox' })).join('\n')).toContain('$ pwd && ls\n(no output)')
     await ui.unmount()
   })
 
@@ -1296,33 +1600,37 @@ describe('run monitor pane', () => {
     await ui.unmount()
   })
 
-  test('olay N is the ordinal among the loaded events (hidden ones counted), not a byte offset, and it stays put while the front is trimmed', async ($, on) => {
+  test('event N is the ordinal among the loaded events (hidden ones counted), not a byte offset, and it stays put while the front is trimmed', async ($, on) => {
+    const cxCmd = (o: number, command: string) => rec(o, { type: 'item.completed', item: { id: `c${o}`, type: 'command_execution', command, aggregated_output: '', exit_code: 0 } })
     let size = 600_000
     const h = stubRuns(on, { a: flowFix() }, {
       helper: (mode, args) => {
-        if (mode === 'back') return win(60_000, 600_000, 600_000, rec(60_000, { type: 'thread.started', thread_id: 't' }), cxEvent(60_077, 'FIRST-MSG'), cxEvent(599_101, 'SECOND-MSG'))
-        if (mode === 'fwd') return win(600_000, size, size, cxEvent(600_100, 'THIRD-MSG'))
+        if (mode === 'back') return win(60_000, 600_000, 600_000, rec(60_000, { type: 'thread.started', thread_id: 't' }), cxCmd(60_077, 'FIRST-MSG'), cxCmd(599_101, 'SECOND-MSG'))
+        if (mode === 'fwd') return win(600_000, size, size, cxCmd(600_100, 'THIRD-MSG'))
         return ''
       },
     })
     const ui = await open($)
     await ui.press({ key: 'run:a' })
-    await ui.press({ key: 'tab:flow' })
-    let t = await drawnText(ui)
-    expect(t).toMatch(/model\n · olay 2\nFIRST-MSG/)
-    expect(t).toMatch(/model\n · olay 3\nSECOND-MSG/)
-    expect(t).not.toMatch(/olay (60077|599101)/)
+    const titleOf = async (o: number) => {
+      await ui.press({ key: `line:${o}` })
+      const box = strings(await ui.find({ key: 'eventbox' })).join('\n')
+      await ui.press({ key: `line:${o}` })
+      return box
+    }
+    expect(await titleOf(60_077)).toMatch(/event 2 · transcript\.jsonl\n[\s\S]*FIRST-MSG/)
+    expect(await titleOf(599_101)).toMatch(/event 3 · transcript\.jsonl\n[\s\S]*SECOND-MSG/)
+    expect(await drawnText(ui)).not.toMatch(/event (60077|599101)/)
     size = 600_200
     h.stats[T] = { size, mtimeMs: NOW }
     await h.tick()
-    t = await drawnText(ui)
-    expect(t).not.toContain('FIRST-MSG') // trimmed off the front
-    expect(t).toMatch(/model\n · olay 3\nSECOND-MSG/) // same number as before
-    expect(t).toMatch(/model\n · olay 4\nTHIRD-MSG/)
+    expect(await drawnText(ui)).not.toContain('FIRST-MSG') // trimmed off the front
+    expect(await titleOf(599_101)).toMatch(/event 3 · transcript\.jsonl\n[\s\S]*SECOND-MSG/) // same number as before
+    expect(await titleOf(600_100)).toMatch(/event 4 · transcript\.jsonl\n[\s\S]*THIRD-MSG/)
     await ui.unmount()
   })
 
-  test('Full flow renders content, not fields, for each backend; events without content are hidden; unknown shapes keep the field listing', async ($, on) => {
+  test('Flow renders content, not fields, for each backend; events without content are hidden; unknown shapes keep the field listing', async ($, on) => {
     const meta = (backend: string) => ({ meta: { ...RUN_A().meta, backend } })
     const cx = [
       rec(0, { type: 'thread.started', thread_id: 'THREAD-ID' }),
@@ -1364,37 +1672,33 @@ describe('run monitor pane', () => {
     const ui = await open($)
     const flowOf = async (k: string) => {
       await ui.press({ key: `run:${k}` })
-      await ui.press({ key: 'tab:flow' })
       const t = await drawnText(ui)
       await ui.press({ key: 'back' })
       return t
     }
     let t = await flowOf('a')
-    expect(t).toMatch(/komut\n · olay 4\n · exit \n1\n\$ npm test\nline1\nline2/)
-    expect(countOf(t, '$ npm test')).toBe(1) // the started record gave way to the finished one
+    expect(t).toContain('⌘ \nnpm test\n  ✗')
+    expect(countOf(t, 'npm test')).toBe(1) // the started record gave way to the finished one
     expect(t).toContain('CX-SAYS')
     expect(t).not.toMatch(/THREAD-ID|thread\.started|turn\.completed|item\.id|item\.type|type: item\./)
-    expect(t).toMatch(/weird\.event · olay 7\ntype: weird\.event\nfoo\.bar: 1/) // unknown shape: the field listing
+    expect(t).toContain('weird.event type: weird.event foo.bar: 1') // unknown shape: the field listing, on one line
     t = await flowOf('b')
     expect(t).toMatch(/DS-THINK/)
     expect(t).toContain('DS-SAYS')
-    expect(t).toMatch(/tool Bash · olay 3\nls -la/)
-    expect(t).toMatch(/result · olay 4\nDS-RESULT/)
+    expect(t).toContain('⌘ \nls -la\n  ✓') // the result folded into its call
     expect(t).not.toMatch(/SYS-INIT|tool_use_id|message\.content|toolu_1/)
     t = await flowOf('c')
     expect(t).toContain('CP-SAYS')
-    expect(t).toMatch(/tool view · olay 3\npath: \/a\/b\.ts/)
-    expect(t).toMatch(/result · olay 4\nCP-RESULT/)
+    expect(t).toContain('📄 \nb.ts\n  ✓') // the result folded into its call
     expect(t).not.toMatch(/CP-SESSION|toolCallId/)
     t = await flowOf('d')
     expect(t).toContain('OC-SAYS')
     expect(countOf(t, 'echo hi')).toBe(1)
-    expect(t).toMatch(/tool bash · olay 4\necho hi\nOC-OUTPUT/)
+    expect(t).toContain('⌘ \necho hi\n  ✓')
     expect(t).not.toMatch(/step-start|part\./)
     t = await flowOf('e')
     expect(t).toContain('AG-SAYS')
-    expect(t).toContain('▸ run_command AG-TOOL-SUMMARY')
-    expect(t).toMatch(/result · olay 3\nAG-OUTPUT/)
+    expect(t).toContain('⌘ \nAG-TOOL-SUMMARY\n  ✓') // the CODE_ACTION folded into its call
     expect(t).not.toMatch(/AG-PROMPT|step_index/)
     await ui.unmount()
   })
@@ -1408,74 +1712,43 @@ describe('run monitor pane', () => {
     })
     const ui = await open($)
     await ui.press({ key: 'run:a' })
-    await ui.press({ key: 'tab:flow' })
     await expectMasked(ui)
     await ui.press({ key: 'back' })
     await ui.press({ key: 'run:b' })
-    await ui.press({ key: 'tab:flow' })
     await expectMasked(ui)
     await ui.unmount()
   })
 
-  test('Summary: a command start line and its completion are one line (the completion, colored by exit); an unfinished start stays dim; clicking the merged line opens the event', async ($, on) => {
-    const h = stubRuns(on, { a: RUN_A({ pid: ALIVE_PID }) }, {
-      helper: (mode, args) => {
-        if (mode === 'back') return win(0, 400, 400, { o: 0, t: '$ a' }, { o: 10, t: '$ b' }, { o: 20, t: '$ a (exit 0)' }, { o: 30, t: '$ b (exit 2)' }, { o: 40, t: '$ c' }, { o: 50, t: '$ d' }, { o: 60, t: '$ d' }, { o: 70, t: '$ d (exit 0)' })
-        if (mode === 'event') return jl({ none: true })
-        return ''
-      },
-    })
-    const ui = await open($)
-    await ui.press({ key: 'run:a' })
-    const has = async (o: number) => (await ui.find({ type: 'Button', key: `line:${o}` })) !== undefined
-    const props = async (o: number) => ((await ui.find({ type: 'Button', key: `line:${o}` }))?.children as any[]).map((c: any) => c.props)[0]
-    expect([await has(0), await has(10)]).toEqual([false, false]) // starts of a and b gave way
-    expect((await props(20)).color).toBe('green')
-    expect((await props(30)).color).toBe('red')
-    expect(await has(40)).toBe(true) // c has not finished
-    expect((await props(40)).dimColor).toBe(true)
-    expect([await has(50), await has(60), await has(70)]).toEqual([false, true, true]) // FIFO: one d start remains
-    expect((await props(60)).dimColor).toBe(true)
-    const keys = (await ui.findAll({ type: 'Button' })).map((b: any) => String(b.key)).filter((k: string) => k.startsWith('line:'))
-    expect(keys).toEqual(['line:20', 'line:30', 'line:40', 'line:60', 'line:70'])
-    await ui.press({ key: 'line:20' })
-    expect(helperCalls(h).filter(c => c[0] === 'event')).toEqual([['event', `${ROOT}/a`, '20']])
-    await ui.unmount()
-  })
-
-  test('the Tam metin box sits directly under the view switch, above the stream, so it is on screen without scrolling', async ($, on) => {
-    const evText = JSON.stringify({ type: 'item.completed', item: { type: 'command_execution', command: 'ls', exit_code: 0 } })
+  test('the Full text box sits directly under its entry, between it and the next older one', async ($, on) => {
     const many = Array.from({ length: 40 }, (_, i) => ({ o: i * 10, t: `· STREAM-${i}` }))
     stubRuns(on, { a: RUN_A() }, {
-      helper: (mode, args) => (mode === 'back' ? win(0, 400, 400, ...many) : mode === 'event' ? jl({ o: 7, l: evText.length }, { t: evText, next: null }) : ''),
+      helper: (mode, args) => (mode === 'back' ? win(0, 400, 400, ...many) : ''),
     })
     const ui = await open($)
     await ui.press({ key: 'run:a' })
-    await ui.press({ key: 'line:390' })
+    await ui.press({ key: 'line:200' })
     const t = await drawnText(ui)
     const at = (s: string) => t.indexOf(s)
-    expect(at('Tam metin')).toBeGreaterThan(at('Tüm akış'))
-    expect(at('Tam metin')).toBeLessThan(at('Özet (progress.log)'))
-    expect(at('Tam metin')).toBeLessThan(at('STREAM-0'))
-    expect(at('Tam metin')).toBeLessThan(at('STREAM-39'))
+    expect(at('Full text')).toBeGreaterThan(at('Flow'))
+    expect(at('Full text')).toBeGreaterThan(at('STREAM-21')) // newer, above
+    expect(at('Full text')).toBeGreaterThan(at('STREAM-20')) // the entry itself
+    expect(at('Full text')).toBeLessThan(at('STREAM-19')) // older, below
     await ui.unmount()
   })
 
-  test('the verdict block comes after the stream, in Summary and in Full flow', async ($, on) => {
+  test('the verdict block comes after the stream', async ($, on) => {
     stubRuns(on, { a: done('codex', 1000, { progress: 400, transcript: 9000, verdict: { state: 'done', exitCode: 0, verify: { commands: ['t'], exitCode: 0, failedAt: null, tail: '' } } }) }, {
-      helper: (mode, args) => (mode === 'back' ? (args[0]!.endsWith('progress.log') ? win(0, 400, 400, { o: 0, t: '· SUMMARY-LINE' }) : win(0, 9000, 9000, cxEvent(0, 'FLOW-MSG'))) : ''),
+      helper: (mode, args) => (mode === 'back' ? win(0, 9000, 9000, cxEvent(0, 'FLOW-MSG')) : ''),
     })
     const ui = await open($)
     await ui.press({ key: 'run:a' })
-    let t = await drawnText(ui)
-        expect(t.indexOf('runner exit')).toBeGreaterThan(t.indexOf('SUMMARY-LINE'))
-    await ui.press({ key: 'tab:flow' })
-    t = await drawnText(ui)
+    const t = await drawnText(ui)
+    expect(t.indexOf('FLOW-MSG')).toBeGreaterThan(-1)
     expect(t.indexOf('runner exit')).toBeGreaterThan(t.indexOf('FLOW-MSG'))
     await ui.unmount()
   })
 
-  test('son aktivite says "verify sürüyor" while the worker is done, no verdict is there and the detached run is alive; "bitti" otherwise', async ($, on) => {
+  test('last activity says "verifying" while the worker is done, no verdict is there and the detached run is alive; "finished" otherwise', async ($, on) => {
     const h = stubRuns(on, { a: done('codex', 1000) })
     h.runDirs.push('run-1', 'run-0')
     h.files[`${ROOT}/.runs/run-1/session`] = 'a\n'
@@ -1483,23 +1756,23 @@ describe('run monitor pane', () => {
     h.files[`${ROOT}/.runs/run-0/session`] = 'someone-else\n'
     const ui = await open($)
     await ui.press({ key: 'run:a' })
-    expect(await detailText(ui)).toMatch(/son aktivite +\nverify sürüyor/)
+    expect(await detailText(ui)).toMatch(/last activity +\nverifying/)
     h.files[`${ROOT}/.runs/run-1/exit`] = '0\n' // the runner finished
     await h.tick()
-    expect(await detailText(ui)).toMatch(/son aktivite +\nbitti/)
+    expect(await detailText(ui)).toMatch(/last activity +\nfinished/)
     await ui.unmount()
   })
 
-  test('son aktivite falls back to "bitti" when kill -0 cannot be run, and the pane keeps working', async ($, on) => {
+  test('last activity falls back to "finished" when kill -0 cannot be run, and the pane keeps working', async ($, on) => {
     const h = stubRuns(on, { c: done('codex', 1000) })
     h.runDirs.push('run-3')
     h.files[`${ROOT}/.runs/run-3/session`] = 'c\n'
     h.files[`${ROOT}/.runs/run-3/pid`] = `${KILL_THROWS_PID}\n`
     const ui = await open($)
     await ui.press({ key: 'run:c' })
-    expect(await detailText(ui)).toMatch(/son aktivite +\nbitti/)
+    expect(await detailText(ui)).toMatch(/last activity +\nfinished/)
     await h.tick()
-    expect(await detailText(ui)).toMatch(/son aktivite +\nbitti/)
+    expect(await detailText(ui)).toMatch(/last activity +\nfinished/)
     await ui.unmount()
   })
 
@@ -1516,14 +1789,14 @@ describe('run monitor pane', () => {
     await ui.unmount()
   })
 
-  test('son aktivite stays "bitti" when the detached run\'s process is dead', async ($, on) => {
+  test('last activity stays "finished" when the detached run\'s process is dead', async ($, on) => {
     const h = stubRuns(on, { b: done('codex', 1000) })
     h.runDirs.push('run-2')
     h.files[`${ROOT}/.runs/run-2/session`] = 'b\n'
     h.files[`${ROOT}/.runs/run-2/pid`] = '999\n' // not alive
     const ui = await open($)
     await ui.press({ key: 'run:b' })
-    expect(await detailText(ui)).toMatch(/son aktivite +\nbitti/)
+    expect(await detailText(ui)).toMatch(/last activity +\nfinished/)
     await ui.unmount()
   })
 
@@ -1545,7 +1818,7 @@ describe('run monitor pane', () => {
       h.sync()
     }
 
-    test('the open run continues from the renamed dir: Summary and Full flow read the new files, no "session dir is gone"', async ($, on) => {
+    test('the open run continues from the renamed dir: the flow reads the new transcript, no "session dir is gone"', async ($, on) => {
       const h = stubRuns(on, renameFix(), { helper: renameHelper })
       const ui = await open($)
       await ui.press({ key: 'run:cx-run-1' })
@@ -1554,8 +1827,6 @@ describe('run monitor pane', () => {
       await h.tick()
       let t = await drawnText(ui)
       expect(t).not.toMatch(/session dir is gone/)
-      expect(t).toMatch(/progress from B/)
-      await ui.press({ key: 'tab:flow' })
       t = await drawnText(ui)
       expect(t).toMatch(/event from B/)
       expect(t).not.toMatch(/session dir is gone/)
@@ -1611,7 +1882,7 @@ describe('review fixes', () => {
   const T = `${ROOT}/a/transcript.jsonl`
   const cxEvent = (o: number, text: string) => ({ o, t: JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text } }) })
 
-  test('Full flow keeps reading while its window is behind the file, even when the size did not move since the last read', async ($, on) => {
+  test('the flow keeps reading while its window is behind the file, even when the size did not move since the last read', async ($, on) => {
     const h = stubRuns(on, { a: runFix() }, {
       helper: (mode, args) => {
         if (mode === 'back') return win(0, 600_000, 600_000, cxEvent(0, 'FIRST-MSG'))
@@ -1622,29 +1893,10 @@ describe('review fixes', () => {
     })
     const ui = await open($)
     await ui.press({ key: 'run:a' })
-    await ui.press({ key: 'tab:flow' })
     h.stats[T] = { size: 1_300_000, mtimeMs: NOW }
     await h.tick()
     expect(helperCalls(h).filter(c => c[0] === 'fwd').map(c => c[2])).toEqual(['600000', '1100000'])
     expect(await drawnText(ui)).toContain('TAIL-MSG')
-    await ui.unmount()
-  })
-
-  test('returning to Full flow catches up to the tail without waiting for a tick', async ($, on) => {
-    const h = stubRuns(on, { a: runFix() }, {
-      helper: (mode, args) => {
-        if (mode === 'back') return win(0, 600_000, 600_000, cxEvent(0, 'FIRST-MSG'))
-        if (mode === 'fwd') return win(600_000, 700_000, 700_000, cxEvent(650_000, 'LATE-MSG'))
-        return ''
-      },
-    })
-    const ui = await open($)
-    await ui.press({ key: 'run:a' })
-    await ui.press({ key: 'tab:flow' })
-    await ui.press({ key: 'tab:summary' })
-    h.stats[T] = { size: 700_000, mtimeMs: NOW }
-    await ui.press({ key: 'tab:flow' })
-    expect(await drawnText(ui)).toContain('LATE-MSG')
     await ui.unmount()
   })
 
@@ -1666,7 +1918,6 @@ describe('review fixes', () => {
     })
     const ui = await open($)
     await ui.press({ key: 'run:a' })
-    await ui.press({ key: 'tab:flow' })
     const tree = JSON.stringify(await ui.drawn())
     expect(tree).toContain('github_pat_')
     expect(tree).not.toContain(body.slice(0, 20))
@@ -1674,20 +1925,15 @@ describe('review fixes', () => {
     await ui.unmount()
   })
 
-  test('a key cut by a truncation limit is masked: a clipped progress.log line and the head of a big record (#209)', { options: { deepseek_api_key: 'dsk-EXACT-1111-2222-3333' } }, async ($, on) => {
+  test('a key cut by a truncation limit is masked: the head of a big record (#209)', { options: { deepseek_api_key: 'dsk-EXACT-1111-2222-3333' } }, async ($, on) => {
     stubRuns(on, { a: runFix() }, {
       helper: (mode, args) => {
         if (mode !== 'back') return ''
-        if (String(args[0]).endsWith('progress.log')) return win(0, 400, 400, { o: 0, t: '· the key is dsk-EXACT-1111-2…' })
         return win(0, 9000, 9000, { o: 5, l: 300_000, big: true, t: '{"a":"tail sk-abcdefghijklmnopqrstuvwxyz0123' })
       },
     })
     const ui = await open($)
     await ui.press({ key: 'run:a' })
-    const summary = await drawnText(ui)
-    expect(summary).toContain('the key is ••••…')
-    expect(summary).not.toContain('EXACT')
-    await ui.press({ key: 'tab:flow' })
     const flow = await drawnText(ui)
     expect(flow).not.toContain('abcdefghij')
     await ui.unmount()
