@@ -177,6 +177,12 @@ else
 fi
 SESSION_DIR="$SESSIONS_ROOT/$SESSION_ID"
 mkdir -p "$SESSION_DIR"
+# Worker questions and messages (7.3.0): only when the runner exported CLI_DISPATCH_ASK_DIR.
+ASK_MCP="$(ask_config cp)"
+if [ -n "$ASK_MCP" ]; then
+  CP_ARGS+=(--additional-mcp-config "$ASK_MCP")
+  link_ask_dir "$SESSION_DIR"
+fi
 # Persist THIS wrapper's own pid ($$, NOT $CP_PID) as the worker-tree root. 
 # /cli-dispatch:kill must kill the ENTIRE headless writer tree — the parser's `cat|node`
 # background job AND the copilot background job, both direct children of $$. A stale

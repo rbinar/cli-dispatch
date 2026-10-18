@@ -248,6 +248,12 @@ OUTFILE="$(mktemp -t cx-out-XXXXXX)"
 # mktemp creates the file 0600; the EXIT trap removes it.
 PROMPT_TMP="$(mktemp -t cx-prompt-XXXXXX)"
 printf '%s' "$PROMPT" > "$PROMPT_TMP"
+# Worker questions and messages (7.3.0): only when the runner exported CLI_DISPATCH_ASK_DIR.
+# One `-c key=value` per line of the server config; both arg lists below take them.
+ASK_ARGS=()
+while IFS= read -r _l; do
+  [ -z "$_l" ] || ASK_ARGS+=(-c "$_l")
+done <<< "$(ask_config cx)"
 RESUME=0
 if [ -n "$RESUME_ID" ]; then
   RESUME=1
@@ -256,6 +262,7 @@ if [ -n "$RESUME_ID" ]; then
   [ -n "$EFFORT" ] && CODEX_ARGS+=(-c "model_reasoning_effort=$EFFORT")
   CODEX_ARGS+=(-c "sandbox_mode=$SANDBOX_MODE")
   [ "${#NET_ARGS[@]}" -gt 0 ] && CODEX_ARGS+=("${NET_ARGS[@]}")
+  [ "${#ASK_ARGS[@]}" -gt 0 ] && CODEX_ARGS+=("${ASK_ARGS[@]}")
   [ "${#PASS_ARGS[@]}" -gt 0 ] && CODEX_ARGS+=("${PASS_ARGS[@]}")
   CODEX_ARGS+=("$RESUME_ID" -)
 else
@@ -263,6 +270,7 @@ else
   [ -n "$MODEL" ] && CODEX_ARGS+=(-m "$MODEL")
   [ -n "$EFFORT" ] && CODEX_ARGS+=(-c "model_reasoning_effort=$EFFORT")
   [ "${#NET_ARGS[@]}" -gt 0 ] && CODEX_ARGS+=("${NET_ARGS[@]}")
+  [ "${#ASK_ARGS[@]}" -gt 0 ] && CODEX_ARGS+=("${ASK_ARGS[@]}")
   [ "${#PASS_ARGS[@]}" -gt 0 ] && CODEX_ARGS+=("${PASS_ARGS[@]}")
   CODEX_ARGS+=(-)
 fi
@@ -279,6 +287,7 @@ else
 fi
 SESSION_DIR="$SESSIONS_ROOT/$SESSION_ID"
 mkdir -p "$SESSION_DIR"
+[ "${#ASK_ARGS[@]}" -eq 0 ] || link_ask_dir "$SESSION_DIR"
 # Persist THIS wrapper's own pid ($$, NOT CODEX_PID) as the worker-tree root. 
 # /cli-dispatch:kill needs to kill the ENTIRE headless writer tree — not just codex: the
 # parser (cx-stream-parse.mjs, running in a process substitution below) and this wrapper are

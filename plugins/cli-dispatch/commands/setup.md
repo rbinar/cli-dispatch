@@ -72,6 +72,15 @@ Follow these steps:
    - This approval is **per-run only**: always ask again in a fresh setup run, even if the
      user approved auto-install previously — never treat a prior session's answer as standing
      consent.
+   - **If Antigravity is among the picks**, ask one more `AskUserQuestion` (header: "AG questions")
+     before step 4, with two options, Yes and No. Say that Yes adds one MCP server entry
+     (`cli_dispatch_ask`) to `~/.gemini/config/mcp_config.json`, so an Antigravity worker can ask
+     the user a question mid-run (Antigravity has no per-run MCP flag); that this file may be shared
+     with the Antigravity IDE, which will then list an `ask_user` tool that only answers "not
+     available"; and that No leaves the file untouched and Antigravity runs without questions.
+     Leave neither option marked `recommended: true`. On Yes, append `--ag-ask-mcp` to the step 4
+     bash command (`--backends` must include `antigravity`); on No, pass nothing. Ask again in
+     every setup run, and never pass the flag on a guess.
 
 4. **Run the installer** with the chosen backends — depending on the OS.
 

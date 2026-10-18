@@ -255,7 +255,7 @@ describe('dispatch key hand-off', () => {
     const h = stubDispatch(on)
     await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
     await $.tool.call({ tool: 'mcp__cli-dispatch__dispatch', backend: 'cx', cwd: '/repo', task: 't' } as any)
-    expect(h.calls.find(c => c.argv[0] === 'cli-dispatch-run')!.env).toEqual({ CLAUDE_CODE_SESSION_ID: SID })
+    expect(h.calls.find(c => c.argv[0] === 'cli-dispatch-run')!.env).toEqual({ CLAUDE_CODE_SESSION_ID: SID, CLI_DISPATCH_ASK: '1' })
   })
 })
 
@@ -408,12 +408,12 @@ type RunFix = {
 // Everything is in memory and every touch is recorded: the kit has no fs, clock or process beneath.
 // The clock is the kit's mock.clock, which moves only when `tick()` advances it, so a clock.every callback
 // runs once per advance, like the engine's timer, and a cancelled timer never runs again.
-function stubRuns(on: any, runs: Record<string, RunFix>, opts: { worker?: boolean; unplaced?: boolean; helper?: (mode: string, args: string[]) => string } = {}) {
+function stubRuns(on: any, runs: Record<string, RunFix>, opts: { worker?: boolean; unplaced?: boolean; helper?: (mode: string, args: string[]) => string; ask?: (argv: string[], stdin: string) => { exitCode: number; stdout: string } } = {}) {
   const files: Record<string, string> = {}
   const runDirs: string[] = [] // names under <root>/.runs
   const stats: Record<string, { size: number; mtimeMs: number }> = {}
   let activity = 0
-  const rec = { reads: [] as string[], stats: [] as string[], lists: 0, runs: [] as string[][], registered: [] as any[], opened: [] as any[], writes: [] as string[], toasts: [] as string[], statuses: [] as string[] }
+  const rec = { reads: [] as string[], stats: [] as string[], lists: 0, runs: [] as string[][], registered: [] as any[], opened: [] as any[], writes: [] as string[], toasts: [] as string[], statuses: [] as string[], exists: [] as string[] }
   const h = {
     runs,
     files,
@@ -421,6 +421,7 @@ function stubRuns(on: any, runs: Record<string, RunFix>, opts: { worker?: boolea
     stats,
     rec,
     helper: opts.helper ?? (() => ''),
+    askCalls: [] as { argv: string[]; stdin: string }[], // 7.3.0: calls to the message helper
     // Move the clock on `ms`: every timer due runs, then wait until the work it started has settled.
     async tick(ms = 1000) {
       await clock.advance(ms)
@@ -471,7 +472,10 @@ function stubRuns(on: any, runs: Record<string, RunFix>, opts: { worker?: boolea
     rec.writes.push(e.path)
     return { value: undefined }
   })
-  on('fs.exists', ($: any, e: any) => ({ value: e.path === ROOT || e.path in files }))
+  on('fs.exists', ($: any, e: any) => {
+    rec.exists.push(e.path)
+    return { value: e.path === ROOT || e.path in files }
+  })
   on('fs.list', ($: any, e: any) => {
     if (e.path === `${ROOT}/.runs`) return { value: runDirs.map(name => ({ name, kind: 'dir', size: 0, mtimeMs: 0, isLink: false })) }
     rec.lists++
@@ -497,6 +501,10 @@ function stubRuns(on: any, runs: Record<string, RunFix>, opts: { worker?: boolea
     if (e.argv[0] === 'kill') return killAnswer(e.argv[2])
     if (e.argv[0] === 'ps') return psAnswer(e.argv[4])
     if (e.argv[0] === 'node' && HELPER.test(e.argv[1])) return { value: { exitCode: 0, stdout: h.helper(e.argv[2], e.argv.slice(3)), stderr: '' } }
+    if (e.argv[0] === 'node' && /\/scripts\/cli-dispatch-ask\.mjs$/.test(e.argv[1])) {
+      h.askCalls.push({ argv: [...e.argv], stdin: e.init?.stdin })
+      return { value: { stderr: '', ...(opts.ask ?? (() => ({ exitCode: 1, stdout: '' })))(e.argv, e.init?.stdin) } }
+    }
     return { value: { exitCode: 1, stdout: '', stderr: '' } }
   })
   return h
@@ -2014,7 +2022,7 @@ describe('ollama backend', () => {
     const run = h.calls.find(c => c.argv[0] === 'cli-dispatch-run')!
     expect(run.argv.slice(0, 4)).toEqual(['cli-dispatch-run', '--detach', '--backend', 'ol'])
     expect(run.argv.filter((a, i) => run.argv[i - 1] === '--model')).toEqual(['qwen3.8:27b'])
-    expect(run.env).toEqual({ CLAUDE_CODE_SESSION_ID: SID })
+    expect(run.env).toEqual({ CLAUDE_CODE_SESSION_ID: SID, CLI_DISPATCH_ASK: '1' })
   })
 
   test('the bad-backend message lists ol', async ($, on) => {
@@ -2048,6 +2056,331 @@ describe('ollama backend', () => {
     await ui.press({ key: 'install:ol' })
     await ui.press({ key: 'install' })
     expect(h.calls.find(c => c.argv[0] === 'bash' && c.argv[1]!.endsWith('install.sh'))!.argv).toEqual(['bash', '/resolved/root/scripts/install.sh', '--backends', 'ollama', '--non-interactive'])
+    await ui.unmount()
+  })
+})
+
+// ---- 7.3.0: worker questions and messages --------------------------------------------------------
+
+const ASK_ROOT = `${ROOT}/.ask`
+const ASKER_PID = 5555 // a live cli-dispatch-ask server
+const QID1 = '11111111-1111-1111-1111-111111111111'
+const QID2 = '22222222-2222-2222-2222-222222222222'
+const ASK_SCRIPT = /\/scripts\/cli-dispatch-ask\.mjs$/
+
+type AskDir = { ctx?: object; qs?: Record<string, object> }
+// An answer is the label/text, an Error (the dialog was dismissed), or a promise the test settles later.
+type AskAnswer = string | Error | Promise<string>
+function stubAsk(on: any, dirs: Record<string, AskDir>, opts: { worker?: boolean; answers?: AskAnswer[]; helperExit?: number } = {}) {
+  const rec = { lists: [] as string[], asks: [] as any[], runs: [] as { argv: string[]; init: any }[], toasts: [] as string[] }
+  const answers = [...(opts.answers ?? [])]
+  const clock = mock.clock(on, { now: NOW })
+  on('env.get', ($: any, e: any) => ({ value: e.name === 'CLI_DISPATCH_SESSIONS_DIR' ? ROOT : e.name === 'CLI_DISPATCH_WORKER' && opts.worker ? '1' : undefined }))
+  on('session.start', ($: any, e: any) => ({ cwd: e.cwd }))
+  on('session.id', () => ({ value: SID }))
+  on('tool.register', ($: any, e: any) => ({ value: { tool: `mcp__cli-dispatch__${e.name}` } }))
+  on('command.register', ($: any, e: any) => ({ value: { command: e.name } }))
+  on('ui.toast', ($: any, e: any) => {
+    rec.toasts.push(e.text)
+    return { value: undefined }
+  })
+  on('fs.exists', () => ({ value: false }))
+  on('fs.stat', () => {
+    throw new Error('ENOENT')
+  })
+  on('fs.list', ($: any, e: any) => {
+    rec.lists.push(e.path)
+    const ent = (name: string, kind = 'dir') => ({ name, kind, size: 0, mtimeMs: 0, isLink: false })
+    if (e.path === ASK_ROOT) return { value: [...Object.keys(dirs).map(n => ent(n)), ent('junk.txt', 'file')] }
+    const d = Object.entries(dirs).find(([n]) => e.path === `${ASK_ROOT}/${n}`)
+    if (d) return { value: Object.keys(d[1].qs ?? {}).map(q => ent(`${q}.q.json`, 'file')) }
+    return { value: [] }
+  })
+  on('fs.read', ($: any, e: any) => {
+    for (const [n, d] of Object.entries(dirs)) {
+      if (e.path === `${ASK_ROOT}/${n}/context.json` && d.ctx) return { value: JSON.stringify(d.ctx) }
+      for (const [q, body] of Object.entries(d.qs ?? {})) if (e.path === `${ASK_ROOT}/${n}/${q}.q.json`) return { value: JSON.stringify(body) }
+    }
+    throw new Error(`ENOENT ${e.path}`)
+  })
+  on('process.run', ($: any, e: any) => {
+    rec.runs.push({ argv: [...e.argv], init: e.init })
+    if (e.argv[0] === 'kill') return { value: { exitCode: [String(ASKER_PID), ALIVE_PID].includes(e.argv[2]) ? 0 : 1, stdout: '', stderr: '' } }
+    if (e.argv[0] === 'ps') return { value: { exitCode: 0, stdout: e.argv[4] === String(ASKER_PID) ? 'node /x/cli-dispatch-ask.mjs /d\n' : 'node /p/cx-stream-parse.mjs\n', stderr: '' } }
+    if (e.argv[0] === 'node' && ASK_SCRIPT.test(e.argv[1])) return { value: { exitCode: opts.helperExit ?? 0, stdout: '', stderr: '' } }
+    return { value: { exitCode: 1, stdout: '', stderr: '' } }
+  })
+  on('tool.call', async ($: any, e: any) => {
+    if (e.tool !== 'AskUserQuestion') return { result: 'ran' }
+    rec.asks.push(e)
+    const a = await answers.shift()
+    if (a instanceof Error) throw a
+    return { result: { answers: { [e.questions[0].question]: a } } }
+  })
+  return { rec, tick: async (ms = 4000) => { await clock.advance(ms); await clock.settle() } }
+}
+
+const goodCtx = { v: 1, parentSessionId: SID, backend: 'cx', repo: '/home/u/repo' }
+const askQ = (over: object = {}) => ({ v: 1, id: QID1, question: 'Which port?', options: ['8080', '9090'], askedAt: '2026-10-18T10:00:00.000Z', pid: ASKER_PID, ...over })
+const answerCalls = (h: ReturnType<typeof stubAsk>) => h.rec.runs.filter(r => r.argv[0] === 'node' && ASK_SCRIPT.test(r.argv[1]!))
+const startSession = ($: any) => $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+
+describe('dispatch turns questions on', () => {
+  test('CLI_DISPATCH_ASK=1 rides on the run call only, never on the wait calls', async ($, on) => {
+    const h = stubDispatch(on, { waits: [124, 0] })
+    await startSession($)
+    await $.tool.call({ tool: 'mcp__cli-dispatch__dispatch', backend: 'cx', cwd: '/repo', task: 't' } as any)
+    expect(h.calls.find(c => c.argv[0] === 'cli-dispatch-run')!.env?.CLI_DISPATCH_ASK).toBe('1')
+    const waits = h.calls.filter(c => c.argv[0] === 'cli-dispatch-wait')
+    expect(waits.length).toBe(2)
+    for (const w of waits) expect(w.env?.CLI_DISPATCH_ASK).toBeUndefined()
+  })
+})
+
+describe('worker questions: the dialog', () => {
+  test('a pending question of this session is asked once, with context, header and the two options', async ($, on) => {
+    const h = stubAsk(on, { 'run-abc': { ctx: goodCtx, qs: { [QID1]: askQ() } } }, { answers: ['8080'] })
+    await startSession($)
+    await h.tick()
+    expect(h.rec.asks.length).toBe(1)
+    const q = h.rec.asks[0].questions[0]
+    expect(q.question).toContain('cx worker · repo asks:')
+    expect(q.question).toContain('Which port?')
+    expect(q.header).toBe('[CD] cx')
+    expect(q.options.map((o: any) => o.label)).toEqual(['8080', '9090'])
+  })
+
+  test('a secret in the question or an option is drawn masked', async ($, on) => {
+    const key = `sk-${'A'.repeat(20)}`
+    const h = stubAsk(on, { 'run-abc': { ctx: goodCtx, qs: { [QID1]: askQ({ question: `Use ${key}?`, options: [`${key}x`, 'no'] }) } } }, { answers: ['no'] })
+    await startSession($)
+    await h.tick()
+    const q = h.rec.asks[0].questions[0]
+    expect(q.question).toContain('sk-••••')
+    expect(JSON.stringify(h.rec.asks)).not.toContain(key)
+    expect(q.options[0].label).toContain('sk-••••')
+  })
+
+  test('another session, a dead server and a recycled pid are never asked', async ($, on) => {
+    const h = stubAsk(on, {
+      'run-other': { ctx: { ...goodCtx, parentSessionId: 'someone-else' }, qs: { [QID1]: askQ() } },
+      'run-dead': { ctx: goodCtx, qs: { [QID2]: askQ({ id: QID2, pid: 9999 }) } },
+      'run-recycled': { ctx: goodCtx, qs: { '33333333-3333-3333-3333-333333333333': askQ({ pid: Number(ALIVE_PID) }) } },
+      'run-noctx': { qs: { '44444444-4444-4444-4444-444444444444': askQ() } },
+    })
+    await startSession($)
+    await h.tick()
+    expect(h.rec.asks).toEqual([])
+    expect(answerCalls(h)).toEqual([])
+  })
+
+  test('the answer goes to the helper on stdin and nowhere on argv', async ($, on) => {
+    const h = stubAsk(on, { 'run-abc': { ctx: goodCtx, qs: { [QID1]: askQ() } } }, { answers: ['42'] })
+    await startSession($)
+    await h.tick()
+    const [call] = answerCalls(h)
+    expect(call!.argv.slice(2)).toEqual(['answer', `${ASK_ROOT}/run-abc`, QID1])
+    expect(call!.argv[1]).toMatch(ASK_SCRIPT)
+    expect(JSON.parse(call!.init.stdin)).toEqual({ v: 1, answer: '42' })
+    expect(JSON.stringify(call!.argv)).not.toContain('42')
+  })
+
+  test('a dismissed dialog and an empty answer both count as skipped', async ($, on) => {
+    const h = stubAsk(
+      on,
+      { 'run-abc': { ctx: goodCtx, qs: { [QID1]: askQ(), [QID2]: askQ({ id: QID2, askedAt: '2026-10-18T10:00:01.000Z' }) } } },
+      { answers: [new Error('dismissed'), ''] },
+    )
+    await startSession($)
+    await h.tick()
+    await h.tick()
+    expect(answerCalls(h).map(c => JSON.parse(c.init.stdin))).toEqual([{ v: 1, skipped: true }, { v: 1, skipped: true }])
+  })
+
+  test('helper exit 3 says the worker stopped waiting', async ($, on) => {
+    const h = stubAsk(on, { 'run-abc': { ctx: goodCtx, qs: { [QID1]: askQ() } } }, { answers: ['8080'], helperExit: 3 })
+    await startSession($)
+    await h.tick()
+    expect(h.rec.toasts.join('\n')).toMatch(/stopped waiting/)
+  })
+
+  test('any other helper failure says the answer could not be delivered', async ($, on) => {
+    const h = stubAsk(on, { 'run-abc': { ctx: goodCtx, qs: { [QID1]: askQ() } } }, { answers: ['8080'], helperExit: 1 })
+    await startSession($)
+    await h.tick()
+    expect(h.rec.toasts.join('\n')).toMatch(/could not deliver the answer \(exit 1\)/)
+  })
+
+  test('the same question is not asked again on the next tick', async ($, on) => {
+    const h = stubAsk(on, { 'run-abc': { ctx: goodCtx, qs: { [QID1]: askQ() } } }, { answers: ['8080', '8080'] })
+    await startSession($)
+    await h.tick()
+    await h.tick()
+    await h.tick()
+    expect(h.rec.asks.length).toBe(1)
+  })
+
+  test('two pending questions: the second dialog starts only after the first resolves, oldest first', async ($, on) => {
+    let first!: (v: string) => void
+    const pending = new Promise<string>(r => { first = r })
+    const h = stubAsk(
+      on,
+      { 'run-abc': { ctx: goodCtx, qs: { [QID2]: askQ({ id: QID2, question: 'Second?', askedAt: '2026-10-18T10:00:05.000Z' }), [QID1]: askQ({ question: 'First?' }) } } },
+      { answers: [pending, 'x'] },
+    )
+    await startSession($)
+    await h.tick()
+    await h.tick()
+    expect(h.rec.asks.map(a => a.questions[0].question)).toEqual(['cx worker · repo asks: First?'])
+    first('8080')
+    await h.tick()
+    await h.tick()
+    expect(h.rec.asks.map(a => a.questions[0].question)).toEqual(['cx worker · repo asks: First?', 'cx worker · repo asks: Second?'])
+  })
+
+  test('inside a worker the .ask directory is never listed', async ($, on) => {
+    const h = stubAsk(on, { 'run-abc': { ctx: goodCtx, qs: { [QID1]: askQ() } } }, { worker: true })
+    await startSession($)
+    await h.tick()
+    await h.tick()
+    expect(h.rec.lists.filter(p => p.includes('.ask'))).toEqual([])
+    expect(h.rec.asks).toEqual([])
+  })
+})
+
+describe('messages to a running worker: the runs pane', () => {
+  const ASK_DIR = `${ROOT}/.ask/run-abc`
+  const MSG_ID = '1760000000000-abcdef12'
+  const live = (extra: Partial<RunFix> = {}): RunFix => ({ ...running('codex'), ...extra })
+  // A run whose stream linked its ask dir, as stream-utils.sh's link_ask_dir does.
+  const linked = (h: ReturnType<typeof stubRuns>, content = `${ASK_DIR}\n`) => {
+    h.files[`${ROOT}/a/ask-dir`] = content
+    h.files[ASK_DIR] = ''
+  }
+  const sentOk = { ask: () => ({ exitCode: 0, stdout: `${MSG_ID}\n` }) }
+  const inputOf = async (ui: any) => ui.find({ type: 'Input', key: 'msg' })
+
+  test('a live run of this session with a valid ask-dir offers the input, with the not-for-secrets placeholder', async ($, on) => {
+    const h = stubRuns(on, { a: live() }, sentOk)
+    linked(h)
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    const input = await inputOf(ui)
+    expect(input).toBeDefined()
+    expect(input.props.placeholder).toMatch(/not for secrets/)
+    await ui.unmount()
+  })
+
+  const noInput: [string, Record<string, RunFix>, string | null][] = [
+    ['a finished run', { a: done('codex', 60_000) }, `${ASK_DIR}\n`],
+    ['no ask-dir file', { a: live() }, null],
+    ['a foreign ask-dir', { a: live() }, '/tmp/x\n'],
+    ['an ask dir outside .ask', { a: live() }, `${ROOT}/run-abc\n`],
+  ]
+  for (const [name, fix, content] of noInput) {
+    test(`no input for ${name}`, async ($, on) => {
+      const h = stubRuns(on, fix, sentOk)
+      if (content !== null) linked(h, content)
+      const ui = await open($)
+      await ui.press({ key: 'run:a' })
+      expect(await inputOf(ui)).toBeUndefined()
+      await ui.unmount()
+    })
+  }
+
+  test('no input on a mobile surface', async ($, on) => {
+    const h = stubRuns(on, { a: live() }, sentOk)
+    linked(h)
+    await $.session.start({ surface: 'mobile', isInteractive: true, cwd: '/work' } as any)
+    await $.command.run({ command: 'cli-dispatch-runs' } as any)
+    const ui = await $.ui.mount({ plugin: 'cli-dispatch', surface: 'mobile', component: 'Pane', requestId: 'cli-dispatch-runs', props: RUNS_PANE })
+    await ui.press({ key: 'run:a' })
+    expect(await inputOf(ui)).toBeUndefined()
+    await ui.unmount()
+  })
+
+  test('submitting sends the text to the helper on stdin only, and lists it as sent', async ($, on) => {
+    const h = stubRuns(on, { a: live() }, sentOk)
+    linked(h)
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    await ui.input({ key: 'msg', text: ' stop after step 3 ' })
+    expect(h.askCalls.length).toBe(1)
+    expect(h.askCalls[0]!.argv.slice(2)).toEqual(['message', ASK_DIR])
+    expect(JSON.stringify(h.askCalls[0]!.argv)).not.toContain('stop after')
+    expect(JSON.parse(h.askCalls[0]!.stdin)).toEqual({ v: 1, text: 'stop after step 3' })
+    expect(await detailText(ui)).toContain('→ stop after step 3  sent')
+    await ui.unmount()
+  })
+
+  test('the next tick shows delivered once read-<id>.json exists', async ($, on) => {
+    const h = stubRuns(on, { a: live() }, sentOk)
+    linked(h)
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    await ui.input({ key: 'msg', text: 'stop after step 3' })
+    await h.tick()
+    expect(await detailText(ui)).toContain('→ stop after step 3  sent')
+    h.files[`${ASK_DIR}/read-${MSG_ID}.json`] = '{}'
+    await h.tick()
+    expect(await detailText(ui)).toContain('→ stop after step 3  delivered')
+    await ui.unmount()
+  })
+
+  test('with the ask dir gone and no read file the message shows not delivered (run ended)', async ($, on) => {
+    const h = stubRuns(on, { a: live() }, sentOk)
+    linked(h)
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    await ui.input({ key: 'msg', text: 'too late' })
+    delete h.files[ASK_DIR]
+    await h.tick()
+    expect(await detailText(ui)).toContain('→ too late  not delivered (run ended)')
+    await ui.unmount()
+  })
+
+  test('helper exit 3 toasts that the run has ended and lists nothing', async ($, on) => {
+    const h = stubRuns(on, { a: live() }, { ask: () => ({ exitCode: 3, stdout: '' }) })
+    linked(h)
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    await ui.input({ key: 'msg', text: 'hello' })
+    expect(h.rec.toasts.join('\n')).toMatch(/run has ended/)
+    expect(await detailText(ui)).not.toContain('→ hello')
+    await ui.unmount()
+  })
+
+  test('the message text is never written to plugin state', async ($, on) => {
+    const stateWrites: unknown[] = []
+    on('state.set', ($: any, e: any, next: any) => {
+      stateWrites.push(e.value)
+      return next(e)
+    })
+    const h = stubRuns(on, { a: live() }, sentOk)
+    linked(h)
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    await ui.input({ key: 'msg', text: 'a private instruction' })
+    await h.tick()
+    expect(h.askCalls.length).toBe(1)
+    expect(JSON.stringify(stateWrites)).not.toContain('a private instruction')
+    await ui.unmount()
+  })
+
+  test('with no pane open no delivery check is made; with the pane open there is one (canary)', async ($, on) => {
+    const h = stubRuns(on, { a: live() }, sentOk)
+    linked(h)
+    const exists = h.rec.exists
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    await h.tick(4000)
+    await h.tick(4000)
+    expect(exists.filter(p => /\/read-/.test(p))).toEqual([])
+    await $.command.run({ command: 'cli-dispatch-runs' } as any)
+    const ui = await mountRuns($)
+    await ui.press({ key: 'run:a' })
+    await ui.input({ key: 'msg', text: 'x' })
+    await h.tick()
+    expect(exists.filter(p => /\/read-/.test(p)).length).toBeGreaterThan(0)
     await ui.unmount()
   })
 })

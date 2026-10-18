@@ -209,6 +209,14 @@ bookkeeping at the newest `CLI_DISPATCH_MAX_SESSIONS` finished runs (an `exit` f
 a run without one is never touched (6.1.4). Ordering
 matters at the call site: prune AFTER creating your own dir, or you become your own target.
 
+**The ask dir (7.3.0).** A run started by the mod's `dispatch` tool (`CLI_DISPATCH_ASK=1`, plus a
+session id) gets `<sessions-root>/.ask/run-XXXXXX/` from `cli-dispatch-run`: `context.json`, per-question
+`<qid>.q.json`/`.a.json`, `msg-*`/`read-*.json` messages and `log.jsonl`, all 0600 in a 0700 dir, removed by the
+runner's EXIT trap. `scripts/cli-dispatch-ask.mjs` is the MCP server (`ask_user`, `check_messages`) and the
+`answer`/`message`/`config`/`install-ag` helpers; each stream wires it only when `CLI_DISPATCH_ASK_DIR` is set and
+writes `<session-dir>/ask-dir` for the runs pane. Question/answer/message text never goes on argv. Spec:
+`.specs/dev/sdd/worker-questions.md`.
+
 **Session-dir root resolution** is duplicated (by design, not accidentally) across
 `watch.md`, `resume.md`, `kill.md`, `run.md`, `cli-dispatch-sessions.sh` (what `sessions.md`
 pre-executes), `cli-dispatch-clean`, and `cli-dispatch-wait` as the same shell snippet: `CLI_DISPATCH_SESSIONS_DIR` env override →
@@ -302,6 +310,9 @@ One deliberate exception to the pairing rule: `cli-dispatch-statusline.sh` has *
 twin**. It is not an installed binary — a combining `~/.claude/hooks/statusline.sh` wrapper
 globs it straight out of the plugin cache — and statusline wrappers of that shape are a
 bash-only convention. Both `docs/statusline.md` and `docs/tr/statusline.md` say so explicitly ("Unix (bash) statusline setups only").
+
+A third: worker questions and messages (7.3.0) are Unix-only. The `.ps1` runner and streams never create an
+ask dir, so do not "restore parity" without porting the whole feature.
 
 A second deliberate behavior-parity exception: the `CLAUDE_DS_BACKEND` switch (Ollama, 7.1.0) exists
 only in bash `claude-ds-stream`/`ds-agent`/`ds-stream-parse.mjs`. Nothing on Windows sets it — there

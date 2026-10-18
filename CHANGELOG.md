@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [7.3.0] — 2026-10-18
+
+### Added
+
+- **Worker questions and messages for `dispatch`-tool runs.** A worker on any backend (ds, ol, cx, cp, oc; ag after a one-time consent) can call `ask_user(question, options?)` through a small MCP server, `cli-dispatch-ask.mjs`. The mod draws the question as Claude Code's own dialog (`[CD] <backend>`, repo, the worker's 2-4 options, free text) and returns the answer to the same running worker process. Esc or an empty answer means "proceed with your best assumption"; no answer within 300 s tells the worker to stop and not guess, and `verdict.json` gains `questions: {asked, unanswered}` with one summary line (answer later with `/cli-dispatch:resume`). The engine's types cannot tell "Chat about this" from an answer, so it is not treated specially.
+- **Messages to a running worker.** In `/cli-dispatch-runs`, a live run of this session has a message input (not for secrets: other plugins can read what is typed); the worker reads it with the non-blocking `check_messages()` tool after each shell command or file edit, and the pane shows `sent`, `delivered` or `not delivered (run ended)`. Delivery is at least once. Cost is real: checks add turns.
+- `install.sh --ag-ask-mcp` (asked in `/cli-dispatch:setup`) adds one `cli_dispatch_ask` entry to `~/.gemini/config/mcp_config.json` (an empty file, as a fresh agy install leaves it, counts as `{}`; invalid JSON is left untouched with a warning). Re-run `/cli-dispatch:setup` after upgrading to install the server.
+
+### Notes
+
+- Only runs started by the `dispatch` tool get this (`CLI_DISPATCH_ASK=1`); `CLI_DISPATCH_NO_ASK=1` turns it off. Native Windows is unchanged.
+
 ## [7.2.0] — 2026-10-18
 
 ### Changed

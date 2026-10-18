@@ -13,3 +13,5 @@ Native Windows'ta (WSL kullanmıyorsan) PowerShell varyantları devreye girer. *
 - Geri kalan her şey — generation, sessions, watch, kill, gain — native PowerShell'dir ve bash gerektirmez.
 
 Gereksinim: PowerShell 5.1+ veya pwsh 7+; DeepSeek için `claude`, Codex için `codex` PATH'te.
+
+Worker soruları ve mesajları (`ask_user`, `check_messages`, 7.3.0) yalnız Unix'tedir (macOS/Linux/WSL): PowerShell runner ve stream'leri bunları hiç açmaz.

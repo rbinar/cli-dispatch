@@ -29,7 +29,7 @@ if [ -d "$_OLD_LIBEXEC" ] && [ "$_OLD_LIBEXEC" != "$LIBEXEC_DIR" ]; then
 fi
 
 # ---- which worker backends to install --------------------------------------
-# Usage: install.sh [--backends deepseek,antigravity,codex,opencode,copilot,ollama | all] [--install-missing]
+# Usage: install.sh [--backends deepseek,antigravity,codex,opencode,copilot,ollama | all] [--install-missing] [--ag-ask-mcp]
 # Default: deepseek (preserves prior behavior). Other backends are opt-in.
 # --install-missing: best-effort auto-install any missing backend CLI (via npm/brew/
 # curl, whichever applies) before falling back to the manual-install warning. Never
@@ -37,12 +37,14 @@ fi
 BACKENDS="deepseek"
 INSTALL_MISSING=0
 NONINTERACTIVE=0
+AG_ASK_MCP=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --backends) BACKENDS="${2:-}"; shift 2;;
     --backends=*) BACKENDS="${1#*=}"; shift;;
     --install-missing) INSTALL_MISSING=1; shift;;
     --non-interactive) NONINTERACTIVE=1; shift;;
+    --ag-ask-mcp) AG_ASK_MCP=1; shift;;
     *) echo "install.sh: unknown arg '$1'" >&2; exit 1;;
   esac
 done
@@ -275,6 +277,8 @@ echo "Installed gain reporter -> cli-dispatch-gain (engine -> $LIBEXEC_DIR/gain-
 echo "▶ cli-dispatch-run…"
 install -m 0755 "$SCRIPT_DIR/cli-dispatch-run" "$BIN_DIR/cli-dispatch-run"
 install -m 0644 "$SCRIPT_DIR/verdict-writer.mjs" "$LIBEXEC_DIR/verdict-writer.mjs"
+# Worker questions and messages (7.3.0): the MCP server and its helpers, for every backend.
+install -m 0644 "$SCRIPT_DIR/cli-dispatch-ask.mjs" "$LIBEXEC_DIR/cli-dispatch-ask.mjs"
 # The detached run's summary.txt is rendered by this script; it is not a binary (no PATH entry),
 # the installed runner finds it in the libexec dir like verdict-writer.mjs.
 install -m 0755 "$SCRIPT_DIR/cli-dispatch-run-summary.sh" "$LIBEXEC_DIR/cli-dispatch-run-summary.sh"
@@ -474,6 +478,13 @@ case ":$PATH:" in
     fi
     ;;
 esac
+
+# Antigravity has no per-run MCP flag, so its question server is one entry in agy's global config.
+# Only with --ag-ask-mcp (the user consented in /cli-dispatch:setup); never from --non-interactive alone.
+if [ "$AG_ASK_MCP" -eq 1 ] && [ "$WANT_AG" -eq 1 ]; then
+  node "$LIBEXEC_DIR/cli-dispatch-ask.mjs" install-ag "$HOME/.gemini/config/mcp_config.json" \
+    || echo "WARNING: could not add the Antigravity question server to ~/.gemini/config/mcp_config.json"
+fi
 
 # Write installed version stamp so status.md can detect staleness.
 _PLUGIN_JSON="$SCRIPT_DIR/../.claude-plugin/plugin.json"

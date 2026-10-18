@@ -47,3 +47,5 @@ git worktree prune         # clean up dead records
 ```
 
 > Note: if you manually added `~/.local/bin` to PATH for this plugin and use nothing else from it, you can also remove that line from your shell profile (`~/.zshrc`, `~/.bashrc`, etc.). To revoke the API key on your DeepSeek account, delete it at https://platform.deepseek.com/api_keys.
+
+> Antigravity worker questions (7.3.0): if you allowed them in `/cli-dispatch:setup`, delete the `cli_dispatch_ask` entry (the `ask_user` server) from `~/.gemini/config/mcp_config.json`.

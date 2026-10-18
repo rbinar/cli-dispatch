@@ -265,6 +265,17 @@ fi
 if [ "${#PASS_ARGS[@]}" -gt 0 ]; then
   CLAUDE_ARGS+=("${PASS_ARGS[@]}")
 fi
+# Worker questions and messages (7.3.0): only when the runner exported CLI_DISPATCH_ASK_DIR.
+# --read-only keeps its "zero MCP servers" guarantee.
+ASK_WIRED=0
+if [ "$READ_ONLY" -eq 0 ]; then
+  ASK_MCP="$(ask_config ds)"
+  if [ -n "$ASK_MCP" ]; then
+    CLAUDE_ARGS+=(--mcp-config "$ASK_MCP")
+    ASK_WIRED=1
+    link_ask_dir "$SESSION_DIR"
+  fi
+fi
 
 # Optional safety net: a background watchdog kills the worker if it exceeds the overall
 # runtime cap or stalls with no new output. Activity = transcript.jsonl mtime (the parser
@@ -278,7 +289,7 @@ rm -f "$PIDFILE" "$TIMEOUT_FILE"
 # (sourced above).
 
 watchdog() {
-  local start now pid m
+  local start now pid m a
   start=$(date +%s)
   for _ in $(seq 1 80); do [ -s "$PIDFILE" ] && break; sleep 0.25; done
   pid="$(cat "$PIDFILE" 2>/dev/null || true)"
@@ -292,6 +303,7 @@ watchdog() {
     fi
     if [ "$IDLE_TIMEOUT" -gt 0 ]; then
       m="$(mtime_of "$SESSION_DIR/transcript.jsonl")"; m="${m:-$start}"
+      a="$(ask_activity)"; [ -z "$a" ] || [ "$a" -le "$m" ] || m="$a"
       if [ "$((now - m))" -ge "$IDLE_TIMEOUT" ]; then
         printf 'idle %ss' "$IDLE_TIMEOUT" > "$TIMEOUT_FILE"
         kill_worker "$pid"; return 0
@@ -358,6 +370,7 @@ set +e
   export ANTHROPIC_DEFAULT_HAIKU_MODEL="$FLASH"
   export CLAUDE_CODE_SUBAGENT_MODEL="$FLASH"
   if [ -n "${THINK:-}" ]; then export MAX_THINKING_TOKENS="$THINK"; fi
+  if [ "$ASK_WIRED" -eq 1 ]; then export MCP_TOOL_TIMEOUT=600000; fi
   if [ "$DS_BACKEND" = ollama ]; then
     # Tell Claude Code the server's real window so it compacts before Ollama truncates.
     export CLAUDE_CODE_MAX_CONTEXT_TOKENS="$OL_MAX_CTX"

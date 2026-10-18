@@ -18,6 +18,45 @@ export CLI_DISPATCH_WORKER=1
 # BSD-first chain captured that junk on Linux and the watchdog died on the arithmetic.
 mtime_of() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null; }
 
+# ---- worker questions and messages (7.3.0) ----
+# All of this is inert unless cli-dispatch-run exported CLI_DISPATCH_ASK_DIR (a dispatch-tool run).
+
+# The MCP server script: the installed copy, else the one next to the streams.
+ask_server() {
+  local cand
+  for cand in "$HOME/.local/share/cli-dispatch/cli-dispatch-ask.mjs" "$(dirname "${BASH_SOURCE[0]}")/cli-dispatch-ask.mjs"; do
+    if [ -f "$cand" ]; then printf '%s' "$cand"; return 0; fi
+  done
+  return 1
+}
+
+# ask_config <backend> — what the stream adds to wire the server, one item per line. Prints
+# nothing when questions are off for this run (or the server script cannot be found).
+ask_config() {
+  local srv
+  [ -n "${CLI_DISPATCH_ASK_DIR:-}" ] && [ -d "$CLI_DISPATCH_ASK_DIR" ] || return 0
+  srv="$(ask_server)" || return 0
+  node "$srv" config "$1" "$CLI_DISPATCH_ASK_DIR" || true
+}
+
+# link_ask_dir <session-dir> — lets the runs pane find this run's ask dir.
+link_ask_dir() {
+  if [ -n "${CLI_DISPATCH_ASK_DIR:-}" ] && [ -d "$CLI_DISPATCH_ASK_DIR" ]; then
+    ( umask 077; printf '%s\n' "$CLI_DISPATCH_ASK_DIR" > "$1/ask-dir" )
+  fi
+}
+
+# ask_activity — now while a question is pending, else the ask dir's mtime; nothing without a dir.
+# The idle watchdogs take the newer of this and the transcript's mtime.
+ask_activity() {
+  local d="${CLI_DISPATCH_ASK_DIR:-}" f
+  [ -n "$d" ] && [ -d "$d" ] || return 0
+  for f in "$d"/*.q.json; do
+    if [ -e "$f" ]; then date +%s; return 0; fi
+  done
+  mtime_of "$d"
+}
+
 # ---- process-tree helpers ----
 
 # Recursive kill by PID (leaves-first).
@@ -58,7 +97,7 @@ kill_worker() {
 #   - SESSION_DIR: The session directory containing the timeout marker destination.
 #   - TRANSCRIPT: Path to the transcript file whose mtime indicates last activity.
 watchdog() {
-  local start now m target
+  local start now m a target
   target="$PIPE_PID"
   start=$(date +%s)
   while kill -0 "$PIPE_PID" 2>/dev/null; do
@@ -72,6 +111,7 @@ watchdog() {
     fi
     if [ "$IDLE_TIMEOUT" -gt 0 ] && [ -f "$TRANSCRIPT" ]; then
       m="$(mtime_of "$TRANSCRIPT")"; m="${m:-$start}"
+      a="$(ask_activity)"; [ -z "$a" ] || [ "$a" -le "$m" ] || m="$a"
       if [ "$((now - m))" -ge "$IDLE_TIMEOUT" ]; then
         echo "idle ${IDLE_TIMEOUT}s" > "$SESSION_DIR/.timeout"
         [ -n "$target" ] && kill_worker "$target"

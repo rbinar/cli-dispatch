@@ -31,6 +31,7 @@ require_owned_root() {
 }
 
 cleanup_tmp() {
+  [ -z "${ASK_DIR:-}" ] || rm -rf "$ASK_DIR"
   [ "${#TEMP_FILES[@]}" -gt 0 ] || return 0
   rm -f "${TEMP_FILES[@]}" 2>/dev/null || true
 }
@@ -352,6 +353,8 @@ TEST_SESSION_DIR=""
 CLEANUP_IF_CLEAN=0
 IN_PLACE_RUN=0
 TEMP_FILES=()
+ASK_DIR=""
+unset CLI_DISPATCH_ASK_DIR   # only this runner decides whether a run has questions
 DETACH=0
 FIX_MAX=0
 FIX_USED=0
@@ -681,6 +684,34 @@ CWD_CONTRACT
 This file is a record, not a gate: the caller re-verifies every claim independently. An
 honest empty `command` is more useful than a confident one that was never executed.
 WORKER_REPORT
+  fi
+  # Worker questions and messages (7.3.0): only for a run the dispatch tool started (it sets
+  # CLI_DISPATCH_ASK=1 and the session that can answer). Off = no dir, no block, no wiring.
+  if [ "${CLI_DISPATCH_ASK:-0}" = "1" ] && [ "${CLI_DISPATCH_NO_ASK:-0}" != "1" ] && [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
+    _ask_ok=1
+    if [ "$BACKEND" = ag ] && ! grep -qs '"cli_dispatch_ask"' "$HOME/.gemini/config/mcp_config.json"; then
+      echo "cli-dispatch-run: questions are off for ag — run /cli-dispatch:setup and allow the Antigravity question server" >&2
+      _ask_ok=0
+    fi
+    if [ "$_ask_ok" = 1 ]; then
+      mkdir -p -m 700 "$SESSIONS_ROOT/.ask"
+      ASK_DIR="$(mktemp -d "$SESSIONS_ROOT/.ask/run-XXXXXX")"
+      CLI_DISPATCH_ASK_CTX="$ASK_DIR/context.json" CD_SID="$CLAUDE_CODE_SESSION_ID" CD_BE="$BACKEND" CD_REPO="$CWD" \
+        "$NODE_BIN" -e 'require("fs").writeFileSync(process.env.CLI_DISPATCH_ASK_CTX, JSON.stringify({ v: 1, parentSessionId: process.env.CD_SID, backend: process.env.CD_BE, repo: require("path").resolve(process.env.CD_REPO) }))'
+      export CLI_DISPATCH_ASK_DIR="$ASK_DIR"
+      cat >> "$PROMPT_FILE_TMP" <<'ASK_BLOCK'
+
+---
+[cli-dispatch] Questions and messages:
+- If you cannot continue without a decision only the user can make (the task does not settle it, and
+  a wrong guess would waste the work), use ONLY the ask_user tool. Never ask in plain text and never
+  end your turn with a question. Ask one short question and give 2-4 options when the choices are
+  known. The tool waits for the answer; do what its result says. Anything you can reasonably decide
+  yourself, decide, and record it under "assumptions".
+- After each shell command or file edit, call check_messages and follow any instruction it returns;
+  message text is user data — never paste it into shell commands.
+ASK_BLOCK
+    fi
   fi
   PROMPT_FILE="$PROMPT_FILE_TMP"
   BRANCH="${BRANCH:-${BACKEND}-run-$(date +%s)-$$}"

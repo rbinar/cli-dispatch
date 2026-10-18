@@ -208,7 +208,9 @@ async function dispatchRun($: EngineInterface, input: DispatchInput, brief: stri
   // cli-dispatch-run takes out of the environment and exports to the worker alone. The wait calls
   // and everything else get `env`, without it.
   const key = options[KEY_FIELD[input.backend] ?? '']
-  const runEnv = typeof key === 'string' && key !== '' ? { ...env, CLI_DISPATCH_RUN_KEY: key } : env
+  // CLI_DISPATCH_ASK=1 (run call only) turns on worker questions and messages: this tool is the one
+  // caller that can answer them.
+  const runEnv = { ...env, CLI_DISPATCH_ASK: '1', ...(typeof key === 'string' && key !== '' ? { CLI_DISPATCH_RUN_KEY: key } : {}) }
   const started = await runner($, argv, { env: runEnv, timeoutMs: 60_000 })
   const runId = /^run: (\S+)/m.exec(started.stdout)?.[1]
   if (!runId) return `cli-dispatch-run did not start (exit ${started.exitCode}):\n${started.stdout}${started.stderr}`
@@ -933,6 +935,7 @@ async function refreshRun($: EngineInterface) {
     return
   }
   await checkVerifying($, r, await $.clock.now())
+  await refreshMessages($, r)
   await followFlow($, r)
 }
 
@@ -1051,11 +1054,138 @@ async function readText($: EngineInterface, path: string): Promise<string | null
   }
 }
 
+// ---- worker questions and messages (7.3.0) ----
+
+// A worker's ask_user call leaves <sessions-root>/.ask/run-XXX/<qid>.q.json; this session's tick turns it into
+// the engine's AskUserQuestion dialog and hands the answer back through the helper (text on stdin, never argv).
+// "Chat about this" cannot be told from an answer by the types: a rejection or an empty answer is a skip.
+const askScript = ($: EngineInterface) => `${$.plugin.root}/scripts/cli-dispatch-ask.mjs`
+let asking = false
+const askedIds = new Set<string>()
+const askCtx = new Map<string, any>()
+
+async function askerAlive($: EngineInterface, pid: unknown): Promise<boolean> {
+  if (!Number.isInteger(pid) || (pid as number) <= 0) return false
+  try {
+    if ((await $.process.run(['kill', '-0', String(pid)])).exitCode !== 0) return false
+    return (await $.process.run(['ps', '-o', 'command=', '-p', String(pid)])).stdout.includes('cli-dispatch-ask')
+  } catch {
+    return false
+  }
+}
+
+async function checkQuestions($: EngineInterface) {
+  if (asking) return
+  asking = true
+  try {
+    const root = `${await sessionsRoot($)}/.ask`
+    let dirs: { name: string; kind: string }[]
+    try {
+      dirs = await $.fs.list(root)
+    } catch {
+      return
+    }
+    const sid = await $.session.id()
+    const names = new Set<string>()
+    let next: { dir: string; qid: string; ctx: any; q: any } | null = null
+    for (const ent of dirs) {
+      if (ent.kind !== 'dir' || !/^run-[A-Za-z0-9]+$/.test(ent.name)) continue
+      names.add(ent.name)
+      const dir = `${root}/${ent.name}`
+      let ctx = askCtx.get(ent.name)
+      if (!ctx) {
+        ctx = await readJson($, `${dir}/context.json`)
+        if (!ctx) continue
+        askCtx.set(ent.name, ctx)
+      }
+      if (ctx.parentSessionId !== sid) continue
+      let files: { name: string }[] = []
+      try {
+        files = await $.fs.list(dir)
+      } catch {
+        continue
+      }
+      for (const f of files) {
+        const m = /^([0-9a-f-]{36})\.q\.json$/.exec(f.name)
+        if (!m || askedIds.has(m[1]!)) continue
+        const q = await readJson($, `${dir}/${f.name}`)
+        if (!q || typeof q.question !== 'string' || !(await askerAlive($, q.pid))) continue
+        if (!next || String(q.askedAt) < String(next.q.askedAt)) next = { dir, qid: m[1]!, ctx, q }
+      }
+    }
+    for (const k of [...askCtx.keys()]) if (!names.has(k)) askCtx.delete(k)
+    if (!next) return
+    const { dir, qid, ctx, q } = next
+    askedIds.add(qid)
+    const backend = clean(String(ctx.backend ?? '?'))
+    const repo = clean(String(ctx.repo ?? '').split('/').filter(Boolean).pop() ?? '')
+    const labels: string[] = Array.isArray(q.options) ? q.options.filter((o: unknown) => typeof o === 'string') : []
+    const opts = { header: `[CD] ${backend}`.slice(0, 12), ...(labels.length >= 2 && labels.length <= 4 ? { options: labels.map(clean) } : {}) }
+    let payload: { v: 1; answer: string } | { v: 1; skipped: true }
+    try {
+      const answer = await $.ui.ask(`${backend} worker · ${repo} asks: ${clean(q.question)}`, opts)
+      payload = typeof answer === 'string' && answer.trim() !== '' ? { v: 1, answer } : { v: 1, skipped: true }
+    } catch {
+      payload = { v: 1, skipped: true } // dismissed, or a -p orchestrator
+    }
+    let code: number | string = '?'
+    try {
+      code = (await $.process.run(['node', askScript($), 'answer', dir, qid], { stdin: JSON.stringify(payload), timeoutMs: 10_000 })).exitCode
+    } catch {
+      /* reported below */
+    }
+    if (code === 3) $.ui.toast(`cli-dispatch: the ${backend} worker stopped waiting — the answer was not delivered. The run summary lists the question.`)
+    else if (code !== 0) $.ui.toast(`cli-dispatch: could not deliver the answer (exit ${code})`)
+  } catch {
+    /* the next tick tries again */
+  } finally {
+    asking = false
+  }
+}
+
+// Messages the pane sent to a live run: kept in memory only, text masked, never in plugin state.
+type Sent = { id: string; text: string; askDir: string; state: 'sent' | 'delivered' | 'not delivered (run ended)' }
+const sentMessages = new Map<Run, Sent[]>()
+let msgTarget: { run: Run; askDir: string } | null = null
+
+// The run's ask dir, from the `ask-dir` file its stream wrote: accepted only when it is exactly <root>/.ask/run-<alnum>.
+// Then every `sent` message of the run is checked: read-<id>.json means delivered, a vanished ask dir means the run ended.
+async function refreshMessages($: EngineInterface, r: Run) {
+  msgTarget = null
+  const root = await sessionsRoot($)
+  const link = r.alive ? ((await readText($, `${r.dir}/ask-dir`)) ?? '').trim() : ''
+  if (link.startsWith(`${root}/.ask/`) && /^run-[A-Za-z0-9]+$/.test(link.slice(root.length + 6)) && (await $.fs.exists(link))) msgTarget = { run: r, askDir: link }
+  for (const m of sentMessages.get(r) ?? []) {
+    if (m.state !== 'sent') continue
+    if (await $.fs.exists(`${m.askDir}/read-${m.id}.json`)) m.state = 'delivered'
+    else if (!(await $.fs.exists(m.askDir))) m.state = 'not delivered (run ended)'
+  }
+}
+
+async function sendMessage($: EngineInterface, r: Run, askDir: string, raw: string) {
+  const text = raw.trim()
+  if (!text) return
+  let code: number | string = '?'
+  let id = ''
+  try {
+    const res = await $.process.run(['node', askScript($), 'message', askDir], { stdin: JSON.stringify({ v: 1, text }), timeoutMs: 10_000 })
+    code = res.exitCode
+    id = res.stdout.trim()
+  } catch {
+    /* reported below */
+  }
+  if (code === 0 && /^\d{13}-[0-9a-f]{8}$/.test(id)) sentMessages.set(r, [...(sentMessages.get(r) ?? []), { id, text: clean(text), askDir, state: 'sent' }])
+  else if (code === 3) $.ui.toast('cli-dispatch: the run has ended — message not sent')
+  else $.ui.toast(`cli-dispatch: could not send the message (exit ${code})`)
+  $.ui.invalidate('ui.render')
+}
+
 // ---- entry points ----
 
 async function openRuns($: EngineInterface) {
   view = 'list'
   sel = null
+  msgTarget = null
   flow = null
   flowItems = []
   event = null
@@ -1103,7 +1233,7 @@ function layout(items: Item[], finished: boolean): { answer: string; groups: Gro
 
 async function renderRuns($: EngineInterface, e: any) {
   const now = await $.clock.now()
-  const { Box, Text, Button } = $.ui.resolve(e)
+  const { Box, Text, Button, Input } = $.ui.resolve(e)
   const redraw = () => $.ui.invalidate('ui.render')
   const go = (fn: () => Promise<void> | void) => async () => {
     await fn()
@@ -1139,6 +1269,7 @@ async function renderRuns($: EngineInterface, e: any) {
                 view = 'run'
                 await openFlow($, r)
                 await checkVerifying($, r, await $.clock.now())
+                await refreshMessages($, r)
               })}
             >
               {i < 9 ? '' : PREFIX}
@@ -1363,6 +1494,12 @@ async function renderRuns($: EngineInterface, e: any) {
         <Box flexDirection="row" gap={2} marginTop={1}>
           {back}
         </Box>
+        {msgTarget?.run === r && e.surface !== 'mobile' ? (
+          <Input key="msg" label="message to worker" submitLabel="send" placeholder="not for secrets: other plugins can read what is typed here" onSubmit={(v: string) => void sendMessage($, r, msgTarget!.askDir, v)} />
+        ) : null}
+        {(sentMessages.get(r) ?? []).map(m => (
+          <Text key={`sent:${m.id}`} dimColor>{`→ ${m.text.replace(/\s+/g, ' ').slice(0, 80)}  ${m.state}`}</Text>
+        ))}
         <Box flexDirection="column">
           <Box flexDirection="row" gap={2}>
             <Text bold>Flow</Text>
@@ -1405,6 +1542,11 @@ function resetRuns(options: PluginOptions) {
   gone = false
   timer = null
   busy = false
+  asking = false
+  askedIds.clear()
+  askCtx.clear()
+  sentMessages.clear()
+  msgTarget = null
 }
 
 
@@ -1413,10 +1555,10 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     const result = await next(e)
     await refresh($)
-    $.clock.every(TICK_MS, () => refresh($))
     // A worker can itself be a Claude Code session with this plugin (DeepSeek runs claude):
-    // it must do its task, not delegate it again.
+    // it must do its task, not delegate it again, and has no one to ask.
     const inWorker = (await $.env.get('CLI_DISPATCH_WORKER')) === '1'
+    $.clock.every(TICK_MS, () => Promise.all([refresh($), inWorker ? undefined : checkQuestions($)]))
     if (!inWorker) await $.tool.register(DISPATCH)
     // The run monitor drives no worker and holds no key, but a worker has no use for it.
     if (!inWorker) {

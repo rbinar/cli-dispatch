@@ -13,3 +13,5 @@ On native Windows (if you're not using WSL) the PowerShell variants kick in. **D
 - Everything else — generation, sessions, watch, kill, gain — is native PowerShell and needs no bash.
 
 Requirements: PowerShell 5.1+ or pwsh 7+; `claude` for DeepSeek, `codex` for Codex, on PATH.
+
+Worker questions and messages (`ask_user`, `check_messages`, 7.3.0) are Unix-only (macOS/Linux/WSL): the PowerShell runner and streams never enable them.

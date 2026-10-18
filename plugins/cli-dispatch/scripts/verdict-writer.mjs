@@ -348,11 +348,34 @@ export function buildVerdict({ statusJson, metaJson, changedFilesJson, verifyRes
     ...(worktreeInfo.leak ? { leak: true } : {}),
     // Only when --scope was given: the globs, and the changed files none of them covers.
     ...(scope ? { scope, scopeViolations: outOfScope } : {}),
+    // Only when the worker asked the user something (7.3.0): see readQuestions.
+    ...(worktreeInfo.questions ? { questions: worktreeInfo.questions } : {}),
     startedAt: meta.startedAt,
     endedAt: new Date().toISOString(),
   }
 
   return { verdict, exitCode }
+}
+
+// Worker questions (7.3.0): cli-dispatch-ask.mjs logs one line per finished ask_user call (no
+// answer text) into the run's ask dir. null when there is no log or no valid line, so the
+// verdict keeps its 7.2.0 shape for runs without questions.
+export function readQuestions(askDir) {
+  if (!askDir) return null
+  let raw
+  try { raw = readFileSync(path.join(askDir, 'log.jsonl'), 'utf8') } catch { return null }
+  const entries = []
+  for (const line of raw.split('\n')) {
+    try {
+      const e = JSON.parse(line)
+      if (e && typeof e.question === 'string' && ['answered', 'skipped', 'timeout', 'cancelled'].includes(e.outcome)) entries.push(e)
+    } catch {}
+  }
+  if (!entries.length) return null
+  return {
+    asked: entries.length,
+    unanswered: entries.filter((e) => e.outcome === 'timeout' || e.outcome === 'cancelled').map((e) => e.question.slice(0, 300)),
+  }
 }
 
 // Issue #128: `worktreeRemoved` was structurally always false. buildVerdict() cannot know the
@@ -455,6 +478,7 @@ if (entryPath && import.meta.url === pathToFileURL(entryRealPath).href) {
           workerExit: Number(process.env.CLI_DISPATCH_WORKER_EXIT) || 0,
           leak: process.env.CLI_DISPATCH_LEAK === '1',
           scope: (process.env.CLI_DISPATCH_SCOPE || '').split('\n').filter(Boolean),
+          questions: readQuestions(process.env.CLI_DISPATCH_ASK_DIR),
           fixAttempts: Number(process.env.CLI_DISPATCH_FIX_MAX) > 0
             ? { used: Number(process.env.CLI_DISPATCH_FIX_USED) || 0, max: Number(process.env.CLI_DISPATCH_FIX_MAX) }
             : undefined,
