@@ -149,7 +149,8 @@ const DISPATCH = {
   description:
     "Delegate a coding task to an external worker CLI through cli-dispatch's deterministic runner and wait for its verdict. " +
     'The worker runs in a git worktree of `cwd`; your `verify` commands decide pass/fail; a failing verify is retried once. ' +
-    'Returns the runner summary verbatim (session id, verify result, diff, stranded worktree, patch path). It does not apply the patch.',
+    'Returns the runner summary verbatim (session id, verify result, diff, stranded worktree, patch path). It does not apply the patch. ' +
+    "The worker can ask the user mid-run (its ask_user tool opens a dialog here) and reads messages the user sends from /cli-dispatch-runs, so leave a decision that is the user's to the worker; do not ask it yourself first.",
   inputSchema: {
     type: 'object',
     properties: {
@@ -477,6 +478,8 @@ let view: 'list' | 'run' = 'list'
 let sel: Run | null = null
 let flow: Win<Entry> | null = null
 let flowItems: Item[] = []
+// The items as they were when a step was opened: rows stay put under the open step while the run writes on.
+let frozen: Item[] | null = null
 // The step expanded in place (by its `at`), its text in pages.
 let event: { at: string; n?: number; pages: string[]; page: number } | null = null
 let gone = false
@@ -1347,10 +1350,15 @@ async function renderRuns($: EngineInterface, e: any) {
   }
 
   const w = flow
-  const shownItems = tailFit(flowItems, x => (x.kind === 'note' ? x.text.length + (x.think?.length ?? 0) : x.title.length) + 40)
+  if (!event) frozen = null
+  else if (!frozen) frozen = flowItems
+  const items = frozen ?? flowItems
+  const lastO = items.reduce((m, x) => Math.max(m, x.o), -1)
+  const fresh = frozen ? flowItems.filter(x => x.o > lastO).length : 0
+  const shownItems = tailFit(items, x => (x.kind === 'note' ? x.text.length + (x.think?.length ?? 0) : x.title.length) + 40)
   // Items older than the drawn ones (below them) are reached with `earlier`, which ends where the drawn ones begin.
   const shownFrom = shownItems[0]?.o
-  const hidden = shownItems.length < flowItems.length
+  const hidden = shownItems.length < items.length
   const earlier =
     w && (w.from > 0 || hidden) && shownFrom !== undefined && shownFrom > 0 ? (
       <Button key="earlier" plain hotkey="e" onPress={go(async () => {
@@ -1509,6 +1517,7 @@ async function renderRuns($: EngineInterface, e: any) {
             {latest}
           </Box>
           <Box key="flow" flexDirection="column">
+            {fresh ? <Text key="fresh" color="yellow">{`${fresh} new · close the open step to show them`}</Text> : null}
             {streaming}
             {answer ? (
               <Box key="answer" flexDirection="column">
