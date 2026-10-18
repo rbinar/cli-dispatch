@@ -47,3 +47,5 @@ git worktree prune         # ölü kayıtları temizle
 ```
 
 > Not: PATH'e `~/.local/bin`'i bu plugin için elle eklediysen ve başka bir şey kullanmıyorsan, shell profilinden (`~/.zshrc`, `~/.bashrc` vb.) o satırı da kaldırabilirsin. DeepSeek hesabındaki API key'i iptal etmek istersen https://platform.deepseek.com/api_keys üzerinden sil.
+
+> Antigravity worker soruları (7.3.0): `/cli-dispatch:setup` içinde izin verdiysen `~/.gemini/config/mcp_config.json` içindeki `cli_dispatch_ask` girdisini (`ask_user` sunucusu) sil.

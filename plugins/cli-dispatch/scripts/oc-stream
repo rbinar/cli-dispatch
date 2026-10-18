@@ -179,6 +179,9 @@ else
 fi
 SESSION_DIR="$SESSIONS_ROOT/$SESSION_ID"
 mkdir -p "$SESSION_DIR"
+# Worker questions and messages (7.3.0): only when the runner exported CLI_DISPATCH_ASK_DIR.
+ASK_MCP="$(ask_config oc)"
+if [ -n "$ASK_MCP" ]; then link_ask_dir "$SESSION_DIR"; fi
 # Persist THIS wrapper's own pid ($$, NOT $OC_PID) as the worker-tree root. 
 # /cli-dispatch:kill must kill the ENTIRE headless writer tree — opencode AND the parser
 # (running in a process substitution below), both direct children of $$. A stale worker.pid
@@ -297,7 +300,11 @@ fi
   touch "$PARSER_DONE"
 ) &
 PARSER_PID=$!
-opencode "${OC_ARGS[@]}" </dev/null > "$PARSER_FIFO_DIR/out" &
+if [ -n "$ASK_MCP" ]; then
+  OPENCODE_CONFIG_CONTENT="$ASK_MCP" opencode "${OC_ARGS[@]}" </dev/null > "$PARSER_FIFO_DIR/out" &
+else
+  opencode "${OC_ARGS[@]}" </dev/null > "$PARSER_FIFO_DIR/out" &
+fi
 OC_PID=$!
 
 # The watchdog watches opencode itself for liveness and TARGETS the real opencode pid for the kill.

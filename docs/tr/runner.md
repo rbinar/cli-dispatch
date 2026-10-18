@@ -48,3 +48,5 @@ Varsayılan delege etmektir: test ekleyen ya da değiştiren veya birden fazla d
 dispatch aracına (eski Claude Code'da runner agent'ına) gider. Yalnızca tek dosyada ~20 satırlık bir düzeltme (sıfır keşif/belirsizlik)
 inline kalır — orada delegasyonun sabit maliyeti işe değmez. Repo değişikliği olmayan basit, tek-atışlık bir iş için `/cli-dispatch:ask <backend> "<prompt>"`
 yeterlidir.
+
+**Worker soruları (7.3.0).** `dispatch` aracının başlattığı koşu `CLI_DISPATCH_ASK=1` koyar; `cli-dispatch-run` da özel bir ask dizini (`<sessions-root>/.ask/run-XXXXXX/`) açar, brief'e kısa bir blok ekler ve `ask_user` / `check_messages` MCP sunucusunu worker'a bağlar. Koşu bitince dizin silinir. Kimsenin cevaplamadığı soru `verdict.json`'da `questions: {asked, unanswered}` olarak, özette tek bir `questions:` satırı olarak görünür; `/cli-dispatch:resume` ile cevaplanır. `exitCode` değişmez. Diğer çağıranlar (`/cli-dispatch:run`, runner agent) bunların hiçbirini almaz.

@@ -20,3 +20,5 @@ Session dizini: `${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<id>/` (e
 **Maliyet-odaklı izleme:** ilerleme yalnızca küçük `status.json`'dan takip edilir (`/cli-dispatch:watch <id>` veya `/cli-dispatch:watch <id> --wait`); ham transcript okunmaz, sıkı döngüde tail edilmez — orkestratörün her okuması token harcadığı için.
 
 > Gereksinim: session takibi/parse için `node` gerekir (claude-code zaten node ortamında çalışır).
+
+`<sessions-root>/.ask/run-XXXXXX/` (7.3.0) bir `dispatch`-aracı koşusunun canlı soru ve mesaj dosyalarını tutar (`ask_user` soruları, `msg-*.json`, `log.jsonl`); koşu bitince silinir, session okuyucuları nokta ile başlayan girdileri atlar. Bir session dizini ona işaret eden bir `ask-dir` dosyası taşıyabilir.

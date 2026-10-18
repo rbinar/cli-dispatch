@@ -20,3 +20,5 @@ Session directory: `${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<id>/`
 **Cost-aware watching:** progress is tracked only from the small `status.json` (`/cli-dispatch:watch <id>` or `/cli-dispatch:watch <id> --wait`); the raw transcript is not read, not tailed in a tight loop — because every read by the orchestrator spends tokens.
 
 > Requirement: `node` is needed for session tracking/parsing (claude-code already runs in a node environment).
+
+`<sessions-root>/.ask/run-XXXXXX/` (7.3.0) holds the live question and message files of one `dispatch`-tool run (`ask_user` questions, `msg-*.json`, `log.jsonl`); it is removed when the run ends, and session readers skip dot entries. A session dir may carry an `ask-dir` file pointing at it.

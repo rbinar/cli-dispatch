@@ -7,6 +7,18 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [7.3.0] — 2026-10-18
+
+### Eklendi
+
+- **`dispatch`-aracı koşuları için worker soruları ve mesajları.** Herhangi bir backend'deki worker (ds, ol, cx, cp, oc; ag tek seferlik onaydan sonra) küçük bir MCP sunucusu olan `cli-dispatch-ask.mjs` üzerinden `ask_user(question, options?)` çağırabilir. Mod soruyu Claude Code'un kendi diyaloğu olarak çizer (`[CD] <backend>`, repo, worker'ın 2-4 seçeneği, serbest metin) ve cevabı aynı çalışan worker sürecine döndürür. Esc veya boş cevap "en iyi varsayımınla devam et" demektir; 300 sn içinde cevap gelmezse worker'a durması ve tahmin etmemesi söylenir, `verdict.json`'a `questions: {asked, unanswered}` eklenir ve özette bir satır çıkar (sonra `/cli-dispatch:resume` ile cevapla). Motor tipleri "Chat about this"i cevaptan ayıramaz, bu yüzden özel işlem görmez.
+- **Çalışan worker'a mesaj.** `/cli-dispatch-runs` içinde bu oturumun canlı bir koşusunda mesaj girişi vardır (sır için değil: yazılanı başka eklentiler okuyabilir); worker her kabuk komutundan ya da dosya düzenlemesinden sonra bloklamayan `check_messages()` aracıyla okur, panel `sent`, `delivered` veya `not delivered (run ended)` gösterir. Teslim en az bir kezdir. Maliyet gerçektir: kontroller tur ekler.
+- `install.sh --ag-ask-mcp` (`/cli-dispatch:setup` içinde sorulur) `~/.gemini/config/mcp_config.json`'a tek bir `cli_dispatch_ask` girdisi ekler (yeni bir agy kurulumunun bıraktığı boş dosya `{}` sayılır; geçersiz JSON bir uyarıyla olduğu gibi bırakılır). Sunucuyu kurmak için yükseltmeden sonra `/cli-dispatch:setup`'ı yeniden çalıştır.
+
+### Notlar
+
+- Yalnız `dispatch` aracının başlattığı koşular bunu alır (`CLI_DISPATCH_ASK=1`); `CLI_DISPATCH_NO_ASK=1` kapatır. Yerel Windows değişmedi.
+
 ## [7.2.0] — 2026-10-18
 
 ### Değişti

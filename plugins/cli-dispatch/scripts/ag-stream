@@ -286,6 +286,8 @@ AGY_ARGS=(-p "$PROMPT" --add-dir "$CWD")
 # (exit 0, partial output), so the session reports `done` (with partial output), NOT `error`.
 # Our watchdog below is only a BEST-EFFORT backstop for a fully-hung agy. (See docs.)
 PT="${MAX_RUNTIME:-0}"; [ "$PT" -gt 0 ] || PT=600
+# Worker questions (7.3.0): the implicit cap grows by one question ceiling (300 s); an explicit one is kept.
+[ "${MAX_RUNTIME:-0}" -gt 0 ] || [ -z "${CLI_DISPATCH_ASK_DIR:-}" ] || PT=900
 AGY_ARGS+=(--print-timeout "${PT}s")
 # NOTE: agy has NO verified write-deny flag. `--sandbox` restricts the *terminal* but NOT
 # the internal write_to_file tool — tested: agy under --sandbox still wrote a file. So we do
@@ -518,6 +520,7 @@ TRANSCRIPT="$BRAIN/$CID/.system_generated/logs/transcript_full.jsonl"
 SESSIONS_ROOT="$(resolve_sessions_root)"
 SESSION_DIR="$SESSIONS_ROOT/$CID"
 mkdir -p "$SESSION_DIR"
+link_ask_dir "$SESSION_DIR"
 # Persist THIS wrapper's own pid ($$) as the worker-tree root. /cli-dispatch:kill needs to
 # kill the whole headless writer tree (the script-wrapped agy child + the background parser
 # below). CAVEAT: agy is known to sometimes ignore termination signals and reparent itself,
@@ -575,7 +578,7 @@ trap 'handle_interrupt TERM 143' TERM
 # are defined above, before launch.)
 TIMEOUT_REASON=""
 watchdog() {
-  local start now m
+  local start now m a
   start=$(date +%s)
   while kill -0 "$AGY_PID" 2>/dev/null; do
     sleep 2
@@ -586,6 +589,7 @@ watchdog() {
     fi
     if [ "$IDLE_TIMEOUT" -gt 0 ] && [ -f "$TRANSCRIPT" ]; then
       m="$(mtime_of "$TRANSCRIPT")"; m="${m:-$start}"
+      a="$(ask_activity)"; [ -z "$a" ] || [ "$a" -le "$m" ] || m="$a"
       if [ "$((now - m))" -ge "$IDLE_TIMEOUT" ]; then
         echo "idle ${IDLE_TIMEOUT}s" > "$SESSION_DIR/.timeout"
         kill_worker "$AGY_PID"; return 0

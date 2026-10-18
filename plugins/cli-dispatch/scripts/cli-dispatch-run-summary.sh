@@ -24,6 +24,10 @@ NODE_BIN="${CLI_DISPATCH_NODE:-node}"
   if (v.scopeViolations && v.scopeViolations.length) console.log("SCOPE: changed outside --scope (" + v.scope.join(", ") + "): " + v.scopeViolations.join(", "));
   if (v.workerExit) console.log("worker exit: " + v.workerExit);
   if (v.fixAttempts) console.log("fix attempts: " + v.fixAttempts.used + "/" + v.fixAttempts.max);
+  if (v.questions) {
+    const q = v.questions, un = q.unanswered || [];
+    console.log("questions: " + q.asked + " asked, " + (un.length ? un.length + " unanswered — \"" + String(un[0]).slice(0, 160) + "\" (answer it with /cli-dispatch:resume " + (v.sessionId || "<session>") + " \"<answer>\")" : "all answered"));
+  }
   if (v.stranded) console.log("STRANDED changes in worktree: " + v.worktree);
   console.log("patch: " + (v.diffPatchPath || "n/a"));
 ' "$1" "$RC"
