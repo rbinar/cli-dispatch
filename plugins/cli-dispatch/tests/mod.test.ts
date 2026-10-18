@@ -4,7 +4,13 @@ const ROOT = '/sessions'
 const NOW = Date.parse('2026-10-12T10:00:00Z')
 const SID = 'parent-1'
 const ALIVE_PID = '4242'
+const RECYCLED_PID = '7777' // alive for `kill -0`, but its command line is not a worker's
 const KILL_THROWS_PID = '6666' // stubRuns: `kill -0 6666` throws, as with no kill binary
+
+// What `kill -0 <pid>` answers: the stubs' alive pids (the worker's and the recycled one's).
+const killAnswer = (pid: string) => ({ value: { exitCode: pid === ALIVE_PID || pid === RECYCLED_PID ? 0 : 1, stdout: '', stderr: '' } })
+// What `ps -o command= -p <pid>` answers.
+const psAnswer = (pid: string) => ({ value: { exitCode: 0, stdout: pid === RECYCLED_PID ? 'sleep 60\n' : 'node /p/cx-stream-parse.mjs\n', stderr: '' } })
 
 type Fixture = Record<string, { meta: object; status: object; mtimeMs: number; verdict?: object; pid?: string }>
 
@@ -37,7 +43,8 @@ function stubHost(on: any, sessions: Fixture, repoOf: Record<string, string> = {
     throw new Error(`ENOENT ${e.path}`)
   })
   on('process.run', ($: any, e: any) => {
-    if (e.argv[0] === 'kill') return { value: { exitCode: e.argv[2] === ALIVE_PID ? 0 : 1, stdout: '', stderr: '' } }
+    if (e.argv[0] === 'kill') return killAnswer(e.argv[2])
+    if (e.argv[0] === 'ps') return psAnswer(e.argv[4])
     const wt = e.argv[2]
     return { value: wt in repoOf ? { exitCode: 0, stdout: `${repoOf[wt]}/.git\n`, stderr: '' } : { exitCode: 128, stdout: '', stderr: 'not a repo' } }
   })
@@ -96,6 +103,18 @@ describe('cli-dispatch mod', () => {
     await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
     const r = await $.tool.call({ tool: 'Write', file_path: '/repo/new.ts', content: 'x' } as any)
     expect(String((r as any).text ?? (r as any).deny)).toMatch(/cx worktree run for \/repo is live/)
+  })
+
+  test('a quiet run whose worker.pid now belongs to an unrelated process is not live (#208)', async ($, on) => {
+    stubHost(on, { a: { ...running('codex'), mtimeMs: NOW - 300_000, pid: RECYCLED_PID } }, { '/tmp/cx-wt-1': '/repo' })
+    on('tool.call', () => ({ result: 'ran' }))
+    on('ui.render', ($: any, e: any) => $.ui.resolve(e).Box({})) // nothing drawn when no worker is live
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    const band = await $.ui.mount({ plugin: 'cli-dispatch', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 120 } } as any)
+    expect(await band.find({ type: 'Text', text: /▶ cx/ })).toBeUndefined()
+    const r = await $.tool.call({ tool: 'Edit', file_path: '/repo/src/a.ts', old_string: 'a', new_string: 'b' } as any)
+    expect((r as any).isError).toBeUndefined()
+    await band.unmount()
   })
 
   test('guard lets edits through when no run is live', async ($, on) => {
@@ -160,6 +179,16 @@ describe('dispatch tool', () => {
     const briefPath = run.argv[run.argv.indexOf('--prompt-file') + 1]!
     expect(h.written[briefPath]).toBe('fix it')
     expect(h.calls.filter(c => c.argv[0] === 'cli-dispatch-wait').length).toBe(2)
+  })
+
+  test('the brief file is removed once the run is over (#214)', async ($, on) => {
+    const h = stubDispatch(on)
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    await $.tool.call({ tool: 'mcp__cli-dispatch__dispatch', backend: 'cx', cwd: '/repo', task: 'fix it' } as any)
+    const brief = h.calls[0]!.argv[h.calls[0]!.argv.indexOf('--prompt-file') + 1]!
+    const last = h.calls[h.calls.length - 1]!
+    expect(last.argv).toEqual(['rm', '-f', brief])
+    expect(h.calls.findIndex(c => c.argv[0] === 'rm')).toBeGreaterThan(h.calls.findIndex(c => c.argv[0] === 'cli-dispatch-wait')) // after the wait, not before
   })
 
   test('falls back to the plugin copy of the runner when it is not on PATH', async ($, on) => {
@@ -465,7 +494,8 @@ function stubRuns(on: any, runs: Record<string, RunFix>, opts: { worker?: boolea
     rec.runs.push([...e.argv])
     activity++
     if (e.argv[0] === 'kill' && e.argv[2] === KILL_THROWS_PID) throw new Error('spawn kill ENOENT')
-    if (e.argv[0] === 'kill') return { value: { exitCode: e.argv[2] === ALIVE_PID ? 0 : 1, stdout: '', stderr: '' } }
+    if (e.argv[0] === 'kill') return killAnswer(e.argv[2])
+    if (e.argv[0] === 'ps') return psAnswer(e.argv[4])
     if (e.argv[0] === 'node' && HELPER.test(e.argv[1])) return { value: { exitCode: 0, stdout: h.helper(e.argv[2], e.argv.slice(3)), stderr: '' } }
     return { value: { exitCode: 1, stdout: '', stderr: '' } }
   })
@@ -667,7 +697,7 @@ describe('run monitor pane', () => {
     await h.tick()
     const added = h.rec.runs.slice(before)
     expect(added.length).toBeGreaterThan(0)
-    expect(added.every(a => a[0] === 'kill' && a[2] === ALIVE_PID)).toBe(true)
+    expect(added.every(a => (a[0] === 'kill' && a[2] === ALIVE_PID) || (a[0] === 'ps' && a[4] === ALIVE_PID))).toBe(true)
     await ui.unmount()
   })
 
@@ -681,7 +711,7 @@ describe('run monitor pane', () => {
     h.rec.lists = 0
     await h.tick()
     expect([...h.rec.reads, ...h.rec.stats].every(p => p.startsWith(`${ROOT}/a/`))).toBe(true)
-    expect(h.rec.runs.every(a => a[0] === 'kill' || HELPER.test(a[1] ?? ''))).toBe(true)
+    expect(h.rec.runs.every(a => a[0] === 'kill' || a[0] === 'ps' || HELPER.test(a[1] ?? ''))).toBe(true)
     expect(h.rec.lists).toBe(0)
     await ui.unmount()
   })
@@ -731,6 +761,28 @@ describe('run monitor pane', () => {
     await ui.press({ key: 'back' })
     await ui.press({ key: 'line:80' })
     expect(await drawnText(ui)).toContain('No full event recorded for this line.')
+    await ui.unmount()
+  })
+
+  test('a coalesced text the helper pages is fetched on from `next` and shown whole (#210)', { options: { deepseek_api_key: 'dsk-EXACT-1111-2222' } }, async ($, on) => {
+    const h = stubRuns(on, { a: RUN_A() }, {
+      helper: (mode, args) => {
+        if (mode === 'back') return win(0, 400, 400, { o: 40, t: '· ds-start …' })
+        if (mode === 'event' && args[1] === '40') {
+          if (args[2] === undefined) return jl({ text: 'page-one dsk-EXACT-11', next: 21 })
+          return jl({ text: '11-2222 page-two' })
+        }
+        return ''
+      },
+    })
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    await ui.press({ key: 'line:40' })
+    const t = await drawnText(ui)
+    expect(t).toContain('page-one ••••')
+    expect(t).toContain('•••• page-two')
+    expect(t).not.toContain('EXACT')
+    expect(helperCalls(h).filter(c => c[0] === 'event')).toEqual([['event', `${ROOT}/a`, '40'], ['event', `${ROOT}/a`, '40', '21']])
     await ui.unmount()
   })
 
@@ -1451,6 +1503,19 @@ describe('run monitor pane', () => {
     await ui.unmount()
   })
 
+  test('a finished run with no runner record is scanned once, not every 5 s (#211)', async ($, on) => {
+    const h = stubRuns(on, { c: done('codex', 1000) })
+    h.runDirs.push('run-8', 'run-9')
+    h.files[`${ROOT}/.runs/run-8/session`] = 'other-1\n'
+    h.files[`${ROOT}/.runs/run-9/session`] = 'other-2\n'
+    const ui = await open($)
+    await ui.press({ key: 'run:c' })
+    for (let i = 0; i < 4; i++) await h.tick(6000)
+    const scans = h.rec.reads.filter(p => p.startsWith(`${ROOT}/.runs/`) && p.endsWith('/session'))
+    expect(scans).toEqual([`${ROOT}/.runs/run-8/session`, `${ROOT}/.runs/run-9/session`]) // one pass over the two records
+    await ui.unmount()
+  })
+
   test('son aktivite stays "bitti" when the detached run\'s process is dead', async ($, on) => {
     const h = stubRuns(on, { b: done('codex', 1000) })
     h.runDirs.push('run-2')
@@ -1606,6 +1671,25 @@ describe('review fixes', () => {
     expect(tree).toContain('github_pat_')
     expect(tree).not.toContain(body.slice(0, 20))
     expect(tree).not.toContain(body.slice(22, 32)) // the tail of the token, not just its head
+    await ui.unmount()
+  })
+
+  test('a key cut by a truncation limit is masked: a clipped progress.log line and the head of a big record (#209)', { options: { deepseek_api_key: 'dsk-EXACT-1111-2222-3333' } }, async ($, on) => {
+    stubRuns(on, { a: runFix() }, {
+      helper: (mode, args) => {
+        if (mode !== 'back') return ''
+        if (String(args[0]).endsWith('progress.log')) return win(0, 400, 400, { o: 0, t: '· the key is dsk-EXACT-1111-2…' })
+        return win(0, 9000, 9000, { o: 5, l: 300_000, big: true, t: '{"a":"tail sk-abcdefghijklmnopqrstuvwxyz0123' })
+      },
+    })
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    const summary = await drawnText(ui)
+    expect(summary).toContain('the key is ••••…')
+    expect(summary).not.toContain('EXACT')
+    await ui.press({ key: 'tab:flow' })
+    const flow = await drawnText(ui)
+    expect(flow).not.toContain('abcdefghij')
     await ui.unmount()
   })
 

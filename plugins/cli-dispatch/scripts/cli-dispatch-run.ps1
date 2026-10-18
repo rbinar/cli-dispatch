@@ -132,6 +132,18 @@ else {
   if ((Test-Path $newRoot) -or (-not (Test-Path $oldRoot))) { $newRoot } else { $oldRoot }
 }
 
+# A sessions dir given by env that someone else owns is refused. Best effort: when the owner cannot
+# be read the check is skipped, and BUILTIN\Administrators (the owner of a dir an elevated user made) passes.
+if (($env:CLI_DISPATCH_SESSIONS_DIR -or $env:CLAUDE_DS_SESSIONS_DIR) -and (Test-Path $SessionsRoot)) {
+  $rootOwner = $null
+  try { $rootOwner = (Get-Acl -LiteralPath $SessionsRoot -ErrorAction Stop).Owner } catch {}
+  $me = try { [System.Security.Principal.WindowsIdentity]::GetCurrent().Name } catch { $null }
+  if ($rootOwner -and $me -and ($rootOwner -ne $me) -and ($rootOwner -ne 'BUILTIN\Administrators')) {
+    [Console]::Error.WriteLine("cli-dispatch: session root $SessionsRoot is not owned by you (CLI_DISPATCH_SESSIONS_DIR) - refusing to use it. Point it at a directory you own.")
+    exit 5
+  }
+}
+
 $sessionsProbe = Join-Path $SessionsRoot ".write-probe-$PID"
 try {
   New-Item -ItemType Directory -Force -Path $SessionsRoot -ErrorAction Stop | Out-Null

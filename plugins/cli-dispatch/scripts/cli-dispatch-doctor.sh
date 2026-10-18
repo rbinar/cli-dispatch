@@ -103,7 +103,7 @@ if command -v ag-agent >/dev/null 2>&1; then
   # agy has NO auth subcommand, and the only real check spawns `agy -p "ping"` with a 35s cap
   # (ag-stream's preflight) — far too slow here. So report the key honestly and, when there is no
   # key, fall back to the strongest cheap evidence: did an antigravity worker recently succeed?
-  [ -f "$CFG" ] && ( . "$CFG"
+  ( [ ! -f "$CFG" ] || . "$CFG"
     if [ -n "${GEMINI_API_KEY:-}" ]; then ok "GEMINI_API_KEY set"
     elif [ -n "${ANTIGRAVITY_API_KEY:-}" ]; then ok "ANTIGRAVITY_API_KEY set"
     elif uc_set GEMINI_API_KEY; then uc_note GEMINI_API_KEY
@@ -134,7 +134,7 @@ if command -v cx-agent >/dev/null 2>&1; then
   chk cx-stream
   if command -v codex >/dev/null 2>&1; then
     ok "codex CLI found ($(ver codex))"
-    [ -f "$CFG" ] && ( . "$CFG"
+    ( [ ! -f "$CFG" ] || . "$CFG"
       if [ -n "${CODEX_API_KEY:-}" ]; then ok "CODEX_API_KEY set"
       elif [ -n "${OPENAI_API_KEY:-}" ]; then ok "OPENAI_API_KEY set"
       elif uc_set CODEX_API_KEY; then uc_note CODEX_API_KEY
@@ -171,7 +171,7 @@ if command -v oc-agent >/dev/null 2>&1; then
   else
     bad "opencode CLI missing — npm i -g opencode-ai"
   fi
-  [ -f "$CFG" ] && ( . "$CFG"
+  ( [ ! -f "$CFG" ] || . "$CFG"
     if [ -n "${OPENROUTER_API_KEY:-}" ]; then ok "OPENROUTER_API_KEY set"
     elif uc_set OPENROUTER_API_KEY; then uc_note OPENROUTER_API_KEY
     else bad "OPENROUTER_API_KEY missing — add to $CFG or $PLUGCFG (no OAuth fallback for OpenCode)"
@@ -194,7 +194,7 @@ if command -v cp-agent >/dev/null 2>&1; then
   else
     bad "copilot CLI missing — npm i -g @github/copilot  or  brew install --cask copilot-cli"
   fi
-  [ -f "$CFG" ] && ( . "$CFG"
+  ( [ ! -f "$CFG" ] || . "$CFG"
     if [ -n "${COPILOT_GITHUB_TOKEN:-}" ]; then ok "COPILOT_GITHUB_TOKEN set"
     elif uc_set COPILOT_GITHUB_TOKEN; then uc_note COPILOT_GITHUB_TOKEN
     elif [ -n "${GH_TOKEN:-}" ] || [ -n "${GITHUB_TOKEN:-}" ]; then ok "GH_TOKEN/GITHUB_TOKEN set"

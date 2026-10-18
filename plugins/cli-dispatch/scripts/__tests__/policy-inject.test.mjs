@@ -384,6 +384,21 @@ test('18. status file: hook stdout is byte-identical with and without the option
   assert.ok(!withOpts.includes('SENTINEL'))
 })
 
+test('19b. status file: a session given no plugin options leaves the existing flags alone (#213)', () => {
+  const file = writeFixture('uc-policy5.json', { enabled: true })
+  const status = path.join(fixtureDir, 'uc19b.json')
+  runInject(file, { CLI_DISPATCH_USERCONFIG_STATUS: status, CLAUDE_PLUGIN_OPTION_DEEPSEEK_API_KEY: 'x' })
+  const before = fs.readFileSync(status, 'utf8')
+  const env = { ...process.env, CLI_DISPATCH_USERCONFIG_STATUS: status }
+  for (const k of Object.keys(env)) if (k.startsWith('CLAUDE_PLUGIN_OPTION_')) delete env[k]
+  execFileSync(process.execPath, [POLICY_INJECT_PATH], { env: { ...env, CLI_DISPATCH_POLICY_FILE: file }, encoding: 'utf8' })
+  assert.equal(fs.readFileSync(status, 'utf8'), before)
+  assert.equal(JSON.parse(before).keys.DEEPSEEK_API_KEY, true)
+  // An empty string means the option exists but is unset: that does count as provided.
+  runInject(file, { CLI_DISPATCH_USERCONFIG_STATUS: status, CLAUDE_PLUGIN_OPTION_DEEPSEEK_API_KEY: '' })
+  assert.equal(JSON.parse(fs.readFileSync(status, 'utf8')).keys.DEEPSEEK_API_KEY, false)
+})
+
 test('19. status file: nothing is written inside a worker', () => {
   const file = writeFixture('uc-policy3.json', { enabled: true })
   const status = path.join(fixtureDir, 'uc19.json')

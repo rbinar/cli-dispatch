@@ -10,6 +10,15 @@ import {
 } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 
+// ---- private session dirs ----
+//
+// A parser process is the one that creates a session's files. Its umask is tightened for the rest of
+// its life, so the dir is 0700 and every file in it (status, meta, transcript, progress, idx) is 0600.
+export function makeSessionDir(dir) {
+  process.umask(0o077)
+  mkdirSync(dir, { recursive: true, mode: 0o700 })
+}
+
 // ---- atomic full-file write ----
 //
 // Write `data` to `file` atomically: write a sibling temp file in the SAME directory

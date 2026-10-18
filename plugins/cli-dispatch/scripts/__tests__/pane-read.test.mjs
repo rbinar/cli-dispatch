@@ -170,6 +170,24 @@ test('event returns text, an offset pair, or none, per progress.idx', () => {
   assert.deepEqual(read('event', noIdx, 0).recs, [{ none: true }])
 })
 
+test('event: a huge coalesced text comes in pages that rebuild it; a record deep in progress.idx is found', () => {
+  const sd = mkdtempSync(path.join(dir, 'evbig-'))
+  const huge = 'ğ'.repeat(3 * 1024 * 1024) // 6 MiB of text in one idx record
+  const filler = Array.from({ length: 3000 }, (_, i) => JSON.stringify({ p: i + 1000, o: 0, l: 1 })).join('\n') + '\n'
+  writeFileSync(path.join(sd, 'progress.idx'), filler + JSON.stringify({ p: 7, text: huge }) + '\n' + JSON.stringify({ p: 8, text: 'after' }) + '\n')
+  let text = ''
+  let skip = 0
+  for (let n = 0; n < 20; n++) {
+    const [r] = read('event', sd, 7, skip).recs
+    assert.equal(typeof r.text, 'string')
+    text += r.text
+    if (r.next == null) break
+    skip = r.next
+  }
+  assert.equal(text, huge)
+  assert.deepEqual(read('event', sd, 8).recs, [{ text: 'after' }])
+})
+
 test('a missing file is an error line and a non-zero exit, not a crash trace', () => {
   const r = read('fwd', path.join(dir, 'nope'), 0, 100)
   assert.equal(r.status, 2)
@@ -177,7 +195,9 @@ test('a missing file is an error line and a non-zero exit, not a crash trace', (
 })
 
 test('no mode exceeds OUT_MAX even for an enormous budget', () => {
-  for (const args of [['fwd', transcript, 0, 50_000_000], ['back', transcript, SIZE, 50_000_000], ['chunk', transcript, 0, 50_000_000]]) {
+  const evBig = mkdtempSync(path.join(dir, 'evcap-'))
+  writeFileSync(path.join(evBig, 'progress.idx'), JSON.stringify({ p: 1, text: 'x'.repeat(5 * 1024 * 1024) }) + '\n')
+  for (const args of [['fwd', transcript, 0, 50_000_000], ['back', transcript, SIZE, 50_000_000], ['chunk', transcript, 0, 50_000_000], ['event', evBig, 1]]) {
     const r = spawnSync('node', [helper, ...args.map(String)], { maxBuffer: 64 * 1024 * 1024 })
     assert.ok(r.stdout.length <= OUT_MAX, `${args[0]}: ${r.stdout.length}`)
     assert.equal(r.status, 0)

@@ -72,6 +72,21 @@ but 7.0.0 is not tested on them.
   once. A refresh of the band can no longer turn a started `dispatch` call into a failure. A
   Copilot token split across streamed deltas is masked, and worker-written status, verdict and
   meta fields are sanitized before they are drawn.
+- **A recycled worker PID no longer makes a dead run look alive (#208).** The band, the run list and the
+  edit guard accept a quiet run's `worker.pid` only when the process's command line is a cli-dispatch
+  worker (as `kill` does); without `ps` the status-age rule decides.
+- **The run monitor masks a key cut at a truncation limit, caps `event` output and stops rescanning (#209,
+  #210, #211).** The token touching the end of a clipped `progress.log` line or the 4 KiB head of a big
+  record is masked. A coalesced DeepSeek text comes in pages and `progress.idx` is scanned in bounded
+  chunks, not read whole. A finished run with no runner record is looked up once, not every 5 s.
+- **`doctor` and `balance` report a plugin-config key without a config file (#212).** Every backend checks
+  the flags file whether or not the config file exists.
+- **A session without plugin options no longer clears `userconfig-status.json` (#213).** The hook rewrites
+  the flags only when it was given at least one `CLAUDE_PLUGIN_OPTION_*` variable.
+- **Multi-user hardening (#214).** Session dirs are 0700 and their files, and a detached run's dir and
+  log, 0600; the `dispatch` tool deletes its brief file when the run is over; a
+  `CLI_DISPATCH_SESSIONS_DIR` owned by another user is refused (the mod does not check: the engine
+  gives no owner).
 
 ## [6.4.1] — 2026-10-17
 

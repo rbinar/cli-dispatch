@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # cli-dispatch-run — bootstrap worker sessions and write deterministic verdict artifacts.
 set -euo pipefail
+# Session files, the run log and the dirs holding them are private to this user (multi-user Linux).
+umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -19,6 +21,13 @@ need_val() {
     usage
     exit 5
   fi
+}
+
+# A sessions dir given by env that someone else owns is refused: they could plant files in it.
+require_owned_root() {
+  [ -z "${CLI_DISPATCH_SESSIONS_DIR:-${CLAUDE_DS_SESSIONS_DIR:-}}" ] || [ ! -e "$1" ] || [ -O "$1" ] && return 0
+  echo "cli-dispatch: session root $1 is not owned by you (CLI_DISPATCH_SESSIONS_DIR) - refusing to use it. Point it at a directory you own." >&2
+  exit 5
 }
 
 cleanup_tmp() {
@@ -415,6 +424,7 @@ if [ "$DETACH" -eq 1 ]; then
   # `session`, `summary.txt` and `exit` there; `cli-dispatch-wait --run <id>` blocks on it.
   ROOT="${CLI_DISPATCH_SESSIONS_DIR:-${CLAUDE_DS_SESSIONS_DIR:-}}"
   [ -n "$ROOT" ] || { _c="${XDG_CACHE_HOME:-$HOME/.cache}"; ROOT="$_c/cli-dispatch/sessions"; [ -d "$ROOT" ] || [ ! -d "$_c/claude-ds/sessions" ] || ROOT="$_c/claude-ds/sessions"; }
+require_owned_root "$ROOT"
 if ! { mkdir -p "$ROOT" 2>/dev/null && : > "$ROOT/.write-probe-$$" 2>/dev/null && rm -f "$ROOT/.write-probe-$$"; }; then
   echo "cli-dispatch: session root $ROOT is not writable (managed sandbox?). Set CLI_DISPATCH_SESSIONS_DIR to a writable directory, e.g. CLI_DISPATCH_SESSIONS_DIR=${TMPDIR:-/tmp}/cli-dispatch-sessions" >&2
   exit 5
@@ -503,6 +513,7 @@ fi
 
 ROOT="${CLI_DISPATCH_SESSIONS_DIR:-${CLAUDE_DS_SESSIONS_DIR:-}}"
 [ -n "$ROOT" ] || { _c="${XDG_CACHE_HOME:-$HOME/.cache}"; ROOT="$_c/cli-dispatch/sessions"; [ -d "$ROOT" ] || [ ! -d "$_c/claude-ds/sessions" ] || ROOT="$_c/claude-ds/sessions"; }
+require_owned_root "$ROOT"
 if ! { mkdir -p "$ROOT" 2>/dev/null && : > "$ROOT/.write-probe-$$" 2>/dev/null && rm -f "$ROOT/.write-probe-$$"; }; then
   echo "cli-dispatch: session root $ROOT is not writable (managed sandbox?). Set CLI_DISPATCH_SESSIONS_DIR to a writable directory, e.g. CLI_DISPATCH_SESSIONS_DIR=${TMPDIR:-/tmp}/cli-dispatch-sessions" >&2
   exit 5

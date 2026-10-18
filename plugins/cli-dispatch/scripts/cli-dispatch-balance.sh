@@ -64,7 +64,7 @@ uc_set() { grep -q "\"$1\": *true" "$UCS" 2>/dev/null; }
 uc_msg() { echo "key: set in plugin config, which balance cannot read — add $1 to $CFG (or run /cli-dispatch:setup) to check the balance"; }
 
 deepseek_balance() {
-if [ ! -f "$CFG" ]; then echo "config: MISSING ($CFG) — run /cli-dispatch:setup"; exit 1; fi
+if [ ! -f "$CFG" ]; then if uc_set DEEPSEEK_API_KEY; then uc_msg DEEPSEEK_API_KEY; else echo "config: MISSING ($CFG) — run /cli-dispatch:setup"; fi; exit 1; fi
 # shellcheck disable=SC1090
 . "$CFG"
 if [ -z "${DEEPSEEK_API_KEY:-}" ]; then
@@ -142,7 +142,7 @@ EOF
 }
 
 opencode_balance() {
-if [ ! -f "$CFG" ]; then echo "config: MISSING ($CFG) — run /cli-dispatch:setup"; exit 1; fi
+if [ ! -f "$CFG" ]; then if uc_set OPENROUTER_API_KEY; then uc_msg OPENROUTER_API_KEY; else echo "config: MISSING ($CFG) — run /cli-dispatch:setup"; fi; exit 1; fi
 # shellcheck disable=SC1090
 . "$CFG"
 if [ -z "${OPENROUTER_API_KEY:-}" ]; then
@@ -173,7 +173,7 @@ esac
 
 # ── DeepSeek (account balance) ──────────────────────────────────────────
 echo "== DeepSeek =="
-if [ ! -f "$CFG" ]; then echo "config: MISSING ($CFG) — run /cli-dispatch:setup"; else
+if [ ! -f "$CFG" ]; then if uc_set DEEPSEEK_API_KEY; then uc_msg DEEPSEEK_API_KEY; else echo "config: MISSING ($CFG) — run /cli-dispatch:setup"; fi; else
   # shellcheck disable=SC1090
   . "$CFG"
   if [ -z "${DEEPSEEK_API_KEY:-}" ]; then if uc_set DEEPSEEK_API_KEY; then uc_msg DEEPSEEK_API_KEY; else echo "key: not set (skip)"; fi; else
@@ -242,7 +242,7 @@ EOF
 
 # ── OpenCode (OpenRouter, account-wide paid-credit balance) ─────────────
 echo "== OpenCode =="
-if [ ! -f "$CFG" ]; then echo "config: MISSING ($CFG) — run /cli-dispatch:setup"; else
+if [ ! -f "$CFG" ]; then if uc_set OPENROUTER_API_KEY; then uc_msg OPENROUTER_API_KEY; else echo "config: MISSING ($CFG) — run /cli-dispatch:setup"; fi; else
   # shellcheck disable=SC1090
   . "$CFG"
   if [ -z "${OPENROUTER_API_KEY:-}" ]; then if uc_set OPENROUTER_API_KEY; then uc_msg OPENROUTER_API_KEY; else echo "key: not set (skip)"; fi; else

@@ -70,6 +70,20 @@ Eski sürümler engellenmez ve config dosyası yollarının orada yüklenmeye de
   flow dosyanın sonuna ulaşana kadar okumaya devam eder, ona dönünce hemen yetişir. Band yenilemesi
   başlamış bir `dispatch` çağrısını artık başarısızlığa çevirmez. Akan delta'lara bölünmüş bir Copilot
   token'ı maskelenir; worker'ın yazdığı status, verdict ve meta alanları çizilmeden önce temizlenir.
+- **Geri dönüşen bir worker PID'si artık ölü bir run'ı canlı göstermez (#208).** Band, run listesi ve
+  düzenleme koruması, sessiz bir run'ın `worker.pid`'ini yalnızca sürecin komut satırı bir cli-dispatch
+  worker'ıysa kabul eder (`kill` gibi); `ps` yoksa status-yaşı kuralı karar verir.
+- **Run monitörü kesme sınırında bölünmüş key'i maskeler, `event` çıktısını sınırlar, yeniden taramaz
+  (#209, #210, #211).** Kırpılmış bir `progress.log` satırının ya da büyük kaydın ilk 4 KiB'ının sonuna
+  değen token maskelenir. Birleşik bir DeepSeek metni sayfa sayfa gelir, `progress.idx` bütün okunmak
+  yerine sınırlı parçalarla taranır. Runner kaydı olmayan bitmiş bir run 5 sn'de bir değil, bir kez aranır.
+- **`doctor` ve `balance`, config dosyası olmadan da plugin-config key'ini bildirir (#212).** Her backend,
+  config dosyası olsun olmasın bayrak dosyasına bakar.
+- **Plugin seçeneği almayan bir oturum `userconfig-status.json`'u artık sıfırlamaz (#213).** Hook,
+  bayrakları yalnızca en az bir `CLAUDE_PLUGIN_OPTION_*` değişkeni verildiyse yeniden yazar.
+- **Çok kullanıcılı sertleştirme (#214).** Oturum dizinleri 0700, dosyaları ve ayrık run'ın dizini ile
+  log'u 0600; `dispatch` aracı run bitince brief dosyasını siler; başka bir kullanıcıya ait
+  `CLI_DISPATCH_SESSIONS_DIR` reddedilir (mod kontrol etmez: engine sahibi vermiyor).
 
 ## [6.4.1] — 2026-10-17
 

@@ -107,9 +107,11 @@ async function isRunAlive($: EngineInterface, s: Live, now: number): Promise<boo
   }
   if (!/^\d+$/.test(pid)) return false
   try {
-    return (await $.process.run(['kill', '-0', pid])).exitCode === 0
+    if ((await $.process.run(['kill', '-0', pid])).exitCode !== 0) return false
+    // A recycled pid answers kill -0 too: only a cli-dispatch worker's command line counts (as kill.md).
+    return /-stream|-agent|claude-ds/.test((await $.process.run(['ps', '-o', 'command=', '-p', pid])).stdout)
   } catch {
-    return false // no kill to ask: the status-age rule above already said "not live"
+    return false // no kill or ps to ask: the status-age rule above already said "not live"
   }
 }
 
@@ -182,6 +184,19 @@ async function dispatch($: EngineInterface, input: DispatchInput, signal: AbortS
   const tmp = ((await $.env.get('TMPDIR')) || '/tmp').replace(/\/$/, '')
   const brief = `${tmp}/cli-dispatch-brief-${await $.clock.now()}-${Math.random().toString(36).slice(2, 8)}.txt`
   await $.fs.write(brief, input.task)
+  try {
+    return await dispatchRun($, input, brief, signal, options)
+  } finally {
+    // The detached child reads the brief once, at its start; the run is over (or waiting on its own) by here.
+    try {
+      await $.process.run(['rm', '-f', brief])
+    } catch {
+      /* a brief left behind is not a failed run */
+    }
+  }
+}
+
+async function dispatchRun($: EngineInterface, input: DispatchInput, brief: string, signal: AbortSignal, options: PluginOptions): Promise<string> {
   const argv = ['cli-dispatch-run', '--detach', '--backend', input.backend, '--cwd', input.cwd, '--prompt-file', brief, '--fix-attempts', '1']
   for (const v of input.verify ?? []) argv.push('--verify', v)
   for (const g of input.scope ?? []) argv.push('--scope', g)
@@ -415,6 +430,7 @@ type Run = {
   origName: string // the dir name at creation: a detached run's `session` file keeps it after a rename
   runDir: string // the detached run's bookkeeping dir, once found
   runScanAt: number
+runNone: number // the status mtime at which a scan found no runner record: not scanned again until it moves
   verifying: boolean // the worker is done, no verdict yet, and the run process is alive
   prompt: string
   startedAt: string
@@ -438,6 +454,9 @@ const ago = (ms: number): string => {
 }
 
 let clean = makeClean({})
+// Text cut at a limit (a progress.log line a parser clipped, the 4 KiB head of a big record) can end
+// inside a key, which no exact or shape mask matches: the token touching the cut is masked.
+const cutEnd = (s: string) => s.replace(/[A-Za-z0-9_-]{8,}(…?)$/, `${MASK}$1`)
 const seen = new Map<string, Run | 'other'>()
 let rows: Run[] = []
 let view: 'list' | 'run' = 'list'
@@ -543,6 +562,7 @@ async function refreshList($: EngineInterface) {
         origName: ent.name,
         runDir: '',
         runScanAt: -Infinity,
+        runNone: NaN,
         verifying: false,
         prompt: one(meta.promptPreview),
         startedAt: String(meta.startedAt ?? ''),
@@ -575,7 +595,7 @@ function toEntry(r: Run, rec: Rec): Entry {
     ev = undefined
   }
   const base = { o: rec.o, l: rec.l, big: rec.big === true }
-  if (ev === undefined || ev === null || typeof ev !== 'object') return { ...base, kind: 'event', type: '?', head: '', text: clean(rec.t), tag: 'other' }
+  if (ev === undefined || ev === null || typeof ev !== 'object') return { ...base, kind: 'event', type: '?', head: '', text: rec.big ? cutEnd(clean(rec.t)) : clean(rec.t), tag: 'other' }
   const type = String(ev.type ?? ev.kind ?? '?')
   const { tag, exit } = classify(type, ev)
   if (CLAUDE_STREAM.has(r.backend) && type === 'stream_event') return { ...base, kind: 'skip', type, head: '', text: '', tag }
@@ -797,7 +817,7 @@ function setWin(t: Tab, w: Win<any>) {
   }
 }
 const winOf = (t: Tab): Win<any> | null => (t === 'summary' ? sum : flow)
-const convert = (r: Run, t: Tab, rec: Rec) => (t === 'summary' ? ({ o: rec.o, t: clean(rec.t) } as Line) : toEntry(r, rec))
+const convert = (r: Run, t: Tab, rec: Rec) => (t === 'summary' ? ({ o: rec.o, t: rec.t.endsWith('…') ? cutEnd(clean(rec.t)) : clean(rec.t) } as Line) : toEntry(r, rec))
 
 async function loadBack($: EngineInterface, r: Run, t: Tab, end: number, follow: boolean) {
   const res = await helper($, 'back', fileOf(r, t), end, budgetOf(t))
@@ -957,7 +977,18 @@ async function openLine($: EngineInterface, r: Run, o: number) {
   const res = await helper($, 'event', r.dir, o)
   const first = res?.[0]
   if (!res || !first || first.none) return setEvent(o, 'No full event recorded for this line.')
-  if (typeof first.text === 'string') return setEvent(o, clean(first.text))
+  if (typeof first.text === 'string') {
+    // A coalesced text over the helper's output cap comes in pages: ask again from `next`.
+    let text: string = first.text
+    let next = first.next
+    for (let i = 0; i < 64 && typeof next === 'number'; i++) {
+      const more = (await helper($, 'event', r.dir, o, next))?.[0]
+      if (typeof more?.text !== 'string') return setEvent(o, 'The event could not be read.')
+      text += more.text
+      next = more.next
+    }
+    return setEvent(o, clean(text))
+  }
   const part = res[1] ?? { t: '', next: null }
   const raw = part.next == null ? part.t : await range($, `${r.dir}/transcript.jsonl`, part.next, first.o + first.l - part.next, part.t)
   if (raw === null) setEvent(o, 'The event could not be read.')
@@ -977,8 +1008,9 @@ async function checkVerifying($: EngineInterface, r: Run, now: number) {
   r.verifying = false
   if (r.status?.state === 'running' || r.verdict) return
   const root = await sessionsRoot($)
-  if (!r.runDir && now - r.runScanAt >= 5000) {
+  if (!r.runDir && r.runNone !== r.statusM && now - r.runScanAt >= 5000) {
     r.runScanAt = now
+    r.runNone = r.statusM
     let ents: { name: string; kind: string }[] = []
     try {
       ents = await $.fs.list(`${root}/.runs`)

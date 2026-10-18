@@ -173,10 +173,15 @@ export function writeUserconfigStatus(env = process.env) {
     ? env.CLI_DISPATCH_USERCONFIG_STATUS
     : path.join(env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'cli-dispatch', 'userconfig-status.json')
   const keys = {}
+  let provided = false
   for (const [field, name] of Object.entries(USERCONFIG_KEYS)) {
     const v = env['CLAUDE_PLUGIN_OPTION_' + field.toUpperCase()]
     keys[name] = v !== undefined && v !== ''
+    if (v !== undefined) provided = true
   }
+  // The file is global but every session rewrites it: a session that was given no plugin options at
+  // all (another profile or config dir) must not flip the flags of the session that was.
+  if (!provided) return
   mkdirSync(path.dirname(file), { recursive: true })
   const tmp = `${file}.${process.pid}.tmp`
   writeFileSync(tmp, JSON.stringify({ schemaVersion: 1, writtenAt: new Date().toISOString(), keys }, null, 2) + '\n', { mode: 0o600 })

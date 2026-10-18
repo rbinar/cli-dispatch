@@ -106,6 +106,31 @@ for (const script of ['claude-ds', 'claude-ds-stream']) {
   })
 }
 
+// #212: the flags are checked whether or not a config file exists.
+test('doctor and balance report a userConfig-only key for every backend when there is no config file', () => {
+  const h = mkdtempSync(path.join(tmpdir(), 'uc-nocfg-'))
+  try {
+    const bin = path.join(h, 'bin')
+    mkdirSync(bin)
+    for (const n of ['ag-agent', 'ag-stream', 'agy', 'cx-agent', 'cx-stream', 'codex', 'oc-agent', 'oc-stream', 'opencode', 'cp-agent', 'cp-stream', 'copilot']) {
+      writeFileSync(path.join(bin, n), '#!/bin/sh\necho 1.0\n', { mode: 0o755 })
+    }
+    const flags = path.join(h, 'flags.json')
+    writeFileSync(flags, JSON.stringify({ schemaVersion: 1, keys: { DEEPSEEK_API_KEY: true, OPENROUTER_API_KEY: true, GEMINI_API_KEY: true, CODEX_API_KEY: true, COPILOT_GITHUB_TOKEN: true } }))
+    const env = { ...envFor(h), PATH: `${bin}:${process.env.PATH}`, CLI_DISPATCH_USERCONFIG_STATUS: flags }
+    for (const [b, key] of [['ag', 'GEMINI_API_KEY'], ['cx', 'CODEX_API_KEY'], ['oc', 'OPENROUTER_API_KEY'], ['cp', 'COPILOT_GITHUB_TOKEN']]) {
+      const r = sh('cli-dispatch-doctor.sh', [PLUGIN_ROOT, b], env)
+      assert.match(r.stdout, new RegExp(`${key} set in plugin config`), b)
+    }
+    for (const [b, key] of [['deepseek', 'DEEPSEEK_API_KEY'], ['opencode', 'OPENROUTER_API_KEY']]) {
+      const r = sh('cli-dispatch-balance.sh', [b], env)
+      assert.match(r.stdout, /balance cannot read/, b)
+      assert.match(r.stdout, new RegExp(key), b)
+      assert.doesNotMatch(r.stdout, /config: MISSING/, b)
+    }
+  } finally { rmSync(h, { recursive: true, force: true }) }
+})
+
 // .ps1 twins: Write-Error terminates ($ErrorActionPreference = Stop in both), so catch its message.
 const pwsh = (file, env) => spawnSync('pwsh', ['-NoProfile', '-Command', `try { & '${path.join(SCRIPTS, file)}' } catch { $_.Exception.Message }`], { encoding: 'utf8', env })
 

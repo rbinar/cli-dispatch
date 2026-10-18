@@ -17,8 +17,10 @@ const SCRIPT_NAMES = [
 ]
 
 const tmpDirs = new Set()
+const USERCONFIG_STATUS = path.join(os.tmpdir(), `cd-ucs-${process.pid}.json`)
 
 after(() => {
+  fs.rmSync(USERCONFIG_STATUS, { force: true })
   for (const dir of tmpDirs) {
     fs.rmSync(dir, { recursive: true, force: true })
   }
@@ -40,7 +42,7 @@ function runNode(scriptPath, { args = [], env = {} } = {}) {
   return spawnSync(process.execPath, [scriptPath, ...args], {
     cwd: REPO_ROOT,
     // policy-inject.mjs writes a userConfig status file; keep it out of the real ~/.config.
-    env: { ...process.env, CLI_DISPATCH_USERCONFIG_STATUS: path.join(os.tmpdir(), `cd-ucs-${process.pid}.json`), ...env },
+    env: { ...process.env, CLI_DISPATCH_USERCONFIG_STATUS: USERCONFIG_STATUS, ...env },
     encoding: 'utf8',
   })
 }

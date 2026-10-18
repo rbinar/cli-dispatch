@@ -26,7 +26,7 @@
 import { readFileSync, existsSync, mkdirSync, statSync, readSync, openSync, closeSync } from 'node:fs'
 import path from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
-import { writeMetaFile, createStatusWriter, openSessionFiles, humanSize, clip, readJsonFile, TERMINAL_STATES, pruneSessionRoot } from './parse-utils.mjs'
+import { writeMetaFile, createStatusWriter, openSessionFiles, humanSize, clip, readJsonFile, TERMINAL_STATES, pruneSessionRoot, makeSessionDir } from './parse-utils.mjs'
 
 const dir = process.env.AG_SESSION_DIR
 const transcriptPath = process.env.AG_TRANSCRIPT
@@ -35,7 +35,7 @@ if (!dir || !transcriptPath || !doneFile) {
   process.stderr.write('ag-transcript-parse: AG_SESSION_DIR / AG_TRANSCRIPT / AG_DONEFILE required\n')
   process.exit(2)
 }
-mkdirSync(dir, { recursive: true })
+makeSessionDir(dir)
 
 // Passive cap on finished session dirs (see parse-utils.mjs's pruneSessionRoot). Runs once
 // per session, right after this dir exists so it is never its own prune target. Live

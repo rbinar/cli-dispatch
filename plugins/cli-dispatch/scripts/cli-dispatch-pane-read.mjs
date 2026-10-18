@@ -8,13 +8,14 @@
 //
 //   fwd   <file> <from> <budget>   complete lines from byte `from`, up to `budget` file bytes
 //   back  <file> <end>  <budget>   complete lines ending at or before `end`, up to `budget` bytes
-//   event <session-dir> <p>        the progress.idx record for progress line `p`, then its event text
+//   event <session-dir> <p> [skip] the progress.idx record for progress line `p`, then its event text;
+//                                  a coalesced {text} over OUT_MAX comes in pages: {text,next}, `next` = the next `skip` (bytes)
 //   chunk <file> <off> <len>       header {"next"}, then {"t"}: the text of bytes [off, off+len)
 //
 // Line records: {"o": byteOffset, "t": text}. A line over BIG_LINE becomes
 // {"o","l","big":true,"t": first 4 KiB} and is fetched whole with `chunk`.
 
-import { openSync, readSync, closeSync, fstatSync, readFileSync } from 'node:fs'
+import { openSync, readSync, closeSync, fstatSync } from 'node:fs'
 import { join } from 'node:path'
 
 const OUT_MAX = 2 * 1024 * 1024
@@ -167,22 +168,46 @@ function readText(fd, size, off, len) {
   return { t, next: off + e < off + len && off + e < size ? off + e : null }
 }
 
+// The progress.idx line for progress line `p`, found by a bounded forward scan (no whole-file read).
+// Only that one record is read in full: it is a single line, however long its text.
+function idxRecord(dir, p) {
+  const key = `{"p":${p},`
+  let fd
+  try { fd = openSync(join(dir, 'progress.idx'), 'r') } catch { return null }
+  try {
+    for (const ln of scan(fd, 0, fstatSync(fd).size)) {
+      if (ln.buf.subarray(0, key.length).toString('utf8') !== key) continue
+      let text = ln.buf.toString('utf8')
+      if (ln.len > BIG_LINE) {
+        const full = Buffer.allocUnsafe(ln.len)
+        full.fill(0, readSync(fd, full, 0, ln.len, ln.o))
+        text = full.toString('utf8')
+      }
+      try { return JSON.parse(text) } catch { return null }
+    }
+  } finally { closeSync(fd) }
+  return null
+}
+
+// A page of `text` from byte `skip`, cut on a character edge so the JSON stays under OUT_MAX.
+function textPage(text, skip) {
+  const buf = Buffer.from(text, 'utf8')
+  const raw = buf.subarray(skip, skip + OUT_MAX)
+  let e = alignEnd(raw, raw.length)
+  let t = raw.subarray(0, e).toString('utf8')
+  while (jsonBytes({ text: t, next: skip + e }) + 256 > OUT_MAX && e > 1) {
+    e = alignEnd(raw, Math.floor(e / 2))
+    t = raw.subarray(0, e).toString('utf8')
+  }
+  return skip + e < buf.length ? { text: t, next: skip + e } : { text: t }
+}
+
 function main() {
   const [mode, a, b, c] = process.argv.slice(2)
   if (mode === 'event') {
-    const p = Number(b)
-    const idx = (() => {
-      try { return readFileSync(join(a, 'progress.idx'), 'utf8') } catch { return '' }
-    })()
-    let rec = null
-    const key = `{"p":${p},`
-    const at = idx.startsWith(key) ? 0 : idx.indexOf(`\n${key}`) + 1
-    if (at > 0 || idx.startsWith(key)) {
-      const end = idx.indexOf('\n', at)
-      try { rec = JSON.parse(idx.slice(at, end < 0 ? undefined : end)) } catch { rec = null }
-    }
+    const rec = idxRecord(a, Number(b))
     if (!rec) return emit({ none: true })
-    if (typeof rec.text === 'string') return emit({ text: rec.text })
+    if (typeof rec.text === 'string') return emit(textPage(rec.text, Number(c) || 0))
     if (!Number.isInteger(rec.o) || !Number.isInteger(rec.l)) return emit({ none: true })
     emit({ o: rec.o, l: rec.l })
     const fd = openSync(join(a, 'transcript.jsonl'), 'r')
