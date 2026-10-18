@@ -7,6 +7,20 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [7.3.1] — 2026-10-19
+
+### Eklendi
+
+- **Şeritteki bir worker'a tıklamak run monitörünü o koşuda açar.** Prompt'un üstündeki her `[CD]`
+  girdisi artık bir düğme: run listesi yerine `/cli-dispatch-runs`'ı o koşu seçili olarak açar.
+
+### Düzeltildi
+
+- **Flow görünümünde kalın metin içindeki satır içi kod.** ``**Only `calc.py` changed**`` ters tırnakları
+  da çiziyordu; kod artık kalın metnin içinde cyan, maskeleme kontrolü de ters tırnakları atıyor.
+- **Flow adım simgeleri tek genişlikli metin karakterleri.** Okuma ve arama simgeleri emojiydi (📄, 🔎);
+  iki hücre kaplıyor ve bazı terminal fontlarında kutu olarak çiziliyorlardı. Artık `▤` ve `⌕`.
+
 ## [7.3.0] — 2026-10-18
 
 ### Eklendi

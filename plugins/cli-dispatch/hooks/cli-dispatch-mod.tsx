@@ -80,11 +80,11 @@ async function refresh($: EngineInterface) {
   for (const s of mine) {
     const backend = BACKENDS[s.meta.backend] ?? clean(String(s.meta.backend ?? '?'))
     if (await isRunAlive($, s, now)) {
-      list.push({ id: s.status.sessionId ?? '', backend, state: 'running', startedAt: s.meta.startedAt ?? '' })
+      list.push({ id: s.status.sessionId ?? '', name: s.dir.split('/').pop()!, backend, state: 'running', startedAt: s.meta.startedAt ?? '' })
     } else if (s.status.state !== 'running' && now - s.mtimeMs <= RECENT_SECS * 1000) {
       const v = await readJson($, `${s.dir}/verdict.json`)
       const verify = !v ? undefined : v.leak ? 'LEAK' : v.verify?.exitCode == null ? 'no verify' : v.verify.exitCode === 0 ? 'PASS' : 'FAIL'
-      list.push({ id: s.status.sessionId ?? '', backend, state: clean(String(s.status.state ?? '?')), startedAt: s.meta.startedAt ?? '', verify })
+      list.push({ id: s.status.sessionId ?? '', name: s.dir.split('/').pop()!, backend, state: clean(String(s.status.state ?? '?')), startedAt: s.meta.startedAt ?? '', verify })
     }
   }
   await update($, workers, () => list)
@@ -665,8 +665,8 @@ function contentText(c: unknown): string {
   return c === undefined || c === null ? '' : String(c)
 }
 
-// A tool call, by its name: a command line (⌘), a file read (📄 its name), a file write (✎ its
-// name), a search (🔎 its pattern), else the tool's own name and a short input. `summary` stands in
+// A tool call, by its name: a command line (⌘), a file read (▤ its name), a file write (✎ its
+// name), a search (⌕ its pattern), else the tool's own name and a short input. `summary` stands in
 // where the input has no such field (antigravity's toolSummary).
 function callOf(name: string, input: unknown, summary = ''): StepPart {
   const i: any = input && typeof input === 'object' ? input : {}
@@ -678,9 +678,9 @@ function callOf(name: string, input: unknown, summary = ''): StepPart {
     const cmd = str(i.command ?? i.cmd ?? i.CommandLine) || raw
     return step('⌘', cmd, cmd ? `$ ${cmd}` : '')
   }
-  if (/^(read|view|view_file|read_file|cat)$/.test(n)) return step('📄', baseName(path), inputText(input))
+  if (/^(read|view|view_file|read_file|cat)$/.test(n)) return step('▤', baseName(path), inputText(input))
   if (/^(edit|write|create|multiedit|notebookedit|apply_patch|patch|str_replace|str_replace_editor|write_to_file|replace_file_content)$/.test(n)) return step('✎', baseName(path), inputText(input))
-  if (/grep|glob|search|find|web|fetch/.test(n)) return step('🔎', str(i.pattern ?? i.query ?? i.q ?? i.url ?? i.Query ?? i.Pattern), inputText(input))
+  if (/grep|glob|search|find|web|fetch/.test(n)) return step('⌕', str(i.pattern ?? i.query ?? i.q ?? i.url ?? i.Query ?? i.Pattern), inputText(input))
   return step('⚙', `${name} ${summary || inputText(input)}`, inputText(input))
 }
 
@@ -722,7 +722,7 @@ function contentOf(type: string, ev: any): Shown | 'hide' | null {
       }
       case 'web_search': {
         const q = str(item.query ?? item.q)
-        return one({ icon: '🔎', title: q, body: q || 'web_search' })
+        return one({ icon: '⌕', title: q, body: q || 'web_search' })
       }
       case 'todo_list': {
         const li: any[] = Array.isArray(item.items) ? item.items : Array.isArray(item.todos) ? item.todos : []
@@ -1194,6 +1194,18 @@ async function openRuns($: EngineInterface) {
   if (!timer) timer = $.clock.every(PANE_TICK_MS, () => void tick($))
 }
 
+async function selectRun($: EngineInterface, r: Run) {
+  sel = r
+  flow = null
+  flowItems = []
+  event = null
+  gone = false
+  view = 'run'
+  await openFlow($, r)
+  await checkVerifying($, r, await $.clock.now())
+  await refreshMessages($, r)
+}
+
 function closeRuns() {
   timer?.cancel()
   timer = null
@@ -1260,17 +1272,7 @@ async function renderRuns($: EngineInterface, e: any) {
               key={`run:${r.name}`}
               plain
               hotkey={i < 9 ? String(i + 1) : undefined}
-              onPress={go(async () => {
-                sel = r
-                flow = null
-                flowItems = []
-                event = null
-                gone = false
-                view = 'run'
-                await openFlow($, r)
-                await checkVerifying($, r, await $.clock.now())
-                await refreshMessages($, r)
-              })}
+              onPress={go(() => selectRun($, r))}
             >
               {i < 9 ? '' : PREFIX}
               <Text inverse={on} bold={on} color={live ? 'yellow' : undefined} dimColor={running && !live}>{cell(`${live ? '▶' : running ? '?' : '■'} ${r.label}`, 0)}</Text>
@@ -1396,14 +1398,14 @@ async function renderRuns($: EngineInterface, e: any) {
   // dim after its text; anything else plain. The text is masked already; a line whose visible text
   // (the markers dropped) masks differently is drawn plain, so markers cannot split a key past the mask.
   const inline = (s: string): any[] => {
-    const shown = s.replace(INLINE, (_m, code, bold, label, url) => code ?? bold ?? `${label} (${url})`)
+    const shown = s.replace(INLINE, (_m, code, bold, label, url) => code ?? bold?.replace(/`/g, '') ?? `${label} (${url})`)
     if (clean(shown) !== shown) return [clean(shown)]
     const out: any[] = []
     let last = 0
     for (const m of s.matchAll(INLINE)) {
       out.push(s.slice(last, m.index))
       if (m[1] !== undefined) out.push(<Text color="cyan">{m[1]}</Text>)
-      else if (m[2] !== undefined) out.push(<Text bold>{m[2]}</Text>)
+      else if (m[2] !== undefined) out.push(<Text bold>{m[2].split(/`([^`]+)`/).map((t, k) => (k % 2 ? <Text color="cyan">{t}</Text> : t)).filter(x => x !== '')}</Text>)
       else out.push(m[3]!, <Text dimColor>{` (${m[4]})`}</Text>)
       last = m.index + m[0].length
     }
@@ -1687,11 +1689,23 @@ export const register: Register = (on, options) => {
     const list = await read($, workers)
     if (e.props.hasSurvey || list.length === 0) return next(e)
     const now = await $.clock.now()
-    const { Box, Text } = $.ui.resolve(e)
+    const { Box, Button, Text } = $.ui.resolve(e)
+    // A click on a worker opens the run monitor on that run.
+    const show = (w: Worker) => async () => {
+      await openRuns($)
+      const r = rows.find(x => x.name === w.name)
+      if (r) await selectRun($, r)
+      const opened = await $.ui.open({ id: PANE_ID, title: 'cli-dispatch runs', focus: true, closeOnEscape: true })
+      if (!opened.isPlaced) closeRuns()
+    }
     const parts = list.map(w => {
-      if (w.state === 'running') return <Text color="yellow">{` ▶ ${w.backend} ${elapsed(w.startedAt, now)}`}</Text>
-      const color = w.verify === 'PASS' ? 'green' : w.verify === 'FAIL' || w.verify === 'LEAK' ? 'red' : undefined
-      return <Text color={color}>{` ■ ${w.backend} ${w.verify ?? w.state}`}</Text>
+      const color = w.state === 'running' ? 'yellow' : w.verify === 'PASS' ? 'green' : w.verify === 'FAIL' || w.verify === 'LEAK' ? 'red' : undefined
+      const label = w.state === 'running' ? ` ▶ ${w.backend} ${elapsed(w.startedAt, now)}` : ` ■ ${w.backend} ${w.verify ?? w.state}`
+      return (
+        <Button key={`cd:${w.name}`} plain onPress={show(w)}>
+          <Text color={color}>{label}</Text>
+        </Button>
+      )
     })
     return (
       <Box flexDirection="row" paddingX={1}>
