@@ -7,6 +7,18 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [7.3.2] — 2026-10-19
+
+### Değişti
+
+- **Açık bir adım Flow listesini sabit tutar.** `/cli-dispatch-runs`'ta bir adımın tam metni açıkken
+  run'ın bu arada yazdığı adımlar `N new · close the open step to show them` satırının arkasında bekler;
+  satırlar artık imlecin altından kaymaz, adım kapanınca liste yetişir.
+- **`dispatch` aracı orkestratöre worker'ın soru sorabildiğini söyler.** Açıklaması artık worker'ın
+  çalışırken kullanıcıya soru sorabildiğini ve run monitöründen gelen mesajları okuyabildiğini belirtiyor;
+  böylece kullanıcıya ait bir karar worker'a bırakılır. Canlı ölçüldü: eski açıklamayla orkestratör
+  dispatch etmeden önce soruyu kendisi sordu; yenisiyle dispatch etti ve soruyu worker sordu.
+
 ## [7.3.1] — 2026-10-19
 
 ### Eklendi

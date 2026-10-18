@@ -1571,6 +1571,26 @@ describe('run monitor pane', () => {
     await ui.unmount()
   })
 
+  test('while a step is open the list holds still: new steps wait behind an "N new" line until it closes', async ($, on) => {
+    const cmd = (o: number, command: string) => ({ o, t: JSON.stringify({ type: 'item.completed', item: { id: `i${o}`, type: 'command_execution', command, aggregated_output: '', exit_code: 0 } }) })
+    const h = stubRuns(on, { a: RUN_A() }, {
+      helper: mode => (mode === 'back' ? win(0, 400, 400, cmd(0, 'ls'), cmd(10, 'pwd')) : mode === 'fwd' ? win(400, 460, 460, cmd(400, 'NEWCMD')) : ''),
+    })
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    await ui.press({ key: 'line:0' })
+    h.stats[`${ROOT}/a/transcript.jsonl`] = { size: 460, mtimeMs: NOW }
+    await h.tick()
+    let t = await drawnText(ui)
+    expect(t).not.toContain('NEWCMD')
+    expect(t).toContain('1 new · close the open step to show them')
+    await ui.press({ key: 'line:0' }) // closed: the list catches up
+    t = await drawnText(ui)
+    expect(t).toContain('NEWCMD')
+    expect(t).not.toContain('new · close the open step')
+    await ui.unmount()
+  })
+
   test('a tool call and its result are one step: ✓, or ✗ in red; the output (or "(no output)") is in its body', async ($, on) => {
     const use = (o: number, id: string, command: string) => rec(o, { type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'Bash', input: { command } }] } })
     const result = (o: number, id: string, content: string, is_error = false) => rec(o, { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content, is_error }] } })

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [7.3.2] — 2026-10-19
+
+### Changed
+
+- **An open step holds the Flow list still.** While a step's full text is open in `/cli-dispatch-runs`,
+  steps the run writes meanwhile wait behind a `N new · close the open step to show them` line, so rows
+  no longer move under the cursor; closing the step lets the list catch up.
+- **The `dispatch` tool tells the orchestrator that the worker can ask.** Its description now says the
+  worker can ask the user mid-run and read messages from the run monitor, so a decision that is the
+  user's is left to the worker. Measured live: with the old description the orchestrator asked the user
+  itself before dispatching; with the new one it dispatched and the worker asked.
+
 ## [7.3.1] — 2026-10-19
 
 ### Added
