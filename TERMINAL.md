@@ -1,6 +1,6 @@
 # Terminal Commands — DeepSeek backend
 
-> Scope: the **DeepSeek** wrappers only. The other four backends (`ag-`/`cx-`/`oc-`/`cp-`)
+> Scope: the **DeepSeek** wrappers only. The other five backends (`ag-`/`cx-`/`oc-`/`cp-`/`ol-`)
 > are driven from inside Claude Code — see [README.md](README.md).
 
 ## Introduction

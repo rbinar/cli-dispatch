@@ -13,7 +13,7 @@ thread-id/session-id) leaves `status.json` stuck at `state:"running"` forever �
 **stale** in `/cli-dispatch:sessions`, and never gets removed. This command finds and (with `--remove`) deletes them.
 
 It also sweeps **leftover worktree artifacts**: real-repo-changing delegations (via
-`/cli-dispatch:run` — the deterministic runner — or a plain `*-agent` CLI) are isolated in a git worktree named `<backend>-wt-*` (`ds-wt-*`, `ag-wt-*`, `cx-wt-*`, `oc-wt-*`, `cp-wt-*`)
+`/cli-dispatch:run` — the deterministic runner — or a plain `*-agent` CLI) are isolated in a git worktree named `<backend>-wt-*` (`ds-wt-*`, `ag-wt-*`, `cx-wt-*`, `oc-wt-*`, `cp-wt-*`) (Ollama runs also use `ds-wt-*`)
 under `/tmp` / `$TMPDIR` (`$env:TEMP` on Windows). A delegation that crashes or is killed before
 its own cleanup leaves that worktree behind forever; this sweep finds and (with `--remove`) deletes those too.
 

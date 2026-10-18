@@ -43,7 +43,7 @@ Install çıktısı `Run /reload-plugins to apply` der. Komutların (`/cli-dispa
 /cli-dispatch:setup
 ```
 
-`/cli-dispatch:setup` önce **hangi backend('ler)i kuracağını sorar** — DeepSeek, Antigravity (Gemini), Codex, OpenCode, Copilot ya da hepsi (`--backends all` veya `--backends deepseek,antigravity,codex,opencode,copilot`). Seçilen bir backend'in altındaki CLI eksik çıkarsa, `install.sh` bunu senin için otomatik kurmayı deneyebilir — `--install-missing` geç (opt-in, varsayılan kapalı; mümkün olduğunda npm tercih edilir, fallback olarak `curl | bash` vendor installer'lar). Setup bu bayrağı yalnızca senin açık onayını aldıktan ve hangi CLI'ların eksik olduğunu, hangi komutların çalışacağını gösterdikten sonra ekler; auth'u (sign-in, API key) asla otomatikleştirmez. Detaylar için [CHANGELOG.md](../../CHANGELOG.md).
+`/cli-dispatch:setup` önce **hangi backend('ler)i kuracağını sorar** — DeepSeek, Antigravity (Gemini), Codex, OpenCode, Copilot, Ollama ya da hepsi (`--backends all` veya `--backends deepseek,antigravity,codex,opencode,copilot,ollama`). Seçilen bir backend'in altındaki CLI eksik çıkarsa, `install.sh` bunu senin için otomatik kurmayı deneyebilir — `--install-missing` geç (opt-in, varsayılan kapalı; mümkün olduğunda npm tercih edilir, fallback olarak `curl | bash` vendor installer'lar). Setup bu bayrağı yalnızca senin açık onayını aldıktan ve hangi CLI'ların eksik olduğunu, hangi komutların çalışacağını gösterdikten sonra ekler; auth'u (sign-in, API key) asla otomatikleştirmez. Detaylar için [CHANGELOG.md](../../CHANGELOG.md).
 
 | Backend | CLI (kurulum) | Auth | Model seçimi |
 |---|---|---|---|
@@ -51,9 +51,10 @@ Install çıktısı `Run /reload-plugins to apply` der. Komutların (`/cli-dispa
 | **Antigravity (Gemini)** | `agy` — `curl -fsSL https://antigravity.google/cli/install.sh \| bash` (+ `script`, `node`) | Google girişi (bir kez `agy` çalıştır) veya `GEMINI_API_KEY` | `--model "<ad>"` / `AG_MODEL` — liste: `agy models` |
 | **Codex (OpenAI)** | `codex` ≥ 0.142.3 — `npm i -g @openai/codex`, `brew install --cask codex` veya `curl -fsSL https://chatgpt.com/codex/install.sh \| sh` (+ `node`) | `codex login` (ChatGPT/OAuth) veya `CODEX_API_KEY`/`OPENAI_API_KEY` | `--model <ad>` / `CX_MODEL` — liste: codex içinde `/model` |
 | **OpenCode (OpenRouter)** | `opencode` — `npm i -g opencode-ai` (+ `node`) | `OPENROUTER_API_KEY` ([edin](https://openrouter.ai/keys)), sen yapıştırırsın | `--model <bare-slug>` / `OC_MODEL` — liste: `opencode models openrouter` |
+| **Ollama (yerel)** | `claude` (zaten var) + çalışan bir Ollama ([ollama.com](https://ollama.com)), varsayılan olarak yerel | yok — key gerekmez | `OL_MODEL` (**zorunlu**, önceden çekilmiş bir model: `ollama pull <ad>`); `OLLAMA_BASE_URL` (varsayılan `http://127.0.0.1:11434`) |
 | **GitHub Copilot** | `copilot` — `npm i -g @github/copilot`, `brew install --cask copilot-cli` veya `curl -fsSL https://gh.io/copilot-install \| bash` (+ `node` 22+) | `COPILOT_GITHUB_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN` (mümkünse `gh auth token`'ı kullanır); aktif Copilot aboneliği gerekir | `--model <slug>` / `CP_MODEL`; `--effort low\|medium\|high` |
 
-Native Windows: yalnızca DeepSeek ve Codex — diğer üçü WSL altında kur (bkz. [Windows](windows.md#windows)). Sandbox: yalnızca Codex'in `--read-only`'si kernel-zorunlu bir OS sandbox'ıdır — gerisi worktree izolasyonu gerektirir (bkz. [Güvenlik ve veri](security.md#güvenlik-ve-veri)).
+Native Windows: yalnızca DeepSeek ve Codex — diğer dördünü (Antigravity, OpenCode, Copilot, Ollama) WSL altında kur (bkz. [Windows](windows.md#windows)). Sandbox: yalnızca Codex'in `--read-only`'si kernel-zorunlu bir OS sandbox'ıdır — gerisi worktree izolasyonu gerektirir (bkz. [Güvenlik ve veri](security.md#güvenlik-ve-veri)).
 
 **Key'ler ve modeller (Claude Code 2.1.287+).** API key'lerini `/plugin configure cli-dispatch@cli-dispatch` ile gir: key, Claude Code'un güvenli deposunda tutulur, bir dosyada durmaz ve Claude'dan geçmez. Diyalog key'i maskeler ama **son 6 karakterini açık gösterir**; ekran paylaşırken ya da kayıt alırken girme. Model adlarını düzenlemek ve backend kurmak için `/cli-dispatch-config` kullan. Orada girilen key yalnızca `dispatch` aracına ulaşır; `/cli-dispatch:run`, runner agent ve `*-agent` script'leri hâlâ config dosyasını okur, bunları kullanıyorsan key'i oraya da ekle (ya da aşağıdaki formu kullan).
 
@@ -64,7 +65,25 @@ Mod yüklü değilse yedek yol: setup, key'i kendin girdiğin için tarayıcınd
 DEEPSEEK_API_KEY="sk-..."     # kendi DeepSeek key'in
 DS_MODEL="deepseek-v4-pro"
 DS_FLASH_MODEL="deepseek-flash"
+# Ollama (key yok) — OL_MODEL zorunlu: o Ollama'da önceden çekilmiş bir model
+OLLAMA_BASE_URL="http://127.0.0.1:11434"
+OL_MODEL="qwen3.8:27b"
 ```
+
+**Ollama ve bağlam penceresi.** Ollama, çalışan bağlamından uzun bir prompt'a HTTP 200 ile ve hata
+vermeden yanıt verir: prompt'u **sessizce** kırpar, bu yüzden worker brief'i ya da önceki araç
+sonuçlarını kaybedebilir. Ollama sunucusunda `OLLAMA_CONTEXT_LENGTH`'i ayarla (varsayılanı VRAM'e
+göre değişir: 4k/32k/256k); Claude Code'un kendi başlangıç prompt'u yaklaşık 29k token olduğundan bir
+çalıştırmanın ilk turu yerelde yaklaşık 40 sn sürer ve 4k'lık bir sunucu onu hiç çalıştıramaz.
+cli-dispatch worker'a sunucunun gerçek penceresini (`CLAUDE_CODE_MAX_CONTEXT_TOKENS`) ayarladıysan
+`OL_CONTEXT`'ten, yoksa model yüklüyken `/api/ps`'ten bildirir; o da yoksa 32768 varsayar ve bunu
+söyler — model yüklü değilken başlayan çalıştırmalar için `OL_CONTEXT`'i sunucunun
+`OLLAMA_CONTEXT_LENGTH` değerine ayarla. Claude Code bu pencereden çok önce sıkıştırır (ölçüldü: 64k
+pencerede yaklaşık 40k'da), bu yüzden birkaç büyük dosya okuyan bir görev "Autocompact is thrashing"
+ile durabilir; böyle görevler için sunucuya daha büyük bir pencere ver. Çekilmemiş bir model,
+erişilemeyen bir sunucu ya da boş bir
+`OL_MODEL` hiçbir şey başlamadan hata verir (runner worktree açmadan 5 ile çıkar); cli-dispatch asla
+model çekmez. Ollama şimdilik yalnız Unix'te çalışır.
 
 > Form yerine metin editörü mü istiyorsun? `CLI_DISPATCH_EDITOR` ortam değişkenini ayarla (ör. `CLI_DISPATCH_EDITOR="code"`; eski `CLAUDE_DS_EDITOR` da hâlâ geçerli). Dosyayı elle düzenlemek için: `${EDITOR:-nano} ~/.config/cli-dispatch/config`.
 

@@ -17,6 +17,7 @@ The plugin installs portable CLIs that Claude Code **invokes via Bash** into `~/
 | `oc-agent` | One-shot synchronous wrapper for opencode: task → run → answer (stdout) |
 | `cp-stream` | Session-tracked GitHub Copilot wrapper (pipes copilot's JSON stream through the parser) |
 | `cp-agent` | One-shot synchronous wrapper for copilot: task → run → answer (stdout) |
+| `ol-agent` | Shim: `ds-agent` against Ollama (`CLAUDE_DS_BACKEND=ollama`) — the same `claude-ds-stream`, parser and worktree runner, pointed at `OLLAMA_BASE_URL` with `OL_MODEL` |
 
 If you want, you can also use them directly from the terminal (e.g. in scripts outside the plugin):
 

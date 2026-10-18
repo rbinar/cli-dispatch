@@ -2,7 +2,7 @@
 
 > 🌐 **Diller:** [English](README.md) · **Türkçe**
 
-**Claude Code'un işini DeepSeek, Gemini (Antigravity), OpenAI Codex, OpenCode (OpenRouter) ya da GitHub Copilot'a devret.** Claude Code'un kendi subagent'ları yalnız Anthropic modellerini çalıştırır; cli-dispatch bu beş CLI'ı `claude` oturumunun içinden worker olarak çalıştırır. Deterministik runner her işi bir git worktree'de izole eder, verify komutunu çalıştırır ve kısa bir sonuç döndürür: işi worker yapar, Claude Code gözden geçirir.
+**Claude Code'un işini DeepSeek, Gemini (Antigravity), OpenAI Codex, OpenCode (OpenRouter), GitHub Copilot ya da yerel bir Ollama modeline devret.** Claude Code'un kendi subagent'ları yalnız Anthropic modellerini çalıştırır; cli-dispatch bu altı backend'i `claude` oturumunun içinden worker olarak çalıştırır. Deterministik runner her işi bir git worktree'de izole eder, verify komutunu çalıştırır ve kısa bir sonuç döndürür: işi worker yapar, Claude Code gözden geçirir.
 
 ![cli-dispatch demosu: kurulum, setup, doctor, ask, delegasyon, run, sessions ve resume, gain ve clean — tüm çıktılar temiz bir Debian container'ında kaydedildi](assets/demo-tr.gif)
 
@@ -45,7 +45,7 @@ https://github.com/user-attachments/assets/efc498b1-48d1-4dc5-abcd-7a152d222578
 /cli-dispatch:ask ds "Explain what this regex matches: ^\d{3}-\d{4}$"
 ```
 
-Backend'ler: `ds` DeepSeek · `ag` Antigravity · `cx` Codex · `oc` OpenCode · `cp` Copilot. 12 komutun listesi `/cli-dispatch:help`'te, ayrıntılar [Komutlar](docs/tr/commands.md)'da.
+Backend'ler: `ds` DeepSeek · `ag` Antigravity · `cx` Codex · `oc` OpenCode · `cp` Copilot · `ol` Ollama (yerel, yalnız Unix). 12 komutun listesi `/cli-dispatch:help`'te, ayrıntılar [Komutlar](docs/tr/commands.md)'da.
 
 > ⚠️ Worker'lar dosya yazabilir ve komut çalıştırabilir. Gerçek repo işi, yamayı sen uygulayana kadar bir git worktree'de kalır ([Güvenlik ve veri](docs/tr/security.md)).
 

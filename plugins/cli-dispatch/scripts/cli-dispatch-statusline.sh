@@ -48,6 +48,7 @@ AG_RUNNING=0
 CX_RUNNING=0
 OC_RUNNING=0
 CP_RUNNING=0
+OL_RUNNING=0
 if [ -d "$ROOT" ]; then
   # CLI_DISPATCH_NOW pins "now" so a test can assert the EXACT staleness boundary. Without it
   # a boundary fixture races real elapsed time: a session written at now-90 is read a second
@@ -81,6 +82,7 @@ if [ -d "$ROOT" ]; then
       codex|cx)          CX_RUNNING=$((CX_RUNNING + 1)) ;;
       opencode|oc)       OC_RUNNING=$((OC_RUNNING + 1)) ;;
       copilot|cp)        CP_RUNNING=$((CP_RUNNING + 1)) ;;
+      ollama|ol)         OL_RUNNING=$((OL_RUNNING + 1)) ;;
     esac
   done
 fi
@@ -90,7 +92,7 @@ fi
 BADGE=$'\033[36m[CD]\033[0m'
 if [ "$SCOPED" -eq 1 ]; then
   GROUP=''
-  for _entry in "ds:$DS_RUNNING" "ag:$AG_RUNNING" "cx:$CX_RUNNING" "oc:$OC_RUNNING" "cp:$CP_RUNNING"; do
+  for _entry in "ds:$DS_RUNNING" "ag:$AG_RUNNING" "cx:$CX_RUNNING" "oc:$OC_RUNNING" "cp:$CP_RUNNING" "ol:$OL_RUNNING"; do
     _count=${_entry#*:}
     [ "$_count" -gt 0 ] || continue
     [ -z "$GROUP" ] || GROUP="$GROUP,"

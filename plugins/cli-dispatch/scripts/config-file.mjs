@@ -2,8 +2,8 @@
 // The cli-dispatch config file's rules, shared by setup-form.mjs and the mod's setup pane. The
 // file is SOURCED by bash, so what may be written into it is an allowlist, never an escape.
 //
-//   node config-file.mjs status            -> {path, exists, keys: {VAR: bool}, models: {VAR: "..."}}
-//   node config-file.mjs set <VAR> <VALUE> -> rewrites one model variable (never a key)
+//   node config-file.mjs status            -> {path, exists, keys: {VAR: bool}, models: {VAR: "..."}, settings: {VAR: "..."}}
+//   node config-file.mjs set <VAR> <VALUE> -> rewrites one model or setting variable (never a key)
 //
 // Exit codes (set): 0 saved, 3 refused (bad variable or value), 4 no config file.
 // Keys appear in `status` as booleans only; `set` cannot write a key at all.
@@ -16,6 +16,9 @@ import { pathToFileURL } from 'node:url'
 
 export const KEY_VARS = ['DEEPSEEK_API_KEY', 'GEMINI_API_KEY', 'CODEX_API_KEY', 'OPENROUTER_API_KEY', 'COPILOT_GITHUB_TOKEN']
 export const MODEL_VARS = ['DS_MODEL', 'DS_FLASH_MODEL', 'AG_MODEL', 'CX_MODEL', 'OC_MODEL', 'CP_MODEL']
+// Non-secret Ollama settings (it has no key): settable like a model name, reported apart from them.
+// A URL's `:` and `/` pass the value rule below.
+export const SETTING_VARS = ['OL_MODEL', 'OLLAMA_BASE_URL', 'OL_CONTEXT']
 
 // Lines are split on \n only, as bash does: JS `^`/`$` with the m flag also break on U+2028/U+2029,
 // which once let a value smuggle a second assignment into its own line (security review).
@@ -100,7 +103,9 @@ function status(configPath) {
   for (const k of KEY_VARS) keys[k] = currentValue(text, k) !== ''
   const models = {}
   for (const m of MODEL_VARS) models[m] = currentValue(text, m)
-  return { path: configPath, exists, keys, models, unparsed: unparsedVars(text, [...KEY_VARS, ...MODEL_VARS]) }
+  const settings = {}
+  for (const m of SETTING_VARS) settings[m] = currentValue(text, m)
+  return { path: configPath, exists, keys, models, settings, unparsed: unparsedVars(text, [...KEY_VARS, ...MODEL_VARS, ...SETTING_VARS]) }
 }
 
 function main(argv) {
@@ -111,7 +116,7 @@ function main(argv) {
   }
   if (argv[0] === 'set' && argv.length === 3) {
     const [, name, value] = argv
-    if (!MODEL_VARS.includes(name)) { console.error(`config-file: ${name} is not a model variable`); return 3 }
+    if (!MODEL_VARS.includes(name) && !SETTING_VARS.includes(name)) { console.error(`config-file: ${name} is not a model variable`); return 3 }
     if (isForbiddenValue(value)) { console.error(`config-file: the value for ${name} contains a character that is not allowed`); return 3 }
     if (!existsSync(configPath)) { console.error(`config-file: no config file at ${configPath}`); return 4 }
     let next

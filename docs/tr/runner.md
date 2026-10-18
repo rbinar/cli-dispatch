@@ -32,7 +32,7 @@ yaparsın):
 ```
 
 `cli-dispatch-run` işçiyi başlatır (`ds` DeepSeek / `ag` Antigravity / `cx` Codex / `oc` OpenCode
-/ `cp` GitHub Copilot), gerçek repo değişikliklerini git worktree'de izole eder, bitene kadar
+/ `cp` GitHub Copilot / `ol` Ollama), gerçek repo değişikliklerini git worktree'de izole eder, bitene kadar
 (veya timeout'a kadar) bloklar, `--verify` komutunu çalıştırır ve kompakt bir verdict basar —
 **orkestrasyonda sıfır LLM token'ı harcanır** (yukarıdaki agent yalnızca yönlendirir). Codex'te `--read-only` hâlâ **gerçek
 OS-düzey sandbox'ı** (macOS Seatbelt / Linux bwrap+seccomp) aktive eder — kernel düzeyinde sert

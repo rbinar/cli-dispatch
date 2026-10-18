@@ -30,7 +30,8 @@ cat <<'HELP'
 │    /cli-dispatch:clean          Remove old sessions; --schedule: daily job   │
 │    /cli-dispatch:help           This reference                               │
 │                                                                              │
-│  [be] = ds|ag|cx|oc|cp (or deepseek|antigravity|codex|opencode|copilot)      │
+│  [be] = ds|ag|cx|oc|cp|ol                                                    │
+│         (or deepseek|antigravity|codex|opencode|copilot|ollama)              │
 └──────────────────────────────────────────────────────────────────────────────┘
 
 [CD] in your statusline = cli-dispatch active; ▶N = N workers running right now.

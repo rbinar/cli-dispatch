@@ -7,6 +7,46 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [7.1.0] — 2026-10-18
+
+### Eklendi
+
+- **Ollama backend'i (`ol`): `claude` üzerinden yerel bir model.** Çalışan bir Ollama'ya yöneltilmiş
+  DeepSeek yolu: `ANTHROPIC_BASE_URL=$OLLAMA_BASE_URL` (varsayılan `http://127.0.0.1:11434`), sahte
+  bir token ve her model yuvasında `ANTHROPIC_MODEL=$OL_MODEL`. Tek bir anahtar,
+  `CLAUDE_DS_BACKEND=ollama`, onu mevcut `claude-ds-stream` / `ds-stream-parse.mjs` /
+  `ds-worktree-run.sh` hattının içinde seçer; böylece watchdog, salt-okunur koruma, resume-cwd ve
+  sızıntı koruması tek kopya kalır. Yeni `ol-agent` (`ds-agent` üzerinde ince bir katman, aynı
+  bayraklarla, gerçek bir `--read-only` dahil); `cli-dispatch-run --backend ol`, `dispatch` aracı,
+  `/cli-dispatch:ask ol`, `run`, `resume`, `sessions`, `doctor`, `balance` (yok: yerel), statusline,
+  bant ve kurulum paneli onu tanır. Config: `OL_MODEL` **zorunludur** (varsayılanı yok, cli-dispatch
+  asla model çekmez), `OLLAMA_BASE_URL` ve `OL_CONTEXT` isteğe bağlıdır, key yoktur.
+  `install.sh --backends ollama`, `ol-agent`'ı stream, `ds-agent` ve parser ile birlikte kurar
+  (`claude-ds`'yi kurmaz). Yalnızca Unix (macOS/Linux/WSL); `cli-dispatch-run.ps1` onu Unix'e özgü
+  olarak bildirir. İlk tur yaklaşık 40 sn sürer, çünkü Claude Code'un ~29k'lık başlangıç prompt'u
+  yerelde işlenir. Loopback olmayan bir `OLLAMA_BASE_URL` brief'i düz HTTP üzerinden gönderir.
+- **Ollama ön kontrolü.** `ollama_preflight` (`stream-utils.sh`), sunucunun yanıt verip vermediğini ve
+  `OL_MODEL`'i listeleyip listelemediğini `/api/tags`'e sorar (5 sn zaman aşımı). Stream bunu
+  herhangi bir oturum dizini oluşmadan kontrol eder (çıkış 1); `cli-dispatch-run` ise herhangi bir
+  worktree, branch ya da oturum oluşmadan kontrol eder ve `ollama backend not ready … no worktree was
+  created` ile **5** koduyla çıkar.
+- **Ollama worker'ına sunucunun gerçek penceresi bildirilir.** Ollama fazla uzun bir prompt'a HTTP 200
+  ile yanıt verip onu sessizce kırpar (ölçüldü); Claude Code ise tanımadığı bir model için 200K
+  varsayar. Bu yüzden worker, `CLAUDE_CODE_MAX_CONTEXT_TOKENS` değerini `OL_CONTEXT`'ten, yoksa
+  yüklü modelin `/api/ps` `context_length`'inden, o da yoksa 32768'den (`OL_CONTEXT`'i ayarlama
+  notuyla) alır; değer `OL_CONTEXT_PCT` (100) ile çarpılır. Worker ayrıca beş prompt küçültücüsü alır
+  (`CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `…_GIT_INSTRUCTIONS`, `…_BUNDLED_SKILLS`,
+  `…_EXPLORE_PLAN_AGENTS`, `…_CFC_PROMPT`) ve miras alınan
+  `CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT` kaldırılır. Hedef repo'nun CLAUDE.md'si
+  worker'a ulaşmaya devam eder. Çalıştırma log'unun başlığı `context: <n> (<kaynak>)` gösterir.
+- **Düşünme etkinlik sayılır** (DeepSeek ve Ollama): `thinking_delta` olayları ve `thinking` blokları
+  `status.json`'u (`lastActivityAt`, `events`) günceller; böylece yalnızca düşünen bir worker bantta
+  ve statusline'da kalır. Düşünme metni yine yalnızca `transcript.jsonl`'a gider.
+- **Verdict'i olmayan ayrık (detached) bir çalıştırma nedenini gösterir.** Bir çalıştırma
+  `verdict.json` olmadan bittiğinde (bir kurulum hatası, verdict'ten önce bir çökme), `summary.txt`
+  çalıştırma log'unun son 3 satırıyla, `log:` önekiyle biter; böylece `cli-dispatch-wait --run`,
+  runner ajanı ve `dispatch` aracı yalnızca `exit: 5  (no verdict.json found)` değil, nedeni de görür.
+
 ## [7.0.0] — 2026-10-18
 
 **Claude Code 2.1.287+ gerekir.** Mod'lara sahip ilk sürüm; daha eski sürümler artık desteklenmiyor.

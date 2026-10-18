@@ -46,7 +46,7 @@ export function usage(u){
 // the leading [^/] boundary excludes). Bare-name invocation is how the runner defs work.
 // `cli-dispatch-run` is deliberately absent: it IS the sanctioned path and spends no Anthropic
 // tokens, so matching it here would score the fix as if it were the problem.
-export const RUNNER_RE=/(?:^|[;&|(]\s*|\s)(?:claude-ds(?:-stream)?|ds-agent|ds-worktree-run(?:\.sh)?|ag-agent|ag-stream|cx-agent|cx-stream|oc-agent|oc-stream|cp-agent|cp-stream)(?=\s|$)/
+export const RUNNER_RE=/(?:^|[;&|(]\s*|\s)(?:claude-ds(?:-stream)?|ds-agent|ds-worktree-run(?:\.sh)?|ag-agent|ag-stream|cx-agent|cx-stream|oc-agent|oc-stream|cp-agent|cp-stream|ol-agent)(?=\s|$)/
 
 // LEGACY gate. The retired ds-/ag-/cx-/oc-/cp-runner subagents were pinned to haiku in their
 // frontmatter, so this is what identifies a real pre-4.0.0 babysitter in the transcript history.
@@ -78,6 +78,7 @@ export function backendFromCommand(cmd){
   if(/(?:^|[;&|(]\s*|\s)(?:cx-agent|cx-stream)(?=\s|$)/.test(cmd)) return 'codex'
   if(/(?:^|[;&|(]\s*|\s)(?:oc-agent|oc-stream)(?=\s|$)/.test(cmd)) return 'opencode'
   if(/(?:^|[;&|(]\s*|\s)(?:cp-agent|cp-stream)(?=\s|$)/.test(cmd)) return 'copilot'
+  if(/(?:^|[;&|(]\s*|\s)ol-agent(?=\s|$)/.test(cmd)) return 'ollama'
   return null
 }
 

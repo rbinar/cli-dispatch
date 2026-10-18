@@ -1,12 +1,12 @@
 ---
 description: Full health check — CLIs on PATH, API keys, auth, models, stale install (✓ / ✗ per item)
-argument-hint: "[ds|ag|cx|oc|cp]"
+argument-hint: "[ds|ag|cx|oc|cp|ol]"
 allowed-tools: Bash
 ---
 
 !`bash "${CLAUDE_PLUGIN_ROOT}/scripts/cli-dispatch-doctor.sh" "${CLAUDE_PLUGIN_ROOT}"`
 
-The health check above already ran — do NOT run it again. If the user named a backend ($ARGUMENTS — ds|deepseek, ag|antigravity, cx|codex, oc|opencode, cp|copilot), show only that backend's section; otherwise show everything.
+The health check above already ran — do NOT run it again. If the user named a backend ($ARGUMENTS — ds|deepseek, ag|antigravity, cx|codex, oc|opencode, cp|copilot, ol|ollama), show only that backend's section; otherwise show everything.
 
 Present it to the user as-is, grouped by the `──` section headings. `✓` = OK,
 `✗` = action needed. Keep it compact; add no prose beyond what the report says.
@@ -21,7 +21,7 @@ A `stale` line means the installed wrappers are older than the plugin: re-run
 
 **Native Windows only** — if the block above failed because `bash` is unavailable,
 run the PowerShell twin instead (it covers DeepSeek and Codex; the Antigravity,
-OpenCode and Copilot backends are Unix-only):
+OpenCode, Copilot and Ollama backends are Unix-only):
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File "$env:CLAUDE_PLUGIN_ROOT/scripts/cli-dispatch-status.ps1" -PluginRoot "$env:CLAUDE_PLUGIN_ROOT"

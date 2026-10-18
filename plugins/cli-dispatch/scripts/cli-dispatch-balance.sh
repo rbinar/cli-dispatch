@@ -9,11 +9,11 @@
 # note instead of failing, so the script always exits 0 with a usable report.
 # NEVER prints a key VALUE — only the balance/quota figures.
 #
-# Usage: cli-dispatch-balance.sh [ds|ag|cx|oc|cp | deepseek|antigravity|codex|opencode|copilot]
+# Usage: cli-dispatch-balance.sh [ds|ag|cx|oc|cp|ol | deepseek|antigravity|codex|opencode|copilot|ollama]
 #        cli-dispatch-balance.sh --backend <long slug>
 
 usage() {
-  echo "Usage: cli-dispatch-balance.sh [ds|ag|cx|oc|cp|deepseek|antigravity|codex|opencode|copilot]" >&2
+  echo "Usage: cli-dispatch-balance.sh [ds|ag|cx|oc|cp|ol|deepseek|antigravity|codex|opencode|copilot|ollama]" >&2
 }
 
 _BACKEND=""
@@ -42,11 +42,11 @@ done
 
 case "$_BACKEND" in
   ds) _BACKEND=deepseek ;; ag) _BACKEND=antigravity ;; cx) _BACKEND=codex ;;
-  oc) _BACKEND=opencode ;; cp) _BACKEND=copilot ;;
+  oc) _BACKEND=opencode ;; cp) _BACKEND=copilot ;; ol) _BACKEND=ollama ;;
 esac
 
 case "$_BACKEND" in
-  ""|deepseek|antigravity|codex|opencode|copilot) ;;
+  ""|deepseek|antigravity|codex|opencode|copilot|ollama) ;;
   *)
     usage
     exit 2
@@ -163,12 +163,19 @@ echo "usage/limits: https://github.com/settings/billing"
 echo "auth: requires an active GitHub Copilot subscription"
 }
 
+# Never a network call: a local model has nothing to bill.
+ollama_balance() {
+echo "== Ollama =="
+echo "balance: none — local model, no usage billing"
+}
+
 case "$_BACKEND" in
   deepseek) deepseek_balance; exit $? ;;
   antigravity) antigravity_balance; exit $? ;;
   codex) codex_balance; exit $? ;;
   opencode) opencode_balance; exit $? ;;
   copilot) copilot_balance; exit $? ;;
+  ollama) ollama_balance; exit $? ;;
 esac
 
 # ── DeepSeek (account balance) ──────────────────────────────────────────
@@ -257,3 +264,6 @@ echo "balance: not queryable from the copilot CLI"
 echo "note: /usage is session-scoped and interactive-only inside a copilot REPL session; it is not scriptable."
 echo "usage/limits: https://github.com/settings/billing"
 echo "auth: requires an active GitHub Copilot subscription"
+
+# ── Ollama (local, nothing billed) ──────────────────────────────────────
+ollama_balance

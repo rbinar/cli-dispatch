@@ -1756,3 +1756,52 @@ describe('review fixes', () => {
     expect(r.isError).toBeUndefined()
   })
 })
+
+// ---- 7.1.0: the Ollama backend (ol) -------------------------------------------------------------
+
+describe('ollama backend', () => {
+  test('dispatch with backend ol runs the runner detached with --backend ol and hands over no key', { options: { deepseek_api_key: 'ds-S', codex_api_key: 'cx-S' } }, async ($, on) => {
+    const h = stubDispatch(on)
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    const r: any = await $.tool.call({ tool: 'mcp__cli-dispatch__dispatch', backend: 'ol', cwd: '/repo', task: 'fix it', model: 'qwen3.8:27b' } as any)
+    expect(String(r.result ?? r.text)).toMatch(/verify: pass/)
+    const run = h.calls.find(c => c.argv[0] === 'cli-dispatch-run')!
+    expect(run.argv.slice(0, 4)).toEqual(['cli-dispatch-run', '--detach', '--backend', 'ol'])
+    expect(run.argv.filter((a, i) => run.argv[i - 1] === '--model')).toEqual(['qwen3.8:27b'])
+    expect(run.env).toEqual({ CLAUDE_CODE_SESSION_ID: SID })
+  })
+
+  test('the bad-backend message lists ol', async ($, on) => {
+    stubDispatch(on)
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    const bad: any = await $.tool.call({ tool: 'mcp__cli-dispatch__dispatch', backend: 'zz', cwd: '/repo', task: 't' } as any)
+    expect(String(bad.result ?? bad.text)).toMatch(/backend must be one of ds, ag, cx, oc, cp, ol/)
+  })
+
+  test('the band labels a running ollama worker ol', async ($, on) => {
+    stubHost(on, { a: running('ollama', '/tmp/ds-wt-1') })
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    const ui = await $.ui.mount({ plugin: 'cli-dispatch', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 120 } } as any)
+    expect(await ui.find({ type: 'Text', text: /▶ ol 2m05s/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /ollama/ })).toBeUndefined()
+    await ui.unmount()
+  })
+
+  test('the setup pane shows Ollama with no key and its three settings', async ($, on) => {
+    const status = JSON.stringify({ path: '/home/u/.config/cli-dispatch/config', exists: true, keys: {}, models: {}, settings: { OL_MODEL: '', OLLAMA_BASE_URL: 'http://10.0.0.5:11434', OL_CONTEXT: '' } })
+    const h = stubSetup(on, { sh: 'claude\nol-agent\n', status })
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    await $.command.run({ command: 'cli-dispatch-config' } as any)
+    const ui = await $.ui.mount({ plugin: 'cli-dispatch', surface: 'terminal', component: 'Pane', requestId: 'setup', props: PANE })
+    expect(await ui.find({ type: 'Text', text: /ol-agent ✓/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /key: – none \(local\)/ })).toBeDefined()
+    for (const k of ['OL_MODEL', 'OLLAMA_BASE_URL', 'OL_CONTEXT']) expect(await ui.find({ type: 'Input', key: k })).toBeDefined()
+    expect(JSON.stringify(await ui.drawn())).toContain('http://10.0.0.5:11434')
+    await ui.input({ key: 'OLLAMA_BASE_URL', text: 'http://127.0.0.1:11434' })
+    expect(h.calls.find(c => c.argv[2] === 'set')!.argv.slice(2)).toEqual(['set', 'OLLAMA_BASE_URL', 'http://127.0.0.1:11434'])
+    await ui.press({ key: 'install:ol' })
+    await ui.press({ key: 'install' })
+    expect(h.calls.find(c => c.argv[0] === 'bash' && c.argv[1]!.endsWith('install.sh'))!.argv).toEqual(['bash', '/resolved/root/scripts/install.sh', '--backends', 'ollama', '--non-interactive'])
+    await ui.unmount()
+  })
+})

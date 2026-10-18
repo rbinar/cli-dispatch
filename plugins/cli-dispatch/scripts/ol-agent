@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# ol-agent — ds-agent against a local Ollama model: the same claude worker, the same flags
+# (--read-only, --cwd, --resume, --effort, --prompt-file, -q …), with CLAUDE_DS_BACKEND=ollama.
+# Needs OL_MODEL (a model already pulled on that Ollama) and optionally OLLAMA_BASE_URL in the
+# config. Unix-only (macOS/Linux/WSL).
+set -euo pipefail
+export CLAUDE_DS_BACKEND=ollama
+AGENT="$(command -v ds-agent 2>/dev/null || true)"
+[ -n "$AGENT" ] || AGENT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ds-agent"
+[ -x "$AGENT" ] || { echo "ol-agent: ds-agent not found (run /cli-dispatch:setup --backends ollama)." >&2; exit 1; }
+exec "$AGENT" "$@"

@@ -168,3 +168,30 @@ test('static gate: no worktree runner passes the brief as -p "$(cat "$BRIEF")"',
   const r = spawnSync('bash', ['-c', `grep -nE -- '-p "\\$\\(cat "\\$BRIEF"\\)"' ${SCRIPTS}/*-worktree-run.sh`], { encoding: 'utf8' })
   assert.equal(r.status, 1, `matched:\n${r.stdout}`)
 })
+
+// 7.1.0: the Ollama branch (CLAUDE_DS_BACKEND=ollama) keeps the stdin delivery. Its preflight asks a
+// fixture Ollama, which answers only while the event loop runs, so this one spawns async.
+test('claude-ds-stream (ollama): --prompt-file delivers the brief to claude on stdin, never on argv', async () => {
+  const { createServer } = await import('node:http')
+  const { spawn } = await import('node:child_process')
+  const x = setup()
+  const srv = createServer((req, res) => res.end(JSON.stringify({ models: [{ name: 'm', model: 'm' }] })))
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r))
+  try {
+    await new Promise((resolve) => {
+      const c = spawn('bash', [path.join(SCRIPTS, 'claude-ds-stream'), '--cwd', path.join(x.root, 'repo'), '--prompt-file', x.briefFile], {
+        cwd: x.root,
+        env: { PATH: `${x.bin}:${process.env.PATH}`, HOME: path.join(x.root, 'home'), CLAUDE_DS_BACKEND: 'ollama',
+          OLLAMA_BASE_URL: `http://127.0.0.1:${srv.address().port}`, OL_MODEL: 'm', CLI_DISPATCH_NO_GH_TOKEN: '1',
+          CLI_DISPATCH_CONFIG: '/dev/null', CLI_DISPATCH_SESSIONS_DIR: path.join(x.root, 'sessions') },
+      })
+      c.on('close', resolve)
+      c.stdin.end()
+    })
+    const argv = read(x, 'claude.argv'), stdin = read(x, 'claude.stdin')
+    assert.ok(argv !== '', 'claude stub was never launched')
+    assert.ok(!argv.includes(SENTINEL), `the brief is on claude's argv:\n${argv}`)
+    assert.ok(stdin.includes(SENTINEL), 'claude did not receive the brief on stdin')
+    assert.ok(stdin.includes('$(echo expanded)'), 'brief was altered on the way in')
+  } finally { srv.closeAllConnections?.(); srv.close(); rmSync(x.root, { recursive: true, force: true }) }
+})

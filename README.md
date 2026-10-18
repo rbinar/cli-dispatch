@@ -2,7 +2,7 @@
 
 > 🌐 **Languages:** **English** · [Türkçe](README.tr.md)
 
-**Hand Claude Code's work to DeepSeek, Gemini (Antigravity), OpenAI Codex, OpenCode (OpenRouter) or GitHub Copilot.** Claude Code's own subagents only run Anthropic models; cli-dispatch runs these five CLIs as workers from inside your `claude` session. A deterministic runner isolates each job in a git worktree, runs your verify command and returns a short verdict, so the worker does the work and Claude Code reviews it.
+**Hand Claude Code's work to DeepSeek, Gemini (Antigravity), OpenAI Codex, OpenCode (OpenRouter), GitHub Copilot or a local Ollama model.** Claude Code's own subagents only run Anthropic models; cli-dispatch runs these six backends as workers from inside your `claude` session. A deterministic runner isolates each job in a git worktree, runs your verify command and returns a short verdict, so the worker does the work and Claude Code reviews it.
 
 ![cli-dispatch demo: install, setup, doctor, ask, delegate, run, sessions and resume, gain and clean — every output recorded in a clean Debian container](assets/demo.gif)
 
@@ -45,7 +45,7 @@ https://github.com/user-attachments/assets/efc498b1-48d1-4dc5-abcd-7a152d222578
 /cli-dispatch:ask ds "Explain what this regex matches: ^\d{3}-\d{4}$"
 ```
 
-Backends: `ds` DeepSeek · `ag` Antigravity · `cx` Codex · `oc` OpenCode · `cp` Copilot. The 12 commands are listed by `/cli-dispatch:help`; details are in [Commands](docs/commands.md).
+Backends: `ds` DeepSeek · `ag` Antigravity · `cx` Codex · `oc` OpenCode · `cp` Copilot · `ol` Ollama (local, Unix-only). The 12 commands are listed by `/cli-dispatch:help`; details are in [Commands](docs/commands.md).
 
 > ⚠️ Workers can write files and run commands. Real repo work stays in a git worktree until you apply the patch ([Security and data](docs/security.md)).
 

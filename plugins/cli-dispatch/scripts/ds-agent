@@ -82,7 +82,11 @@ STREAM="$(command -v claude-ds-stream 2>/dev/null || true)"
 [ -x "$STREAM" ] || { echo "ds-agent: claude-ds-stream not found (run /cli-dispatch:setup)." >&2; exit 1; }
 
 if [ "$QUIET" -eq 0 ]; then
-  echo "▶ ds-agent → claude-ds (DeepSeek) [$([ "$AGENTIC" -eq 1 ] && echo 'agentic: may modify cwd' || echo 'read-only')]" >&2
+  _LABEL="ds-agent → claude-ds (DeepSeek)"
+  if [ "${CLAUDE_DS_BACKEND:-}" = ollama ]; then   # ol-agent: the same pipeline against Ollama
+    _LABEL="ol-agent → claude ($( . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/stream-utils.sh" 2>/dev/null && source_config 2>/dev/null; printf 'Ollama %s @ %s' "${OL_MODEL:-(OL_MODEL not set)}" "${OLLAMA_BASE_URL:-http://127.0.0.1:11434}"))"
+  fi
+  echo "▶ $_LABEL [$([ "$AGENTIC" -eq 1 ] && echo 'agentic: may modify cwd' || echo 'read-only')]" >&2
   export CLAUDE_DS_PROGRESS_STDERR=1   # parser mirrors tool activity to stderr (live)
 fi
 

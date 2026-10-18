@@ -6,16 +6,17 @@
 extra. Each backend check reverse-engineers data the CLI already keeps locally; nothing
 new is sent over the network on your behalf.
 
-Use `/cli-dispatch:balance` to see all five at once, or one backend with `/cli-dispatch:balance <backend>`.
+Use `/cli-dispatch:balance` to see all six at once, or one backend with `/cli-dispatch:balance <backend>`.
 
 | Backend | Command | Where the number comes from |
 |---|---|---|
-| **All** | `/cli-dispatch:balance` | Runs the five below in one go and summarizes each headline number side by side. |
+| **All** | `/cli-dispatch:balance` | Runs the six below in one go and summarizes each headline number side by side. |
 | **DeepSeek** | `/cli-dispatch:balance ds` | DeepSeek's official REST balance API (`/user/balance`), using your `DEEPSEEK_API_KEY`. |
 | **Codex** | `/cli-dispatch:balance cx` | Codex **persists** the backend's rate-limit payload into its own session records (`~/.codex/sessions/**/*.jsonl`). The command reads the newest `token_count` record's `rate_limits` → `primary` (5h) + `secondary` (7d) windows as **% left** + reset. No network. |
 | **Antigravity** | `/cli-dispatch:balance ag` | The local Antigravity **language server** (the one the IDE/`agy` already run) exposes a Connect-RPC `GetUserStatus` endpoint. The command finds the running `language_server` process, reads its `--csrf_token` arg + listening port, then `POST`s `GetUserStatus` → plan + **per-model `remainingFraction`** + reset. |
 | **OpenCode** | `/cli-dispatch:balance oc` | OpenRouter's official REST endpoint (`GET /api/v1/credits`), using your `OPENROUTER_API_KEY` → `total_credits - total_usage` remaining. **Paid-credit balance only** — `:free`-suffixed models have separate, unauthenticated per-model rate limits with no scriptable quota API. |
 | **GitHub Copilot** | `/cli-dispatch:balance cp` | Not queryable from the `copilot` CLI. `/usage` is session-scoped and interactive-only inside a Copilot REPL; use GitHub Billing (https://github.com/settings/billing) for actual usage/limits. |
+| **Ollama** | `/cli-dispatch:balance ol` | No balance — a local model, nothing is billed. No network call. |
 
 How the two reverse-engineered ones work, concretely:
 

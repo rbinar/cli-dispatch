@@ -18,8 +18,9 @@ const STALE_SECS = 90 // same liveness window as cli-dispatch-statusline.sh
 const RECENT_SECS = 600 // a finished run stays on the band this long
 const TICK_MS = 4000
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'NotebookEdit'])
-const BACKENDS: Record<string, string> = { deepseek: 'ds', antigravity: 'ag', codex: 'cx', opencode: 'oc', copilot: 'cp' }
+const BACKENDS: Record<string, string> = { deepseek: 'ds', antigravity: 'ag', codex: 'cx', opencode: 'oc', copilot: 'cp', ollama: 'ol' }
 // The userConfig field (a sensitive key) of each backend, and the variable name the config file uses.
+// Ollama (ol) has no key, so no field: nothing is ever handed to its worker.
 const KEY_FIELD: Record<string, string> = { ds: 'deepseek_api_key', ag: 'gemini_api_key', cx: 'codex_api_key', oc: 'openrouter_api_key', cp: 'copilot_github_token' }
 
 async function readJson($: EngineInterface, path: string): Promise<any> {
@@ -152,7 +153,7 @@ const DISPATCH = {
   inputSchema: {
     type: 'object',
     properties: {
-      backend: { type: 'string', enum: ['ds', 'ag', 'cx', 'oc', 'cp'] },
+      backend: { type: 'string', enum: ['ds', 'ag', 'cx', 'oc', 'cp', 'ol'] },
       cwd: { type: 'string', description: 'Absolute path of the git repo to work in.' },
       task: { type: 'string', description: 'The full, self-contained brief for the worker.' },
       verify: { type: 'array', items: { type: 'string' }, description: 'Shell commands run in the worktree after the worker; all must exit 0.' },
@@ -179,7 +180,7 @@ async function runner($: EngineInterface, args: string[], init: { env: Record<st
 }
 
 async function dispatch($: EngineInterface, input: DispatchInput, signal: AbortSignal, options: PluginOptions): Promise<string> {
-  if (!['ds', 'ag', 'cx', 'oc', 'cp'].includes(input.backend)) return `dispatch: backend must be one of ds, ag, cx, oc, cp (got ${input.backend})`
+  if (!['ds', 'ag', 'cx', 'oc', 'cp', 'ol'].includes(input.backend)) return `dispatch: backend must be one of ds, ag, cx, oc, cp, ol (got ${input.backend})`
   if (!input.cwd?.startsWith('/')) return 'dispatch: cwd must be an absolute path'
   const tmp = ((await $.env.get('TMPDIR')) || '/tmp').replace(/\/$/, '')
   const brief = `${tmp}/cli-dispatch-brief-${await $.clock.now()}-${Math.random().toString(36).slice(2, 8)}.txt`
@@ -235,9 +236,13 @@ const SETUP_BACKENDS = [
   { id: 'cp', name: 'Copilot', install: 'copilot', cli: 'copilot', wrapper: 'cp-agent', keyVar: 'COPILOT_GITHUB_TOKEN', required: false, hint: 'gh auth login', models: ['CP_MODEL'] },
   { id: 'oc', name: 'OpenCode', install: 'opencode', cli: 'opencode', wrapper: 'oc-agent', keyVar: 'OPENROUTER_API_KEY', required: true, hint: '', models: ['OC_MODEL'] },
   { id: 'ds', name: 'DeepSeek', install: 'deepseek', cli: 'claude', wrapper: 'ds-agent', keyVar: 'DEEPSEEK_API_KEY', required: true, hint: '', models: ['DS_MODEL', 'DS_FLASH_MODEL'] },
+  // No key: a local model. OL_MODEL is required (no default); the other two are optional.
+  { id: 'ol', name: 'Ollama', install: 'ollama', cli: 'claude', wrapper: 'ol-agent', keyVar: '', required: false, hint: '', models: ['OL_MODEL', 'OLLAMA_BASE_URL', 'OL_CONTEXT'] },
 ] as const
 // install.sh --backends takes them in this order.
-const INSTALL_ORDER = ['deepseek', 'antigravity', 'codex', 'opencode', 'copilot']
+const INSTALL_ORDER = ['deepseek', 'antigravity', 'codex', 'opencode', 'copilot', 'ollama']
+// Config values with no default: an empty one reads "required", not "default".
+const REQUIRED_MODELS = new Set(['OL_MODEL'])
 
 const PROBE = `for c in ${SETUP_BACKENDS.map(b => `${b.cli} ${b.wrapper}`).join(' ')}; do command -v "$c" >/dev/null 2>&1 && echo "$c"; done`
 
@@ -269,7 +274,7 @@ async function computeSetup($: EngineInterface, options: PluginOptions, selected
       const field = KEY_FIELD[b.id] ?? ''
       const uc = options[field]
       const models: Record<string, string> = {}
-      for (const m of b.models) models[m] = String(cfg?.models?.[m] ?? '')
+      for (const m of b.models) models[m] = String(cfg?.models?.[m] ?? cfg?.settings?.[m] ?? '')
       return {
         id: b.id,
         cliOk: found === null ? null : found.has(b.cli),
@@ -330,6 +335,7 @@ async function installSelected($: EngineInterface, options: PluginOptions) {
 const mark = (ok: boolean | null) => (ok === null ? '?' : ok ? '✓' : '✗')
 
 function keyCell(b: (typeof SETUP_BACKENDS)[number], s: SetupState['backends'][number]): string {
+  if (!b.keyVar) return '– none (local)'
   if (s.userConfig && s.configFile) return '✓ plugin config (overrides the config file for dispatch)'
   if (s.userConfig) return '✓ plugin config'
   if (s.configFile) return '✓ config file'
@@ -1447,7 +1453,7 @@ export const register: Register = (on, options) => {
           {state.configExists ? (
             <Box flexDirection="row" gap={2}>
               {b.models.map(m => (
-                <Input key={m} label={m} value={s.models[m] ?? ''} placeholder="(default)" onSubmit={v => saveModel($, options, m, v.trim())} />
+                <Input key={m} label={m} value={s.models[m] ?? ''} placeholder={REQUIRED_MODELS.has(m) ? '(required)' : '(default)'} onSubmit={v => saveModel($, options, m, v.trim())} />
               ))}
             </Box>
           ) : null}

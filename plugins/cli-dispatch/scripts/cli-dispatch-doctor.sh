@@ -5,7 +5,7 @@
 # block — it is NOT installed into ~/.local/bin, so it never goes stale relative
 # to the plugin (same arrangement as cli-dispatch-balance.sh).
 #
-# Usage: cli-dispatch-doctor.sh <pluginRoot> [ds|ag|cx|oc|cp | deepseek|antigravity|codex|opencode|copilot]
+# Usage: cli-dispatch-doctor.sh <pluginRoot> [ds|ag|cx|oc|cp|ol | deepseek|antigravity|codex|opencode|copilot|ollama]
 # With a backend, only that backend's section is printed (shared sections stay).
 #
 # $1 = plugin root. Claude Code interpolates ${CLAUDE_PLUGIN_ROOT} into the `!`
@@ -22,7 +22,8 @@ case "${2:-}" in
   cx|codex) _B=cx ;;
   oc|opencode) _B=oc ;;
   cp|copilot) _B=cp ;;
-  *) echo "Usage: cli-dispatch-doctor.sh <pluginRoot> [ds|ag|cx|oc|cp|deepseek|antigravity|codex|opencode|copilot]" >&2; exit 2 ;;
+  ol|ollama) _B=ol ;;
+  *) echo "Usage: cli-dispatch-doctor.sh <pluginRoot> [ds|ag|cx|oc|cp|ol|deepseek|antigravity|codex|opencode|copilot|ollama]" >&2; exit 2 ;;
 esac
 want() { [ -z "$_B" ] || [ "$_B" = "$1" ]; }
 
@@ -212,6 +213,36 @@ fi
 model_line CP_MODEL 'copilot default used'
 fi
 
+if want ol; then
+echo "── Ollama (local) ─────────── optional ─────────────────"
+if command -v ol-agent >/dev/null 2>&1; then
+  ok "ol-agent on PATH"
+  chk claude-ds-stream
+  # No key (Ollama has none). One probe of the server, the same check every Ollama worker runs
+  # first; it never pulls or loads a model.
+  _SU="$_PLUGIN_ROOT/scripts/stream-utils.sh"
+  if [ -f "$_SU" ]; then
+    ( . "$_SU"; source_config
+      _URL="${OLLAMA_BASE_URL:-http://127.0.0.1:11434}"
+      echo "  – OLLAMA_BASE_URL=$_URL"
+      _ERR="$(mktemp)"
+      if _OUT="$(ollama_preflight "$_URL" "${OL_MODEL:-}" 2>"$_ERR")"; then
+        ok "Ollama reachable at $_URL, model $OL_MODEL listed"
+        ok "context: ${_OUT% *} (${_OUT##* })"
+      else
+        bad "$(tail -n 1 "$_ERR")"
+      fi
+      rm -f "$_ERR" )
+  else
+    echo "  – plugin root unknown — cannot probe Ollama"
+  fi
+else
+  echo "  – ol-agent not installed (optional — /cli-dispatch:setup to add)"
+fi
+
+model_line OL_MODEL 'REQUIRED — no default; set a pulled model'
+fi
+
 echo "── GitHub CLI (gh) ────────── optional ─────────────────"
 if command -v gh >/dev/null 2>&1; then
   if [ -n "${CLI_DISPATCH_NO_GH_TOKEN:-}" ]; then
@@ -260,3 +291,4 @@ esac
 
 echo "── Smoke test (run manually if all green) ──────────────"
 echo "  ds-agent --read-only -q \"Reply with exactly: OK\""
+echo "  ol-agent --read-only -q \"Reply with exactly: OK\"   (Ollama; the first call can take ~40 s)"

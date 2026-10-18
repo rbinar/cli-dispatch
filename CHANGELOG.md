@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [7.1.0] — 2026-10-18
+
+### Added
+
+- **Ollama backend (`ol`): a local model through `claude`.** The DeepSeek route pointed at a running
+  Ollama: `ANTHROPIC_BASE_URL=$OLLAMA_BASE_URL` (default `http://127.0.0.1:11434`), a dummy token and
+  `ANTHROPIC_MODEL=$OL_MODEL` in every model slot. One switch, `CLAUDE_DS_BACKEND=ollama`, selects it
+  inside the existing `claude-ds-stream` / `ds-stream-parse.mjs` / `ds-worktree-run.sh` pipeline, so
+  the watchdog, read-only guard, resume-cwd and leak guard stay one copy. New `ol-agent` (a shim over
+  `ds-agent`, with the same flags, a real `--read-only` included); `cli-dispatch-run --backend ol`, the
+  `dispatch` tool, `/cli-dispatch:ask ol`, `run`, `resume`, `sessions`, `doctor`, `balance` (none:
+  local), the statusline, the band and the setup pane all know it. Config: `OL_MODEL` is **required**
+  (no default, cli-dispatch never pulls a model), `OLLAMA_BASE_URL` and `OL_CONTEXT` are optional,
+  and there is no key. `install.sh --backends ollama` installs `ol-agent` with the stream, `ds-agent`
+  and the parser (not `claude-ds`). Unix-only (macOS/Linux/WSL); `cli-dispatch-run.ps1` reports it as
+  Unix-only. The first turn takes about 40 s, because Claude Code's ~29k start prompt is processed
+  locally. Sending the brief to a non-loopback `OLLAMA_BASE_URL` sends it over plain HTTP.
+- **Ollama preflight.** `ollama_preflight` (`stream-utils.sh`) asks `/api/tags` (5 s timeout) whether
+  the server answers and lists `OL_MODEL`. The stream checks it before any session dir exists (exit
+  1); `cli-dispatch-run` checks it before any worktree, branch or session exists and exits **5**
+  with `ollama backend not ready … no worktree was created`.
+- **The Ollama worker is told the server's real window.** Ollama answers an overlong prompt with HTTP
+  200 and truncates it silently (measured), while Claude Code assumes 200K for an unknown model, so
+  the worker gets `CLAUDE_CODE_MAX_CONTEXT_TOKENS` from `OL_CONTEXT`, else the loaded model's
+  `/api/ps` `context_length`, else 32768 (with a note to set `OL_CONTEXT`), times `OL_CONTEXT_PCT`
+  (100). It also gets five prompt reducers (`CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `…_GIT_INSTRUCTIONS`,
+  `…_BUNDLED_SKILLS`, `…_EXPLORE_PLAN_AGENTS`, `…_CFC_PROMPT`), and an inherited
+  `CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT` is removed. The target repo's CLAUDE.md
+  still reaches it. The run log's header shows `context: <n> (<source>)`.
+- **Thinking counts as activity** for DeepSeek and Ollama: `thinking_delta` events and `thinking`
+  blocks update `status.json` (`lastActivityAt`, `events`), so a worker that is only thinking stays
+  on the band and the statusline. The thinking text still goes only to `transcript.jsonl`.
+- **A detached run with no verdict shows why.** When a run ends without `verdict.json` (a setup
+  error, a crash before the verdict), `summary.txt` ends with the last 3 lines of the run log,
+  prefixed `log:`, so `cli-dispatch-wait --run`, the runner agent and the `dispatch` tool see the
+  reason, not just `exit: 5  (no verdict.json found)`.
+
 ## [7.0.0] — 2026-10-18
 
 **Requires Claude Code 2.1.287+.** The first version with mods; older versions are no longer

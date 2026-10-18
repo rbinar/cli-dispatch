@@ -7,9 +7,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 `cli-dispatch` is a Claude Code **plugin** (not an npm package — there is no `package.json`,
 no build step, no bundler; the demo video source under `assets/demo-src/` is gitignored, local
 only). It ships slash commands, a SessionStart hook, a skill, and
-standalone CLI scripts that let Claude Code delegate work to five external "worker" CLIs —
+standalone CLI scripts that let Claude Code delegate work to six external "worker" backends —
 DeepSeek (via `claude` pointed at DeepSeek's API), Antigravity/Gemini (`agy`), OpenAI Codex
-(`codex`), OpenCode (`opencode`, via OpenRouter), and GitHub Copilot (`copilot`) — since
+(`codex`), OpenCode (`opencode`, via OpenRouter), GitHub Copilot (`copilot`), and Ollama (`ol`:
+the same `claude` pointed at a local Ollama, selected by `CLAUDE_DS_BACKEND=ollama` inside the
+DeepSeek pipeline; `ol-agent` is a shim over `ds-agent`) — since
 Claude Code's built-in subagent tool only supports Anthropic models. It ships **one thin
 subagent**, `agents/runner.md` (`cli-dispatch:runner`, haiku, Bash-only — a forwarder, see "The
 deterministic runner + escalation path" below); the five `agents/*-runner.md` LLM babysitters
@@ -110,7 +112,7 @@ scratch generation dir needs `git init` + one base commit first).
 
 ## Architecture
 
-**Session directories are the shared contract between all five backends.** Every worker
+**Session directories are the shared contract between all six backends.** Every worker
 run — regardless of backend — creates `~/.cache/cli-dispatch/sessions/<id>/` containing:
 - `status.json` — the *only* file consumers should poll while a worker runs (small,
   throttled writes via `parse-utils.mjs`'s `createStatusWriter`, ~200ms). Its `state` field
@@ -285,7 +287,7 @@ therefore ambiguous on its own: it means "no policy file" at least as often as i
 `cli-dispatch-wait`, and each backend's `*-agent`) ships both a
 bash script and a `.ps1` twin for native Windows, installed by `install.sh` and
 `install.ps1` respectively — keep both in sync when changing one. Antigravity, OpenCode,
-and GitHub Copilot backends are Unix-only (macOS/Linux/WSL) for now; only DeepSeek and
+GitHub Copilot and Ollama backends are Unix-only (macOS/Linux/WSL) for now; only DeepSeek and
 Codex run natively on Windows.
 
 `cli-dispatch-run --detach` and `cli-dispatch-wait --run` are bash-only and have **no `.ps1`
@@ -303,6 +305,11 @@ One deliberate exception to the pairing rule: `cli-dispatch-statusline.sh` has *
 twin**. It is not an installed binary — a combining `~/.claude/hooks/statusline.sh` wrapper
 globs it straight out of the plugin cache — and statusline wrappers of that shape are a
 bash-only convention. Both `docs/statusline.md` and `docs/tr/statusline.md` say so explicitly ("Unix (bash) statusline setups only").
+
+A second deliberate behavior-parity exception: the `CLAUDE_DS_BACKEND` switch (Ollama, 7.1.0) exists
+only in bash `claude-ds-stream`/`ds-agent`/`ds-stream-parse.mjs`. Nothing on Windows sets it — there
+is no `ol-agent.ps1`, and `cli-dispatch-run.ps1` refuses `ol` as Unix-only — so `claude-ds-stream.ps1`
+and `ds-agent.ps1` do not carry it. Do not "restore parity" without porting `ol` to Windows as a whole.
 
 Parity is also a *behavior* rule, not just a file-existence one: 4.2.0 fixed three cases
 where a `.ps1` had silently drifted from its bash twin (an unreachable `--resume`, an

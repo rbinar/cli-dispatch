@@ -136,6 +136,57 @@ maybe_export_gh_token() {
   return 0
 }
 
+# ---- Ollama preflight ----
+
+# ollama_preflight <base_url> <model> [<message prefix>]
+#
+# Is an Ollama server answering at <base_url>, with <model> pulled? Never pulls or loads a model.
+# On success prints ONE stdout line "<context> <source>": the context window the worker gets,
+# from OL_CONTEXT (env, then config) -> /api/ps context_length of the loaded model -> 32768
+# (source OL_CONTEXT | api/ps | fallback). /api/tags context_length is the model's MAXIMUM, not
+# the server's running window, and is never used. On failure: one stderr line, rc 1.
+# One node call with fetch (5 s timeout) — no curl, no process substitution.
+ollama_preflight() {
+  local base="${1%/}" model="$2" pfx="${3:-}"
+  if [ -z "$model" ]; then
+    echo "${pfx}OL_MODEL is not set — add OL_MODEL=\"<a model pulled on that Ollama>\" to ${CONFIG:-the cli-dispatch config} (/cli-dispatch:setup) or pass --model; cli-dispatch never pulls a model" >&2
+    return 1
+  fi
+  if [ -n "${OL_CONTEXT:-}" ]; then
+    case "$OL_CONTEXT" in
+      *[!0-9]*|0*) echo "${pfx}OL_CONTEXT must be a positive integer (the Ollama server's context in tokens, e.g. 65536)" >&2; return 1 ;;
+    esac
+  fi
+  "${CLI_DISPATCH_NODE:-node}" -e '
+    const [base, model, ctx, pfx] = process.argv.slice(1)
+    const want = new Set([model, model + ":latest"])
+    const has = (m) => !!m && (want.has(m.name) || want.has(m.model))
+    const get = async (p) => {
+      const r = await fetch(base + p, { signal: AbortSignal.timeout(5000) })
+      if (!r.ok) throw new Error("HTTP " + r.status)
+      return r.json()
+    }
+    const fail = (msg) => { process.stderr.write(pfx + msg + "\n"); process.exit(1) }
+    ;(async () => {
+      let tags
+      try { tags = await get("/api/tags") } catch (e) {
+        const c = (e && e.cause) || {}
+        const why = e && e.name === "TimeoutError" ? "no answer within 5 s" : (c.code || c.message || (e && e.message) || String(e))
+        fail("Ollama not reachable at " + base + " (" + why + ") — start it (ollama serve) or set OLLAMA_BASE_URL")
+      }
+      if (!Array.isArray(tags && tags.models) || !tags.models.some(has)) fail("model \"" + model + "\" is not pulled on " + base + " — run: ollama pull " + model + "  (or set OL_MODEL)")
+      if (ctx) { console.log(ctx + " OL_CONTEXT"); return }
+      try {
+        const ps = await get("/api/ps")
+        const n = ((ps && Array.isArray(ps.models) ? ps.models : []).find(has) || {}).context_length
+        if (Number.isInteger(n) && n > 0) { console.log(n + " api/ps"); return }
+      } catch {}
+      process.stderr.write(pfx + "context unknown (model not loaded) — assuming 32768; set OL_CONTEXT to the server'"'"'s OLLAMA_CONTEXT_LENGTH\n")
+      console.log("32768 fallback")
+    })()
+  ' "$base" "$model" "${OL_CONTEXT:-}" "$pfx"
+}
+
 # ---- post-run error reconcile ----
 
 # Rewrite status.json/meta.json after a wrapper-level failure the parser cannot see.

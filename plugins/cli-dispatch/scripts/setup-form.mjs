@@ -4,7 +4,7 @@
 // text, and the alternative — pasting a key into the Claude chat — would route it through the
 // model. Here the key goes browser -> this process -> the config file and nowhere else.
 //
-//   node setup-form.mjs --config <path> --backends <deepseek,antigravity,codex,opencode,copilot|all>
+//   node setup-form.mjs --config <path> --backends <deepseek,antigravity,codex,opencode,copilot,ollama|all>
 //                       [--timeout SECS (default 600)] [--no-open]
 //
 // Exit codes: 0 saved, 2 timed out with nothing saved, 1 usage error.
@@ -49,6 +49,11 @@ const BACKENDS = {
     note: 'The <code>gh auth</code> token is reused automatically; the token is optional.',
     fields: [['COPILOT_GITHUB_TOKEN', 'Token', true], ['CP_MODEL', 'Default model', false]],
   },
+  ollama: {
+    title: 'Ollama (local)',
+    note: 'No key. Base URL of a running Ollama (without <code>/v1</code>) and a model already pulled there (required, no default). Sessions longer than the server context are truncated silently: set <code>OLLAMA_CONTEXT_LENGTH</code> on the server.',
+    fields: [['OLLAMA_BASE_URL', 'Base URL', false], ['OL_MODEL', 'Model', false], ['OL_CONTEXT', 'Context tokens (optional)', false]],
+  },
 }
 
 function parseArgs(argv) {
@@ -66,11 +71,12 @@ function parseArgs(argv) {
 const args = parseArgs(process.argv.slice(2))
 const names = args.backends === 'all' ? Object.keys(BACKENDS) : String(args.backends || '').split(',').map((s) => s.trim()).filter(Boolean)
 if (!args.config || !names.length || names.some((n) => !BACKENDS[n]) || !(args.timeout > 0)) {
-  console.error('usage: setup-form.mjs --config <path> --backends <deepseek,antigravity,codex,opencode,copilot|all> [--timeout SECS] [--no-open]')
+  console.error('usage: setup-form.mjs --config <path> --backends <deepseek,antigravity,codex,opencode,copilot,ollama|all> [--timeout SECS] [--no-open]')
   process.exit(1)
 }
-// Display order: the login-first backends on top, the paste-a-key ones (OpenCode, DeepSeek) last.
-const ORDER = ['antigravity', 'codex', 'copilot', 'opencode', 'deepseek']
+// Display order: the login-first backends on top, the paste-a-key ones (OpenCode, DeepSeek) next,
+// the keyless local one (Ollama) last.
+const ORDER = ['antigravity', 'codex', 'copilot', 'opencode', 'deepseek', 'ollama']
 const shown = ORDER.filter((n) => names.includes(n))
 const FIELDS = new Map() // key -> { secret }
 for (const n of names) for (const [key, , secret] of BACKENDS[n].fields) FIELDS.set(key, { secret })
