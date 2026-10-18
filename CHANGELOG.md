@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [7.3.1] — 2026-10-19
+
+### Added
+
+- **A click on a worker in the band opens the run monitor on that run.** Each `[CD]` entry above the
+  prompt is now a button: it opens `/cli-dispatch-runs` with that run selected, instead of the run list.
+
+### Fixed
+
+- **Inline code inside bold text in the Flow view.** ``**Only `calc.py` changed**`` drew the backticks;
+  the code is now cyan inside the bold run, and the masking check strips the backticks too.
+- **Flow step icons are single-width text characters.** The read and search icons were emoji (📄, 🔎),
+  which take two cells and draw as boxes in some terminal fonts; they are now `▤` and `⌕`.
+
 ## [7.3.0] — 2026-10-18
 
 ### Added

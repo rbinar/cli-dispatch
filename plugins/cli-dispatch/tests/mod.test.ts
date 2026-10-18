@@ -660,6 +660,21 @@ describe('run monitor pane', () => {
     await band.unmount()
   })
 
+  test('a click on a band worker opens the run monitor on that run', async ($, on) => {
+    const h = stubRuns(on, { d: done('opencode', 1000), e: done('codex', 2000) })
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    const band = await $.ui.mount({ plugin: 'cli-dispatch', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 120 } } as any)
+    await band.press({ key: 'cd:e' })
+    await band.unmount()
+    expect(h.rec.opened.map(o => o.id)).toEqual(['cli-dispatch-runs'])
+    expect(h.rec.opened[0]).toMatchObject({ focus: true, closeOnEscape: true })
+    const ui = await mountRuns($)
+    const t = await drawnText(ui)
+    expect(t).toMatch(/b: back/)
+    expect(t).toMatch(/cx · /)
+    await ui.unmount()
+  })
+
   // ---- Run detail: Flow ----
 
   const RUN_A = (extra: Partial<RunFix> = {}): RunFix => ({
@@ -1235,7 +1250,7 @@ describe('run monitor pane', () => {
       '✻ THINK-3 check',
       '▸ Done · 1 step / ✎ a.ts  ✓',
       'TEXT-1 I will edit | ✻ THINK-2 plan',
-      '▸ Done · 3 steps / 📄 b.ts  ✓ / 📄 a.ts  ✓ / ⌘ ls  ✓',
+      '▸ Done · 3 steps / ▤ b.ts  ✓ / ▤ a.ts  ✓ / ⌘ ls  ✓',
       '✻ THINK-1 look around',
     ])
     for (const i of [12, 9, 1]) expect(((await ui.find({ key: `note:${at(i)}` }))?.children as any[]).at(-1).props.dimColor).toBe(true)
@@ -1311,7 +1326,7 @@ describe('run monitor pane', () => {
       '▍ flow running…',
       '▸ Running · 1 step / ⌘ python3 test_calc.py',
       'Now testing',
-      '▸ Done · 4 steps / ⚙ TodoWrite todos[0].content: fix add  ✓ / ✎ calc.py  ✓ / 🔎 def add  ✓ / 📄 calc.py  ✓',
+      '▸ Done · 4 steps / ⚙ TodoWrite todos[0].content: fix add  ✓ / ✎ calc.py  ✓ / ⌕ def add  ✓ / ▤ calc.py  ✓',
     ])
     expect(((await ui.find({ type: 'Button', key: 'line:900' }))?.children as any[])[1].props.dimColor).toBe(true) // still running
     expect(await bodyOf(ui, '0')).toContain('file_path: /w/src/calc.py\ndef add(a, b): return a - b')
@@ -1336,7 +1351,7 @@ describe('run monitor pane', () => {
     await ui.press({ key: 'run:a' })
     expect(await shapeOf(ui)).toEqual([
       'Answer: All done',
-      '▸ Done · 3 steps / ✎ worker-report.json  ✓ / ⌘ python3 -I test_calc.py  ✗ / 📄 calc.py  ✓',
+      '▸ Done · 3 steps / ✎ worker-report.json  ✓ / ⌘ python3 -I test_calc.py  ✗ / ▤ calc.py  ✓',
     ])
     expect(await bodyOf(ui, '100')).toContain('$ python3 -I test_calc.py\nModuleNotFoundError')
     await ui.unmount()
@@ -1356,7 +1371,7 @@ describe('run monitor pane', () => {
     })
     const ui = await open($)
     await ui.press({ key: 'run:a' })
-    expect(await shapeOf(ui)).toEqual(['▍ flow running…', '▸ Running · 3 steps / 🔎 **/*.ts / ⌘ npm test  ✗ / 📄 a.ts  ✓', 'Looking'])
+    expect(await shapeOf(ui)).toEqual(['▍ flow running…', '▸ Running · 3 steps / ⌕ **/*.ts / ⌘ npm test  ✗ / ▤ a.ts  ✓', 'Looking'])
     await ui.unmount()
   })
 
@@ -1371,7 +1386,7 @@ describe('run monitor pane', () => {
     })
     const ui = await open($)
     await ui.press({ key: 'run:a' })
-    expect(await shapeOf(ui)).toEqual(['Answer: AG done', '▸ Done · 2 steps / ⌘ python3 t.py  ✓ / 📄 calc.py  ✓', '✻ AG-THINK'])
+    expect(await shapeOf(ui)).toEqual(['Answer: AG done', '▸ Done · 2 steps / ⌘ python3 t.py  ✓ / ▤ calc.py  ✓', '✻ AG-THINK'])
     expect(await bodyOf(ui, '0.1')).toContain('$ python3 t.py\n(no output)')
     expect(await bodyOf(ui, '0')).toContain('file text')
     await ui.unmount()
@@ -1399,6 +1414,14 @@ describe('run monitor pane', () => {
     const { ui, lines } = await mdOf($, on, 'a **strong** word')
     expect(strings(lines[0])).toEqual(['a ', 'strong', ' word'])
     expect(lines[0].children[1].props.bold).toBe(true)
+    await ui.unmount()
+  })
+
+  test('markdown: `code` inside **bold** is cyan within the bold run, without its backticks', async ($, on) => {
+    const { ui, lines } = await mdOf($, on, '**Only `calc.py` changed**')
+    expect(strings(lines[0])).toEqual(['Only ', 'calc.py', ' changed'])
+    expect(lines[0].children[0].props.bold).toBe(true)
+    expect(lines[0].children[0].children[1].props.color).toBe('cyan')
     await ui.unmount()
   })
 
@@ -1697,7 +1720,7 @@ describe('run monitor pane', () => {
     expect(t).not.toMatch(/SYS-INIT|tool_use_id|message\.content|toolu_1/)
     t = await flowOf('c')
     expect(t).toContain('CP-SAYS')
-    expect(t).toContain('📄 \nb.ts\n  ✓') // the result folded into its call
+    expect(t).toContain('▤ \nb.ts\n  ✓') // the result folded into its call
     expect(t).not.toMatch(/CP-SESSION|toolCallId/)
     t = await flowOf('d')
     expect(t).toContain('OC-SAYS')

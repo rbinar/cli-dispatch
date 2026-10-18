@@ -1,4 +1,4 @@
-export type Worker = { id: string; backend: string; state: string; startedAt: string; verify?: string }
+export type Worker = { id: string; name: string; backend: string; state: string; startedAt: string; verify?: string }
 
 // Booleans and model names only: this state crosses the hook chain, so a key value never lands in it.
 export type SetupBackend = {
