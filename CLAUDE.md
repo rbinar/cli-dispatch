@@ -238,7 +238,7 @@ though that particular backlog has since been filled in and the audit below now 
 nothing. The
 release body is the version's `CHANGELOG.md` section verbatim; the title follows the existing
 `vX.Y.Z — lowercase summary` convention. Audit the gap with
-`comm -23 <(git tag -l 'v*' | sort -V) <(gh release list --limit 120 --json tagName -q '.[].tagName' | sort -V)`
+`comm -23 <(git tag -l 'v*' | sort -V) <(gh release list --limit 1000 --json tagName -q '.[].tagName' | sort -V)`
 — it should print nothing.
 
 **Plugin cache staleness.** Claude Code installs this plugin into a versioned cache dir
