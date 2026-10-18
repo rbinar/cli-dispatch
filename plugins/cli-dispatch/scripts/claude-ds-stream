@@ -304,16 +304,16 @@ PROMPT_TMP="$(mktemp -t ds-prompt-XXXXXX)"
 printf '%s' "$PROMPT" > "$PROMPT_TMP"
 set +e
 ( cd "$CWD" || exit 127
-  env \
-    ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic" \
-    ANTHROPIC_AUTH_TOKEN="$DEEPSEEK_API_KEY" \
-    ANTHROPIC_MODEL="${DS_MODEL:-deepseek-v4-pro}" \
-    ANTHROPIC_DEFAULT_OPUS_MODEL="${DS_MODEL:-deepseek-v4-pro}" \
-    ANTHROPIC_DEFAULT_SONNET_MODEL="${DS_MODEL:-deepseek-v4-pro}" \
-    ANTHROPIC_DEFAULT_HAIKU_MODEL="${DS_FLASH_MODEL:-deepseek-flash}" \
-    CLAUDE_CODE_SUBAGENT_MODEL="${DS_FLASH_MODEL:-deepseek-flash}" \
-    ${THINK:+MAX_THINKING_TOKENS="$THINK"} \
-    claude "${CLAUDE_ARGS[@]}" < "$PROMPT_TMP" &
+  # Exported inside the subshell, not passed through env(1): the key must never ride on a command line.
+  export ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic"
+  export ANTHROPIC_AUTH_TOKEN="$DEEPSEEK_API_KEY"
+  export ANTHROPIC_MODEL="${DS_MODEL:-deepseek-v4-pro}"
+  export ANTHROPIC_DEFAULT_OPUS_MODEL="${DS_MODEL:-deepseek-v4-pro}"
+  export ANTHROPIC_DEFAULT_SONNET_MODEL="${DS_MODEL:-deepseek-v4-pro}"
+  export ANTHROPIC_DEFAULT_HAIKU_MODEL="${DS_FLASH_MODEL:-deepseek-flash}"
+  export CLAUDE_CODE_SUBAGENT_MODEL="${DS_FLASH_MODEL:-deepseek-flash}"
+  if [ -n "${THINK:-}" ]; then export MAX_THINKING_TOKENS="$THINK"; fi
+  claude "${CLAUDE_ARGS[@]}" < "$PROMPT_TMP" &
   CPID=$!
   echo "$CPID" > "$PIDFILE"
   wait "$CPID" ) \

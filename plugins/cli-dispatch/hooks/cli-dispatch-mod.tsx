@@ -77,13 +77,13 @@ async function refresh($: EngineInterface) {
   const mine = (await scan($, now, RECENT_SECS * 1000)).filter(s => s.meta.parentSessionId === sid)
   const list: Worker[] = []
   for (const s of mine) {
-    const backend = BACKENDS[s.meta.backend] ?? s.meta.backend ?? '?'
+    const backend = BACKENDS[s.meta.backend] ?? clean(String(s.meta.backend ?? '?'))
     if (await isRunAlive($, s, now)) {
       list.push({ id: s.status.sessionId ?? '', backend, state: 'running', startedAt: s.meta.startedAt ?? '' })
     } else if (s.status.state !== 'running' && now - s.mtimeMs <= RECENT_SECS * 1000) {
       const v = await readJson($, `${s.dir}/verdict.json`)
       const verify = !v ? undefined : v.leak ? 'LEAK' : v.verify?.exitCode == null ? 'no verify' : v.verify.exitCode === 0 ? 'PASS' : 'FAIL'
-      list.push({ id: s.status.sessionId ?? '', backend, state: s.status.state, startedAt: s.meta.startedAt ?? '', verify })
+      list.push({ id: s.status.sessionId ?? '', backend, state: clean(String(s.status.state ?? '?')), startedAt: s.meta.startedAt ?? '', verify })
     }
   }
   await update($, workers, () => list)
@@ -105,7 +105,12 @@ async function isRunAlive($: EngineInterface, s: Live, now: number): Promise<boo
   } catch {
     return false
   }
-  return /^\d+$/.test(pid) && (await $.process.run(['kill', '-0', pid])).exitCode === 0
+  if (!/^\d+$/.test(pid)) return false
+  try {
+    return (await $.process.run(['kill', '-0', pid])).exitCode === 0
+  } catch {
+    return false // no kill to ask: the status-age rule above already said "not live"
+  }
 }
 
 // The main repo of a live worktree run: the worktree's git common dir, one level up.
@@ -117,7 +122,7 @@ async function liveRepos($: EngineInterface): Promise<{ repo: string; backend: s
     const r = await $.process.run(['git', '-C', s.meta.cwd, 'rev-parse', '--path-format=absolute', '--git-common-dir'])
     if (r.exitCode !== 0) continue
     const common = r.stdout.trim().replace(/\/\.git\/?$/, '')
-    if (common && common !== s.meta.cwd) out.push({ repo: common, backend: BACKENDS[s.meta.backend] ?? s.meta.backend })
+    if (common && common !== s.meta.cwd) out.push({ repo: common, backend: BACKENDS[s.meta.backend] ?? clean(String(s.meta.backend)) })
   }
   return out
 }
@@ -191,13 +196,13 @@ async function dispatch($: EngineInterface, input: DispatchInput, signal: AbortS
   const started = await runner($, argv, { env: runEnv, timeoutMs: 60_000 })
   const runId = /^run: (\S+)/m.exec(started.stdout)?.[1]
   if (!runId) return `cli-dispatch-run did not start (exit ${started.exitCode}):\n${started.stdout}${started.stderr}`
-  await refresh($)
+  await refresh($).catch(() => {}) // the run has started: a band refresh must never turn into a deny
   let last = started
   for (let i = 0; i < 6 && !signal.aborted; i++) {
     last = await runner($, ['cli-dispatch-wait', '--run', runId, '--timeout', '570'], { env, timeoutMs: 600_000 })
     if (last.exitCode !== 124) break
   }
-  await refresh($)
+  await refresh($).catch(() => {})
   if (signal.aborted || last.exitCode === 124) return `run ${runId} is still running — wait with: cli-dispatch-wait --run ${runId}`
   return last.stdout || last.stderr
 }
@@ -274,7 +279,7 @@ async function saveModel($: EngineInterface, options: PluginOptions, name: strin
     const r = await $.process.run(['node', configScript($), 'set', name, value])
     msg =
       r.exitCode === 0 ? `${name} saved`
-      : r.exitCode === 3 ? `${name}: not saved, that value has a character that is not allowed`
+      : r.exitCode === 3 ? `${name}: not saved (a character that is not allowed, or a config line that cannot be parsed safely)`
       : r.exitCode === 4 ? 'no config file yet: run /cli-dispatch:setup or install a backend first'
       : `${name}: not saved (exit ${r.exitCode})`
   } catch {
@@ -421,6 +426,9 @@ type Run = {
 }
 type Tab = 'summary' | 'flow'
 
+// A number a worker wrote, drawn only as a finite number; anything else is `dflt`.
+const num = (v: unknown, dflt = '?') => (typeof v === 'number' && Number.isFinite(v) ? String(v) : dflt)
+
 const verifyOf = (v: any): string | undefined =>
   !v || (v.error !== undefined && v.state === undefined) ? undefined : v.leak ? 'LEAK' : v.verify?.exitCode == null ? 'no verify' : v.verify.exitCode === 0 ? 'PASS' : 'FAIL'
 
@@ -557,7 +565,8 @@ async function refreshList($: EngineInterface) {
 const fileOf = (r: Run, t: Tab) => `${r.dir}/${t === 'summary' ? 'progress.log' : 'transcript.jsonl'}`
 const budgetOf = (t: Tab) => (t === 'summary' ? SUMMARY_WINDOW : FLOW_WINDOW)
 
-// One transcript line becomes one entry the moment it arrives; only masked text is kept.
+// One transcript line becomes one entry the moment it arrives; only masked text is kept. A delta is
+// only sanitized here: a key split across deltas is masked once, on the merged text (blocksOf).
 function toEntry(r: Run, rec: Rec): Entry {
   let ev: any
   try {
@@ -571,7 +580,7 @@ function toEntry(r: Run, rec: Rec): Entry {
   const { tag, exit } = classify(type, ev)
   if (CLAUDE_STREAM.has(r.backend) && type === 'stream_event') return { ...base, kind: 'skip', type, head: '', text: '', tag }
   if (r.label === 'cp' && type === 'assistant.message_delta') return { ...base, kind: 'skip', type, head: '', text: '', tag }
-  if (r.label === 'cp' && type.endsWith('_delta')) return { ...base, kind: 'delta', type, head: '', text: clean(String(ev.deltaContent ?? ev.data?.deltaContent ?? '')), tag }
+  if (r.label === 'cp' && type.endsWith('_delta')) return { ...base, kind: 'delta', type, head: '', text: sanitize(String(ev.deltaContent ?? ev.data?.deltaContent ?? '')), tag }
   const shown = contentOf(type, ev)
   if (shown === 'hide') return { ...base, kind: 'hidden', type, head: '', text: '', tag }
   if (shown) return { ...base, kind: 'event', type, head: clean(shown.head), text: clean(shown.text), tag: shown.tag, exit: shown.exit, key: shown.key, pending: shown.pending }
@@ -809,25 +818,30 @@ async function openTab($: EngineInterface, r: Run, t: Tab) {
   else setWin(t, { from: 0, to: 0, size: 0, follow: true, items: [] })
 }
 
-// The shown tab's file only; nothing is read when its size has not moved.
+// The shown tab's file only; nothing is read when the window already reaches the file's end. A
+// window that was capped at its budget (a tab left alone while the run wrote on) keeps reading
+// in budget-sized steps until it reaches the tail, a few steps per call.
 async function followTab($: EngineInterface, r: Run, t: Tab) {
-  const w = winOf(t)
-  if (!w || !w.follow) return
-  let size: number
-  try {
-    size = (await $.fs.stat(fileOf(r, t))).size
-  } catch {
-    return
+  for (let step = 0; step < 16; step++) {
+    const w = winOf(t)
+    if (!w || !w.follow) return
+    let size: number
+    try {
+      size = (await $.fs.stat(fileOf(r, t))).size
+    } catch {
+      return
+    }
+    if (size < w.to) return loadBack($, r, t, size, true) // rewritten by a fresh run in a reused dir
+    if (size === w.to) return
+    const res = await helper($, 'fwd', fileOf(r, t), w.to, budgetOf(t))
+    if (!res) return
+    const [h, ...rows] = res
+    if (!h || h.to <= w.to) return // only an unfinished last line so far
+    const items = [...w.items, ...rows.map((x: Rec) => convert(r, t, x))]
+    let n0 = w.n0 ?? 0
+    while (items.length > 1 && h.to - items[0]!.o > budgetOf(t)) { items.shift(); n0++ }
+    setWin(t, { from: items.length ? items[0]!.o : h.to, to: h.to, size: h.size, follow: true, items, n0 })
   }
-  if (size < w.to) return loadBack($, r, t, size, true) // rewritten by a fresh run in a reused dir
-  if (size === w.size) return
-  const res = await helper($, 'fwd', fileOf(r, t), w.to, budgetOf(t))
-  if (!res) return
-  const [h, ...rows] = res
-  const items = [...w.items, ...rows.map((x: Rec) => convert(r, t, x))]
-  let n0 = w.n0 ?? 0
-  while (items.length > 1 && h.to - items[0]!.o > budgetOf(t)) { items.shift(); n0++ }
-  setWin(t, { from: items.length ? items[0]!.o : h.to, to: h.to, size: h.size, follow: true, items, n0 })
 }
 
 // The Codex stream renames its provisional dir to the real thread id when the worker finishes;
@@ -982,7 +996,11 @@ async function checkVerifying($: EngineInterface, r: Run, now: number) {
   }
   if (!r.runDir || (await readText($, `${r.runDir}/exit`)) !== null) return
   const pid = ((await readText($, `${r.runDir}/pid`)) ?? '').trim()
-  r.verifying = /^\d+$/.test(pid) && (await $.process.run(['kill', '-0', pid])).exitCode === 0
+  try {
+    r.verifying = /^\d+$/.test(pid) && (await $.process.run(['kill', '-0', pid])).exitCode === 0
+  } catch {
+    r.verifying = false // no kill to ask: show "bitti" rather than break the pane's tick
+  }
 }
 
 async function readText($: EngineInterface, path: string): Promise<string | null> {
@@ -1064,7 +1082,7 @@ async function renderRuns($: EngineInterface, e: any) {
               {i < 9 ? '' : PREFIX}
               <Text inverse={on} bold={on} color={live ? 'yellow' : undefined} dimColor={running && !live}>{cell(`${live ? '▶' : running ? '?' : '■'} ${r.label}`, 0)}</Text>
               <Text inverse={on} bold={on}>{cell(r.repo, 1)}</Text>
-              <Text inverse={on} bold={on}>{cell(running ? (live ? 'running' : 'stale') : String(r.status.state ?? '?'), 2)}</Text>
+              <Text inverse={on} bold={on}>{cell(running ? (live ? 'running' : 'stale') : clean(String(r.status.state ?? '?')), 2)}</Text>
               <Text inverse={on} bold={on} color={vcolor} dimColor={vcolor === undefined}>{cell(verify, 3)}</Text>
               <Text inverse={on} bold={on}>{elapsed(r.startedAt, running ? now : Math.max(r.startedAt ? Date.parse(r.startedAt) : 0, r.statusM))}</Text>
             </Button>
@@ -1107,10 +1125,10 @@ async function renderRuns($: EngineInterface, e: any) {
   const hasTokens = st.usage && (st.usage.input_tokens != null || st.usage.output_tokens != null)
   const facts = [
     kv('session', <Text>{clean(String(st.sessionId ?? r.name))}</Text>),
-    kv('olay', <Text>{String(st.events ?? 0)}</Text>, <Text dimColor>{' · komut '}</Text>, <Text>{String(commands)}</Text>, counts.length ? <Text dimColor>{` (${clean(counts.join(' '))})`}</Text> : null),
+    kv('olay', <Text>{num(st.events, '0')}</Text>, <Text dimColor>{' · komut '}</Text>, <Text>{String(commands)}</Text>, counts.length ? <Text dimColor>{` (${clean(counts.join(' '))})`}</Text> : null),
     kv('son aktivite', <Text>{running ? clean(idle) : r.verifying && !r.verdict ? 'verify sürüyor' : 'bitti'}</Text>, running && st.lastTool ? <Text dimColor>{clean(` · ${st.lastTool}`)}</Text> : null),
-    hasTokens ? kv('tokens', <Text>{`in ${st.usage.input_tokens ?? '?'} · out ${st.usage.output_tokens ?? '?'}`}</Text>) : null,
-    st.toolErrors ? kv('tool errors', <Text color="red">{String(st.toolErrors)}</Text>) : null,
+    hasTokens ? kv('tokens', <Text>{`in ${num(st.usage.input_tokens)} · out ${num(st.usage.output_tokens)}`}</Text>) : null,
+    st.toolErrors ? kv('tool errors', <Text color="red">{num(st.toolErrors)}</Text>) : null,
   ]
 
   const v = r.verdict
@@ -1122,14 +1140,14 @@ async function renderRuns($: EngineInterface, e: any) {
       const color = label === 'PASS' ? 'green' : label === 'FAIL' || label === 'LEAK' ? 'red' : undefined
       const fail = label === 'FAIL' && v.verify?.exitCode ? ` (cmd ${Number.isInteger(v.verify.failedAt) ? v.verify.failedAt + 1 : '?'}: ${v.verify.commands?.[v.verify.failedAt] ?? '?'})` : ''
       verdict.push(kv('verify', <Text bold color={color}>{String(label)}</Text>, fail ? <Text>{clean(fail)}</Text> : null))
-      if (v.verify?.exitCode != null) verdict.push(kv('exit', <Text>{String(v.verify.exitCode)}</Text>))
+      if (v.verify?.exitCode != null) verdict.push(kv('exit', <Text>{num(v.verify.exitCode)}</Text>))
       if (v.diffstat) verdict.push(kv('diff', <Text>{clean(String(v.diffstat))}</Text>))
       if (v.stranded) verdict.push(kv('stranded', <Text>{clean(String(v.worktree ?? 'the worktree'))}</Text>))
       const bad = Array.isArray(v.scopeViolations) && v.scopeViolations.length > 0
       if (bad) verdict.push(kv('scope', <Text color="red">{clean(v.scopeViolations.join(' '))}</Text>, Array.isArray(v.scope) ? <Text dimColor>{clean(` (${v.scope.join(' ')})`)}</Text> : null))
       else if (Array.isArray(v.scope)) verdict.push(kv('scope', <Text>{clean(v.scope.join(' '))}</Text>))
-      if (v.fixAttempts) verdict.push(kv('fix attempts', <Text>{`${v.fixAttempts.used}/${v.fixAttempts.max}`}</Text>))
-      if (v.exitCode !== undefined) verdict.push(kv('runner exit', <Text>{String(v.exitCode)}</Text>))
+      if (v.fixAttempts) verdict.push(kv('fix attempts', <Text>{`${num(v.fixAttempts.used)}/${num(v.fixAttempts.max)}`}</Text>))
+      if (v.exitCode !== undefined) verdict.push(kv('runner exit', <Text>{num(v.exitCode)}</Text>))
     }
   }
 
@@ -1220,7 +1238,7 @@ async function renderRuns($: EngineInterface, e: any) {
     </Box>
   ) : null
 
-  const pick = (t: Tab) => go(async () => { tab = t; event = null; await openTab($, r, t) })
+  const pick = (t: Tab) => go(async () => { tab = t; event = null; await openTab($, r, t); await followTab($, r, t) })
   return (
     <Box flexDirection="column" paddingX={1}>
       {table}
@@ -1282,6 +1300,7 @@ async function renderRuns($: EngineInterface, e: any) {
 
 // A fresh module (or a reload on a changed option) starts with nothing cached and its own mask.
 function resetRuns(options: PluginOptions) {
+  timer?.cancel()
   clean = makeClean(options)
   seen.clear()
   rows = []
@@ -1334,6 +1353,7 @@ export const register: Register = (on, options) => {
   on('command.run', { command: PANE_ID }, async ($, e, next) => {
     await openRuns($)
     const opened = await $.ui.open({ id: PANE_ID, title: 'cli-dispatch runs', focus: true, closeOnEscape: true })
+    if (!opened.isPlaced) closeRuns() // no pane, so no ui.close will ever stop the tick
     return opened.isPlaced ? {} : { text: `cli-dispatch runs could not be drawn: ${opened.reason}` }
   })
 

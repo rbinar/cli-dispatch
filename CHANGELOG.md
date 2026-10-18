@@ -47,7 +47,8 @@ but 7.0.0 is not tested on them.
 ### Changed
 
 - **The band keeps a quiet run whose worker is still alive as running** (`worker.pid` answers
-  `kill -0`) instead of dropping it after 90 seconds of silence, such as a long test command.
+  `kill -0`) instead of dropping it after 90 seconds of silence, such as a long test command, for as
+  long as it stays within the band's 10-minute window.
 
 - **`/cli-dispatch:setup` routes keys to `/plugin configure` when the mod is loaded**, and to
   `/cli-dispatch-config` for models and installs. The local browser form stays as the fallback when
@@ -57,6 +58,21 @@ but 7.0.0 is not tested on them.
   environment; when a key is set only in the plugin config they say to use the `dispatch` tool or
   add the key to the config file.
 
+### Fixed
+
+- **The setup pane and the setup form only touch a model line they fully understand.** A right-hand
+  side other than one quoted or bare token (optionally followed by a `#comment`), such as
+  `DS_MODEL=a DEEPSEEK_API_KEY=k`, is now unparseable: `config-file.mjs status` reports that model as
+  empty (and lists the variable under `unparsed`) instead of drawing the key, and `set` or the form's
+  save refuses and changes nothing instead of rewriting the line.
+- **The DeepSeek key no longer rides on `env(1)`'s command line.** `claude-ds` and `claude-ds-stream`
+  export the variables and run `claude` directly, so the key is in `claude`'s environment only.
+- **Full flow no longer stalls behind a large gap, and the dispatch tool survives a missing `kill`.**
+  Full flow keeps reading until it reaches the end of the file, and returning to it catches up at
+  once. A refresh of the band can no longer turn a started `dispatch` call into a failure. A
+  Copilot token split across streamed deltas is masked, and worker-written status, verdict and
+  meta fields are sanitized before they are drawn.
+
 ## [6.4.1] — 2026-10-17
 
 ### Fixed
@@ -64,8 +80,9 @@ but 7.0.0 is not tested on them.
 - **`--scope` no longer fails a run over the runner's own `worker-report.json`.** The runner asks
   every worker to write that file, and the scope check counted it as a change outside the globs, so
   with the default worker report every scoped run ended in exit 2 even when verify passed and the
-  diff held only in-scope files. The check now skips the same runner artifacts (`worker-report.json`
-  at any depth, `node_modules` links) that the patch and the stranded check already skip. Found by
+  diff held only in-scope files. The check now skips the runner's own artifacts, and only while they are
+  untracked (`??`): `worker-report.json` at any depth and `node_modules` links. A tracked file under a
+  `node_modules` directory, or a tracked `worker-report.json`, still counts against `--scope`. Found by
   testing the mod's `dispatch` tool live in a container.
 
 ## [6.4.0] — 2026-10-13

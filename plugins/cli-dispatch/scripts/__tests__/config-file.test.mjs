@@ -116,3 +116,29 @@ test('status on a missing file says exists:false', () => {
   const s = JSON.parse(run(['status'], { CLI_DISPATCH_CONFIG: '/nonexistent/cfg' }).stdout)
   assert.equal(s.exists, false)
 })
+
+test('a line with a second assignment is unparseable: status hides it, set refuses and changes nothing', () => {
+  for (const line of [
+    'export DS_MODEL=deepseek-v4-pro DEEPSEEK_API_KEY=sk-live-abcdefghijklmnop',
+    'DS_MODEL="old" ; DEEPSEEK_API_KEY="sk-2"',
+  ]) {
+    const text = line + '\n'
+    const f = fixture(text)
+    const s = JSON.parse(run(['status'], { CLI_DISPATCH_CONFIG: f.cfg }).stdout)
+    assert.equal(s.models.DS_MODEL, '')
+    assert.deepEqual(s.unparsed, ['DS_MODEL'])
+    assert.doesNotMatch(JSON.stringify(s), /sk-live|sk-2/)
+    const r = run(['set', 'DS_MODEL', 'new'], { CLI_DISPATCH_CONFIG: f.cfg })
+    assert.equal(r.status, 3)
+    assert.equal(readFileSync(f.cfg, 'utf8'), text)
+    f.cleanup()
+  }
+})
+
+test('quoted, single-quoted, bare and commented right-hand sides stay parseable', () => {
+  const f = fixture('DS_MODEL=bare-1 # note\nAG_MODEL=\'sq\'\nCX_MODEL="dq" # c\n')
+  const s = JSON.parse(run(['status'], { CLI_DISPATCH_CONFIG: f.cfg }).stdout)
+  assert.deepEqual(s.models, { DS_MODEL: 'bare-1', DS_FLASH_MODEL: '', AG_MODEL: 'sq', CX_MODEL: 'dq', OC_MODEL: '', CP_MODEL: '' })
+  assert.deepEqual(s.unparsed, [])
+  f.cleanup()
+})

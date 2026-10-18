@@ -4,6 +4,7 @@ const ROOT = '/sessions'
 const NOW = Date.parse('2026-10-12T10:00:00Z')
 const SID = 'parent-1'
 const ALIVE_PID = '4242'
+const KILL_THROWS_PID = '6666' // stubRuns: `kill -0 6666` throws, as with no kill binary
 
 type Fixture = Record<string, { meta: object; status: object; mtimeMs: number; verdict?: object; pid?: string }>
 
@@ -378,7 +379,7 @@ type RunFix = {
 // Everything is in memory and every touch is recorded: the kit has no fs, clock or process beneath.
 // The clock is the kit's mock.clock, which moves only when `tick()` advances it, so a clock.every callback
 // runs once per advance, like the engine's timer, and a cancelled timer never runs again.
-function stubRuns(on: any, runs: Record<string, RunFix>, opts: { worker?: boolean; helper?: (mode: string, args: string[]) => string } = {}) {
+function stubRuns(on: any, runs: Record<string, RunFix>, opts: { worker?: boolean; unplaced?: boolean; helper?: (mode: string, args: string[]) => string } = {}) {
   const files: Record<string, string> = {}
   const runDirs: string[] = [] // names under <root>/.runs
   const stats: Record<string, { size: number; mtimeMs: number }> = {}
@@ -427,7 +428,7 @@ function stubRuns(on: any, runs: Record<string, RunFix>, opts: { worker?: boolea
   })
   on('ui.open', ($: any, e: any) => {
     rec.opened.push(e)
-    return { value: { isPlaced: true } }
+    return { value: opts.unplaced ? { isPlaced: false, reason: 'no room' } : { isPlaced: true } }
   })
   on('ui.toast', ($: any, e: any) => {
     rec.toasts.push(e.text)
@@ -463,6 +464,7 @@ function stubRuns(on: any, runs: Record<string, RunFix>, opts: { worker?: boolea
   on('process.run', ($: any, e: any) => {
     rec.runs.push([...e.argv])
     activity++
+    if (e.argv[0] === 'kill' && e.argv[2] === KILL_THROWS_PID) throw new Error('spawn kill ENOENT')
     if (e.argv[0] === 'kill') return { value: { exitCode: e.argv[2] === ALIVE_PID ? 0 : 1, stdout: '', stderr: '' } }
     if (e.argv[0] === 'node' && HELPER.test(e.argv[1])) return { value: { exitCode: 0, stdout: h.helper(e.argv[2], e.argv.slice(3)), stderr: '' } }
     return { value: { exitCode: 1, stdout: '', stderr: '' } }
@@ -582,6 +584,22 @@ describe('run monitor pane', () => {
     expect(touched.filter(p => /\/(meta|status)\.json$/.test(p) && h.rec.reads.includes(p))).toEqual([])
     expect(touched.filter(p => p.startsWith(`${ROOT}/r6/`))).toEqual([])
     expect(h.rec.stats.filter(p => p.endsWith('/status.json')).length).toBe(5) // stat only, no read
+    await ui.unmount()
+  })
+
+  test('with no kill binary the band and the run list keep working (a quiet run just drops off the band)', async ($, on) => {
+    const quiet = (backend: string, pid?: string): RunFix => ({ meta: { backend, parentSessionId: SID, startedAt: new Date(NOW - 400_000).toISOString() }, status: { state: 'running' }, mtimeMs: NOW - 300_000, ...(pid ? { pid } : {}) })
+    stubRuns(on, { k: quiet('codex', KILL_THROWS_PID), d: done('opencode', 1000) })
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    const band = await $.ui.mount({ plugin: 'cli-dispatch', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 120 } } as any)
+    const bt = await drawnText(band)
+    expect(bt).toMatch(/oc/) // the finished run is still drawn: refresh did not abort
+    expect(bt).not.toMatch(/▶ cx/)
+    await band.unmount()
+    const ui = await open($)
+    const t = await drawnText(ui)
+    expect(t).toMatch(/cx/) // both runs listed
+    expect(t).toMatch(/oc/)
     await ui.unmount()
   })
 
@@ -1420,6 +1438,19 @@ describe('run monitor pane', () => {
     await ui.unmount()
   })
 
+  test('son aktivite falls back to "bitti" when kill -0 cannot be run, and the pane keeps working', async ($, on) => {
+    const h = stubRuns(on, { c: done('codex', 1000) })
+    h.runDirs.push('run-3')
+    h.files[`${ROOT}/.runs/run-3/session`] = 'c\n'
+    h.files[`${ROOT}/.runs/run-3/pid`] = `${KILL_THROWS_PID}\n`
+    const ui = await open($)
+    await ui.press({ key: 'run:c' })
+    expect(await detailText(ui)).toMatch(/son aktivite +\nbitti/)
+    await h.tick()
+    expect(await detailText(ui)).toMatch(/son aktivite +\nbitti/)
+    await ui.unmount()
+  })
+
   test('son aktivite stays "bitti" when the detached run\'s process is dead', async ($, on) => {
     const h = stubRuns(on, { b: done('codex', 1000) })
     h.runDirs.push('run-2')
@@ -1490,5 +1521,154 @@ describe('run monitor pane', () => {
       expect(await drawnText(ui)).toMatch(/session dir is gone/)
       await ui.unmount()
     })
+  })
+})
+
+// ---- review fixes on the 7.0.0 panes ----
+
+describe('review fixes', () => {
+  const OSC = '\x1b]52;c;EVILCLIP\x07'
+  const CSI = '\x1b[31mEVILCSI'
+  const notDrawn = async (ui: any) => {
+    const tree = JSON.stringify(await ui.drawn())
+    expect(tree).not.toContain('\\u001b')
+    expect(tree).not.toContain('EVILCLIP')
+  }
+  const runFix = (extra: Partial<RunFix> = {}): RunFix => ({
+    meta: { backend: 'codex', parentSessionId: SID, startedAt: new Date(NOW - 125_000).toISOString(), promptPreview: 'do it' },
+    status: { state: 'running', events: 7 },
+    mtimeMs: NOW - 2_000,
+    progress: 400,
+    transcript: 600_000,
+    ...extra,
+  })
+  const win = (from: number, to: number, size: number, ...recs: unknown[]) => jl({ from, to, size }, ...recs)
+  const T = `${ROOT}/a/transcript.jsonl`
+  const cxEvent = (o: number, text: string) => ({ o, t: JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text } }) })
+
+  test('Full flow keeps reading while its window is behind the file, even when the size did not move since the last read', async ($, on) => {
+    const h = stubRuns(on, { a: runFix() }, {
+      helper: (mode, args) => {
+        if (mode === 'back') return win(0, 600_000, 600_000, cxEvent(0, 'FIRST-MSG'))
+        if (mode === 'fwd' && args[1] === '600000') return win(600_000, 1_100_000, 1_300_000, cxEvent(700_000, 'MIDDLE-MSG'))
+        if (mode === 'fwd' && args[1] === '1100000') return win(1_100_000, 1_300_000, 1_300_000, cxEvent(1_200_000, 'TAIL-MSG'))
+        return ''
+      },
+    })
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    await ui.press({ key: 'tab:flow' })
+    h.stats[T] = { size: 1_300_000, mtimeMs: NOW }
+    await h.tick()
+    expect(helperCalls(h).filter(c => c[0] === 'fwd').map(c => c[2])).toEqual(['600000', '1100000'])
+    expect(await drawnText(ui)).toContain('TAIL-MSG')
+    await ui.unmount()
+  })
+
+  test('returning to Full flow catches up to the tail without waiting for a tick', async ($, on) => {
+    const h = stubRuns(on, { a: runFix() }, {
+      helper: (mode, args) => {
+        if (mode === 'back') return win(0, 600_000, 600_000, cxEvent(0, 'FIRST-MSG'))
+        if (mode === 'fwd') return win(600_000, 700_000, 700_000, cxEvent(650_000, 'LATE-MSG'))
+        return ''
+      },
+    })
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    await ui.press({ key: 'tab:flow' })
+    await ui.press({ key: 'tab:summary' })
+    h.stats[T] = { size: 700_000, mtimeMs: NOW }
+    await ui.press({ key: 'tab:flow' })
+    expect(await drawnText(ui)).toContain('LATE-MSG')
+    await ui.unmount()
+  })
+
+  test('a pane that could not be placed leaves no polling timer behind', async ($, on) => {
+    const h = stubRuns(on, { a: runFix() }, { unplaced: true })
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    await $.command.run({ command: 'cli-dispatch-runs' } as any)
+    h.rec.lists = 0
+    await h.tick()
+    await h.tick()
+    expect(h.rec.lists).toBe(0)
+  })
+
+  test('a github_pat_ token split across three copilot deltas is masked once merged', async ($, on) => {
+    const body = 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4P5q6R7s8T9u0'
+    const parts = [`github_pat_${body.slice(0, 22)}`, body.slice(22, 32), body.slice(32)]
+    stubRuns(on, { a: runFix({ meta: { backend: 'copilot', parentSessionId: SID, startedAt: new Date(NOW - 125_000).toISOString(), promptPreview: 'cp' } }) }, {
+      helper: mode => (mode === 'back' ? win(0, 600_000, 600_000, ...parts.map((d, i) => ({ o: i * 10, t: JSON.stringify({ type: 'assistant.reasoning_delta', data: { deltaContent: d } }) }))) : ''),
+    })
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    await ui.press({ key: 'tab:flow' })
+    const tree = JSON.stringify(await ui.drawn())
+    expect(tree).toContain('github_pat_')
+    expect(tree).not.toContain(body.slice(0, 20))
+    expect(tree).not.toContain(body.slice(22, 32)) // the tail of the token, not just its head
+    await ui.unmount()
+  })
+
+  test('escape sequences a worker wrote into status, verdict and meta never reach the drawn tree', async ($, on) => {
+    stubRuns(on, {
+      a: runFix({
+        meta: { backend: `x${OSC}y`, parentSessionId: SID, startedAt: new Date(NOW - 125_000).toISOString(), promptPreview: 'p' },
+        status: { state: `done${CSI}`, events: OSC, toolErrors: CSI, usage: { input_tokens: OSC, output_tokens: CSI }, sessionId: 'w' },
+        mtimeMs: NOW - 60_000,
+        verdict: { state: 'done', exitCode: OSC, verify: { commands: ['t'], exitCode: CSI, failedAt: 0, tail: '' }, fixAttempts: { used: OSC, max: CSI } },
+      }),
+    }, { helper: mode => (mode === 'back' ? win(0, 400, 400, { o: 0, t: '· x' }) : '') })
+    const ui = await open($)
+    await notDrawn(ui)
+    await ui.press({ key: 'run:a' })
+    await notDrawn(ui)
+    expect(await detailText(ui)).toMatch(/fix attempts/)
+    await ui.unmount()
+  })
+
+  test('escape sequences in a worker session do not reach the band', async ($, on) => {
+    stubHost(on, {
+      b: { meta: { backend: `x${OSC}y`, parentSessionId: SID }, status: { state: `done${CSI}` }, mtimeMs: NOW - 60_000 },
+    })
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    const ui = await $.ui.mount({ plugin: 'cli-dispatch', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 120 } } as any)
+    expect(await ui.find({ type: 'Text', text: /■/ })).toBeDefined()
+    await notDrawn(ui)
+    await ui.unmount()
+  })
+
+  test('dispatch still returns the run summary when kill -0 cannot be run during the band refresh', async ($, on) => {
+    const written: Record<string, string> = {}
+    on('session.start', ($: any, e: any) => ({ cwd: e.cwd }))
+    on('env.get', ($: any, e: any) => ({ value: e.name === 'CLI_DISPATCH_SESSIONS_DIR' ? ROOT : e.name === 'TMPDIR' ? '/tmp/' : undefined }))
+    on('session.id', () => ({ value: SID }))
+    on('clock.now', () => ({ value: NOW }))
+    on('clock.every', () => ({ value: undefined }))
+    on('tool.register', ($: any, e: any) => ({ value: { tool: `mcp__cli-dispatch__${e.name}` } }))
+    on('fs.exists', () => ({ value: true }))
+    on('fs.list', () => ({ value: [{ name: 'q', kind: 'dir', size: 0, mtimeMs: 0, isLink: false }] }))
+    on('fs.write', ($: any, e: any) => { written[e.path] = e.content; return { value: undefined } })
+    on('fs.read', ($: any, e: any) => {
+      const f: Record<string, string> = {
+        [`${ROOT}/q/meta.json`]: JSON.stringify({ backend: 'codex', parentSessionId: SID }),
+        [`${ROOT}/q/status.json`]: JSON.stringify({ state: 'running' }),
+        [`${ROOT}/q/worker.pid`]: '4242\n',
+      }
+      if (!(e.path in f)) throw new Error(`ENOENT ${e.path}`)
+      return { value: f[e.path]! }
+    })
+    on('fs.stat', ($: any, e: any) => {
+      if (e.path.endsWith('status.json')) return { value: { kind: 'file', size: 1, mtimeMs: NOW - 300_000, realPath: e.path, isLink: false } }
+      throw new Error('ENOENT')
+    })
+    on('process.run', ($: any, e: any) => {
+      if (e.argv[0] === 'kill') throw new Error('spawn kill ENOENT')
+      const stdout = e.argv[0] === 'cli-dispatch-run' ? 'run: run-7\n' : 'exit: 0  session: s-1  state: done  verify: pass\n'
+      return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    })
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    const r: any = await $.tool.call({ tool: 'mcp__cli-dispatch__dispatch', backend: 'cx', cwd: '/repo', task: 'fix it' } as any)
+    expect(String(r.result ?? r.text)).toMatch(/verify: pass/)
+    expect(r.isError).toBeUndefined()
   })
 })

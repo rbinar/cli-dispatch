@@ -21,14 +21,31 @@ export const MODEL_VARS = ['DS_MODEL', 'DS_FLASH_MODEL', 'AG_MODEL', 'CX_MODEL',
 // which once let a value smuggle a second assignment into its own line (security review).
 export const keyLine = (key) => new RegExp(`^([ \\t]*)(export[ \\t]+)?${key}=(.*)$`)
 
-// Current value of KEY in the config (last assignment wins, as when sourced), or ''.
+// The right-hand side of an assignment is understood only when it is exactly ONE double-quoted,
+// single-quoted or bare token, optionally followed by whitespace + `#comment`. Anything else
+// (`DS_MODEL=a DEEPSEEK_API_KEY=k`, `DS_MODEL="a" ; KEY="b"`) may carry a second assignment or a
+// command, so it is unparseable: returns null and callers neither read nor rewrite the line.
+const RHS = /^(?:"([^"\\$`]*)"|'([^']*)'|([^\s"'`$\\;&|<>()#]*))(?:[ \t]+#.*|[ \t]*)$/
+export function parseRhs(rest) {
+  const m = RHS.exec(rest)
+  return m ? (m[1] ?? m[2] ?? m[3]) : null
+}
+
+// Current value of KEY in the config (last assignment wins, as when sourced), or ''. An
+// unparseable last assignment reads as '' (the effective value is unknown).
 export function currentValue(text, key) {
   let v = ''
   for (const l of text.split('\n')) {
     const m = keyLine(key).exec(l)
-    if (m) v = m[3].trim().replace(/^(["'])(.*)\1$/, '$2')
+    if (m) v = parseRhs(m[3]) ?? ''
   }
   return v
+}
+
+// Names among `keys` that have at least one unparseable assignment line.
+export function unparsedVars(text, keys) {
+  const lines = text.split('\n')
+  return keys.filter((k) => lines.some((l) => { const m = keyLine(k).exec(l); return m && parseRhs(m[3]) === null }))
 }
 
 // Allowlist, not blocklist: printable ASCII minus what is live inside bash double quotes.
@@ -44,6 +61,7 @@ export function applyValues(text, values) {
     let hit = false
     for (let i = 0; i < lines.length; i++) {
       const m = keyLine(key).exec(lines[i])
+      if (m && parseRhs(m[3]) === null) throw new Error(`${key} has a line this tool cannot parse safely; edit the config file by hand`)
       if (m) { lines[i] = `${m[1]}${m[2] || ''}${line}`; hit = true }
     }
     if (!hit) {
@@ -82,7 +100,7 @@ function status(configPath) {
   for (const k of KEY_VARS) keys[k] = currentValue(text, k) !== ''
   const models = {}
   for (const m of MODEL_VARS) models[m] = currentValue(text, m)
-  return { path: configPath, exists, keys, models }
+  return { path: configPath, exists, keys, models, unparsed: unparsedVars(text, [...KEY_VARS, ...MODEL_VARS]) }
 }
 
 function main(argv) {
@@ -96,7 +114,9 @@ function main(argv) {
     if (!MODEL_VARS.includes(name)) { console.error(`config-file: ${name} is not a model variable`); return 3 }
     if (isForbiddenValue(value)) { console.error(`config-file: the value for ${name} contains a character that is not allowed`); return 3 }
     if (!existsSync(configPath)) { console.error(`config-file: no config file at ${configPath}`); return 4 }
-    writeConfig(configPath, applyValues(readFileSync(configPath, 'utf8'), { [name]: value }))
+    let next
+    try { next = applyValues(readFileSync(configPath, 'utf8'), { [name]: value }) } catch (e) { console.error(`config-file: ${e.message}`); return 3 }
+    writeConfig(configPath, next)
     return 0
   }
   console.error('usage: config-file.mjs status | set <MODEL_VAR> <VALUE>')

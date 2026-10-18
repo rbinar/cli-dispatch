@@ -48,13 +48,28 @@ Eski sürümler engellenmez ve config dosyası yollarının orada yüklenmeye de
 ### Değişti
 
 - **Band, worker'ı hâlâ yaşayan sessiz bir run'ı çalışıyor sayar** (`worker.pid` `kill -0`'a
-  yanıt verir); uzun bir test komutu gibi 90 saniyelik sessizlikten sonra düşürmez.
+  yanıt verir); uzun bir test komutu gibi 90 saniyelik sessizlikten sonra düşürmez, ama yalnızca
+  band'in 10 dakikalık penceresi içinde kaldığı sürece tutar.
 - **`/cli-dispatch:setup`, mod yüklüyken key'leri `/plugin configure`'a yönlendirir**, model ve kurulum
   için `/cli-dispatch-config`'e. Mod yüklü değilse yerel tarayıcı formu yedek yol olarak kalır.
 - **doctor, balance ve DeepSeek "tanımsız" mesajları plugin-config key'lerini bildirir.** Bash yolları
   (`/cli-dispatch:run`, runner agent, `*-agent`) hâlâ yalnızca config dosyasını ve host ortamını okur;
   key yalnızca plugin config'te tanımlıysa `dispatch` aracını kullanmanı ya da key'i config dosyasına
   eklemeni söylerler.
+
+### Düzeltildi
+
+- **Kurulum paneli ve formu yalnızca tam anladığı bir model satırına dokunur.** Tek bir tırnaklı ya da
+  çıplak token'dan (ardından isteğe bağlı `#yorum`) başka bir sağ taraf, örneğin
+  `DS_MODEL=a DEEPSEEK_API_KEY=k`, artık ayrıştırılamaz sayılır: `config-file.mjs status` o modeli boş
+  bildirir (değişkeni `unparsed` altında listeler), key'i çizmez; `set` ya da formun kaydı satırı
+  yeniden yazmak yerine reddeder ve hiçbir şeyi değiştirmez.
+- **DeepSeek key'i artık `env(1)`'in komut satırında taşınmaz.** `claude-ds` ve `claude-ds-stream`
+  değişkenleri export edip `claude`'u doğrudan çalıştırır; key yalnızca `claude`'un ortamındadır.
+- **Full flow büyük bir boşlukta takılmaz, `dispatch` aracı `kill` eksikliğinde ayakta kalır.** Full
+  flow dosyanın sonuna ulaşana kadar okumaya devam eder, ona dönünce hemen yetişir. Band yenilemesi
+  başlamış bir `dispatch` çağrısını artık başarısızlığa çevirmez. Akan delta'lara bölünmüş bir Copilot
+  token'ı maskelenir; worker'ın yazdığı status, verdict ve meta alanları çizilmeden önce temizlenir.
 
 ## [6.4.1] — 2026-10-17
 
@@ -63,9 +78,10 @@ Eski sürümler engellenmez ve config dosyası yollarının orada yüklenmeye de
 - **`--scope` artık runner'ın kendi `worker-report.json` dosyası yüzünden run'ı düşürmüyor.**
   Runner her worker'dan bu dosyayı yazmasını ister; scope kontrolü ise onu glob'ların dışındaki bir
   değişiklik sayıyordu. Bu yüzden varsayılan worker raporuyla her scope'lu run, verify geçse ve
-  diff'te yalnız kapsam içi dosyalar olsa bile exit 2 ile bitiyordu. Kontrol artık patch'in ve
-  stranded kontrolünün zaten atladığı runner artifact'larını (`worker-report.json` her derinlikte,
-  `node_modules` link'leri) atlıyor. Mod'un `dispatch` aracı bir container'da canlı test edilirken
+  diff'te yalnız kapsam içi dosyalar olsa bile exit 2 ile bitiyordu. Kontrol artık runner'ın kendi
+  artifact'larını yalnız izlenmiyorken (`??`) atlıyor: her derinlikte `worker-report.json` ve
+  `node_modules` link'leri. `node_modules` altındaki izlenen bir dosya ya da izlenen bir
+  `worker-report.json` `--scope`'a karşı yine sayılır. Mod'un `dispatch` aracı bir container'da canlı test edilirken
   bulundu.
 
 ## [6.4.0] — 2026-10-13
