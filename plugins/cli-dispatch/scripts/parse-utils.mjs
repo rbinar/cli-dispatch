@@ -6,14 +6,14 @@
 
 import {
   writeFileSync, readFileSync, openSync, writeSync, closeSync, mkdirSync, renameSync, unlinkSync,
-  readdirSync, statSync, fstatSync, copyFileSync, rmSync,
+  readdirSync, statSync, copyFileSync, rmSync,
 } from 'node:fs'
-import { basename, dirname, join } from 'node:path'
+import { basename, join } from 'node:path'
 
 // ---- private session dirs ----
 //
 // A parser process is the one that creates a session's files. Its umask is tightened for the rest of
-// its life, so the dir is 0700 and every file in it (status, meta, transcript, progress, idx) is 0600.
+// its life, so the dir is 0700 and every file in it (status, meta, transcript, progress) is 0600.
 export function makeSessionDir(dir) {
   process.umask(0o077)
   mkdirSync(dir, { recursive: true, mode: 0o700 })
@@ -236,62 +236,24 @@ export function createStatusWriter(statusFile, status, { throttleMs = 200 } = {}
 // Returns { writeTranscript, appendProgress, closeAll }. Optionally mirrors
 // each progress line to stderr when progressToStderr is true.
 export function openSessionFiles(transcriptFile, progressFile, isResume, { progressToStderr = false } = {}) {
-  let transcriptFd = -1, progressFd = -1, idxFd = -1
+  let transcriptFd = -1, progressFd = -1
   try { transcriptFd = openSync(transcriptFile, isResume ? 'a' : 'w') } catch { /* ignore */ }
   try { progressFd = openSync(progressFile, isResume ? 'a' : 'w') } catch { /* ignore */ }
-  try { idxFd = openSync(join(dirname(progressFile), 'progress.idx'), isResume ? 'a' : 'w') } catch { /* ignore */ }
 
-  // progress.idx maps each progress line (by its byte offset) to the transcript bytes of the
-  // event that produced it. On any anomaly the idx stops for the rest of the process: no
-  // record is better than a wrong one. progress.log and transcript.jsonl are unaffected.
-  const size = (fd) => { try { return fstatSync(fd).size } catch { return -1 } }
-  let idxOk = idxFd >= 0 && transcriptFd >= 0 && progressFd >= 0
-  let tOff = idxOk ? size(transcriptFd) : -1
-  let last = null // {o, l} of the transcript line written most recently
-  if (tOff < 0) idxOk = false
-
-  const writeTranscript = (s) => {
-    if (transcriptFd < 0) return
-    try {
-      const n = writeSync(transcriptFd, s)
-      if (idxOk) {
-        const bytes = Buffer.byteLength(s)
-        if (n !== bytes) idxOk = false
-        else { last = { o: tOff, l: bytes - 1 }; tOff += n }
-      }
-    } catch { idxOk = false }
-  }
+  const writeTranscript = (s) => { if (transcriptFd >= 0) { try { writeSync(transcriptFd, s) } catch { /* ignore */ } } }
 
   if (isResume && progressFd >= 0) {
-    try { writeSync(progressFd, `\n--- resume @ ${new Date().toISOString()} ---\n`) } catch { idxOk = false }
+    try { writeSync(progressFd, `\n--- resume @ ${new Date().toISOString()} ---\n`) } catch { /* ignore */ }
   }
-  let pOff = idxOk ? size(progressFd) : -1
-  if (pOff < 0) idxOk = false
 
-  const appendProgress = (line, rec) => {
-    if (progressFd >= 0) {
-      try {
-        const n = writeSync(progressFd, line + '\n')
-        if (idxOk) {
-          if (n !== Buffer.byteLength(line) + 1) idxOk = false
-          else {
-            const r = rec ?? last
-            if (r) {
-              const w = JSON.stringify({ p: pOff, ...r }) + '\n'
-              if (writeSync(idxFd, w) !== Buffer.byteLength(w)) idxOk = false
-            }
-            pOff += n
-          }
-        }
-      } catch { idxOk = false }
-    }
+  const appendProgress = (line) => {
+    if (progressFd >= 0) { try { writeSync(progressFd, line + '\n') } catch { /* ignore */ } }
     if (progressToStderr) { try { process.stderr.write(line + '\n') } catch { /* ignore */ } }
   }
 
   const closeAll = () => {
     if (transcriptFd >= 0) { try { closeSync(transcriptFd) } catch { /* ignore */ } transcriptFd = -1 }
     if (progressFd >= 0) { try { closeSync(progressFd) } catch { /* ignore */ } progressFd = -1 }
-    if (idxFd >= 0) { try { closeSync(idxFd) } catch { /* ignore */ } idxFd = -1 }
   }
 
   return { writeTranscript, appendProgress, closeAll }

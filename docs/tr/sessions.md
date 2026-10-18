@@ -11,7 +11,6 @@ Session dizini: `${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<id>/` (e
 | `status.json` | Kompakt özet (durum, son tool, tool sayıları, sonuç önizlemesi) — **izlemek için tek okunan dosya** |
 | `progress.log` | Terse insan-okur akış (`▸ Edit foo.ts`, `✓ / ✗`, kısaltılmış metin) |
 | `transcript.jsonl` | Ham stream-json (resume/audit; izlerken okunmaz) |
-| `progress.idx` | Her `progress.log` satırını (bayt ofsetiyle) arkasındaki olayın transcript baytlarına eşler; yalnızca `/cli-dispatch-runs` paneli okur |
 | `meta.json` | Prompt önizlemesi, cwd, branch, model, başlangıç/bitiş |
 | `prompt.txt` | **Tam** görev prompt'u (kısaltmasız) |
 | `changed-files.json` | `{files, diffstat, preexistingDirty}` — çalıştırmanın değiştirdiği dosyalar; repo'yu değiştiren bir run bittikten sonra yazılır |

@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [7.2.0] — 2026-10-18
+
+### Changed
+
+- **`/cli-dispatch-runs` shows one Flow view instead of two tabs.** The Summary and Full flow tabs
+  are gone. The run view reads `transcript.jsonl` and draws it newest first: the finished run's last
+  model text as an **Answer** block on top, then tool steps grouped into bordered clusters headed
+  `▸ Done · N steps` (`Running` for the newest cluster of a live run), split by the model's text and
+  its thinking (dim `✻`). A tool call and its result are one step: an icon, a short title (the
+  command for a shell call, only the file name for read/edit/write tools, the pattern for search
+  tools, the raw tool name otherwise) and a green ✓ or red ✗ (copilot failures come from
+  `success:false`). Clicking a step expands its full input and output in place; clicking it again
+  closes it. Pairing follows each backend's own ids (claude `tool_use_id`, codex `item.id`, copilot
+  `toolCallId`, opencode `callID`; antigravity answers in turn). The Answer and model notes render a
+  small markdown subset (headings, bold, inline code, code fences, lists, quotes, links) with no
+  library; masking runs on the source text first and again on each drawn line, so markdown markers
+  cannot split a key past the mask. Claude's closing `result` event and stream-frame skip rows are
+  no longer drawn. Every string in the pane is English.
+
+### Removed
+
+- **`progress.idx`.** Only the old Summary tab read it (through `cli-dispatch-pane-read.mjs`'s
+  `event` mode). The writer in `openSessionFiles` and the `event` mode are deleted; `progress.log`
+  itself is unchanged.
+
+### Fixed
+
+- **`--scope` no longer fails a run on Python's bytecode cache (#217).** Running the tests (by the
+  worker or by `--verify`) writes `__pycache__/*.pyc`; in a repo without a `.gitignore` those
+  untracked files counted as changes outside `--scope`, so a correct one-line fix exited 2. Untracked
+  `__pycache__/` entries and `*.pyc` files are now exempt like `worker-report.json`; a tracked `.pyc`
+  that changes, or an untracked source file, is still a violation.
+
 ## [7.1.0] — 2026-10-18
 
 ### Added

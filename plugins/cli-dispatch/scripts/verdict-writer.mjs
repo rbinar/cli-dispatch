@@ -250,7 +250,8 @@ function globToRegExp(glob) {
   return new RegExp(/[*?]/.test(glob) ? `^${re}$` : `^${re}(?:/.*)?$`)
 }
 
-// The runner's own artifacts: worker-report.json (any depth) and node_modules links. Only an
+// The runner's own artifacts: worker-report.json (any depth), node_modules links, and Python's
+// bytecode cache that running the tests writes (__pycache__/, *.pyc; #217). Only an
 // UNTRACKED (`??`) entry is one: a tracked file under a node_modules directory, or a tracked
 // worker-report.json, is the worker's change like any other. A bare path string carries no status
 // and keeps the old reading (exempt).
@@ -258,7 +259,8 @@ function isRunnerArtifact(file) {
   const p = typeof file === 'string' ? file : file.path
   if (typeof file !== 'string' && file.status !== '??') return false
   const segs = p.split('/')
-  return segs[segs.length - 1] === 'worker-report.json' || segs.includes('node_modules')
+  return segs[segs.length - 1] === 'worker-report.json' || segs.includes('node_modules') ||
+    segs.includes('__pycache__') || p.endsWith('.pyc')
 }
 
 // The runner asks every worker for worker-report.json, so it can never count against --scope.
