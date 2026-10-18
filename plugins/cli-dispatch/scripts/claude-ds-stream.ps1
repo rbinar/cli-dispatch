@@ -264,6 +264,7 @@ $cwd = (Get-Location).Path
 $cwdExplicit = $false
 $resumeId = ""
 $prompt = $null
+$promptFile = $null
 $readOnly = 0
 $effort = if ($env:CLAUDE_DS_EFFORT) { $env:CLAUDE_DS_EFFORT } else { "" }
 $maxRuntime = ConvertTo-Int $env:CLAUDE_DS_MAX_RUNTIME
@@ -316,6 +317,17 @@ while ($i -lt $argc) {
     }
     '^--prompt=(.*)$' {
       $prompt = $matches[1]
+      $i += 1
+      continue
+    }
+    '^--prompt-file$' {
+      Need-Val $a $i $argc
+      $promptFile = $args[$i + 1]
+      $i += 2
+      continue
+    }
+    '^--prompt-file=(.*)$' {
+      $promptFile = $matches[1]
       $i += 1
       continue
     }
@@ -374,6 +386,14 @@ while ($i -lt $argc) {
       continue
     }
   }
+}
+
+# --prompt-file <path>: read the prompt from a file (keeps a long brief off the command line).
+# Mutually exclusive with -p.
+if ($promptFile) {
+  if ($null -ne $prompt) { Write-Error "claude-ds-stream: --prompt-file and -p are mutually exclusive."; exit 2 }
+  if (-not (Test-Path -LiteralPath $promptFile -PathType Leaf)) { Write-Error "claude-ds-stream: --prompt-file not found: $promptFile"; exit 1 }
+  $prompt = (Get-Content -Raw -LiteralPath $promptFile)
 }
 
 if ($null -eq $prompt) {

@@ -49,7 +49,7 @@ function fixture() {
   const bin = mkdtemp('cd-agent-bin-')
   const log = path.join(bin, 'calls.log')
   fs.writeFileSync(path.join(bin, 'claude-ds-stream'),
-    `#!/usr/bin/env bash\nprintf '%s\\n' "cwd=$PWD" "$@" >> "${log}"\n[ -n "\${STUB_NO_FIX:-}" ] || : > fixed.txt\nexit 0\n`)
+    `#!/usr/bin/env bash\nprintf '%s\\n' "cwd=$PWD" "$@" >> "${log}"\nwhile [ "$#" -gt 0 ]; do [ "$1" = --prompt-file ] && cat "$2" >> "${log}"; shift; done\n[ -n "\${STUB_NO_FIX:-}" ] || : > fixed.txt\nexit 0\n`)
   fs.chmodSync(path.join(bin, 'claude-ds-stream'), 0o755)
   const envOut = {
     ...process.env,

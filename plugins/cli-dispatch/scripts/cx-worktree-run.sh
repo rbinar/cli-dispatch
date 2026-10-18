@@ -189,7 +189,7 @@ PRE_STATUS=""
 [ -n "$GUARD_REPO" ] && PRE_STATUS="$(git -C "$GUARD_REPO" status --short 2>/dev/null || true)"
 echo ">>> Running cx-stream (Codex/OpenAI, session-tracked) in $WT ..."
 # Default sandbox workspace-write → edits land in $WT. Pass --read-only for an analysis run.
-"$STREAM" --cwd "$WT" -p "$(cat "$BRIEF")"
+"$STREAM" --cwd "$WT" --prompt-file "$BRIEF"
 if [ "$IN_PLACE" -eq 1 ]; then
   echo ">>> In-place worktree: $WT  (branch: $(git -C "$WT" symbolic-ref --short HEAD 2>/dev/null || echo detached))"
   echo ">>> This worktree belongs to YOU — the runner created nothing and removed nothing."

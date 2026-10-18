@@ -188,7 +188,7 @@ PRE_STATUS=""
 [ -n "$GUARD_REPO" ] && PRE_STATUS="$(git -C "$GUARD_REPO" status --short 2>/dev/null || true)"
 echo ">>> Running ag-stream (Antigravity/Gemini, session-tracked) in $WT ..."
 # --cwd is registered as agy's active workspace (via --add-dir) so files land here.
-"$STREAM" --cwd "$WT" -p "$(cat "$BRIEF")"
+"$STREAM" --cwd "$WT" --prompt-file "$BRIEF"
 if [ "$IN_PLACE" -eq 1 ]; then
   echo ">>> In-place worktree: $WT  (branch: $(git -C "$WT" symbolic-ref --short HEAD 2>/dev/null || echo detached))"
   echo ">>> This worktree belongs to YOU — the runner created nothing and removed nothing."

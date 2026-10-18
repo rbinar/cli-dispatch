@@ -191,7 +191,7 @@ PRE_STATUS=""
 echo ">>> Running oc-stream (OpenCode/OpenRouter, session-tracked) in $WT ..."
 # No sandbox mode: --auto (always passed by oc-stream) approves everything. Worktree
 # isolation is the safety boundary — review the diff before merging.
-"$STREAM" --cwd "$WT" -p "$(cat "$BRIEF")"
+"$STREAM" --cwd "$WT" --prompt-file "$BRIEF"
 if [ "$IN_PLACE" -eq 1 ]; then
   echo ">>> In-place worktree: $WT  (branch: $(git -C "$WT" symbolic-ref --short HEAD 2>/dev/null || echo detached))"
   echo ">>> This worktree belongs to YOU — the runner created nothing and removed nothing."

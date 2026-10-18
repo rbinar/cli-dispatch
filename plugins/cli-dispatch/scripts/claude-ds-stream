@@ -71,6 +71,7 @@ CWD_EXPLICIT=0
 RESUME_ID=""
 PROMPT=""
 HAVE_PROMPT=0
+PROMPT_FILE=""
 READ_ONLY=0
 EFFORT="${CLAUDE_DS_EFFORT:-}"
 MAX_RUNTIME="${CLAUDE_DS_MAX_RUNTIME:-0}"     # seconds; 0 = no overall runtime cap
@@ -89,6 +90,8 @@ while [ "$#" -gt 0 ]; do
     -p|--prompt)  need_val "$1" "$#";     PROMPT="$2"; HAVE_PROMPT=1; shift 2;;
     -p=*)         PROMPT="${1#*=}"; HAVE_PROMPT=1; shift;;
     --prompt=*)   PROMPT="${1#*=}"; HAVE_PROMPT=1; shift;;
+    --prompt-file)  need_val "$1" "$#";     PROMPT_FILE="$2"; shift 2;;
+    --prompt-file=*) PROMPT_FILE="${1#*=}"; shift;;
     --read-only)  READ_ONLY=1; shift;;
     --effort)     need_val --effort "$#"; EFFORT="$2"; shift 2;;
     --effort=*)   EFFORT="${1#*=}"; shift;;
@@ -102,6 +105,13 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+# --prompt-file <path>: read the prompt from a file (keeps a long brief off the runner's
+# command line, where `ps` shows it). Mutually exclusive with -p.
+if [ -n "$PROMPT_FILE" ]; then
+  [ "$HAVE_PROMPT" -eq 0 ] || { echo "claude-ds-stream: --prompt-file and -p are mutually exclusive." >&2; exit 2; }
+  [ -f "$PROMPT_FILE" ] || { echo "claude-ds-stream: --prompt-file not found: $PROMPT_FILE" >&2; exit 1; }
+  PROMPT="$(cat "$PROMPT_FILE")"; HAVE_PROMPT=1
+fi
 # No prompt → read from stdin (pipe support).
 if [ "$HAVE_PROMPT" -eq 0 ]; then
   if [ ! -t 0 ]; then

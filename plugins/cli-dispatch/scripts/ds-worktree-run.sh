@@ -186,7 +186,7 @@ PRE_STATUS=""
 [ -n "$GUARD_REPO" ] && PRE_STATUS="$(git -C "$GUARD_REPO" status --short 2>/dev/null || true)"
 echo ">>> Running claude-ds-stream (agentic, session-tracked) in $WT ..."
 # Stream variant: progress/status/transcript are written to a session dir (path on stderr).
-"$STREAM" --cwd "$WT" --dangerously-skip-permissions -p "$(cat "$BRIEF")"
+"$STREAM" --cwd "$WT" --dangerously-skip-permissions --prompt-file "$BRIEF"
 if [ "$IN_PLACE" -eq 1 ]; then
   echo ">>> In-place worktree: $WT  (branch: $(git -C "$WT" symbolic-ref --short HEAD 2>/dev/null || echo detached))"
   echo ">>> This worktree belongs to YOU — the runner created nothing and removed nothing."

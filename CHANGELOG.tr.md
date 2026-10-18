@@ -84,6 +84,13 @@ Eski sürümler engellenmez ve config dosyası yollarının orada yüklenmeye de
 - **Çok kullanıcılı sertleştirme (#214).** Oturum dizinleri 0700, dosyaları ve ayrık run'ın dizini ile
   log'u 0600; `dispatch` aracı run bitince brief dosyasını siler; başka bir kullanıcıya ait
   `CLI_DISPATCH_SESSIONS_DIR` reddedilir (mod kontrol etmez: engine sahibi vermiyor).
+- **Worker brief'i artık komut satırında taşınmaz (#215).** Her `*-worktree-run.sh` stream'ine brief'i
+  `--prompt-file <yol>` (0600 brief dosyası) olarak verir; bu seçenek beş `*-stream` betiğinde (ve
+  `claude-ds-stream`/`cx-stream` `.ps1` ikizlerinde) yenidir, `-p` ile birlikte kullanılamaz, `-p` elle
+  kullanım için çalışmaya devam eder. `cx-stream` prompt'u `codex`'e stdin'den (`-`) verir (`exec` ve
+  `exec resume` için); `claude-ds-stream` zaten öyleydi. `ag-stream`, `oc-stream` ve `cp-stream` prompt'u
+  hâlâ argüman olarak geçirir, çünkü `agy`, `opencode` ve `copilot` stdin ya da dosyayla prompt girişi
+  belgelemez; `docs/tr/security.md` bunu söyler.
 
 ## [6.4.1] — 2026-10-17
 

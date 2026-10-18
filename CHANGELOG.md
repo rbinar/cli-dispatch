@@ -87,6 +87,13 @@ but 7.0.0 is not tested on them.
   log, 0600; the `dispatch` tool deletes its brief file when the run is over; a
   `CLI_DISPATCH_SESSIONS_DIR` owned by another user is refused (the mod does not check: the engine
   gives no owner).
+- **A worker brief no longer rides on a command line (#215).** Every `*-worktree-run.sh` hands its
+  stream the brief as `--prompt-file <path>` (the 0600 brief file), a new option on all five `*-stream`
+  scripts (and the `claude-ds-stream`/`cx-stream` `.ps1` twins), mutually exclusive with `-p`, which
+  still works for hand use. `cx-stream` passes the prompt to `codex` on stdin (`-`), for `exec` and
+  `exec resume`; `claude-ds-stream` already did. `ag-stream`, `oc-stream` and `cp-stream` still pass it
+  as an argument because `agy`, `opencode` and `copilot` document no stdin or file prompt input;
+  `docs/security.md` says so.
 
 ## [6.4.1] — 2026-10-17
 
