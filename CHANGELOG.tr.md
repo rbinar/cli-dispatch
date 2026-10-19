@@ -7,6 +7,20 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [7.5.0] — 2026-10-19
+
+### Eklendi
+
+- **Worker sana değil Claude'a sorabilir.** `ask_user` isteğe bağlı `to: "orchestrator"` alır. Koşunun
+  `dispatch` çağrısı beklerken cli-dispatch soruyu Claude'un konuşmasının tek bir `$.model.fork`'uyla
+  cevaplar (fork, worker'a verdiğin brief'i görür). Fork `ASK_USER` derse, boş dönerse, hata verirse,
+  yoksa ya da 60 sn'den uzun sürerse her zamanki diyalog açılır. Her cevabı bir toast gösterir; fork'tan
+  hiçbir şey transkripte düşmediği için `dispatch` sonucu Claude'un cevapladığı soru-cevap çiftlerini
+  listeler. Fork çalışırken `dispatch` aracı ajanlardan gelen çağrıları reddeder (korumasızken fork aracı
+  özyinelemeli çağırıyordu). Cevaplar maskelenir ve 2000 karakterde kesilir. `to` yoksa hiçbir şey
+  değişmez; `CLI_DISPATCH_NO_ASK=1` hâlâ hepsini kapatır. Güncel soru sunucusunu kurmak için
+  `/cli-dispatch:setup`'ı yeniden çalıştır.
+
 ## [7.4.2] — 2026-10-19
 
 ### Düzeltildi

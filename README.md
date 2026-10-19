@@ -57,13 +57,17 @@ A band above the prompt lists this session's workers (`▶ cx 2m05s`, then `■ 
 - **Prompt** (`p`): the exact prompt the worker received, masked, scrollable in the same frame.
 - **Info** (`i`): backend, repo, activity, events, tool calls and tokens on one line; `i` opens the full facts.
 - **Message box:** `> message to worker...` sends the running worker a note. It shows in the Flow as `→ text  sent`, then `✉ text  delivered` once the worker reads it.
-- **Questions:** a worker can ask you mid-run; the question opens as a dialog in Claude Code and your answer goes back to it.
+- **Questions:** a worker can ask you mid-run; the question opens as a dialog in Claude Code and your answer goes back to it. A question that your conversation with Claude already settles goes to Claude instead, and Claude answers it without a dialog.
 
 Questions and messages work for runs started by the `dispatch` tool, on macOS, Linux and WSL. Details: [Commands](docs/commands.md).
 
 ▶️ A worker asks you mid-run ([mp4](videos/worker-question.mp4)): Codex needs a decision only you can make, so it asks; the question opens as a dialog in Claude Code, you answer, the same worker carries on and verify passes. Recorded live in a sandbox container.
 
 https://github.com/user-attachments/assets/d3d047f6-2452-463b-bfd9-1c2081840502
+
+▶️ A worker asks Claude instead of you ([mp4](videos/orchestrator-answer.mp4)): you settle a rule with Claude earlier in the conversation, the worker asks for it mid-run, and Claude answers from the conversation; no dialog, a toast shows the answer, verify passes.
+
+https://github.com/user-attachments/assets/c4c51d57-4a15-4a79-87e3-f37c1c987c34
 
 ## Update
 

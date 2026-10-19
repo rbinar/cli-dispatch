@@ -57,13 +57,17 @@ Prompt'un üstündeki şerit bu oturumun worker'larını gösterir (`▶ cx 2m05
 - **Prompt** (`p`): worker'a giden prompt'un birebir hali, maskeli, aynı çerçevede kaydırılabilir.
 - **Info** (`i`): backend, repo, etkinlik, olay, araç çağrısı ve token tek satırda; `i` tüm ayrıntıları açar.
 - **Mesaj kutusu:** `> message to worker...` çalışan worker'a not gönderir. Flow'da önce `→ metin  sent`, worker okuyunca `✉ metin  delivered` olarak görünür.
-- **Sorular:** worker çalışırken sana soru sorabilir; soru Claude Code'da bir diyalog olarak açılır, cevabın worker'a geri gider.
+- **Sorular:** worker çalışırken sana soru sorabilir; soru Claude Code'da bir diyalog olarak açılır, cevabın worker'a geri gider. Claude ile konuşmanda zaten karara bağlanmış bir soru ise Claude'a gider ve Claude onu diyalog açmadan cevaplar.
 
 Sorular ve mesajlar `dispatch` aracıyla başlatılan run'larda, macOS, Linux ve WSL'de çalışır. Ayrıntılar: [Komutlar](docs/tr/commands.md).
 
 ▶️ Worker çalışırken sana soruyor ([mp4](videos/worker-question.mp4)): Codex'in yalnız senin verebileceğin bir karara ihtiyacı var, o yüzden soruyor; soru Claude Code'da bir diyalog olarak açılır, cevaplarsın, aynı worker devam eder ve verify geçer. Bir sandbox container'ında canlı kaydedildi.
 
 https://github.com/user-attachments/assets/d3d047f6-2452-463b-bfd9-1c2081840502
+
+▶️ Worker sana değil Claude'a soruyor ([mp4](videos/orchestrator-answer.mp4)): konuşmanın başında Claude ile bir kural belirlersin, worker çalışırken bunu sorar ve Claude konuşmadan cevaplar; diyalog açılmaz, cevap bir bildirimle görünür, verify geçer.
+
+https://github.com/user-attachments/assets/c4c51d57-4a15-4a79-87e3-f37c1c987c34
 
 ## Güncelleme
 

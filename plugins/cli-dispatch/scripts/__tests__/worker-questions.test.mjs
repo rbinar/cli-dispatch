@@ -898,3 +898,70 @@ test('AC20: the message helper stores a private file, cuts long text, and refuse
     assert.equal(r.status, 0)
   } finally { rmrf(root) }
 })
+
+// ---- (rev.2, 7.5.0) AC24 / AC25: the audience of a question ---------------------------------------
+
+test('AC24: ask_user takes to: "orchestrator"; the q file carries it only for that exact value', async () => {
+  const { root, dir } = askRoot()
+  const c = startServer({ args: [dir] })
+  try {
+    await init(c)
+    const list = await c.request('tools/list')
+    const tool = list.result.tools.find((t) => t.name === 'ask_user')
+    assert.deepEqual(tool.inputSchema.properties.to.enum, ['user', 'orchestrator'])
+    assert.deepEqual(tool.inputSchema.required, ['question'])
+    const asked = []
+    for (const to of ['orchestrator', undefined, 'x']) {
+      const before = qFiles(dir)
+      const call = c.call('ask_user', { question: 'Q?', ...(to ? { to } : {}) })
+      const f = await waitFor(() => qFiles(dir).find((n) => !before.includes(n)), 2000)
+      assert.ok(f, `q file for to=${to}`)
+      const q = JSON.parse(readFileSync(path.join(dir, f), 'utf8'))
+      asked.push({ to, q, call })
+    }
+    assert.equal(asked[0].q.to, 'orchestrator')
+    assert.ok(!('to' in asked[1].q))
+    assert.ok(!('to' in asked[2].q), 'an unknown to is not written')
+    // by: "orchestrator" changes the reply and is stored; anything else reads as the user.
+    const ans = (a, payload) => {
+      const r = helper('answer', [dir, a.q.id], JSON.stringify(payload))
+      assert.equal(r.status, 0, r.stderr)
+      return JSON.parse(readFileSync(path.join(dir, `${a.q.id}.a.json`), 'utf8'))
+    }
+    const a0 = ans(asked[0], { v: 1, answer: '8123', by: 'orchestrator' })
+    assert.equal(a0.by, 'orchestrator')
+    assert.equal(await c.text(asked[0].call), 'The orchestrator answered: 8123')
+    const a1 = ans(asked[1], { v: 1, answer: '8123', by: 'user' })
+    assert.ok(!('by' in a1))
+    assert.equal(await c.text(asked[1].call), 'The user answered: 8123')
+    const a2 = ans(asked[2], { v: 1, answer: '8123' })
+    assert.ok(!('by' in a2))
+    assert.equal(await c.text(asked[2].call), 'The user answered: 8123')
+    const logText = readFileSync(path.join(dir, 'log.jsonl'), 'utf8')
+    assert.ok(!logText.includes('8123') && !logText.includes('"by"'), 'log.jsonl has neither the answer nor by')
+  } finally { await c.close(); rmrf(root) }
+})
+
+test('AC25: a detached run writes runId into context.json and the brief names to: "orchestrator"; a plain run writes none', async () => {
+  const env = { CLI_DISPATCH_ASK: '1', CLAUDE_CODE_SESSION_ID: 'S' }
+  const w = runnerWorld()
+  try {
+    const r = await runner(w, ['--detach'], env)
+    assert.equal(r.status, 0, r.stderr)
+    const id = /^run: (\S+)$/m.exec(r.stdout)?.[1]
+    assert.ok(id, r.stdout)
+    const wr = await run('bash', [path.join(w.x.bin, 'cli-dispatch-wait'), '--run', id, '--timeout', '60'], { env: w.env })
+    assert.equal(wr.status, 0, wr.stdout + wr.stderr)
+    assert.equal(JSON.parse(w.read('context.json')).runId, id)
+    const prompt = w.read('prompt')
+    assert.ok(prompt.includes('to: "orchestrator"'))
+    assert.ok(prompt.includes('use ONLY the ask_user tool'))
+    assert.ok(prompt.includes('call check_messages'))
+  } finally { rmrf(w.x.root) }
+  const p = runnerWorld()
+  try {
+    const r = await runner(p, [], env)
+    assert.equal(r.status, 0, r.stderr)
+    assert.ok(!('runId' in JSON.parse(p.read('context.json'))))
+  } finally { rmrf(p.x.root) }
+})
