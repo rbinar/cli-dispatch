@@ -67,7 +67,7 @@ https://github.com/user-attachments/assets/d3d047f6-2452-463b-bfd9-1c2081840502
 
 ▶️ A worker asks Claude instead of you ([mp4](videos/orchestrator-answer.mp4)): you settle a rule with Claude earlier in the conversation, the worker asks for it mid-run, and Claude answers from the conversation; no dialog, a toast shows the answer, verify passes.
 
-https://github.com/user-attachments/assets/c4c51d57-4a15-4a79-87e3-f37c1c987c34
+https://github.com/user-attachments/assets/144fdca0-309b-47f1-a6e6-9d85b09e6b0f
 
 ## Update
 

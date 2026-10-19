@@ -979,7 +979,11 @@ async function tick($: EngineInterface) {
   busy = true
   try {
     if (view === 'list') await refreshList($)
-    else if (view === 'run') await refreshRun($)
+    else if (view === 'run') {
+      // The table stays drawn above an open run: rescan it only when the band has a worker it lacks.
+      if ((await read($, workers)).some(w => !rows.some(r => r.name === w.name))) await refreshList($)
+      await refreshRun($)
+    }
   } catch {
     /* the next tick tries again */
   } finally {
@@ -1229,7 +1233,8 @@ async function checkQuestions($: EngineInterface) {
       const forked = await forkAnswer($, entry, backend, repo, q, labels)
       if (forked) {
         payload = forked
-        $.ui.toast(`cli-dispatch: Claude answered the ${backend} worker — Q: ${clip(clean(q.question), 120)} · A: ${clip(forked.answer, 160)}`)
+        // The answer first: the surface cuts a long toast, and the question must not push the answer out of it.
+        $.ui.toast(`cli-dispatch: Claude answered the ${backend} worker — A: ${clip(forked.answer, 160)} · Q: ${clip(clean(q.question), 120)}`)
         entry.qa.push({ q: clip(clean(q.question), 300), a: forked.answer })
       }
     }

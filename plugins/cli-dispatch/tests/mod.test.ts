@@ -637,6 +637,19 @@ describe('run monitor pane', () => {
     await ui.unmount()
   })
 
+  test('a run that starts while another is open appears in the table, and the open run stays selected', async ($, on) => {
+    const h = stubRuns(on, { r1: done('deepseek', 400_000, {}, 'older run'), r2: done('codex', 300_000, {}, 'open run') })
+    const ui = await open($)
+    await ui.press({ key: 'run:r2' })
+    h.runs.r3 = { ...running('opencode'), meta: { backend: 'opencode', parentSessionId: SID, startedAt: new Date(NOW - 5_000).toISOString(), promptPreview: 'later run' } }
+    h.sync()
+    await h.tick(4000) // the band's tick sees r3; the pane's next tick rescans the table for it
+    expect((await rowCells(ui, 'r3')).slice(0, 4)).toEqual(['▶ oc', '', 'running', '…'])
+    expect((await rowCells(ui, 'r2')).slice(0, 4)).toEqual(['■ cx', '', 'done', '–'])
+    expect(await drawnText(ui)).toContain('Info: cx') // r2 (codex) is still the open run, not r3 (opencode)
+    await ui.unmount()
+  })
+
   test('the band keeps its window and ignores the pane list; a second list refresh reads no meta or status', async ($, on) => {
     const h = stubRuns(on, FIVE)
     await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
@@ -2800,6 +2813,19 @@ describe('orchestrator answers: the fork answers', () => {
     const toast = h.rec.toasts.find(t => t.includes('Claude answered the cx worker'))
     expect(toast).toContain('Q: Which port?')
     expect(toast).toContain('A: 8123')
+    h.release()
+    await d
+  })
+
+  test('the toast puts the answer before the question, so a long question that the surface cuts never hides it', async ($, on) => {
+    const h = stubOrch(on, orcDir(), { fork: { isAnswered: true, text: '8123', usage: {} } })
+    await startSession($)
+    const d = h.dispatch($)
+    await h.tick(0)
+    await h.tick()
+    const toast = h.rec.toasts.find(t => t.includes('Claude answered the cx worker'))!
+    expect(toast.indexOf('A: 8123')).toBeGreaterThan(-1)
+    expect(toast.indexOf('A: 8123')).toBeLessThan(toast.indexOf('Q: Which port?'))
     h.release()
     await d
   })
