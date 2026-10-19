@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [7.5.3] — 2026-10-19
+
+### Fixed
+
+- **A brief that names your checkout no longer sends the worker into it.** When the task said
+  "In /path/to/repo: …", a worker could write into your checkout instead of its worktree (the leak guard
+  caught it and failed the run). The brief now tells the worker it works in a separate worktree, names
+  your checkout as off-limits, and says a path under it means the same path in the worktree (bash and
+  PowerShell runners). The `dispatch` tool also asks for repo-relative file names in the task.
+- **A flaky test no longer fails under load.** AC24 read an answer file back after the question server
+  could already have consumed it; the stored `by` field is now checked with no server running.
+
 ## [7.5.2] — 2026-10-19
 
 ### Fixed

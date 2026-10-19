@@ -498,3 +498,49 @@ function mkRepo() {
   execSync('git add note.txt && git commit -q -m seed', { cwd: repo, env })
   return repo
 }
+
+// ---------------------------------------------------------------------------- main-checkout notice
+// A brief that says "In /repo: ..." (the caller's checkout) sent a Codex worker out of its
+// worktree (leak, exit 7). The brief must name the MAIN checkout as off-limits.
+
+function runBrief(cwd, extraEnv = {}, prompt = 'do the thing') {
+  const { bin, out } = mkStubStream(['claude-ds-stream'])
+  spawnSync('bash', [RUNNER_PATH, '--backend', 'ds', '--cwd', cwd, '--prompt', prompt], {
+    encoding: 'utf8',
+    timeout: 60_000,
+    env: {
+      ...process.env, ...GIT_ENV,
+      PATH: `${bin}${path.delimiter}${process.env.PATH}`,
+      CLI_DISPATCH_SESSIONS_DIR: mkdtemp('cd-inplace-sessions-'),
+      ...extraEnv,
+    },
+  })
+  trashWorkerCwd(out)
+  return fs.readFileSync(path.join(out, 'brief.txt'), 'utf8')
+}
+
+const gitMainOf = (dir) =>
+  execSync('git worktree list --porcelain', { cwd: dir, encoding: 'utf8' }).split('\n')[0].replace(/^worktree /, '')
+
+test('the brief names the caller checkout as off-limits when the task names it', () => {
+  const { main } = mkRepoWithLinkedWorktree()
+  const gitMain = gitMainOf(main)
+  const brief = runBrief(main, {}, `In ${main}: do it`)
+  assert.ok(brief.includes(`NOT in ${gitMain}`), brief)
+  assert.match(brief, /relative to your worktree root/)
+})
+
+test('in-place mode names the main checkout, not the linked worktree', () => {
+  const { main, wt } = mkRepoWithLinkedWorktree()
+  const gitMain = gitMainOf(wt)
+  const brief = runBrief(wt)
+  assert.ok(brief.includes(`NOT in ${gitMain}`), brief)
+  assert.ok(!brief.includes(`NOT in ${wt}`), brief)
+  assert.equal(realish(gitMain), realish(main))
+})
+
+test('CLI_DISPATCH_NO_CWD_CONTRACT=1 also drops the main-checkout notice', () => {
+  const { main } = mkRepoWithLinkedWorktree()
+  const brief = runBrief(main, { CLI_DISPATCH_NO_CWD_CONTRACT: '1' })
+  assert.ok(!brief.includes('separate git worktree'), brief)
+})
