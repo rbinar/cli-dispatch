@@ -7,6 +7,47 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [7.4.0] — 2026-10-19
+
+### Değişti
+
+- **Flow görünümündeki adım kümeleri açılıp kapanıyor.** Biten bir küme kapalı başlar ve yalnız
+  `▸ Done · N steps` başlığını gösterir; çalışan küme açık başlar (`▾`). Başlığa tıklamak kümeyi açar ya
+  da kapatır; açık adımı içeren küme açık kalır.
+- **Flow, Claude Code dökümü gibi sırayla ve kendi çerçevesinde okunuyor.** Eski en üstte, yeni en
+  altta, biten run'ın Answer'ı en sonda. Run'ın başlığı yerinde kalır; Flow, pane'in kalanını dolduran
+  ve en yeni ucu görünür tutan çerçeveli bir alandır. Pane üzerinde tekerlek ya da PageUp/PageDown
+  çerçeveyi kaydırır (tekerlek adımı başına bir adım ya da not); yukarı kaydırınca run'ı izlemeyi bırakır
+  ve son satırında `Jump to bottom ↓ (N newer)` gösterir (`j`). Canlı bir run'ın mesaj kutusu
+  çerçevenin altındadır. Bu, 7.2.0'daki en-yeni-üstte sıranın ve 7.3.2'deki "N new"
+  dondurmasının yerini alıyor.
+- **Worker'a giden prompt Flow'da.** Her bash stream onu zaten session dizininde `prompt.txt` olarak
+  tutuyordu; artık 0600 yazılıyor ve resume üzerine yazmıyor. Flow'un üstündeki `▸ Prompt: N lines`
+  satırı (maskeli) tıklayınca ya da `p` ile Flow çerçevesinde açılır; tekerlek ve PageUp/PageDown onu
+  kaydırır, tekrar `p` Flow'a döner.
+- **Run bilgileri tek satır.** Prompt satırının altındaki `▸ Info:` run'ı özetler (backend · repo ·
+  etkinlik · events · araç çağrıları · token'lar), pane genişliğinde kesilir; tıklayınca ya da `i` ile
+  tam bilgiler altında açılır. Verdict en altta kalır; açık bir run, liste satırlarının prompt'unu artık
+  tekrarlamaz.
+- **Worker'a gönderdiğin Flow'da.** Mesaj en yeni uçta `→ metin  sent` olarak görünür; worker okuyunca
+  okuduğu yerde, adım kümelerinin dışında `✉ metin  delivered` olur.
+- **Canlı satır backend'i söylüyor** (`▍ cx running…`, önceden `▍ flow running…`); mesaj kutusu iki
+  çizgi arasında CLI tarzı bir `> message to worker...` satırı.
+- **Mesaj kontrolleri artık Flow'u kalabalıklaştırmıyor.** Bir şey bulamayan `check_messages` çağrısı
+  çizilmez ve adım sayılmaz; mesaj teslim eden çağrı mesajın metniyle `✉ metin  delivered` olarak
+  görünür.
+
+### Düzeltildi
+
+- **Mesaj kutusu worker çalışırken odağını koruyor.** Flow'a eklenen her adım odağı kutudan bir adıma
+  kaydırıyordu; yazılanın devamı Claude'un prompt'una gidiyor, Enter da mesajı göndermiyordu. Kutu artık
+  odak sırasında ilk sırada, ama hâlâ Flow'un altında çiziliyor.
+- **Mesaj kutusuna yazılan metin artık başka bir run'a taşınmıyor.** Kutu artık her run için ayrı;
+  önceden bir worker için yazılıp gönderilmeyen metin, başka bir run açıldığında kutuda duruyordu ve Enter
+  onu oraya gönderirdi.
+- **Prompt açıkken ya da Flow yukarı kaydırılmışken gönderilen mesaj da listeleniyor.** Flow
+  gösteremediği sürece `→ metin  sent` satırı mesaj kutusunun altında çizilir.
+
 ## [7.3.2] — 2026-10-19
 
 ### Değişti

@@ -190,7 +190,7 @@ fi
 # state=="running". (This dir may later be relocated wholesale via `mv` —
 # worker.pid moves with it.)
 printf '%s' "$$" > "$SESSION_DIR/worker.pid" 2>/dev/null || true
-printf '%s' "$PROMPT" > "$SESSION_DIR/prompt.txt" 2>/dev/null || true
+save_prompt "$SESSION_DIR" "$PROMPT"
 BRANCH="$(git -C "$CWD" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
 
 # Process helpers: mtime_of, kill_tree, proc_tree, kill_worker — defined in stream-utils.sh

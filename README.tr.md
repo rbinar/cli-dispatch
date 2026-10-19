@@ -23,15 +23,13 @@ Claude Code 2.1.287 veya daha yenisi gerekir. Setup hangi backend'leri istediği
 
 ## Kullanım
 
-**Sadece iste.** Claude işi `cli-dispatch:runner` agent'ına verir; agent worker'ı çalıştırır, sonucu doğrular ve incelemen için bir yama döndürür:
+**Sadece iste.** Claude işi plugin'in `dispatch` aracına verir; araç worker'ı bir git worktree'de çalıştırır, verify komutunu çalıştırır ve sonucu, incelemen için bir yamayla birlikte döndürür (2.1.287'den eski Claude Code'da aynı işi `cli-dispatch:runner` agent'ı yapar):
 
 ```text
 add() in math.mjs is broken. Delegate the fix to DeepSeek, verify with node --test.
 ```
 
-▶️ Uçtan uca örnek ([mp4](videos/cx-delegation-harness.mp4)): Claude düşen bir testi Codex'e devreder, `cli-dispatch:runner` agent'ını açıp ona gönderilen prompt'u birebir görürsün, Claude da doğrulanmış yamayı uygular. Bir sandbox container'ında canlı kaydedildi.
-
-https://github.com/user-attachments/assets/efc498b1-48d1-4dc5-abcd-7a152d222578
+▶️ Uçtan uca örnek ([mp4](videos/runs-monitor.mp4)): Claude bir hata düzeltmesini ve küçük bir CLI'ı `dispatch` aracıyla Codex'e devreder. Worker'ın adımlarını run monitor'de canlı izler, çalışırken ona bir mesaj gönderirsin (`→ sent`, sonra `✉ delivered`); worker mesajı alır, verify geçer, Claude da yamayı uygular. Bir sandbox container'ında canlı kaydedildi.
 
 **Kendin çalıştır.** Orkestrasyona LLM token'ı harcanmaz:
 
@@ -48,6 +46,18 @@ https://github.com/user-attachments/assets/efc498b1-48d1-4dc5-abcd-7a152d222578
 Backend'ler: `ds` DeepSeek · `ag` Antigravity · `cx` Codex · `oc` OpenCode · `cp` Copilot · `ol` Ollama (yerel, yalnız Unix). 12 komutun listesi `/cli-dispatch:help`'te, ayrıntılar [Komutlar](docs/tr/commands.md)'da.
 
 > ⚠️ Worker'lar dosya yazabilir ve komut çalıştırabilir. Gerçek repo işi, yamayı sen uygulayana kadar bir git worktree'de kalır ([Güvenlik ve veri](docs/tr/security.md)).
+
+## Run'ı izle
+
+Prompt'un üstündeki şerit bu oturumun worker'larını gösterir (`▶ cx 2m05s`, sonra `■ cx PASS`). Birine tıkla ya da `/cli-dispatch-runs` yaz; run monitor açılır:
+
+- **Flow:** worker'ın adımları oldukları anda, eskiden yeniye, run'ı takip eden bir çerçevede. Tekerlek ya da PageUp/PageDown kaydırır; bir adıma tıklamak tam metnini açar.
+- **Prompt** (`p`): worker'a giden prompt'un birebir hali, maskeli, aynı çerçevede kaydırılabilir.
+- **Info** (`i`): backend, repo, etkinlik, olay, araç çağrısı ve token tek satırda; `i` tüm ayrıntıları açar.
+- **Mesaj kutusu:** `> message to worker...` çalışan worker'a not gönderir. Flow'da önce `→ metin  sent`, worker okuyunca `✉ metin  delivered` olarak görünür.
+- **Sorular:** worker çalışırken sana soru sorabilir; soru Claude Code'da bir diyalog olarak açılır, cevabın worker'a geri gider.
+
+Sorular ve mesajlar `dispatch` aracıyla başlatılan run'larda, macOS, Linux ve WSL'de çalışır. Ayrıntılar: [Komutlar](docs/tr/commands.md).
 
 ## Güncelleme
 

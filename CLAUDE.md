@@ -64,7 +64,7 @@ Everything the plugin installs lives under `plugins/cli-dispatch/`:
   `cli-dispatch-run --detach` + `cli-dispatch-wait --run` itself in one tool call — the runner agent's
   job with no LLM turns. It is not registered inside a worker (`CLI_DISPATCH_WORKER=1`). Its state contract is `types/index.d.ts` (named as `types` in
   `plugin.json`); its tests are `tests/mod.test.ts`. `/cli-dispatch-runs` is its run monitor pane
-  (this session's runs, one newest-first Flow view built from `transcript.jsonl`, masked); the band's liveness test is `isRunAlive`. It reads session dirs with the same root
+  (this session's runs, one chronological Flow built from `transcript.jsonl` in its own frame, which the pane's `ui.scroll` hook scrolls, masked); the band's liveness test is `isRunAlive`. It reads session dirs with the same root
   resolution and 90 s liveness window as `cli-dispatch-statusline.sh`.
 - `skills/ds-delegate/SKILL.md` — the `ds-delegate` skill.
 
@@ -122,6 +122,8 @@ run — regardless of backend — creates `~/.cache/cli-dispatch/sessions/<id>/`
   checks. Pre-5.0.0 session dirs may carry a retired state; readers treat it as finished
   (legacy: `human-controlled`).
 - `meta.json` — static fields: `cwd`, `backend`, `model`, `startedAt`, `promptPreview`.
+- `prompt.txt` — the full prompt the stream sent the worker (the runner's appended blocks included), mode 0600,
+  written by `stream-utils.sh`'s `save_prompt`; a resume keeps the existing file. Bash streams only (no `.ps1` change).
 - `transcript.jsonl` — the full raw JSONL stream. Never read this while polling — it's for
   resume/audit only. Consumers (`gain`, `clean`, any orchestrator following up on a run)
   are explicitly warned in-repo against reading it in a hot loop; it's the main cost sink

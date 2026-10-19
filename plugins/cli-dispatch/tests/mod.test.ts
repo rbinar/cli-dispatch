@@ -537,9 +537,16 @@ const shapeOf = async (ui: any): Promise<string[]> =>
   (((await ui.find({ key: 'flow' }))?.children ?? []) as any[]).filter(c => c && typeof c === 'object').map(c => {
     const k = String(c.props?.key)
     if (k === 'answer') return `Answer: ${strings(c.children[1]).join('')}`
-    if (k.startsWith('cluster:')) return [strings(c.children[0]).join(''), ...(c.children.slice(1) as any[]).map(b => strings(b.children[0].children).join(''))].join(' / ')
+    if (k.startsWith('cluster:')) return [strings(c.children[0].children).join(''), ...(c.children.slice(1) as any[]).map(b => strings(b.children[0].children).join(''))].join(' / ')
     return strings(c).join(' | ')
   })
+// Opens every closed (finished) cluster, so a test can read the steps inside.
+const expandAll = async (ui: any) => {
+  for (const c of ((await ui.find({ key: 'flow' }))?.children ?? []) as any[]) {
+    const head = c?.children?.[0]
+    if (String(c?.props?.key).startsWith('cluster:') && strings(head?.children).join('').startsWith('▸')) await ui.press({ key: head.props.key })
+  }
+}
 const indent = (s: string) => s.split('\n').map(l => `  ${l}`).join('\n')
 const countOf = (hay: string, needle: string) => hay.split(needle).length - 1
 // A run's table cells, trimmed of their padding: the Button's children are one Text per column.
@@ -554,7 +561,7 @@ const rowProps = async (ui: any, name: string) =>
   ((await ui.find({ type: 'Button', key: `run:${name}` }))?.children as any[]).filter(c => typeof c === 'object').map(c => c.props ?? {})
 // Every string under the open run's detail (the table above it is not part of it).
 const detailText = async (ui: any) => strings(await ui.find({ key: 'detail' })).join('\n')
-const FOOTER = '↑↓ / click: select run · click line: full text · b: back · Esc: close'
+const FOOTER = '↑↓ / click: select run · click line: full text · b: back · p: prompt · i: info · Esc: close'
 
 const open = async ($: any, surface: 'terminal' | 'desktop' = 'terminal') => {
   await $.session.start({ surface, isInteractive: true, cwd: '/work' } as any)
@@ -609,6 +616,17 @@ describe('run monitor pane', () => {
       await ui.unmount()
     })
   }
+
+  test('an open run hides the list rows\' prompt previews (its prompt has its own line)', async ($, on) => {
+    stubRuns(on, FIVE)
+    const ui = await open($)
+    expect(await drawnText(ui)).toContain('fresh')
+    await ui.press({ key: 'run:r3' })
+    expect(await drawnText(ui)).not.toContain('fresh')
+    await ui.press({ key: 'back' })
+    expect(await drawnText(ui)).toContain('fresh')
+    await ui.unmount()
+  })
 
   test('the band keeps its window and ignores the pane list; a second list refresh reads no meta or status', async ($, on) => {
     const h = stubRuns(on, FIVE)
@@ -669,6 +687,7 @@ describe('run monitor pane', () => {
     expect(h.rec.opened.map(o => o.id)).toEqual(['cli-dispatch-runs'])
     expect(h.rec.opened[0]).toMatchObject({ focus: true, closeOnEscape: true })
     const ui = await mountRuns($)
+    await ui.press({ key: 'info' })
     const t = await drawnText(ui)
     expect(t).toMatch(/b: back/)
     expect(t).toMatch(/cx · /)
@@ -699,12 +718,14 @@ describe('run monitor pane', () => {
     await ui.press({ key: 'run:a' })
     let t = await drawnText(ui)
     expect(t).toMatch(/\$ npm test/)
+    await ui.press({ key: 'info' })
     const d = await detailText(ui)
     expect(await rowCells(ui, 'a')).toContain('running')
     expect(d).toMatch(/events +\n7\n · tool calls \n8\n \(Bash×5 Edit×3\)/)
     expect(d).toMatch(/last activity +\n4s ago\n · Bash/)
     expect(d).toMatch(/tokens +\nin 100 · out 20/)
-    expect(t).toMatch(/gpt-x/)
+    expect(d).toMatch(/gpt-x/)
+    await ui.press({ key: 'info' })
     expect(helperCalls(h)).toEqual([['back', `${ROOT}/a/transcript.jsonl`, '400', '524288']])
 
     h.stats[`${ROOT}/a/transcript.jsonl`] = { size: 460, mtimeMs: NOW }
@@ -866,7 +887,7 @@ describe('run monitor pane', () => {
     await ui.press({ key: 'run:a' })
     expect(helperCalls(h)).toEqual([['back', T, '600000', '524288']])
     let t = await drawnText(ui)
-    expect(t).toMatch(/SECOND-MSG[\s\S]*FIRST-MSG/) // newest first
+    expect(t).toMatch(/FIRST-MSG[\s\S]*SECOND-MSG/) // oldest first
     expect(t).toContain('earlier')
 
     size = 600_200
@@ -1141,7 +1162,8 @@ describe('run monitor pane', () => {
     expect((await kids('a'))[0].inverse).toBe(true) // the open run
     expect((await kids('b'))[0].inverse).toBeFalsy()
     expect(await ui.find({ type: 'Button', key: 'run:b' })).toBeDefined() // the list is still there
-    expect(await detailText(ui)).toMatch(/^cx · /)
+    await ui.press({ key: 'info' })
+    expect(await detailText(ui)).toMatch(/(^|\n)cx · /) // the run's facts open in the Flow frame (i)
     expect((await ui.find({ type: 'Text', text: FOOTER }))?.props.dimColor).toBe(true)
     await ui.press({ key: 'run:b' }) // a row in the list switches the run
     expect((await kids('b'))[0].inverse).toBe(true)
@@ -1160,11 +1182,11 @@ describe('run monitor pane', () => {
     expect((await ui.find({ type: 'Text', text: 'Flow' }))?.props.bold).toBe(true)
     const d = await detailText(ui)
     expect(countOf(d, 'Flow')).toBe(1)
-    expect(d).toContain('newest first')
+    expect(d).toContain('transcript.jsonl · click a step for its full text')
     await ui.unmount()
   })
 
-  test('the flow is newest first: latest above it, earlier (the older entries) below it', async ($, on) => {
+  test('the flow is chronological: earlier (the older entries) above it, the newest at the bottom', async ($, on) => {
     const h = stubRuns(on, { a: flowFix() }, {
       helper: (mode, args) => {
         if (mode === 'back' && args[1] === '600000') return win(100_000, 600_000, 600_000, cxEvent(100_000, 'OLD-MSG'), cxEvent(200_000, 'MID-MSG'), cxEvent(300_000, 'NEW-MSG'))
@@ -1175,16 +1197,16 @@ describe('run monitor pane', () => {
     const ui = await open($)
     await ui.press({ key: 'run:a' })
     let t = await drawnText(ui)
-    expect(t.indexOf('NEW-MSG')).toBeGreaterThan(-1)
-    expect(t.indexOf('NEW-MSG')).toBeLessThan(t.indexOf('MID-MSG'))
-    expect(t.indexOf('MID-MSG')).toBeLessThan(t.indexOf('OLD-MSG'))
-    expect(t.indexOf('earlier')).toBeGreaterThan(t.indexOf('OLD-MSG')) // older entries are further down
+    expect(t.indexOf('OLD-MSG')).toBeGreaterThan(-1)
+    expect(t.indexOf('OLD-MSG')).toBeLessThan(t.indexOf('MID-MSG'))
+    expect(t.indexOf('MID-MSG')).toBeLessThan(t.indexOf('NEW-MSG'))
+    expect(t.indexOf('earlier')).toBeLessThan(t.indexOf('OLD-MSG')) // older entries are further up
     await ui.press({ key: 'earlier' })
     expect(helperCalls(h).at(-1)).toEqual(['back', T, '100000', '524288'])
     t = await drawnText(ui)
     expect(t).toContain('ANCIENT-MSG')
     expect(t.indexOf('latest')).toBeGreaterThan(-1)
-    expect(t.indexOf('latest')).toBeLessThan(t.indexOf('ANCIENT-MSG')) // back to the newest end: up
+    expect(t.indexOf('latest')).toBeLessThan(t.indexOf('ANCIENT-MSG')) // the latest button sits in the header, above the flow
     await ui.unmount()
   })
 
@@ -1204,7 +1226,7 @@ describe('run monitor pane', () => {
       const t = await drawnText(ui)
       expect(t).toContain(say)
       expect(t).toContain(`✻ ${think}`)
-      expect(t.indexOf('SAY-START')).toBeLessThan(t.indexOf('THINK-START')) // the text came after the thinking
+      expect(t.indexOf('THINK-START')).toBeLessThan(t.indexOf('SAY-START')) // the thinking came before the text
       const thought = (await ui.find({ key: 'note:0' }))?.children as any[]
       expect(thought[0].props).toMatchObject({ dimColor: true, wrap: 'wrap' })
       const said = ((await ui.find({ key: 'note:10' }))?.children as any[])[0].children as any[] // the markdown lines
@@ -1215,7 +1237,7 @@ describe('run monitor pane', () => {
     await ui.unmount()
   })
 
-  test('a ds turn as a real session writes it: final text on top, each thinking a dim ✻ entry, no empty ✻, no skip rows, no closing result', async ($, on) => {
+  test('a ds turn as a real session writes it: oldest first, final text last, each thinking a dim ✻ entry, no empty ✻, no skip rows, no closing result', async ($, on) => {
     let o = 0
     const recs: { o: number; t: string }[] = []
     const add = (ev: unknown) => { recs.push({ o, t: JSON.stringify(ev) }); o += 100 }
@@ -1243,15 +1265,16 @@ describe('run monitor pane', () => {
     const ui = await open($)
     await ui.press({ key: 'run:a' })
     // records: 0 frame, 1 THINK-1, 2-7 three calls + results, 8 frame, 9 THINK-2 + TEXT-1, 10-11 Edit, 12 THINK-3, 13-14 Bash, 15 frame, 16 final, 17 result
+    await expandAll(ui)
     expect(await shapeOf(ui)).toEqual([
-      '▍ flow running…',
-      'FINAL-TEXT done',
-      '▸ Done · 1 step / ⌘ npm test  ✓',
-      '✻ THINK-3 check',
-      '▸ Done · 1 step / ✎ a.ts  ✓',
-      'TEXT-1 I will edit | ✻ THINK-2 plan',
-      '▸ Done · 3 steps / ▤ b.ts  ✓ / ▤ a.ts  ✓ / ⌘ ls  ✓',
       '✻ THINK-1 look around',
+      '▾ Done · 3 steps / ⌘ ls  ✓ / ▤ a.ts  ✓ / ▤ b.ts  ✓',
+      'TEXT-1 I will edit | ✻ THINK-2 plan',
+      '▾ Done · 1 step / ✎ a.ts  ✓',
+      '✻ THINK-3 check',
+      '▾ Running · 1 step / ⌘ npm test  ✓',
+      'FINAL-TEXT done',
+      '▍ ds running…',
     ])
     for (const i of [12, 9, 1]) expect(((await ui.find({ key: `note:${at(i)}` }))?.children as any[]).at(-1).props.dimColor).toBe(true)
     const t = await drawnText(ui)
@@ -1274,7 +1297,7 @@ describe('run monitor pane', () => {
     return t
   }
 
-  test('codex: commands and file changes cluster between messages; a finished run puts its last message on top as the Answer', async ($, on) => {
+  test('codex: commands and file changes cluster between messages; a finished run puts its last message at the bottom as the Answer', async ($, on) => {
     const item = (type: string, it: object) => ({ type, item: it })
     const cmd = (id: string, command: string, out: string, exit_code: number) => item('item.completed', { id, type: 'command_execution', command, aggregated_output: out, exit_code })
     stubRuns(on, { a: finishedFix('codex') }, {
@@ -1291,19 +1314,20 @@ describe('run monitor pane', () => {
     })
     const ui = await open($)
     await ui.press({ key: 'run:a' })
+    await expandAll(ui)
     expect(await shapeOf(ui)).toEqual([
-      'Answer: Fixed calc.py:2',
-      '▸ Done · 2 steps / ⌘ python3 test_calc.py  ✗ / ✎ calc.py  ✓',
-      'The bug is on line 2',
-      '▸ Done · 2 steps / ⌘ cat calc.py  ✓ / ⌘ pwd && ls  ✓',
       '✻ CX-THINK find the bug',
+      '▾ Done · 2 steps / ⌘ pwd && ls  ✓ / ⌘ cat calc.py  ✓',
+      'The bug is on line 2',
+      '▾ Done · 2 steps / ✎ calc.py  ✓ / ⌘ python3 test_calc.py  ✗',
+      'Answer: Fixed calc.py:2',
     ])
     expect(await bodyOf(ui, '300')).toContain('$ cat calc.py\n(no output)\n\nexit 0')
     expect(await bodyOf(ui, '500')).toContain('update /w/src/calc.py') // the full path is in the body
     await ui.unmount()
   })
 
-  test('ds: a tool_use and its tool_result (same id) are one step; file tools show the file name, search its pattern, another tool its name; the newest cluster of a live run is Running', async ($, on) => {
+  test('ds: a tool_use and its tool_result (same id) are one step; file tools show the file name, search its pattern, another tool its name; the last cluster of a live run is Running', async ($, on) => {
     const use = (id: string, name: string, input: object) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name, input }] } })
     const done = (id: string, content: string) => ({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content }] } })
     stubRuns(on, { a: liveFix('deepseek') }, {
@@ -1322,11 +1346,12 @@ describe('run monitor pane', () => {
     })
     const ui = await open($)
     await ui.press({ key: 'run:a' })
+    await expandAll(ui)
     expect(await shapeOf(ui)).toEqual([
-      '▍ flow running…',
-      '▸ Running · 1 step / ⌘ python3 test_calc.py',
+      '▾ Done · 4 steps / ▤ calc.py  ✓ / ⌕ def add  ✓ / ✎ calc.py  ✓ / ⚙ TodoWrite todos[0].content: fix add  ✓',
       'Now testing',
-      '▸ Done · 4 steps / ⚙ TodoWrite todos[0].content: fix add  ✓ / ✎ calc.py  ✓ / ⌕ def add  ✓ / ▤ calc.py  ✓',
+      '▾ Running · 1 step / ⌘ python3 test_calc.py',
+      '▍ ds running…',
     ])
     expect(((await ui.find({ type: 'Button', key: 'line:900' }))?.children as any[])[1].props.dimColor).toBe(true) // still running
     expect(await bodyOf(ui, '0')).toContain('file_path: /w/src/calc.py\ndef add(a, b): return a - b')
@@ -1349,15 +1374,16 @@ describe('run monitor pane', () => {
     })
     const ui = await open($)
     await ui.press({ key: 'run:a' })
+    await expandAll(ui)
     expect(await shapeOf(ui)).toEqual([
+      '▾ Done · 3 steps / ▤ calc.py  ✓ / ⌘ python3 -I test_calc.py  ✗ / ✎ worker-report.json  ✓',
       'Answer: All done',
-      '▸ Done · 3 steps / ✎ worker-report.json  ✓ / ⌘ python3 -I test_calc.py  ✗ / ▤ calc.py  ✓',
     ])
     expect(await bodyOf(ui, '100')).toContain('$ python3 -I test_calc.py\nModuleNotFoundError')
     await ui.unmount()
   })
 
-  test('opencode: a tool_use part re-sent under one callID is one step: running, then ✓ or ✗; a live run\'s newest cluster is Running', async ($, on) => {
+  test('opencode: a tool_use part re-sent under one callID is one step: running, then ✓ or ✗; a live run\'s last cluster is Running', async ($, on) => {
     const part = (callID: string, tool: string, state: object) => ({ type: 'tool_use', part: { callID, tool, state } })
     stubRuns(on, { a: liveFix('opencode') }, {
       helper: flowFor([
@@ -1371,7 +1397,8 @@ describe('run monitor pane', () => {
     })
     const ui = await open($)
     await ui.press({ key: 'run:a' })
-    expect(await shapeOf(ui)).toEqual(['▍ flow running…', '▸ Running · 3 steps / ⌕ **/*.ts / ⌘ npm test  ✗ / ▤ a.ts  ✓', 'Looking'])
+    await expandAll(ui)
+    expect(await shapeOf(ui)).toEqual(['Looking', '▾ Running · 3 steps / ▤ a.ts  ✓ / ⌘ npm test  ✗ / ⌕ **/*.ts', '▍ oc running…'])
     await ui.unmount()
   })
 
@@ -1386,7 +1413,8 @@ describe('run monitor pane', () => {
     })
     const ui = await open($)
     await ui.press({ key: 'run:a' })
-    expect(await shapeOf(ui)).toEqual(['Answer: AG done', '▸ Done · 2 steps / ⌘ python3 t.py  ✓ / ▤ calc.py  ✓', '✻ AG-THINK'])
+    await expandAll(ui)
+    expect(await shapeOf(ui)).toEqual(['✻ AG-THINK', '▾ Done · 2 steps / ▤ calc.py  ✓ / ⌘ python3 t.py  ✓', 'Answer: AG done'])
     expect(await bodyOf(ui, '0.1')).toContain('$ python3 t.py\n(no output)')
     expect(await bodyOf(ui, '0')).toContain('file text')
     await ui.unmount()
@@ -1496,28 +1524,34 @@ describe('run monitor pane', () => {
     expect(await drawnText(ui)).not.toMatch(TURKISH)
     await ui.press({ key: 'run:a' })
     let t = await drawnText(ui)
-    expect(t).toContain('last activity')
-    expect(t).toContain('▍ flow running…')
+    expect(t).toContain('▍ cx running…')
     expect(t).not.toMatch(TURKISH)
+    await ui.press({ key: 'info' })
+    t = await drawnText(ui)
+    expect(t).toContain('last activity')
+    expect(t).not.toMatch(TURKISH)
+    await ui.press({ key: 'info' })
     await ui.press({ key: 'line:10' })
     t = await drawnText(ui)
     expect(t).toContain('Full text · event 2 · transcript.jsonl')
     expect(t).not.toMatch(TURKISH)
     await ui.press({ key: 'back' })
     await ui.press({ key: 'run:b' })
+    await ui.press({ key: 'info' })
     t = await drawnText(ui)
     expect(t).toContain('finished')
     expect(t).not.toMatch(TURKISH)
     await ui.unmount()
   })
 
-  test('Flow steps: model text is plain, a command is ✓ green on exit 0, ✗ red on another exit, dim with no mark while it runs; a running run starts with a yellow streaming line', async ($, on) => {
+  test('Flow steps: model text is plain, a command is ✓ green on exit 0, ✗ red on another exit, dim with no mark while it runs; a running run ends with a yellow streaming line', async ($, on) => {
     const cmd = (o: number, command: string, exit?: number) => ({ o, t: JSON.stringify({ type: exit === undefined ? 'item.started' : 'item.completed', item: { id: `i${o}`, type: 'command_execution', command, aggregated_output: '', ...(exit === undefined ? {} : { exit_code: exit }) } }) })
     stubRuns(on, { a: RUN_A({ pid: ALIVE_PID }) }, {
       helper: mode => (mode === 'back' ? win(0, 400, 400, cmd(0, 'ok', 0), cmd(10, 'bad', 3), cmd(20, 'going'), cxEvent(30, 'said it')) : ''),
     })
     const ui = await open($)
     await ui.press({ key: 'run:a' })
+    await expandAll(ui)
     const textOf = async (o: number) => ((await ui.find({ type: 'Button', key: `line:${o}` }))?.children as any[]).map((c: any) => c.props)
     expect((await textOf(0))[2]).toMatchObject({ color: 'green' }) // [icon, title, mark]
     expect((await textOf(10))[2]).toMatchObject({ color: 'red' })
@@ -1526,10 +1560,32 @@ describe('run monitor pane', () => {
     const said = ((await ui.find({ key: 'note:30' }))?.children as any[])[0].children[0].props // the model text's line
     expect(said.dimColor).toBeFalsy()
     expect(said.color).toBeUndefined()
-    const stream = await ui.find({ type: 'Text', text: '▍ flow running…' })
+    const stream = await ui.find({ type: 'Text', text: '▍ cx running…' })
     expect(stream?.props.color).toBe('yellow')
     const t = await drawnText(ui)
-    expect(t.indexOf('▍ flow running…')).toBeLessThan(t.indexOf('said it')) // the newest end is on top
+    expect(t.indexOf('▍ cx running…')).toBeGreaterThan(t.indexOf('said it')) // the newest end is at the bottom
+    await ui.unmount()
+  })
+
+  test('Info is one summary line under the prompt; i opens the full facts under it and again closes them; another run starts closed', async ($, on) => {
+    stubRuns(on, { a: done('codex', 1000, { transcript: 400 }), b: done('codex', 2000) }, { helper: mode => (mode === 'back' ? win(0, 400, 400, { o: 0, t: '· FLOW-LINE' }) : '') })
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    let d = await detailText(ui)
+    expect(d).toMatch(/Info:/)
+    expect(d).toMatch(/cx · .* · finished · 3 events · 0 tool calls/) // the summary
+    expect(d).toContain('Done · 1 step')
+    expect(d).not.toMatch(/last activity/)
+    expect(d.indexOf('Info:')).toBeLessThan(d.indexOf('Flow'))
+    await ui.press({ key: 'info' })
+    d = await detailText(ui)
+    expect(d).toMatch(/last activity +\nfinished/)
+    expect(d).toContain('Done · 1 step') // the flow stays
+    await ui.press({ key: 'info' })
+    expect(await detailText(ui)).not.toMatch(/last activity/)
+    await ui.press({ key: 'info' })
+    await ui.press({ key: 'run:b' })
+    expect(await detailText(ui)).not.toMatch(/last activity/)
     await ui.unmount()
   })
 
@@ -1537,7 +1593,8 @@ describe('run monitor pane', () => {
     stubRuns(on, { a: done('codex', 1000, { progress: 400 }) }, { helper: mode => (mode === 'back' ? win(0, 400, 400, { o: 0, t: '· x' }) : '') })
     const ui = await open($)
     await ui.press({ key: 'run:a' })
-    expect(await ui.find({ type: 'Text', text: /flow running/ })).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: /▍ .* running…/ })).toBeUndefined()
+    await ui.press({ key: 'info' })
     expect((await detailText(ui))).toMatch(/last activity +\nfinished/)
     await ui.unmount()
   })
@@ -1571,23 +1628,115 @@ describe('run monitor pane', () => {
     await ui.unmount()
   })
 
-  test('while a step is open the list holds still: new steps wait behind an "N new" line until it closes', async ($, on) => {
-    const cmd = (o: number, command: string) => ({ o, t: JSON.stringify({ type: 'item.completed', item: { id: `i${o}`, type: 'command_execution', command, aggregated_output: '', exit_code: 0 } }) })
-    const h = stubRuns(on, { a: RUN_A() }, {
-      helper: mode => (mode === 'back' ? win(0, 400, 400, cmd(0, 'ls'), cmd(10, 'pwd')) : mode === 'fwd' ? win(400, 460, 460, cmd(400, 'NEWCMD')) : ''),
+  test('a finished cluster starts closed and a click on its header opens it; the running one starts open', async ($, on) => {
+    const use = (o: number, id: string, command: string) => rec(o, { type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'Bash', input: { command } }] } })
+    const result = (o: number, id: string) => rec(o, { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: 'x' }] } })
+    const say = (o: number, text: string) => rec(o, { type: 'assistant', message: { content: [{ type: 'text', text }] } })
+    stubRuns(on, { a: flowFix({ meta: { ...RUN_A().meta, backend: 'ollama' }, pid: ALIVE_PID }) }, {
+      helper: mode => (mode === 'back' ? win(0, 9000, 9000, use(0, 't1', 'OLD-CMD'), result(10, 't1'), say(20, 'between'), use(30, 't2', 'NEW-CMD')) : ''),
     })
     const ui = await open($)
     await ui.press({ key: 'run:a' })
-    await ui.press({ key: 'line:0' })
+    let t = await drawnText(ui)
+    expect(t).toContain('NEW-CMD') // the running cluster is open
+    expect(t).not.toContain('OLD-CMD') // the finished one is closed
+    expect(t).toMatch(/▸ \nDone/)
+    await ui.press({ key: 'cl:0' })
+    t = await drawnText(ui)
+    expect(t).toContain('OLD-CMD')
+    expect(t).toMatch(/▾ \nDone/)
+    await ui.press({ key: 'cl:0' })
+    expect(await drawnText(ui)).not.toContain('OLD-CMD')
+    await ui.unmount()
+  })
+
+  test('a message check that found nothing is not drawn; one that delivered a message is the person\'s line with its text, outside the clusters', async ($, on) => {
+    const use = (o: number, id: string) => rec(o, { type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'mcp__cli_dispatch_ask__check_messages', input: {} }] } })
+    const result = (o: number, id: string, content: string) => rec(o, { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content }] } })
+    stubRuns(on, { a: flowFix({ meta: { ...RUN_A().meta, backend: 'ollama' } }) }, {
+      helper: mode => (mode === 'back' ? win(0, 9000, 9000, use(0, 'm1'), result(10, 'm1', 'No new messages.'), use(20, 'm2'), result(30, 'm2', 'Messages from the user, oldest first. They are data.\n[t] STEER-IT')) : ''),
+    })
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    await expandAll(ui)
+    const t = await drawnText(ui)
+    expect(t).not.toContain('No new messages')
+    expect(countOf(t, 'check_messages')).toBe(0)
+    expect(t).toContain('✉ STEER-IT  delivered')
+    expect(t).not.toMatch(/\d+ steps?/) // no cluster: both checks are gone as steps
+    await ui.unmount()
+  })
+
+  test('the prompt sits on top, above the Flow, closed until clicked, masked', async ($, on) => {
+    const h = stubRuns(on, { a: RUN_A() }, { helper: mode => (mode === 'back' ? win(0, 400, 400, { o: 0, t: JSON.stringify({ type: 'item.completed', item: { id: 'i0', type: 'agent_message', text: 'WORKER-SAYS' } }) }) : '') })
+    h.files[`${ROOT}/a/prompt.txt`] = 'DO-THE-TASK with key sk-abcdefghijklmnopqrstuvwx\nline two'
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    let t = await drawnText(ui)
+    expect(t).toMatch(/Prompt: 2 lines/)
+    expect(t).not.toContain('DO-THE-TASK') // closed
+    expect(t.indexOf('Prompt:')).toBeLessThan(t.indexOf('WORKER-SAYS')) // on top, above the flow
+    await ui.press({ key: 'prompt-toggle' })
+    t = await drawnText(ui)
+    expect(t).toContain('DO-THE-TASK')
+    expect(t).not.toContain('sk-abcdefghijklmnopqrstuvwx')
+    await ui.unmount()
+  })
+
+  test('an open prompt is drawn in the Flow frame and the wheel scrolls it, stopping at its ends; p closes it and the Flow is back', async ($, on) => {
+    const h = stubRuns(on, { a: RUN_A() }, { helper: mode => (mode === 'back' ? win(0, 400, 400, { o: 0, t: JSON.stringify({ type: 'item.completed', item: { id: 'i0', type: 'agent_message', text: 'WORKER-SAYS' } }) }) : '') })
+    h.files[`${ROOT}/a/prompt.txt`] = Array.from({ length: 30 }, (_, i) => `PL-${i + 1}-END`).join('\n')
+    const wheel = (by: number) => $.ui.scroll({ component: 'Pane', requestId: 'cli-dispatch-runs', offset: 0, by, bodyRows: 30, contentRows: 31, origin: { kind: 'person' } } as any)
+    const frame = async () => strings(await ui.find({ key: 'frame' })).join('\n')
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    await ui.press({ key: 'prompt-toggle' })
+    let f = await frame()
+    expect(f).toContain('PL-1-END')
+    expect(f).not.toContain('WORKER-SAYS') // the prompt is in the frame in place of the flow
+    expect(await detailText(ui)).toContain('line 1 of 30')
+    await wheel(3)
+    f = await frame()
+    expect(f).not.toContain('PL-3-END')
+    expect(f).toContain('PL-4-END')
+    expect(await detailText(ui)).toContain('line 4 of 30')
+    await wheel(-10)
+    expect(await detailText(ui)).toContain('line 1 of 30') // stops at the top
+    await wheel(100)
+    expect(await detailText(ui)).toContain('line 30 of 30') // and at the last line
+    await ui.press({ key: 'prompt-toggle' })
+    f = await frame()
+    expect(f).toContain('WORKER-SAYS')
+    expect(f).not.toContain('PL-30-END')
+    await ui.unmount()
+  })
+
+  test('scrolling the Flow up holds it on its item while the run writes on; Jump to bottom follows again', async ($, on) => {
+    const say = (o: number, text: string) => ({ o, t: JSON.stringify({ type: 'item.completed', item: { id: `i${o}`, type: 'agent_message', text } }) })
+    const h = stubRuns(on, { a: RUN_A({ pid: ALIVE_PID }) }, {
+      helper: mode => (mode === 'back' ? win(0, 400, 400, say(0, 'MSG-ONE'), say(10, 'MSG-TWO'), say(20, 'MSG-THREE')) : mode === 'fwd' ? win(400, 460, 460, say(400, 'MSG-FOUR')) : ''),
+    })
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    const wheel = (by: number) => $.ui.scroll({ component: 'Pane', requestId: 'cli-dispatch-runs', offset: 0, by, bodyRows: 30, contentRows: 31, origin: { kind: 'person' } } as any)
+    await wheel(-1)
+    let t = await drawnText(ui)
+    expect(t).not.toContain('MSG-THREE') // one item up
+    expect(t).toContain('MSG-TWO')
+    expect(t).toMatch(/Jump to bottom ↓ \(1 newer\)/)
     h.stats[`${ROOT}/a/transcript.jsonl`] = { size: 460, mtimeMs: NOW }
     await h.tick()
-    let t = await drawnText(ui)
-    expect(t).not.toContain('NEWCMD')
-    expect(t).toContain('1 new · close the open step to show them')
-    await ui.press({ key: 'line:0' }) // closed: the list catches up
     t = await drawnText(ui)
-    expect(t).toContain('NEWCMD')
-    expect(t).not.toContain('new · close the open step')
+    expect(t).toContain('MSG-TWO') // held on its item
+    expect(t).not.toContain('MSG-FOUR')
+    expect(t).toMatch(/\(2 newer\)/)
+    await ui.press({ key: 'jump-bottom' })
+    t = await drawnText(ui)
+    expect(t).toContain('MSG-FOUR')
+    expect(t).not.toContain('Jump to bottom')
+    await wheel(-1)
+    await wheel(1) // back at the newest item: following again
+    expect(await drawnText(ui)).not.toContain('Jump to bottom')
     await ui.unmount()
   })
 
@@ -1600,7 +1749,7 @@ describe('run monitor pane', () => {
     const ui = await open($)
     await ui.press({ key: 'run:a' })
     const keys = (await ui.findAll({ type: 'Button' })).map((b: any) => String(b.key)).filter((k: string) => k.startsWith('line:'))
-    expect(keys).toEqual(['line:20', 'line:0']) // newest first; the results are folded into their calls
+    expect(keys).toEqual(['line:0', 'line:20']) // oldest first; the results are folded into their calls
     const kids = async (o: number) => (await ui.find({ type: 'Button', key: `line:${o}` }))?.children as any[]
     expect(strings(await kids(0))).toEqual(['⌘ ', 'pwd && ls', '  ✓'])
     expect(strings(await kids(20))).toEqual(['⌘ ', 'false second line', '  ✗'])
@@ -1646,7 +1795,8 @@ describe('run monitor pane', () => {
     expect((await rowCells(ui, 'b'))[1]).toBe('plain') // no .git file readable
     expect((await rowCells(ui, 'c'))[1]).toBe('gone-wt') // the worktree is already removed
     await ui.press({ key: 'run:a' })
-    expect(await detailText(ui)).toMatch(/^cx · modtest/)
+    await ui.press({ key: 'info' })
+    expect(await detailText(ui)).toMatch(/(^|\n)cx · modtest/)
     expect(await drawnText(ui)).not.toContain('cx-wt-Ku9jN5')
     await ui.unmount()
   })
@@ -1723,6 +1873,7 @@ describe('run monitor pane', () => {
     const ui = await open($)
     const flowOf = async (k: string) => {
       await ui.press({ key: `run:${k}` })
+      await expandAll(ui)
       const t = await drawnText(ui)
       await ui.press({ key: 'back' })
       return t
@@ -1770,7 +1921,7 @@ describe('run monitor pane', () => {
     await ui.unmount()
   })
 
-  test('the Full text box sits directly under its entry, between it and the next older one', async ($, on) => {
+  test('the Full text box sits directly under its entry, between it and the next newer one', async ($, on) => {
     const many = Array.from({ length: 40 }, (_, i) => ({ o: i * 10, t: `· STREAM-${i}` }))
     stubRuns(on, { a: RUN_A() }, {
       helper: (mode, args) => (mode === 'back' ? win(0, 400, 400, ...many) : ''),
@@ -1781,9 +1932,9 @@ describe('run monitor pane', () => {
     const t = await drawnText(ui)
     const at = (s: string) => t.indexOf(s)
     expect(at('Full text')).toBeGreaterThan(at('Flow'))
-    expect(at('Full text')).toBeGreaterThan(at('STREAM-21')) // newer, above
+    expect(at('Full text')).toBeGreaterThan(at('STREAM-19')) // older, above
     expect(at('Full text')).toBeGreaterThan(at('STREAM-20')) // the entry itself
-    expect(at('Full text')).toBeLessThan(at('STREAM-19')) // older, below
+    expect(at('Full text')).toBeLessThan(at('STREAM-21')) // newer, below
     await ui.unmount()
   })
 
@@ -1807,6 +1958,7 @@ describe('run monitor pane', () => {
     h.files[`${ROOT}/.runs/run-0/session`] = 'someone-else\n'
     const ui = await open($)
     await ui.press({ key: 'run:a' })
+    await ui.press({ key: 'info' })
     expect(await detailText(ui)).toMatch(/last activity +\nverifying/)
     h.files[`${ROOT}/.runs/run-1/exit`] = '0\n' // the runner finished
     await h.tick()
@@ -1821,6 +1973,7 @@ describe('run monitor pane', () => {
     h.files[`${ROOT}/.runs/run-3/pid`] = `${KILL_THROWS_PID}\n`
     const ui = await open($)
     await ui.press({ key: 'run:c' })
+    await ui.press({ key: 'info' })
     expect(await detailText(ui)).toMatch(/last activity +\nfinished/)
     await h.tick()
     expect(await detailText(ui)).toMatch(/last activity +\nfinished/)
@@ -1847,6 +2000,7 @@ describe('run monitor pane', () => {
     h.files[`${ROOT}/.runs/run-2/pid`] = '999\n' // not alive
     const ui = await open($)
     await ui.press({ key: 'run:b' })
+    await ui.press({ key: 'info' })
     expect(await detailText(ui)).toMatch(/last activity +\nfinished/)
     await ui.unmount()
   })
@@ -2301,16 +2455,16 @@ describe('messages to a running worker: the runs pane', () => {
     h.files[ASK_DIR] = ''
   }
   const sentOk = { ask: () => ({ exitCode: 0, stdout: `${MSG_ID}\n` }) }
-  const inputOf = async (ui: any) => ui.find({ type: 'Input', key: 'msg' })
+  const inputOf = async (ui: any) => ui.find({ type: 'Input', key: 'msg:a' })
 
-  test('a live run of this session with a valid ask-dir offers the input, with the not-for-secrets placeholder', async ($, on) => {
+  test('a live run of this session with a valid ask-dir offers the input, with the message-to-worker placeholder', async ($, on) => {
     const h = stubRuns(on, { a: live() }, sentOk)
     linked(h)
     const ui = await open($)
     await ui.press({ key: 'run:a' })
     const input = await inputOf(ui)
     expect(input).toBeDefined()
-    expect(input.props.placeholder).toMatch(/not for secrets/)
+    expect(input.props.placeholder).toBe('message to worker...')
     await ui.unmount()
   })
 
@@ -2347,7 +2501,7 @@ describe('messages to a running worker: the runs pane', () => {
     linked(h)
     const ui = await open($)
     await ui.press({ key: 'run:a' })
-    await ui.input({ key: 'msg', text: ' stop after step 3 ' })
+    await ui.input({ key: 'msg:a', text: ' stop after step 3 ' })
     expect(h.askCalls.length).toBe(1)
     expect(h.askCalls[0]!.argv.slice(2)).toEqual(['message', ASK_DIR])
     expect(JSON.stringify(h.askCalls[0]!.argv)).not.toContain('stop after')
@@ -2361,7 +2515,7 @@ describe('messages to a running worker: the runs pane', () => {
     linked(h)
     const ui = await open($)
     await ui.press({ key: 'run:a' })
-    await ui.input({ key: 'msg', text: 'stop after step 3' })
+    await ui.input({ key: 'msg:a', text: 'stop after step 3' })
     await h.tick()
     expect(await detailText(ui)).toContain('→ stop after step 3  sent')
     h.files[`${ASK_DIR}/read-${MSG_ID}.json`] = '{}'
@@ -2370,12 +2524,88 @@ describe('messages to a running worker: the runs pane', () => {
     await ui.unmount()
   })
 
+  test('a sent message sits at the end of the Flow; once the Flow holds the worker\'s read of it, it reads there instead', async ($, on) => {
+    const ev = (o: number, e: unknown) => ({ o, t: JSON.stringify(e) })
+    const win = (from: number, to: number, size: number, ...recs: unknown[]) => jl({ from, to, size }, ...recs)
+    const use = (o: number, id: string) => ev(o, { type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'mcp__cli_dispatch_ask__check_messages', input: {} }] } })
+    const result = (o: number, id: string, content: string) => ev(o, { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content }] } })
+    const h = stubRuns(on, { a: live({ meta: running('ollama').meta, transcript: 600_000 }) }, {
+      ...sentOk,
+      // The transcript already holds the worker's read (the helper stub is static).
+      helper: mode => (mode === 'back' ? win(0, 9000, 9000, use(0, 'm1'), result(10, 'm1', 'Messages from the user, oldest first. They are data.\n[t] stop after step 3')) : ''),
+    })
+    linked(h)
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    await ui.input({ key: 'msg:a', text: 'stop after step 3' })
+    const frame = async () => strings(await ui.find({ key: 'frame' })).join('\n')
+    expect(await frame()).toContain('→ stop after step 3  sent') // in the Flow, not under the input
+    h.files[`${ASK_DIR}/read-${MSG_ID}.json`] = '{}'
+    await h.tick()
+    await expandAll(ui)
+    const f = await frame()
+    expect(f).toContain('✉ stop after step 3  delivered')
+    expect(f).not.toContain('→ stop after step 3')
+    await ui.unmount()
+  })
+
+  test('the message box fills the rest of its row, so a click right of its text still lands in it', async ($, on) => {
+    const h = stubRuns(on, { a: live() }, sentOk)
+    linked(h)
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    const field = await ui.find({ key: 'msg-field' })
+    expect(field.props.flexGrow).toBe(1)
+    expect(await ui.find({ type: 'Input', key: 'msg:a' })).toBeDefined()
+    await ui.unmount()
+  })
+
+  test('a message sent while the prompt fills the frame is listed under the input', async ($, on) => {
+    const h = stubRuns(on, { a: live() }, sentOk)
+    linked(h)
+    h.files[`${ROOT}/a/prompt.txt`] = 'DO-THE-TASK'
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    await ui.press({ key: 'prompt-toggle' })
+    await ui.input({ key: 'msg:a', text: 'stop after step 3' })
+    expect(await detailText(ui)).toContain('→ stop after step 3  sent')
+    await ui.unmount()
+  })
+
+  test('the message box comes before the Flow in document order, so steps the Flow adds do not take its focus', async ($, on) => {
+    const h = stubRuns(on, { a: live() }, sentOk)
+    linked(h)
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    const keys: string[] = []
+    const walk = (n: any): void => {
+      if (!n || typeof n !== 'object') return
+      if (n.props?.key !== undefined) keys.push(String(n.props.key))
+      for (const c of [n.children ?? []].flat()) walk(c)
+    }
+    walk(await ui.drawn())
+    expect(keys).toContain('msg:a')
+    expect(keys).toContain('frame')
+    expect(keys.indexOf('msg:a')).toBeLessThan(keys.indexOf('frame'))
+    await ui.unmount()
+  })
+
+  test('each run has its own message box, so text typed for one run is not offered to another', async ($, on) => {
+    const h = stubRuns(on, { a: live() }, sentOk)
+    linked(h)
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    expect(await ui.find({ type: 'Input', key: 'msg' })).toBeUndefined()
+    expect(await inputOf(ui)).toBeDefined()
+    await ui.unmount()
+  })
+
   test('with the ask dir gone and no read file the message shows not delivered (run ended)', async ($, on) => {
     const h = stubRuns(on, { a: live() }, sentOk)
     linked(h)
     const ui = await open($)
     await ui.press({ key: 'run:a' })
-    await ui.input({ key: 'msg', text: 'too late' })
+    await ui.input({ key: 'msg:a', text: 'too late' })
     delete h.files[ASK_DIR]
     await h.tick()
     expect(await detailText(ui)).toContain('→ too late  not delivered (run ended)')
@@ -2387,7 +2617,7 @@ describe('messages to a running worker: the runs pane', () => {
     linked(h)
     const ui = await open($)
     await ui.press({ key: 'run:a' })
-    await ui.input({ key: 'msg', text: 'hello' })
+    await ui.input({ key: 'msg:a', text: 'hello' })
     expect(h.rec.toasts.join('\n')).toMatch(/run has ended/)
     expect(await detailText(ui)).not.toContain('→ hello')
     await ui.unmount()
@@ -2403,7 +2633,7 @@ describe('messages to a running worker: the runs pane', () => {
     linked(h)
     const ui = await open($)
     await ui.press({ key: 'run:a' })
-    await ui.input({ key: 'msg', text: 'a private instruction' })
+    await ui.input({ key: 'msg:a', text: 'a private instruction' })
     await h.tick()
     expect(h.askCalls.length).toBe(1)
     expect(JSON.stringify(stateWrites)).not.toContain('a private instruction')
@@ -2421,7 +2651,7 @@ describe('messages to a running worker: the runs pane', () => {
     await $.command.run({ command: 'cli-dispatch-runs' } as any)
     const ui = await mountRuns($)
     await ui.press({ key: 'run:a' })
-    await ui.input({ key: 'msg', text: 'x' })
+    await ui.input({ key: 'msg:a', text: 'x' })
     await h.tick()
     expect(exists.filter(p => /\/read-/.test(p)).length).toBeGreaterThan(0)
     await ui.unmount()

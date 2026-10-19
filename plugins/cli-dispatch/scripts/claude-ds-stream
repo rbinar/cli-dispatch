@@ -195,7 +195,7 @@ mkdir -p "$SESSION_DIR"
 # worker.pid in a finished session is harmless: kill only acts on it while status.json
 # state=="running".
 printf '%s' "$$" > "$SESSION_DIR/worker.pid" 2>/dev/null || true
-printf '%s' "$PROMPT" > "$SESSION_DIR/prompt.txt" 2>/dev/null || true
+save_prompt "$SESSION_DIR" "$PROMPT"
 
 # Snapshot dirty/untracked paths in $CWD BEFORE the worker runs, so write_diff_artifacts
 # (called after claude finishes, below) can exclude pre-existing dirt from the reported
