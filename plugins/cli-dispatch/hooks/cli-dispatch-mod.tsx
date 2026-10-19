@@ -1628,8 +1628,8 @@ async function renderRuns($: EngineInterface, e: any) {
                 </Box>
               </Box>
             ) : null}
-            {up === 0 ? sent : null}
             {up === 0 ? streaming : null}
+            {up === 0 ? sent : null}
           </Box>
           )}
           {up === 0 || showPrompt ? null : (

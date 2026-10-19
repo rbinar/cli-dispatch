@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [7.4.1] — 2026-10-19
+
+### Changed
+
+- **A message you send a worker reads under its live line.** In the Flow, `→ text  sent` now sits below
+  `▍ cx running…`, at the newest end, so it is easier to follow until the worker reads it.
+
 ## [7.4.0] — 2026-10-19
 
 ### Changed

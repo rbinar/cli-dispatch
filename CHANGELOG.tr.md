@@ -7,6 +7,13 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [7.4.1] — 2026-10-19
+
+### Değişti
+
+- **Worker'a gönderdiğin mesaj canlı satırının altında.** Flow'da `→ metin  sent` artık
+  `▍ cx running…` satırının altında, en yeni uçta duruyor; worker okuyana kadar takip etmesi daha kolay.
+
 ## [7.4.0] — 2026-10-19
 
 ### Değişti
