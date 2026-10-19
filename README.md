@@ -4,9 +4,9 @@
 
 **Hand Claude Code's work to DeepSeek, Gemini (Antigravity), OpenAI Codex, OpenCode (OpenRouter), GitHub Copilot or a local Ollama model.** Claude Code's own subagents only run Anthropic models; cli-dispatch runs these six backends as workers from inside your `claude` session. A deterministic runner isolates each job in a git worktree, runs your verify command and returns a short verdict, so the worker does the work and Claude Code reviews it.
 
-![cli-dispatch demo: install, setup, doctor, ask, delegate, run, sessions and resume, gain and clean — every output recorded in a clean Debian container](assets/demo.gif)
+![cli-dispatch demo: install, setup, doctor, ask, delegate, the run monitor, run, sessions and resume, gain and clean — every output recorded in a clean Debian container](assets/demo.gif)
 
-▶️ Video: [English](videos/demo-en.mp4) · [Türkçe](videos/demo-tr.mp4) · 📝 [Write-up (Turkish, Medium)](https://medium.com/@rbinar/cli-dispatch-claudea-patron-deepseek-e-i%CC%87%C5%9F%C3%A7i-rol%C3%BC-veren-bir-plugin-b232803581fc)
+▶️ [Video](videos/demo-en.mp4) · 📝 [Write-up (Turkish, Medium)](https://medium.com/@rbinar/cli-dispatch-claudea-patron-deepseek-e-i%CC%87%C5%9F%C3%A7i-rol%C3%BC-veren-bir-plugin-b232803581fc)
 
 ## Install
 
