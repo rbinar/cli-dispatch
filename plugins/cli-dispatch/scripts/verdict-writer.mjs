@@ -385,9 +385,12 @@ export function readQuestions(askDir) {
     } catch {}
   }
   if (!entries.length) return null
+  // Closed without an answer (the worker went on with its own assumption): counted only when there is one.
+  const skipped = entries.filter((e) => e.outcome === 'skipped').length
   return {
     asked: entries.length,
     unanswered: entries.filter((e) => e.outcome === 'timeout' || e.outcome === 'cancelled').map((e) => e.question.slice(0, 300)),
+    ...(skipped ? { skipped } : {}),
   }
 }
 

@@ -7,6 +7,15 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [7.5.5] — 2026-10-19
+
+### Düzeltildi
+
+- **Run özeti cevapsız kapatılan soruyu artık cevaplanmış saymıyor.** Cevap vermeden kapattığın bir soru
+  (worker kendi varsayımıyla devam etti) cevaplanmış sayılıyordu: `questions: 2 asked, all answered`. Artık
+  `questions: 2 asked: 1 answered, 1 closed without an answer` yazıyor; `verdict.json`'daki `questions`
+  alanına da böyle bir soru varsa `skipped` ekleniyor.
+
 ## [7.5.4] — 2026-10-19
 
 ### Düzeltildi
