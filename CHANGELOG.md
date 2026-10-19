@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [7.5.1] — 2026-10-19
+
+### Changed
+
+- **The toast for an answer Claude gave a worker shows the question too.** It read only the answer
+  (`Claude answered the cx worker — 3`); it now reads `… — Q: How many decimal places…? · A: 3`, the
+  question masked and cut like the answer.
+
 ## [7.5.0] — 2026-10-19
 
 ### Added

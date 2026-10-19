@@ -2791,6 +2791,19 @@ describe('orchestrator answers: the fork answers', () => {
     expect(out.endsWith('Q: Which port?\nA: 8123')).toBe(true)
   })
 
+  test('the toast shows the question the worker asked as well as Claude\'s answer', async ($, on) => {
+    const h = stubOrch(on, orcDir(), { fork: { isAnswered: true, text: '8123', usage: {} } })
+    await startSession($)
+    const d = h.dispatch($)
+    await h.tick(0)
+    await h.tick()
+    const toast = h.rec.toasts.find(t => t.includes('Claude answered the cx worker'))
+    expect(toast).toContain('Q: Which port?')
+    expect(toast).toContain('A: 8123')
+    h.release()
+    await d
+  })
+
   test('a secret in the question is masked in the fork prompt; a long answer is cut and masked everywhere', async ($, on) => {
     const key = `sk-${'B'.repeat(20)}`
     const h = stubOrch(on, orcDir(ORC({ question: `Use ${key}?` })), { fork: { isAnswered: true, text: `${key} ${'x'.repeat(5000)}` } })

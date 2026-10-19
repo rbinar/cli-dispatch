@@ -1229,7 +1229,7 @@ async function checkQuestions($: EngineInterface) {
       const forked = await forkAnswer($, entry, backend, repo, q, labels)
       if (forked) {
         payload = forked
-        $.ui.toast(`cli-dispatch: Claude answered the ${backend} worker — ${clip(forked.answer, 160)}`)
+        $.ui.toast(`cli-dispatch: Claude answered the ${backend} worker — Q: ${clip(clean(q.question), 120)} · A: ${clip(forked.answer, 160)}`)
         entry.qa.push({ q: clip(clean(q.question), 300), a: forked.answer })
       }
     }
