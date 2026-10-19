@@ -8,8 +8,6 @@
 
 ▶️ [Video (İngilizce)](videos/demo-en.mp4) · 📝 [Yazı (Medium)](https://medium.com/@rbinar/cli-dispatch-claudea-patron-deepseek-e-i%CC%87%C5%9F%C3%A7i-rol%C3%BC-veren-bir-plugin-b232803581fc)
 
-https://github.com/user-attachments/assets/5d610546-975b-4a8e-bfc1-689810971d9b
-
 ## Kurulum
 
 Bunları Claude Code içinde (önce `claude` yaz) sırayla, tek tek çalıştır:
