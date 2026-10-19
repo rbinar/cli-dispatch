@@ -7,6 +7,18 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [7.5.4] — 2026-10-19
+
+### Düzeltildi
+
+- **Leak guard'ın kaydettiği yama, worker'ın sızdırdığı şeyi içeriyor ve verdict onu adıyla anıyor.** Worker
+  senin checkout'una yazınca guard tüm reponun düz bir `git diff`'ini kaydediyordu: yeni dosyalar, staged
+  değişiklikler ve ikili içerik eksikti, senin önceki değişikliklerin de karışıyordu. Artık yalnız yeni
+  girdileri, ikili dosyalar dahil ve HEAD'e karşı, geçici bir index'te oluşturup kaydediyor; senin index'ine
+  hiç dokunulmuyor. `verdict.json`'a `leakPaths` ve `leakPatch` (session klasöründe bir kopya) ekleniyor,
+  run özeti de sızan yolları listeliyor. Senin yerine hiçbir şey taşınmıyor ya da silinmiyor; dosyalar
+  worker'ın yazdığı yerde kalıyor.
+
 ## [7.5.3] — 2026-10-19
 
 ### Düzeltildi

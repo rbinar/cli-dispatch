@@ -230,12 +230,23 @@ if [ -n "${CLI_DISPATCH_ALLOW_CONCURRENT_EDITS:-}" ]; then
   exit 0
 fi
 PATCH_FILE="$(mktemp "${TMPDIR:-/tmp}/cli-dispatch-leaked-changes-XXXXXX")"
-git -C "$GUARD_REPO" diff > "$PATCH_FILE" 2>/dev/null || true
+# Only the NEW entries, binary-safe, against HEAD: untracked/staged/binary included (plain
+# `git diff` saw only unstaged tracked edits). Throwaway index: the user's index is untouched.
+_LEAK_PATHS="$PATCH_FILE.paths"
+printf '%s\n' "$NEW_DIRT" | awk '{ s=substr($0,4); n=index(s," -> "); if (n) { print substr(s,1,n-1); print substr(s,n+4) } else print s }' > "$_LEAK_PATHS"
+_LEAK_IDX="$(mktemp -t wt-leak-idx-XXXXXX)"; rm -f "$_LEAK_IDX"
+if ! { GIT_INDEX_FILE="$_LEAK_IDX" git -C "$GUARD_REPO" read-tree HEAD \
+    && GIT_LITERAL_PATHSPECS=1 GIT_INDEX_FILE="$_LEAK_IDX" git -C "$GUARD_REPO" add -A --pathspec-from-file="$_LEAK_PATHS" \
+    && GIT_INDEX_FILE="$_LEAK_IDX" git -C "$GUARD_REPO" diff --cached --binary HEAD > "$PATCH_FILE"; } 2>/dev/null; then
+  git -C "$GUARD_REPO" diff > "$PATCH_FILE" 2>/dev/null || true   # old behaviour as fallback
+fi
+rm -f "$_LEAK_IDX"
 echo ">>> post-check FAIL: NEW changes appeared in $GUARD_REPO, outside the worktree" >&2
 echo ">>>   Either the worker resolved a path outside the tree it was given, or something" >&2
 echo ">>>   else wrote to the repo while the run was in flight (you, an editor, an agent)." >&2
 echo ">>>   If those changes are yours, re-run with CLI_DISPATCH_ALLOW_CONCURRENT_EDITS=1" >&2
 echo ">>> patch saved: $PATCH_FILE" >&2
+echo ">>> leaked paths: $_LEAK_PATHS" >&2
 echo ">>> the worker's own output is UNAFFECTED and still in the worktree: $WT" >&2
 printf '%s\n' "$NEW_DIRT" >&2
 exit 7  # 7 = "leak": the worker wrote outside its worktree (cli-dispatch-run reads it)
