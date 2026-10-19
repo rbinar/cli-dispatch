@@ -46,6 +46,12 @@ link_ask_dir() {
   fi
 }
 
+# save_prompt <session-dir> <prompt-text> — the full prompt this run sent, 0600, for the runs pane.
+# A resume reuses its session dir: the original prompt.txt stays.
+save_prompt() {
+  [ -e "$1/prompt.txt" ] || ( umask 077; printf '%s' "$2" > "$1/prompt.txt" ) 2>/dev/null || true
+}
+
 # ask_activity — now while a question is pending, else the ask dir's mtime; nothing without a dir.
 # The idle watchdogs take the newer of this and the transcript's mtime.
 ask_activity() {

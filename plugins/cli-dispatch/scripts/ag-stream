@@ -528,7 +528,7 @@ link_ask_dir "$SESSION_DIR"
 # accepted limitation, not something fixed in this wrapper. A stale worker.pid in a finished
 # session is harmless: kill only acts on it while status.json state=="running".
 printf '%s' "$$" > "$SESSION_DIR/worker.pid" 2>/dev/null || true
-printf '%s' "$PROMPT" > "$SESSION_DIR/prompt.txt" 2>/dev/null || true
+save_prompt "$SESSION_DIR" "$PROMPT"
 DONEFILE="$SESSION_DIR/.agy.done"; rm -f "$DONEFILE"
 BRANCH="$(git -C "$CWD" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
 

@@ -23,15 +23,13 @@ Requires Claude Code 2.1.287 or newer. Setup asks which backends you want and in
 
 ## Use
 
-**Just ask.** Claude hands the job to the `cli-dispatch:runner` agent, which runs the worker, verifies the result and returns a patch for review:
+**Just ask.** Claude hands the job to the plugin's `dispatch` tool, which runs the worker in a git worktree, runs your verify command and returns the verdict and a patch for review (on Claude Code older than 2.1.287 the `cli-dispatch:runner` agent does the same):
 
 ```text
 add() in math.mjs is broken. Delegate the fix to DeepSeek, verify with node --test.
 ```
 
-▶️ End-to-end example ([mp4](videos/cx-delegation-harness.mp4)): Claude hands a failing test to Codex, you open the `cli-dispatch:runner` agent to see the exact prompt it was given, and Claude applies the verified patch. Recorded live in a sandbox container.
-
-https://github.com/user-attachments/assets/efc498b1-48d1-4dc5-abcd-7a152d222578
+▶️ End-to-end example ([mp4](videos/runs-monitor.mp4)): Claude hands a bug fix and a small CLI to Codex through the `dispatch` tool. You follow the worker's steps live in the run monitor and send it a message mid-run (`→ sent`, then `✉ delivered`); the worker picks it up, verify passes, and Claude applies the patch. Recorded live in a sandbox container.
 
 **Run it yourself.** No LLM tokens are spent on orchestration:
 
@@ -48,6 +46,18 @@ https://github.com/user-attachments/assets/efc498b1-48d1-4dc5-abcd-7a152d222578
 Backends: `ds` DeepSeek · `ag` Antigravity · `cx` Codex · `oc` OpenCode · `cp` Copilot · `ol` Ollama (local, Unix-only). The 12 commands are listed by `/cli-dispatch:help`; details are in [Commands](docs/commands.md).
 
 > ⚠️ Workers can write files and run commands. Real repo work stays in a git worktree until you apply the patch ([Security and data](docs/security.md)).
+
+## Watch a run
+
+A band above the prompt lists this session's workers (`▶ cx 2m05s`, then `■ cx PASS`). Click one, or type `/cli-dispatch-runs`, to open the run monitor:
+
+- **Flow:** the worker's steps as they happen, oldest first, in a frame that follows the run. The wheel or PageUp/PageDown scroll it; a click opens a step's full text.
+- **Prompt** (`p`): the exact prompt the worker received, masked, scrollable in the same frame.
+- **Info** (`i`): backend, repo, activity, events, tool calls and tokens on one line; `i` opens the full facts.
+- **Message box:** `> message to worker...` sends the running worker a note. It shows in the Flow as `→ text  sent`, then `✉ text  delivered` once the worker reads it.
+- **Questions:** a worker can ask you mid-run; the question opens as a dialog in Claude Code and your answer goes back to it.
+
+Questions and messages work for runs started by the `dispatch` tool, on macOS, Linux and WSL. Details: [Commands](docs/commands.md).
 
 ## Update
 

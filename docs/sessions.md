@@ -12,7 +12,7 @@ Session directory: `${XDG_CACHE_HOME:-$HOME/.cache}/cli-dispatch/sessions/<id>/`
 | `progress.log` | Terse human-readable stream (`▸ Edit foo.ts`, `✓ / ✗`, truncated text) |
 | `transcript.jsonl` | Raw stream-json (resume/audit; not read while watching) |
 | `meta.json` | Prompt preview, cwd, branch, model, start/end |
-| `prompt.txt` | The **full** task prompt (untruncated) |
+| `prompt.txt` | The **full** task prompt exactly as sent to the worker (untruncated, mode 0600); a resume keeps the original |
 | `changed-files.json` | `{files, diffstat, preexistingDirty}` — files the run changed, written after a repo-changing run finishes |
 | `verdict.json` | Written only for runs through `cli-dispatch-run`: verify result, branch, diffstat, exit code |
 | `worker-report.json` | The worker's self-report (claims, notDone, assumptions), written by the worker in its worktree when asked; a self-report, not evidence |

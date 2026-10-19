@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [7.4.0] — 2026-10-19
+
+### Changed
+
+- **Step clusters in the Flow view open and close.** A finished cluster starts closed, showing only its
+  `▸ Done · N steps` header; the running cluster starts open (`▾`). A click on a header opens or closes
+  it, and the cluster that holds the open step stays open.
+- **The Flow reads in order inside its own frame, as the Claude Code transcript does.** Oldest at the
+  top, newest at the bottom, a finished run's Answer last. The run's header stays put; the Flow is a
+  bordered frame that fills the rest of the pane and keeps the newest end in view. The wheel or
+  PageUp/PageDown over the pane scroll the frame (a step or note per wheel tick); scrolling up stops it
+  following the run and shows `Jump to bottom ↓ (N newer)` on its last row (`j`). The message box for a
+  live run sits under the frame. This replaces the newest-first order of 7.2.0 and
+  the 7.3.2 "N new" freeze.
+- **The prompt the worker received is in the Flow.** Each bash stream already kept it as
+  `prompt.txt` in the session dir; it is now written 0600 and a resume no longer overwrites it. Above the
+  Flow, `▸ Prompt: N lines` (masked) opens it on a click or `p`, in the Flow frame, where the wheel and
+  PageUp/PageDown scroll it; `p` again returns to the Flow.
+- **The run's facts are one line.** `▸ Info:` under the prompt line sums the run up (backend · repo ·
+  activity · events · tool calls · tokens), cut to the pane's width; a click or `i` opens the full facts
+  under it. The verdict stays at the bottom; an open run no longer repeats each list row's prompt.
+- **What you send a worker is in the Flow.** A message reads `→ text  sent` at the newest end; once the
+  worker has read it, it reads `✉ text  delivered` where it was read, outside the step clusters.
+- **The live line names the backend** (`▍ cx running…`, was `▍ flow running…`), and the message box is a
+  CLI-style `> message to worker...` line between two rules.
+- **Message checks no longer crowd the Flow.** A `check_messages` call that found nothing is not drawn
+  and does not count as a step; one that delivered a message reads as `✉ text  delivered`, with the
+  message's text.
+
+### Fixed
+
+- **The message box keeps the focus while the worker works.** Each step the Flow added moved the
+  focus off the box onto a step, so the rest of what you typed went to Claude's prompt and Enter did
+  not send it. The box is now first in the focus order, though it is still drawn under the Flow.
+- **Text typed in the message box no longer follows you to another run.** The box is now kept per run;
+  before, text typed for one worker but not sent was still in the box when another run was opened, and
+  Enter would have sent it there.
+- **A message sent while the prompt is open, or while the Flow is scrolled up, is listed.** Its
+  `→ text  sent` line is drawn under the message box whenever the Flow cannot show it.
+
 ## [7.3.2] — 2026-10-19
 
 ### Changed

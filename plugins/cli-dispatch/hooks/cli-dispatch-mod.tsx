@@ -478,8 +478,23 @@ let view: 'list' | 'run' = 'list'
 let sel: Run | null = null
 let flow: Win<Entry> | null = null
 let flowItems: Item[] = []
-// The items as they were when a step was opened: rows stay put under the open step while the run writes on.
-let frozen: Item[] | null = null
+// The Flow frame scrolls by itself, a step or note per wheel tick. `anchor` is the transcript offset of
+// the newest item the person scrolled back to (null = following the end): new items then land below it
+// and nothing moves. `flowOs` are the offsets the frame holds, oldest first.
+let anchor: number | null = null
+let flowOs: number[] = []
+// The prompt the worker received (its session dir's prompt.txt), shown first in the Flow, closed until clicked.
+let prompt: string | null = null
+let promptOpen = false
+// An open prompt is drawn in the Flow frame from this line; the wheel and page keys move it.
+let promptTop = 0
+// The run's facts, opened in full under their one-line summary (i).
+let infoOpen = false
+const PROMPT_MAX = 20_000
+// The open prompt as drawn: masked, cut at PROMPT_MAX, one entry per line.
+const promptLines = () => (prompt === null ? [] : (prompt.length > PROMPT_MAX ? cutEnd(clean(`${prompt.slice(0, PROMPT_MAX)}…`)) : clean(prompt)).split('\n'))
+// Clusters whose open/closed state the person flipped (by their oldest step): a finished cluster starts closed, the running one open.
+const toggled = new Set<string>()
 // The step expanded in place (by its `at`), its text in pages.
 let event: { at: string; n?: number; pages: string[]; page: number } | null = null
 let gone = false
@@ -844,7 +859,15 @@ function itemsOf(entries: Entry[], n0 = 0): Item[] {
       call.status = res.fail ? 'fail' : 'ok'
     })
   }
-  return out
+  // The worker's message checks: one that found nothing (or is still going) is noise; one that
+  // delivered a message is the person's line, outside the clusters, where the worker read it.
+  return out.flatMap((x): Item[] => {
+    if (x.kind !== 'step' || !/check_messages/.test(x.title)) return [x]
+    const at = x.body.indexOf('Messages from the user')
+    if (at < 0) return []
+    const said = x.body.slice(at).split('\n').slice(1).filter(l => /^\[[^\]]*\] /.test(l)).map(l => l.replace(/^\[[^\]]*\] /, '').trim()).join(' · ')
+    return [{ kind: 'note', o: x.o, n: x.n, text: `✉ ${said || 'message'}  delivered`, user: true }]
+  })
 }
 
 function setFlow(w: Win<Entry>) {
@@ -1199,11 +1222,17 @@ async function openRuns($: EngineInterface) {
 
 async function selectRun($: EngineInterface, r: Run) {
   sel = r
+  toggled.clear()
+  anchor = null
   flow = null
   flowItems = []
   event = null
   gone = false
   view = 'run'
+  prompt = await readText($, `${r.dir}/prompt.txt`)
+  promptOpen = false
+  promptTop = 0
+  infoOpen = false
   await openFlow($, r)
   await checkVerifying($, r, await $.clock.now())
   await refreshMessages($, r)
@@ -1217,15 +1246,14 @@ function closeRuns() {
 // Table columns, in characters; the hotkey prefix a plain Button draws ("1: ") is three more.
 const COLS = [12, 16, 9, 10] as const
 const PREFIX = '   '
-const FOOTER = '↑↓ / click: select run · click line: full text · b: back · Esc: close'
+const FOOTER = '↑↓ / click: select run · click line: full text · b: back · p: prompt · i: info · Esc: close'
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 // The inline markdown the flow draws: `code`, **bold**, [text](url).
 const INLINE = /`([^`\n]+)`|\*\*([^*\n]+)\*\*|\[([^\]\n]+)\]\(([^)\s]+)\)/g
 const cell = (s: string, i: number) => clip(s, COLS[i]! - 1).padEnd(COLS[i]!)
 
-// The flow as drawn, newest first: a finished run's last model text as the answer on top, then notes
-// and clusters of consecutive steps (steps newest first within a cluster). The answer's thinking
-// stays where it was.
+// The flow as drawn, oldest first: notes and clusters of consecutive steps, then a finished run's last
+// model text as the answer at the bottom. The answer's thinking stays where it was.
 type Group = { kind: 'note'; note: Note } | { kind: 'cluster'; steps: Step[] }
 function layout(items: Item[], finished: boolean): { answer: string; groups: Group[] } {
   let answer = ''
@@ -1243,7 +1271,7 @@ function layout(items: Item[], finished: boolean): { answer: string; groups: Gro
     else if (last?.kind === 'cluster') last.steps.push(x)
     else groups.push({ kind: 'cluster', steps: [x] })
   }
-  return { answer, groups: groups.reverse().map(g => (g.kind === 'cluster' ? { kind: 'cluster', steps: [...g.steps].reverse() } : g)) }
+  return { answer, groups }
 }
 
 async function renderRuns($: EngineInterface, e: any) {
@@ -1284,7 +1312,8 @@ async function renderRuns($: EngineInterface, e: any) {
               <Text inverse={on} bold={on} color={vcolor} dimColor={vcolor === undefined}>{cell(verify, 3)}</Text>
               <Text inverse={on} bold={on}>{elapsed(r.startedAt, running ? now : Math.max(r.startedAt ? Date.parse(r.startedAt) : 0, r.statusM))}</Text>
             </Button>
-            {prompt ? <Text dimColor wrap="truncate-end">{`${PREFIX}${prompt}`}</Text> : null}
+            {/* An open run shows its prompt under the list instead. */}
+            {prompt && view === 'list' ? <Text dimColor wrap="truncate-end">{`${PREFIX}${prompt}`}</Text> : null}
           </Box>
         )
       })}
@@ -1323,11 +1352,34 @@ async function renderRuns($: EngineInterface, e: any) {
   const hasTokens = st.usage && (st.usage.input_tokens != null || st.usage.output_tokens != null)
   const facts = [
     kv('session', <Text>{clean(String(st.sessionId ?? r.name))}</Text>),
-    kv('events', <Text>{num(st.events, '0')}</Text>, <Text dimColor>{' · tool calls '}</Text>, <Text>{String(commands)}</Text>, counts.length ? <Text dimColor>{` (${clean(counts.join(' '))})`}</Text> : null),
+    // One Text, so a narrow pane wraps the line instead of squeezing its parts (74 into 7/4).
+    kv('events', <Text key="v">{num(st.events, '0')}<Text dimColor>{' · tool calls '}</Text>{String(commands)}{counts.length ? <Text dimColor>{` (${clean(counts.join(' '))})`}</Text> : null}</Text>),
     kv('last activity', <Text>{running ? clean(idle) : r.verifying && !r.verdict ? 'verifying' : 'finished'}</Text>, running && st.lastTool ? <Text dimColor>{clean(` · ${st.lastTool}`)}</Text> : null),
     hasTokens ? kv('tokens', <Text>{`in ${num(st.usage.input_tokens)} · out ${num(st.usage.output_tokens)}`}</Text>) : null,
     st.toolErrors ? kv('tool errors', <Text color="red">{num(st.toolErrors)}</Text>) : null,
   ]
+  const activity = running ? clean(idle) : r.verifying && !r.verdict ? 'verifying' : 'finished'
+  const summary = [`${r.label} · ${r.repo}`, activity, `${num(st.events, '0')} events`, `${commands} tool calls`, hasTokens ? `in ${num(st.usage.input_tokens)} · out ${num(st.usage.output_tokens)}` : null].filter(Boolean).join(' · ')
+  // One line under the prompt: the run's facts in short, cut to the pane (a Button's Text does not
+  // truncate); a click (i) opens them in full under it.
+  const info = (
+    <Box key="info" flexDirection="column">
+      <Button key="info" plain hotkey="i" onPress={go(() => void (infoOpen = !infoOpen))}>
+        <Text>{infoOpen ? '▾ ' : '▸ '}</Text>
+        <Text bold>Info:</Text>
+        <Text dimColor>{clip(clean(` ${summary}`), Math.max(10, (e.props?.bodyColumns ?? 80) - 2 - 'i: ▸ Info:'.length))}</Text>
+      </Button>
+      {infoOpen ? (
+        <Box flexDirection="column" paddingLeft={2}>
+          <Box flexDirection="row" gap={2}>
+            <Text bold>{`${r.label} · ${r.repo}`}</Text>
+            <Text dimColor>{clean(`${r.model} ${r.branch}`.trim())}</Text>
+          </Box>
+          {facts}
+        </Box>
+      ) : null}
+    </Box>
+  )
 
   const v = r.verdict
   const verdict: any[] = []
@@ -1350,13 +1402,9 @@ async function renderRuns($: EngineInterface, e: any) {
   }
 
   const w = flow
-  if (!event) frozen = null
-  else if (!frozen) frozen = flowItems
-  const items = frozen ?? flowItems
-  const lastO = items.reduce((m, x) => Math.max(m, x.o), -1)
-  const fresh = frozen ? flowItems.filter(x => x.o > lastO).length : 0
+  const items = flowItems
   const shownItems = tailFit(items, x => (x.kind === 'note' ? x.text.length + (x.think?.length ?? 0) : x.title.length) + 40)
-  // Items older than the drawn ones (below them) are reached with `earlier`, which ends where the drawn ones begin.
+  // Items older than the drawn ones (above them) are reached with `earlier`, which ends where the drawn ones begin.
   const shownFrom = shownItems[0]?.o
   const hidden = shownItems.length < items.length
   const earlier =
@@ -1381,7 +1429,23 @@ async function renderRuns($: EngineInterface, e: any) {
       </Button>
     ) : null
 
-  const streaming = running && r.alive ? <Text color="yellow">▍ flow running…</Text> : null
+  const showPrompt = promptOpen && prompt !== null
+  const promptView = prompt === null ? null : (
+    <Box key="prompt" flexDirection="column">
+      <Button key="prompt-toggle" plain hotkey="p" onPress={go(() => void ((promptOpen = !promptOpen), (promptTop = 0)))}>
+        <Text>{promptOpen ? '▾ ' : '▸ '}</Text>
+        <Text bold>Prompt:</Text>
+        <Text dimColor>{clip(` ${prompt.split('\n').length} lines · what the worker was asked`, Math.max(10, (e.props?.bodyColumns ?? 80) - 2 - 'p: ▸ Prompt:'.length))}</Text>
+      </Button>
+    </Box>
+  )
+  // What the person sent this run, at the newest end of the Flow until the worker's read of it is in
+  // the Flow (its message-delivered step), where it then reads.
+  const readSay = shownItems.flatMap(x => (x.kind === 'note' && x.user && x.text.startsWith('✉ ') ? [x.text] : [])).join('\n')
+  const sent = (sentMessages.get(r) ?? [])
+    .filter(m => !(m.state === 'delivered' && readSay.includes(m.text.replace(/\s+/g, ' ').trim())))
+    .map(m => <Text key={`sent:${m.id}`} dimColor>{`→ ${m.text.replace(/\s+/g, ' ').slice(0, 80)}  ${m.state}`}</Text>)
+  const streaming = running && r.alive ? <Text color="yellow">{clean(`▍ ${r.label} running…`)}</Text> : null
   // A click expands a step's full text under it, a second click collapses it; one at a time.
   const openStep = (s: Step) => go(() => (event?.at === s.at ? void (event = null) : s.big ? openBig($, r, s) : setEvent(s.at, s.body, s.n)))
   // A step's Buttons carry a short label: by default it repeats the children, and a drawing holds
@@ -1447,7 +1511,11 @@ async function renderRuns($: EngineInterface, e: any) {
     }
     return <Box flexDirection="column">{out}</Box>
   }
-  const { answer, groups } = layout(shownItems, !running)
+  flowOs = shownItems.map(x => x.o)
+  const last = anchor === null ? shownItems.length - 1 : shownItems.findLastIndex(x => x.o <= anchor!)
+  const up = anchor === null ? 0 : shownItems.length - 1 - Math.max(0, last)
+  const { answer, groups } = layout(shownItems.slice(0, shownItems.length - up), !running && up === 0)
+  const lastCluster = groups.findLastIndex(g => g.kind === 'cluster')
   const groupView = (g: Group, i: number) =>
     g.kind === 'note' ? (
       <Box key={`note:${g.note.o}`} flexDirection="column">
@@ -1455,16 +1523,24 @@ async function renderRuns($: EngineInterface, e: any) {
         {g.note.think ? <Text dimColor wrap="wrap">{`✻ ${g.note.think}`}</Text> : null}
       </Box>
     ) : (
-      // Only the newest cluster of a run still going can be running.
-      <Box key={`cluster:${g.steps[0]!.at}`} flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
-        <Box flexDirection="row">
-          <Text>{'▸ '}</Text>
-          <Text bold>{running && i === 0 ? 'Running' : 'Done'}</Text>
-          <Text dimColor>{` · ${g.steps.length} step${g.steps.length === 1 ? '' : 's'}`}</Text>
-        </Box>
-        {g.steps.map(stepView)}
+      // Only the last cluster of a run still going can be running. A click on the header opens or
+      // closes it; the cluster holding the open step stays open.
+      clusterView(g.steps, running && up === 0 && i === lastCluster)
+    )
+  function clusterView(steps: Step[], live: boolean) {
+    const id = steps[steps.length - 1]!.at
+    const open = live !== toggled.has(id) || steps.some(s => s.at === event?.at)
+    return (
+      <Box key={`cluster:${steps[0]!.at}`} flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
+        <Button key={`cl:${id}`} plain onPress={go(() => void (toggled.has(id) ? toggled.delete(id) : toggled.add(id)))}>
+          <Text>{open ? '▾ ' : '▸ '}</Text>
+          <Text bold>{live ? 'Running' : 'Done'}</Text>
+          <Text dimColor>{` · ${steps.length} step${steps.length === 1 ? '' : 's'}`}</Text>
+        </Button>
+        {open ? steps.map(stepView) : null}
       </Box>
     )
+  }
 
   const ev = event
   const pages = ev?.pages ?? ['']
@@ -1490,35 +1566,60 @@ async function renderRuns($: EngineInterface, e: any) {
     </Box>
   ) : null
 
+  // The pane is one row taller than its window (the engine raises the wheel only over a tree that can
+  // scroll; the hook keeps the window still), so the Flow frame takes what the rows around it leave.
+  const winRows = e.props?.scroll?.bodyRows
   return (
-    <Box flexDirection="column" paddingX={1}>
-      {table}
-      {rule}
-      <Box key="detail" flexDirection="column">
-        <Box flexDirection="row" gap={2}>
-          <Text bold>{`${r.label} · ${r.repo}`}</Text>
-          <Text dimColor>{clean(`${r.model} ${r.branch}`.trim())}</Text>
-        </Box>
-        {facts}
-        {gone ? <Text color="red">session dir is gone</Text> : null}
-        <Box flexDirection="row" gap={2} marginTop={1}>
-          {back}
-        </Box>
-        {msgTarget?.run === r && e.surface !== 'mobile' ? (
-          <Input key="msg" label="message to worker" submitLabel="send" placeholder="not for secrets: other plugins can read what is typed here" onSubmit={(v: string) => void sendMessage($, r, msgTarget!.askDir, v)} />
-        ) : null}
-        {(sentMessages.get(r) ?? []).map(m => (
-          <Text key={`sent:${m.id}`} dimColor>{`→ ${m.text.replace(/\s+/g, ' ').slice(0, 80)}  ${m.state}`}</Text>
-        ))}
-        <Box flexDirection="column">
+    <Box flexDirection="column" paddingX={1} height={winRows ? winRows + 1 : undefined}>
+      <Box flexDirection="column" flexShrink={0}>
+        {table}
+        {rule}
+      </Box>
+      <Box key="detail" flexDirection="column" flexGrow={1} flexShrink={1}>
+        {/* On top, the hand-off: what the worker was asked; the run's facts sit at the bottom. */}
+        <Box flexDirection="column" flexShrink={0}>
           <Box flexDirection="row" gap={2}>
-            <Text bold>Flow</Text>
-            <Text dimColor>transcript.jsonl · newest first · click a step for its full text</Text>
-            {latest}
+            {back}
           </Box>
-          <Box key="flow" flexDirection="column">
-            {fresh ? <Text key="fresh" color="yellow">{`${fresh} new · close the open step to show them`}</Text> : null}
-            {streaming}
+          {promptView}
+          {info}
+        </Box>
+        {/* The message box is drawn before the Flow and shown under it: steps the Flow adds above it then
+            come after it in the focus order, and the engine's ring, which keeps its place in that order,
+            stays on the box. */}
+        <Box flexDirection="column-reverse" flexGrow={1} flexShrink={1}>
+        {msgTarget?.run === r && e.surface !== 'mobile' ? (
+          <Box flexDirection="column" flexShrink={0}>
+            <Text dimColor wrap="truncate">{'─'.repeat(Math.max(1, (e.props?.bodyColumns ?? 62) - 2))}</Text>
+            {/* The prompt mark is a Text: an Input label is drawn with a colon after it. */}
+            <Box flexDirection="row">
+              <Text>{'> '}</Text>
+              {/* An Input takes a click only on its drawn cells; a growing Box stretches it across the row.
+                  Keyed per run, so text typed for one run is never offered to another. */}
+              <Box key="msg-field" flexDirection="column" flexGrow={1}>
+                <Input key={`msg:${r.name}`} submitLabel="send" placeholder="message to worker..." onSubmit={(v: string) => void sendMessage($, r, msgTarget!.askDir, v)} />
+              </Box>
+            </Box>
+            <Text dimColor wrap="truncate">{'─'.repeat(Math.max(1, (e.props?.bodyColumns ?? 62) - 2))}</Text>
+            {/* The Flow draws sent messages only at its newest end; with the prompt open or the Flow scrolled up they read here. */}
+            {showPrompt || up > 0 ? sent : null}
+          </Box>
+        ) : null}
+        <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+          <Box flexDirection="row" gap={2} flexShrink={0}>
+            <Text bold>{showPrompt ? 'Prompt' : 'Flow'}</Text>
+            <Text dimColor>{showPrompt ? clip(`line ${promptTop + 1} of ${promptLines().length} · wheel, PgUp/PgDn · p: close`, Math.max(10, (e.props?.bodyColumns ?? 80) - 2 - 'Prompt  '.length)) : 'transcript.jsonl · click a step for its full text'}</Text>
+            {showPrompt ? null : latest}
+            {showPrompt ? null : earlier}
+          </Box>
+          <Box key="frame" flexDirection="column" flexGrow={1} flexShrink={1} minHeight={3} overflow="hidden" justifyContent={showPrompt ? 'flex-start' : 'flex-end'} borderStyle="single" borderDimColor>
+          {showPrompt ? (
+            <Box key="prompt-body" flexDirection="column" flexShrink={0}>
+              <Text wrap="wrap">{promptLines().slice(promptTop).join('\n')}</Text>
+            </Box>
+          ) : (
+          <Box key="flow" flexDirection="column" flexShrink={0}>
+            {groups.map(groupView)}
             {answer ? (
               <Box key="answer" flexDirection="column">
                 <Text bold>Answer</Text>
@@ -1527,14 +1628,34 @@ async function renderRuns($: EngineInterface, e: any) {
                 </Box>
               </Box>
             ) : null}
-            {groups.map(groupView)}
+            {up === 0 ? sent : null}
+            {up === 0 ? streaming : null}
           </Box>
-          {earlier}
+          )}
+          {up === 0 || showPrompt ? null : (
+            <Box key="jump" position="absolute" bottom={0} left={0} right={0} justifyContent="center">
+              <Button key="jump-bottom" plain hotkey="j" onPress={go(async () => {
+                anchor = null
+                // The pane's own window stays at its top: the frame is what scrolls.
+                await $.ui.scroll({ in: PANE_ID, to: 'start' }).catch(() => {})
+              })}>
+                <Text inverse>{` Jump to bottom ↓ (${up} newer) `}</Text>
+              </Button>
+            </Box>
+          )}
+          </Box>
         </Box>
-        {verdict.length ? rule : null}
-        {verdict}
+        </Box>
+        {gone || verdict.length ? (
+          <Box flexDirection="column" flexShrink={0} marginTop={1}>
+            {gone ? <Text color="red">session dir is gone</Text> : null}
+            {verdict.length ? rule : null}
+            {verdict}
+          </Box>
+        ) : null}
       </Box>
       {footer}
+      <Text key="spare"> </Text>
     </Box>
   )
 }
@@ -1603,6 +1724,27 @@ export const register: Register = (on, options) => {
   })
 
   // Polling stops with the pane, however it closes (Esc, the close mark, an unload).
+  // In a run's view the person's wheel and scroll keys move the Flow frame, not the pane: up stops
+  // following the end (a step or note per tick), back down to it follows again.
+  on('ui.scroll', { requestId: PANE_ID }, ($, e, next) => {
+    if (view !== 'run' || e.origin.kind !== 'person') return next(e)
+    if (promptOpen && prompt !== null) {
+      // A wheel tick moves its own rows; a page key half a window, so a page keeps some context.
+      const by = Math.abs(e.by) > 5 ? Math.floor(Math.abs(e.by) / 2) : Math.max(1, Math.abs(e.by))
+      promptTop = Math.max(0, Math.min(promptLines().length - 1, promptTop + Math.sign(e.by) * by))
+      $.ui.invalidate('ui.render')
+      return {}
+    }
+    // A wheel tick moves one item; a page key (bodyRows) several. Back at the newest item, follow again.
+    const step = Math.max(1, Math.round(Math.abs(e.by) / 5))
+    const end = flowOs.length - 1
+    const at = anchor === null ? end : Math.max(0, flowOs.findLastIndex(o => o <= anchor!))
+    const to = Math.max(0, Math.min(end, at + Math.sign(e.by) * step))
+    anchor = to >= end ? null : flowOs[to]!
+    $.ui.invalidate('ui.render')
+    return {}
+  })
+
   on('ui.close', async ($, e, next) => {
     const result = await next(e)
     if (e.id === PANE_ID) closeRuns()
