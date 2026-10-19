@@ -61,6 +61,10 @@ Prompt'un üstündeki şerit bu oturumun worker'larını gösterir (`▶ cx 2m05
 
 Sorular ve mesajlar `dispatch` aracıyla başlatılan run'larda, macOS, Linux ve WSL'de çalışır. Ayrıntılar: [Komutlar](docs/tr/commands.md).
 
+▶️ Worker çalışırken sana soruyor ([mp4](videos/worker-question.mp4)): Codex'in yalnız senin verebileceğin bir karara ihtiyacı var, o yüzden soruyor; soru Claude Code'da bir diyalog olarak açılır, cevaplarsın, aynı worker devam eder ve verify geçer. Bir sandbox container'ında canlı kaydedildi.
+
+https://github.com/user-attachments/assets/d3d047f6-2452-463b-bfd9-1c2081840502
+
 ## Güncelleme
 
 ```text
