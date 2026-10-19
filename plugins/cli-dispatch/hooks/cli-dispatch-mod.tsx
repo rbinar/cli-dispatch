@@ -146,6 +146,8 @@ async function realPath($: EngineInterface, path: string): Promise<string> {
 
 const DISPATCH = {
   name: 'dispatch',
+  // In front, not behind ToolSearch: the model must read that the worker can ask before it decides to ask the user itself.
+  isDeferred: false,
   description:
     "Delegate a coding task to an external worker CLI through cli-dispatch's deterministic runner and wait for its verdict. " +
     'The worker runs in a git worktree of `cwd`; your `verify` commands decide pass/fail; a failing verify is retried once. ' +

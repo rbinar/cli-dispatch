@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [7.4.2] — 2026-10-19
+
+### Fixed
+
+- **Claude leaves a decision that is yours to the worker again.** The `dispatch` tool was placed behind
+  Claude Code's tool search, so Claude often decided before reading that the worker can ask you mid-run,
+  said the worker could not ask, and asked you itself. The tool is now always loaded (about 450 tokens
+  per session). Measured with the same prompt: Claude asked itself in 4 of 6 runs before, 0 of 6 after.
+
 ## [7.4.1] — 2026-10-19
 
 ### Changed
