@@ -20,7 +20,12 @@ NODE_BIN="${CLI_DISPATCH_NODE:-node}"
   const diff = v.diffstat || (v.changedFiles ? v.changedFiles.length + " file(s)" : "n/a");
   console.log("exit: " + exit + "  session: " + (v.sessionId || "?") + "  state: " + (v.state || "?") + "  verify: " + verify);
   console.log("diff: " + String(diff).trim());
-  if (v.leak) console.log("LEAK: the worker wrote outside its worktree — see the runner log");
+  if (v.leak) {
+    const lp = v.leakPaths || [];
+    console.log(lp.length
+      ? "LEAK: the worker wrote outside its worktree: " + lp.slice(0, 10).join(", ") + (lp.length > 10 ? " (+" + (lp.length - 10) + " more)" : "") + (v.leakPatch ? "  patch: " + v.leakPatch : "")
+      : "LEAK: the worker wrote outside its worktree — see the runner log");
+  }
   if (v.scopeViolations && v.scopeViolations.length) console.log("SCOPE: changed outside --scope (" + v.scope.join(", ") + "): " + v.scopeViolations.join(", "));
   if (v.workerExit) console.log("worker exit: " + v.workerExit);
   if (v.fixAttempts) console.log("fix attempts: " + v.fixAttempts.used + "/" + v.fixAttempts.max);

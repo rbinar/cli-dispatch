@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [7.5.4] — 2026-10-19
+
+### Fixed
+
+- **The leak guard's saved patch holds what the worker leaked, and the verdict names it.** When a worker
+  writes into your checkout, the guard used to save a plain `git diff` of the whole repo: new files,
+  staged changes and binary content were missing, and your own earlier edits were mixed in. It now saves
+  only the new entries, binary-safe and against HEAD, built in a throwaway index so your index is never
+  touched. `verdict.json` gains `leakPaths` and `leakPatch` (a copy kept in the session dir), and the run
+  summary lists the leaked paths. Nothing is moved or deleted for you; the files stay where the worker
+  wrote them.
+
 ## [7.5.3] — 2026-10-19
 
 ### Fixed

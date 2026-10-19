@@ -810,7 +810,19 @@ ASK_BLOCK
   if [ "$WORKER_EXIT" -ne 0 ]; then
     export CLI_DISPATCH_WORKER_EXIT="$WORKER_EXIT"
     # 7 is the worktree runners' leak-guard code: the worker wrote outside its worktree.
-    [ "$WORKER_EXIT" -ne 7 ] || export CLI_DISPATCH_LEAK=1
+    if [ "$WORKER_EXIT" -eq 7 ]; then
+      export CLI_DISPATCH_LEAK=1
+      # The guard saved a patch of the leaked entries (and their paths) in $TMPDIR: keep copies
+      # with the session so the verdict can point at them.
+      _LEAK_P="$(grep -aoE '>>> patch saved: [^[:space:]]+' "$WORKTREE_STDERR" 2>/dev/null | tail -n 1 | sed 's/^>>> patch saved: //' || true)"
+      if [ -n "$_LEAK_P" ] && [ -f "$_LEAK_P" ]; then
+        cp "$_LEAK_P" "$SESSION_DIR/leak.patch" 2>/dev/null && chmod 600 "$SESSION_DIR/leak.patch" \
+          && export CLI_DISPATCH_LEAK_PATCH="$SESSION_DIR/leak.patch" || true
+        if [ -f "$_LEAK_P.paths" ]; then
+          cp "$_LEAK_P.paths" "$SESSION_DIR/leak-paths.txt" 2>/dev/null && chmod 600 "$SESSION_DIR/leak-paths.txt" || true
+        fi
+      fi
+    fi
   fi
   # The runner has exited, so the worker is gone — whatever the runner's code: a status still
   # saying "running" would make the wait below block forever. Settle it as an error.

@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process'
-import { readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { NON_TERMINAL_STATES, TERMINAL_STATES, isTrivialDiffstat, normalizeBackend } from './parse-utils.mjs'
@@ -345,7 +345,7 @@ export function buildVerdict({ statusJson, metaJson, changedFilesJson, verifyRes
     // #167: the worker runner's own non-zero exit, kept apart from the 0-5 contract exitCode.
     ...(worktreeInfo.workerExit ? { workerExit: worktreeInfo.workerExit } : {}),
     // The leak guard's exit 7 from the worktree runner: the worker wrote outside its worktree.
-    ...(worktreeInfo.leak ? { leak: true } : {}),
+    ...(worktreeInfo.leak ? { leak: true, ...readLeak(worktreeInfo.sessionDir) } : {}),
     // Only when --scope was given: the globs, and the changed files none of them covers.
     ...(scope ? { scope, scopeViolations: outOfScope } : {}),
     // Only when the worker asked the user something (7.3.0): see readQuestions.
@@ -355,6 +355,19 @@ export function buildVerdict({ statusJson, metaJson, changedFilesJson, verifyRes
   }
 
   return { verdict, exitCode }
+}
+
+// What the leak guard saved: the session copy of the patch (cli-dispatch-run exports its path)
+// and the leaked paths, one per line as the guard wrote them. Either may be absent.
+function readLeak(sessionDir) {
+  const out = {}
+  const patch = process.env.CLI_DISPATCH_LEAK_PATCH
+  if (patch && existsSync(patch)) out.leakPatch = patch
+  try {
+    const paths = readFileSync(path.join(sessionDir, 'leak-paths.txt'), 'utf8').split('\n').filter(Boolean)
+    if (paths.length) out.leakPaths = paths
+  } catch { /* no paths file: the old verdict shape */ }
+  return out
 }
 
 // Worker questions (7.3.0): cli-dispatch-ask.mjs logs one line per finished ask_user call (no

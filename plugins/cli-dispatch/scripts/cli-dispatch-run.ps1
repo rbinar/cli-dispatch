@@ -568,7 +568,17 @@ honest empty `command` is more useful than a confident one that was never execut
     if ($workerExit -ne 0) {
       $env:CLI_DISPATCH_WORKER_EXIT = "$workerExit"
       # 7 is the worktree runners' leak-guard code: the worker wrote outside its worktree.
-      if ($workerExit -eq 7) { $env:CLI_DISPATCH_LEAK = '1' }
+      if ($workerExit -eq 7) {
+        $env:CLI_DISPATCH_LEAK = '1'
+        # Keep copies of the guard's saved patch and leaked-paths list with the session.
+        $leakMatch = [regex]::Matches((Get-Content -Raw -ErrorAction SilentlyContinue $stderrFile), '>>> patch saved: (\S+)') | Select-Object -Last 1
+        if ($leakMatch -and (Test-Path -LiteralPath $leakMatch.Groups[1].Value)) {
+          $leakSrc = $leakMatch.Groups[1].Value
+          Copy-Item -LiteralPath $leakSrc -Destination (Join-Path $SessionDir 'leak.patch') -Force
+          $env:CLI_DISPATCH_LEAK_PATCH = Join-Path $SessionDir 'leak.patch'
+          if (Test-Path -LiteralPath "$leakSrc.paths") { Copy-Item -LiteralPath "$leakSrc.paths" -Destination (Join-Path $SessionDir 'leak-paths.txt') -Force }
+        }
+      }
     }
     # The runner has exited - whatever its code - so a status still saying "running" would block
     # the wait forever. Settle it as an error.

@@ -544,3 +544,40 @@ test('CLI_DISPATCH_NO_CWD_CONTRACT=1 also drops the main-checkout notice', () =>
   const brief = runBrief(main, { CLI_DISPATCH_NO_CWD_CONTRACT: '1' })
   assert.ok(!brief.includes('separate git worktree'), brief)
 })
+
+// ------------------------------------------------------------------- leak patch
+// The guard's saved patch used plain `git diff`: no untracked files, no staged changes, no
+// binary content, and the user's own earlier edits mixed in. It now covers only the NEW
+// entries, against HEAD, built in a throwaway index.
+
+for (const [backend, script] of ALL_RUNNERS) {
+  test(`[${backend}] the leak patch holds the new untracked file, and nothing is moved or staged`, () => {
+    const repo = mkRepo()
+    const r = runRunner(script, { repo, env: { STUB_WRITE_TO: repo } })
+    assert.equal(r.status, 7, r.output)
+    const m = r.output.match(/>>> patch saved: (\S+)/)
+    assert.ok(m, `${backend}: no patch path reported\n${r.output}`)
+    TRASH.push(m[1], `${m[1]}.paths`)
+    const patch = fs.readFileSync(m[1], 'utf8')
+    assert.match(patch, /diff --git a\/stub-artifact\.txt/, `${backend}: patch misses the untracked file\n${patch}`)
+    assert.match(patch, /\+touched/, `${backend}: patch misses the content\n${patch}`)
+    const lm = r.output.match(/>>> leaked paths: (\S+)/)
+    assert.ok(lm, `${backend}: leaked paths file not reported\n${r.output}`)
+    assert.deepEqual(fs.readFileSync(lm[1], 'utf8').split('\n').filter(Boolean), ['stub-artifact.txt'])
+    assert.equal(
+      execSync('git diff --cached --name-only', { cwd: repo, encoding: 'utf8', env: { ...process.env, ...GIT_ENV } }).trim(),
+      '', `${backend}: the user's index must stay untouched`)
+    assert.ok(fs.existsSync(path.join(repo, 'stub-artifact.txt')), `${backend}: the leaked file must stay in place`)
+  })
+}
+
+test('the leak guard block is byte-identical across the five worktree runners', () => {
+  const blocks = ALL_RUNNERS.map(([, script]) => {
+    const src = fs.readFileSync(path.join(SCRIPTS_DIR, script), 'utf8')
+    const a = src.indexOf('\nPATCH_FILE="$(mktemp')
+    const b = src.indexOf('\nexit 7', a)
+    assert.ok(a > 0 && b > a, `${script}: guard block not found`)
+    return src.slice(a, b)
+  })
+  for (let i = 1; i < blocks.length; i++) assert.equal(blocks[i], blocks[0], `${ALL_RUNNERS[i][1]} drifted`)
+})
