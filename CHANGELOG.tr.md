@@ -7,6 +7,15 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [7.4.2] — 2026-10-19
+
+### Düzeltildi
+
+- **Claude senin vereceğin kararı yine worker'a bırakıyor.** `dispatch` aracı Claude Code'un araç
+  aramasının arkasındaydı; Claude çoğu zaman worker'ın çalışırken sana sorabildiğini okumadan karar
+  veriyor, worker'ın soramayacağını söyleyip sana kendisi soruyordu. Araç artık hep yüklü (oturum başına
+  yaklaşık 450 token). Aynı prompt'la ölçüldü: önce 6 denemenin 4'ünde kendisi sordu, şimdi 6'da 0.
+
 ## [7.4.1] — 2026-10-19
 
 ### Değişti

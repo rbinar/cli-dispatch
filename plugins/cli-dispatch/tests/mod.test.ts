@@ -130,6 +130,7 @@ describe('cli-dispatch mod', () => {
 function stubDispatch(on: any, opts: { worker?: boolean; noPath?: boolean; waits?: number[] } = {}) {
   const calls: { argv: string[]; env?: Record<string, string> }[] = []
   const registered: string[] = []
+  const specs: any[] = []
   const written: Record<string, string> = {}
   const waits = [...(opts.waits ?? [0])]
   on('session.start', ($: any, e: any) => ({ cwd: e.cwd }))
@@ -141,6 +142,7 @@ function stubDispatch(on: any, opts: { worker?: boolean; noPath?: boolean; waits
   on('clock.every', () => ({ value: undefined }))
   on('tool.register', ($: any, e: any) => {
     registered.push(e.name)
+    specs.push(e)
     return { value: { tool: `mcp__cli-dispatch__${e.name}` } }
   })
   on('fs.exists', () => ({ value: false }))
@@ -160,10 +162,17 @@ function stubDispatch(on: any, opts: { worker?: boolean; noPath?: boolean; waits
     }
     return { value: { exitCode: 1, stdout: '', stderr: '' } }
   })
-  return { calls, registered, written }
+  return { calls, registered, specs, written }
 }
 
 describe('dispatch tool', () => {
+  test('is registered in front of ToolSearch, so the model reads that the worker can ask before it decides to ask itself', async ($, on) => {
+    const h = stubDispatch(on)
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    expect(h.specs[0].isDeferred).toBe(false)
+    expect(h.specs[0].description).toMatch(/ask the user mid-run/)
+  })
+
   test('runs the runner detached with the brief, verify and session id, waits through a timeout, returns the summary', async ($, on) => {
     const h = stubDispatch(on, { waits: [124, 0] })
     await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
