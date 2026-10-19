@@ -8,6 +8,8 @@
 
 ▶️ [Video (İngilizce)](videos/demo-en.mp4) · 📝 [Yazı (Medium)](https://medium.com/@rbinar/cli-dispatch-claudea-patron-deepseek-e-i%CC%87%C5%9F%C3%A7i-rol%C3%BC-veren-bir-plugin-b232803581fc)
 
+https://github.com/user-attachments/assets/5d610546-975b-4a8e-bfc1-689810971d9b
+
 ## Kurulum
 
 Bunları Claude Code içinde (önce `claude` yaz) sırayla, tek tek çalıştır:
@@ -30,6 +32,8 @@ add() in math.mjs is broken. Delegate the fix to DeepSeek, verify with node --te
 ```
 
 ▶️ Uçtan uca örnek ([mp4](videos/runs-monitor.mp4)): Claude bir hata düzeltmesini ve küçük bir CLI'ı `dispatch` aracıyla Codex'e devreder. Worker'ın adımlarını run monitor'de canlı izler, çalışırken ona bir mesaj gönderirsin (`→ sent`, sonra `✉ delivered`); worker mesajı alır, verify geçer, Claude da yamayı uygular. Bir sandbox container'ında canlı kaydedildi.
+
+https://github.com/user-attachments/assets/794e7173-baf4-483c-853f-88ecb8f7bc45
 
 **Kendin çalıştır.** Orkestrasyona LLM token'ı harcanmaz:
 

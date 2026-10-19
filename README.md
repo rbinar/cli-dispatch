@@ -8,6 +8,8 @@
 
 ▶️ [Video](videos/demo-en.mp4) · 📝 [Write-up (Turkish, Medium)](https://medium.com/@rbinar/cli-dispatch-claudea-patron-deepseek-e-i%CC%87%C5%9F%C3%A7i-rol%C3%BC-veren-bir-plugin-b232803581fc)
 
+https://github.com/user-attachments/assets/5d610546-975b-4a8e-bfc1-689810971d9b
+
 ## Install
 
 Run these inside Claude Code (type `claude` first), one at a time:
@@ -30,6 +32,8 @@ add() in math.mjs is broken. Delegate the fix to DeepSeek, verify with node --te
 ```
 
 ▶️ End-to-end example ([mp4](videos/runs-monitor.mp4)): Claude hands a bug fix and a small CLI to Codex through the `dispatch` tool. You follow the worker's steps live in the run monitor and send it a message mid-run (`→ sent`, then `✉ delivered`); the worker picks it up, verify passes, and Claude applies the patch. Recorded live in a sandbox container.
+
+https://github.com/user-attachments/assets/794e7173-baf4-483c-853f-88ecb8f7bc45
 
 **Run it yourself.** No LLM tokens are spent on orchestration:
 
