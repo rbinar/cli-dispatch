@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [7.5.0] — 2026-10-19
+
+### Added
+
+- **A worker can ask Claude instead of you.** `ask_user` takes an optional `to: "orchestrator"`. While the
+  run's `dispatch` call is blocked, cli-dispatch answers the question with one `$.model.fork` of Claude's
+  conversation (the fork gets the brief you gave the worker). If the fork replies `ASK_USER`, replies
+  nothing, fails, is unavailable or takes over 60 s, you get the usual dialog. A toast shows each answer,
+  and the `dispatch` result lists the question and answer pairs Claude answered, because nothing from a
+  fork reaches the transcript. While the fork runs, the `dispatch` tool refuses calls from agents (the
+  fork called it recursively when unguarded). Answers are masked and cut at 2000 characters. Without `to`
+  nothing changes; `CLI_DISPATCH_NO_ASK=1` still turns it all off. Run `/cli-dispatch:setup` again to
+  install the updated question server.
+
 ## [7.4.2] — 2026-10-19
 
 ### Fixed

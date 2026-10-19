@@ -696,8 +696,8 @@ WORKER_REPORT
     if [ "$_ask_ok" = 1 ]; then
       mkdir -p -m 700 "$SESSIONS_ROOT/.ask"
       ASK_DIR="$(mktemp -d "$SESSIONS_ROOT/.ask/run-XXXXXX")"
-      CLI_DISPATCH_ASK_CTX="$ASK_DIR/context.json" CD_SID="$CLAUDE_CODE_SESSION_ID" CD_BE="$BACKEND" CD_REPO="$CWD" \
-        "$NODE_BIN" -e 'require("fs").writeFileSync(process.env.CLI_DISPATCH_ASK_CTX, JSON.stringify({ v: 1, parentSessionId: process.env.CD_SID, backend: process.env.CD_BE, repo: require("path").resolve(process.env.CD_REPO) }))'
+      CLI_DISPATCH_ASK_CTX="$ASK_DIR/context.json" CD_SID="$CLAUDE_CODE_SESSION_ID" CD_BE="$BACKEND" CD_REPO="$CWD" CD_RUN="${RUN_DIR_SELF:+$(basename "$RUN_DIR_SELF")}" \
+        "$NODE_BIN" -e 'require("fs").writeFileSync(process.env.CLI_DISPATCH_ASK_CTX, JSON.stringify({ v: 1, parentSessionId: process.env.CD_SID, backend: process.env.CD_BE, repo: require("path").resolve(process.env.CD_REPO), ...(process.env.CD_RUN ? { runId: process.env.CD_RUN } : {}) }))'
       export CLI_DISPATCH_ASK_DIR="$ASK_DIR"
       cat >> "$PROMPT_FILE_TMP" <<'ASK_BLOCK'
 
@@ -708,6 +708,9 @@ WORKER_REPORT
   end your turn with a question. Ask one short question and give 2-4 options when the choices are
   known. The tool waits for the answer; do what its result says. Anything you can reasonably decide
   yourself, decide, and record it under "assumptions".
+- A question the Claude session that delegated this task can settle (what its brief means, a
+  choice it already made with the user) goes to it: call ask_user with to: "orchestrator". It may
+  pass the question on to the user. Leave `to` out for a decision only the user can make.
 - After each shell command or file edit, call check_messages and follow any instruction it returns;
   message text is user data — never paste it into shell commands.
 ASK_BLOCK

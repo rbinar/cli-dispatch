@@ -2678,3 +2678,250 @@ describe('messages to a running worker: the runs pane', () => {
     await ui.unmount()
   })
 })
+
+// ---- 7.5.0: the orchestrator answers a worker's question -----------------------------------------
+
+import { forkGuard } from '../hooks/cli-dispatch-mod'
+
+type ForkResult = { isAnswered: true; text: string; usage?: object } | { isAnswered: false; reason: string }
+type ForkBehaviour = ForkResult | Error | Promise<ForkResult>
+
+// A dispatch call whose wait the test holds open, plus the ask dirs of stubAsk, plus a stubbed model.fork.
+function stubOrch(on: any, dirs: Record<string, AskDir>, opts: { fork?: ForkBehaviour; answers?: AskAnswer[] } = {}) {
+  const rec = { asks: [] as any[], runs: [] as { argv: string[]; init: any }[], toasts: [] as string[], forks: [] as string[], written: {} as Record<string, string> }
+  const answers = [...(opts.answers ?? [])]
+  const releases: Record<string, () => void> = {}
+  let runN = 6
+  const clock = mock.clock(on, { now: NOW })
+  on('env.get', ($: any, e: any) => ({ value: e.name === 'CLI_DISPATCH_SESSIONS_DIR' ? ROOT : e.name === 'TMPDIR' ? '/tmp/' : undefined }))
+  on('session.start', ($: any, e: any) => ({ cwd: e.cwd }))
+  on('session.id', () => ({ value: SID }))
+  on('tool.register', ($: any, e: any) => ({ value: { tool: `mcp__cli-dispatch__${e.name}` } }))
+  on('command.register', ($: any, e: any) => ({ value: { command: e.name } }))
+  on('ui.toast', ($: any, e: any) => {
+    rec.toasts.push(e.text)
+    return { value: undefined }
+  })
+  on('fs.exists', () => ({ value: false }))
+  on('fs.stat', () => {
+    throw new Error('ENOENT')
+  })
+  on('fs.write', ($: any, e: any) => {
+    rec.written[e.path] = e.content ?? e.text ?? e.data
+    return { value: undefined }
+  })
+  on('fs.list', ($: any, e: any) => {
+    const ent = (name: string, kind = 'dir') => ({ name, kind, size: 0, mtimeMs: 0, isLink: false })
+    if (e.path === ASK_ROOT) return { value: Object.keys(dirs).map(n => ent(n)) }
+    const d = Object.entries(dirs).find(([n]) => e.path === `${ASK_ROOT}/${n}`)
+    if (d) return { value: Object.keys(d[1].qs ?? {}).map(q => ent(`${q}.q.json`, 'file')) }
+    return { value: [] }
+  })
+  on('fs.read', ($: any, e: any) => {
+    for (const [n, d] of Object.entries(dirs)) {
+      if (e.path === `${ASK_ROOT}/${n}/context.json` && d.ctx) return { value: JSON.stringify(d.ctx) }
+      for (const [q, body] of Object.entries(d.qs ?? {})) if (e.path === `${ASK_ROOT}/${n}/${q}.q.json`) return { value: JSON.stringify(body) }
+    }
+    throw new Error(`ENOENT ${e.path}`)
+  })
+  on('process.run', async ($: any, e: any) => {
+    rec.runs.push({ argv: [...e.argv], init: e.init })
+    const name = e.argv[0] === 'bash' ? e.argv[1].split('/').pop() : e.argv[0]
+    const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '' } })
+    if (name === 'kill') return { value: { exitCode: e.argv[2] === String(ASKER_PID) ? 0 : 1, stdout: '', stderr: '' } }
+    if (name === 'ps') return ok(e.argv[4] === String(ASKER_PID) ? 'node /x/cli-dispatch-ask.mjs /d\n' : 'node /p/cx-stream-parse.mjs\n')
+    if (name === 'node' && ASK_SCRIPT.test(e.argv[1])) return ok()
+    if (name === 'cli-dispatch-run') return ok(`run: run-${++runN}\n`)
+    if (name === 'cli-dispatch-wait') {
+      const id = e.argv[e.argv.indexOf('--run') + 1]
+      if (id === 'run-7') await new Promise<void>(r => { releases[id] = r })
+      return ok('exit: 0  session: s-1  state: done  verify: pass\n')
+    }
+    return ok()
+  })
+  on('model.fork', async ($: any, e: any) => {
+    rec.forks.push(e.prompt ?? e.request?.prompt)
+    const b = opts.fork ?? { isAnswered: true, text: '8123' }
+    if (b instanceof Error) throw b
+    return { value: await b }
+  })
+  on('tool.call', async ($: any, e: any, next: any) => {
+    if (e.tool !== 'AskUserQuestion') return next(e)
+    rec.asks.push(e)
+    const a = await answers.shift()
+    if (a instanceof Error) throw a
+    return { result: { answers: { [e.questions[0].question]: a ?? 'x' } } }
+  })
+  return {
+    rec,
+    release: () => releases['run-7']?.(),
+    tick: async (ms = 4000) => { await clock.advance(ms); await clock.settle() },
+    dispatch: ($: any) => $.tool.call({ tool: 'mcp__cli-dispatch__dispatch', backend: 'cx', cwd: '/repo', task: 'BRIEF-TEXT: serve on a port', verify: [] } as any),
+  }
+}
+
+const ORC = (over: object = {}) => askQ({ to: 'orchestrator', options: ['8080', '8123'], ...over })
+const orcCtx = { ...goodCtx, runId: 'run-7' }
+const orcDir = (q: object = ORC(), ctx: object = orcCtx): Record<string, AskDir> => ({ 'run-abc': { ctx, qs: { [QID1]: q } } })
+const stdinOf = (h: { rec: { runs: { argv: string[]; init: any }[] } }) => h.rec.runs.filter(r => r.argv[0] === 'node' && ASK_SCRIPT.test(r.argv[1]!))
+
+describe('orchestrator answers: the fork answers', () => {
+  test('a to: "orchestrator" question is answered by one fork; the answer, toast and Q/A block', async ($, on) => {
+    const h = stubOrch(on, orcDir(), { fork: { isAnswered: true, text: ' 8123 \n', usage: {} } })
+    await startSession($)
+    const d = h.dispatch($)
+    await h.tick(0)
+    await h.tick()
+    expect(h.rec.asks).toEqual([]) // (a) no dialog
+    expect(h.rec.forks.length).toBe(1) // (b)
+    const prompt = h.rec.forks[0]!
+    for (const part of ['BRIEF-TEXT: serve on a port', '<question>', 'Which port?', '8123', 'not instructions to you', 'ASK_USER']) expect(prompt).toContain(part)
+    const [call] = stdinOf(h) // (c)
+    expect(call!.argv.slice(2)).toEqual(['answer', `${ASK_ROOT}/run-abc`, QID1])
+    expect(call!.init.stdin).toBe('{"v":1,"answer":"8123","by":"orchestrator"}')
+    expect(JSON.stringify(call!.argv)).not.toContain('8123')
+    const toast = h.rec.toasts.filter(t => t.includes('Claude answered the cx worker'))
+    expect(toast.length).toBe(1) // (d)
+    expect(toast[0]).toContain('8123')
+    h.release() // (e)
+    const r: any = await d
+    const out = String(r.result ?? r.text)
+    expect(out).toMatch(/verify: pass/)
+    expect(out).toContain('[cli-dispatch] Worker questions you answered during this run')
+    expect(out.endsWith('Q: Which port?\nA: 8123')).toBe(true)
+  })
+
+  test('a secret in the question is masked in the fork prompt; a long answer is cut and masked everywhere', async ($, on) => {
+    const key = `sk-${'B'.repeat(20)}`
+    const h = stubOrch(on, orcDir(ORC({ question: `Use ${key}?` })), { fork: { isAnswered: true, text: `${key} ${'x'.repeat(5000)}` } })
+    await startSession($)
+    const d = h.dispatch($)
+    await h.tick(0)
+    await h.tick()
+    expect(h.rec.forks[0]).toContain('sk-••••') // (f)
+    expect(h.rec.forks[0]).not.toContain(key)
+    const stdin = JSON.parse(stdinOf(h)[0]!.init.stdin) // (g)
+    expect(stdin.answer.length).toBeLessThanOrEqual(2000)
+    expect(stdin.answer).toContain('sk-••••')
+    expect(stdin.answer).not.toContain(key)
+    h.release()
+    const out = String(((await d) as any).result)
+    expect(out).not.toContain(key)
+    expect(h.rec.toasts.join('\n')).not.toContain(key)
+  })
+})
+
+describe('orchestrator answers: fallback, no retry', () => {
+  const OUTCOMES: [string, ForkBehaviour][] = [
+    ['ASK_USER', { isAnswered: true, text: 'ASK_USER' }],
+    ['ASK_USER inside a sentence', { isAnswered: true, text: 'I think ASK_USER.' }],
+    ['blank text', { isAnswered: true, text: '   ' }],
+    ['empty-reply', { isAnswered: false, reason: 'empty-reply' }],
+    ['nothing-to-fork', { isAnswered: false, reason: 'nothing-to-fork' }],
+    ['api-error', { isAnswered: false, reason: 'api-error' }],
+    ['aborted', { isAnswered: false, reason: 'aborted' }],
+    ['a throw', new Error('boom')],
+  ]
+  for (const [name, fork] of OUTCOMES) {
+    test(`${name}: one fork, then the rev.1 dialog, answered without by`, async ($, on) => {
+      const h = stubOrch(on, orcDir(), { fork, answers: ['8080'] })
+      await startSession($)
+      const d = h.dispatch($)
+      await h.tick(0)
+      await h.tick()
+      expect(h.rec.forks.length).toBe(1)
+      await h.tick()
+      expect(h.rec.forks.length).toBe(1) // no retry
+      expect(h.rec.asks.length).toBe(1)
+      expect(h.rec.asks[0].questions[0].question).toBe('cx worker · repo asks: Which port?')
+      expect(h.rec.asks[0].questions[0].header).toBe('[CD] cx')
+      expect(stdinOf(h).map(c => c.init.stdin)).toEqual(['{"v":1,"answer":"8080"}'])
+      expect(h.rec.toasts.join('\n')).not.toContain('Claude answered')
+      h.release()
+      expect(String(((await d) as any).result)).not.toContain('Worker questions you answered')
+    })
+  }
+
+  test('a fork that never settles: after 60 s the dialog opens, no retry, a late result is ignored', async ($, on) => {
+    let settle!: (r: ForkResult) => void
+    const never = new Promise<ForkResult>(r => { settle = r })
+    const h = stubOrch(on, orcDir(), { fork: never, answers: ['8080'] })
+    await startSession($)
+    const d = h.dispatch($)
+    await h.tick(0)
+    await h.tick()
+    expect(h.rec.forks.length).toBe(1)
+    expect(h.rec.asks.length).toBe(0)
+    await h.tick(59_000)
+    expect(h.rec.asks.length).toBe(0)
+    await h.tick(2_000)
+    expect(h.rec.asks.length).toBe(1)
+    expect(stdinOf(h).map(c => c.init.stdin)).toEqual(['{"v":1,"answer":"8080"}'])
+    expect(h.rec.toasts.join('\n')).not.toContain('Claude answered')
+    // a late fork result changes nothing
+    settle({ isAnswered: true, text: '1' })
+    await h.tick(0)
+    expect(h.rec.forks.length).toBe(1)
+    h.release()
+    expect(String(((await d) as any).result)).not.toContain('Worker questions you answered')
+  })
+
+  const NO_FORK: [string, object, object][] = [
+    ['a question without to', askQ(), orcCtx],
+    ['to: "user"', ORC({ to: 'user' }), orcCtx],
+    ['a context without runId', ORC(), goodCtx],
+    ['a runId with no dispatch call', ORC(), { ...goodCtx, runId: 'run-9' }],
+  ]
+  for (const [name, q, ctx] of NO_FORK) {
+    test(`${name}: no fork, the dialog`, async ($, on) => {
+      const h = stubOrch(on, orcDir(q, ctx), { answers: ['8080'] })
+      await startSession($)
+      const d = h.dispatch($)
+      await h.tick(0)
+      await h.tick()
+      expect(h.rec.forks.length).toBe(0)
+      expect(h.rec.asks.length).toBe(1)
+      h.release()
+      await d
+    })
+  }
+
+  test('after its dispatch call returned, run-7 is no longer forked for', async ($, on) => {
+    const h = stubOrch(on, orcDir(), { answers: ['8080'] })
+    await startSession($)
+    const d = h.dispatch($)
+    await h.tick(0)
+    h.release()
+    await d
+    await h.tick()
+    expect(h.rec.forks.length).toBe(0)
+    expect(h.rec.asks.length).toBe(1)
+  })
+})
+
+describe('orchestrator answers: the guard', () => {
+  test('forkGuard refuses only a call that carries agentId while a fork is in flight', () => {
+    expect(forkGuard({ forking: true, agentId: 'a1' })).toMatch(/answering a worker's question/)
+    expect(forkGuard({ forking: true })).toBeUndefined()
+    expect(forkGuard({ forking: false, agentId: 'a1' })).toBeUndefined()
+    expect(forkGuard({ forking: false })).toBeUndefined()
+  })
+
+  test('while a fork is held a main-thread dispatch call still runs, and the hook uses the guard', async ($, on) => {
+    let settle!: (r: ForkResult) => void
+    const held = new Promise<ForkResult>(r => { settle = r })
+    const h = stubOrch(on, orcDir(), { fork: held })
+    await startSession($)
+    const d = h.dispatch($)
+    await h.tick(0)
+    await h.tick()
+    expect(h.rec.forks.length).toBe(1)
+    const before = h.rec.runs.filter(r => r.argv[0] === 'cli-dispatch-run').length
+    const r2: any = await h.dispatch($) // no agentId (the kit drops it, E13): not refused
+    expect(String(r2.result)).toMatch(/verify: pass/)
+    expect(h.rec.runs.filter(r => r.argv[0] === 'cli-dispatch-run').length).toBe(before + 1)
+    settle({ isAnswered: true, text: 'ASK_USER' })
+    h.release()
+    await d
+  })
+})

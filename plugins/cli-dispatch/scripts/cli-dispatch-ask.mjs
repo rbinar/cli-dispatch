@@ -38,10 +38,14 @@ function writePrivate(file, text) {
 
 const ASK_TOOL = {
   name: 'ask_user',
-  description: 'Ask the user a question and wait for the answer. Use only for a decision the task does not settle and you cannot make yourself.',
+  description: 'Ask the user (or, with to: "orchestrator", the Claude session that delegated this task) a question and wait for the answer. Use only for a decision the task does not settle and you cannot make yourself.',
   inputSchema: {
     type: 'object',
-    properties: { question: { type: 'string' }, options: { type: 'array', items: { type: 'string' }, maxItems: 4 } },
+    properties: {
+      question: { type: 'string' },
+      options: { type: 'array', items: { type: 'string' }, maxItems: 4 },
+      to: { type: 'string', enum: ['user', 'orchestrator'], description: 'Who answers. "orchestrator": the Claude session that delegated this task, for what its brief or its conversation with the user settles. Omit it (the user) for a decision only the user can make.' },
+    },
     required: ['question'],
   },
 }
@@ -77,11 +81,12 @@ function runServer() {
     const options = Array.isArray(args.options)
       ? args.options.filter(o => typeof o === 'string').slice(0, 4).map(o => o.slice(0, 100))
       : []
+    const to = args.to === 'orchestrator' ? 'orchestrator' : undefined
     const qid = randomUUID()
     const qFile = path.join(askDir, `${qid}.q.json`)
     const aFile = path.join(askDir, `${qid}.a.json`)
     const askedAt = new Date().toISOString()
-    writePrivate(qFile, JSON.stringify({ v: 1, id: qid, question, options, askedAt, pid: process.pid }))
+    writePrivate(qFile, JSON.stringify({ v: 1, id: qid, question, options, askedAt, pid: process.pid, ...(to ? { to } : {}) }))
     const key = JSON.stringify(id)
     let timer
     const finish = (outcome, result) => {
@@ -97,7 +102,7 @@ function runServer() {
       if (existsSync(aFile)) {
         let a = null
         try { a = JSON.parse(readFileSync(aFile, 'utf8')) } catch {}
-        if (a && typeof a.answer === 'string') return finish('answered', text(`The user answered: ${a.answer}`))
+        if (a && typeof a.answer === 'string') return finish('answered', text(`The ${a.by === 'orchestrator' ? 'orchestrator' : 'user'} answered: ${a.answer}`))
         return finish('skipped', text('The user closed the question without answering. Proceed with your best assumption and record it under "assumptions" in worker-report.json.'))
       }
       if (Date.now() >= deadline) {
@@ -193,7 +198,7 @@ function runAnswer([dir, qid]) {
   const ok = p && typeof p === 'object' && (typeof p.answer === 'string' || p.skipped === true)
   if (!ok) process.exit(2)
   if (!existsSync(path.join(dir, `${qid}.q.json`))) process.exit(3)
-  writePrivate(path.join(dir, `${qid}.a.json`), JSON.stringify(typeof p.answer === 'string' ? { v: 1, answer: p.answer } : { v: 1, skipped: true }))
+  writePrivate(path.join(dir, `${qid}.a.json`), JSON.stringify(typeof p.answer === 'string' ? { v: 1, answer: p.answer, ...(p.by === 'orchestrator' ? { by: 'orchestrator' } : {}) } : { v: 1, skipped: true }))
 }
 
 function runMessage([dir]) {
