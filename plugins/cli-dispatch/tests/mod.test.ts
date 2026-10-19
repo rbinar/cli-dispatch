@@ -2600,6 +2600,18 @@ describe('messages to a running worker: the runs pane', () => {
     await ui.unmount()
   })
 
+  test('a sent message reads under the live worker line, where the newest end is', async ($, on) => {
+    const h = stubRuns(on, { a: live() }, sentOk)
+    linked(h)
+    const ui = await open($)
+    await ui.press({ key: 'run:a' })
+    await ui.input({ key: 'msg:a', text: 'stop after step 3' })
+    const f = strings(await ui.find({ key: 'frame' })).join('\n')
+    expect(f).toMatch(/▍ .* running…/)
+    expect(f.search(/▍ .* running…/)).toBeLessThan(f.indexOf('→ stop after step 3  sent'))
+    await ui.unmount()
+  })
+
   test('with the ask dir gone and no read file the message shows not delivered (run ended)', async ($, on) => {
     const h = stubRuns(on, { a: live() }, sentOk)
     linked(h)
