@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [7.5.5] — 2026-10-19
+
+### Fixed
+
+- **The run summary no longer calls a closed question answered.** A question you closed without an answer
+  (the worker went on with its own assumption) was counted as answered: `questions: 2 asked, all answered`.
+  It now reads `questions: 2 asked: 1 answered, 1 closed without an answer`, and `verdict.json`'s
+  `questions` gains `skipped` when there is one.
+
 ## [7.5.4] — 2026-10-19
 
 ### Fixed

@@ -609,14 +609,14 @@ test('AC9: log.jsonl becomes verdict.questions and one summary line; exitCode is
   } finally { rmrf(w.x.root); rmrf(plain.x.root) }
 })
 
-test('AC9: only answered or skipped lines read "all answered"; no log means no questions key and no line', async () => {
+test('AC9: a closed (skipped) question is counted apart from the answered ones; no log means no questions key and no line', async () => {
   const w = runnerWorld({ stubBody: logLinesStub([entry('A?', 'answered'), entry('B?', 'skipped')]) })
   const none = runnerWorld()
   try {
     await runner(w, [], { CLI_DISPATCH_ASK: '1', CLAUDE_CODE_SESSION_ID: 'S' })
     const a = summaryOf(w)
-    assert.deepEqual(a.verdict.questions, { asked: 2, unanswered: [] })
-    assert.ok(a.summary.includes('questions: 2 asked, all answered'))
+    assert.deepEqual(a.verdict.questions, { asked: 2, unanswered: [], skipped: 1 })
+    assert.ok(a.summary.includes('questions: 2 asked: 1 answered, 1 closed without an answer'), a.summary)
     await runner(none, [], { CLI_DISPATCH_ASK: '1', CLAUDE_CODE_SESSION_ID: 'S' })
     const b = summaryOf(none)
     assert.ok(!('questions' in b.verdict))
