@@ -7,6 +7,16 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [7.5.2] — 2026-10-19
+
+### Düzeltildi
+
+- **Claude'un cevapladığı sorunun bildiriminde cevap önde.** Claude Code uzun bildirimi kesiyor; 7.5.1'de
+  uzun bir soru cevabı bildirimin dışına itiyordu. Artık `… — A: 3 · Q: How many…` yazıyor.
+- **Bir run açıkken başlayan yeni run, run tablosunda görünüyor.** Açık run'ın üstündeki tablo yalnız liste
+  görünümünde yeniden taranıyordu; artık band'de tabloda olmayan bir worker görünce pane tabloyu yeniden
+  tarıyor, yeni bir şey başlamadıkça açık run'ı izlemek yine ucuz kalıyor.
+
 ## [7.5.1] — 2026-10-19
 
 ### Değişti

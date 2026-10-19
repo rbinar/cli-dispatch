@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [7.5.2] — 2026-10-19
+
+### Fixed
+
+- **The answer comes first in the toast for a question Claude answered.** Claude Code cuts a long toast,
+  and in 7.5.1 a long question pushed the answer out of it. It now reads `… — A: 3 · Q: How many…`.
+- **A run that starts while another run is open shows up in the run table.** The table above an open
+  run was only rescanned from the list view; now the pane rescans it when the band has a worker the
+  table lacks, so an open run stays cheap to follow when nothing new starts.
+
 ## [7.5.1] — 2026-10-19
 
 ### Changed

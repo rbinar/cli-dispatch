@@ -67,7 +67,7 @@ https://github.com/user-attachments/assets/d3d047f6-2452-463b-bfd9-1c2081840502
 
 ▶️ Worker sana değil Claude'a soruyor ([mp4](videos/orchestrator-answer.mp4)): konuşmanın başında Claude ile bir kural belirlersin, worker çalışırken bunu sorar ve Claude konuşmadan cevaplar; diyalog açılmaz, cevap bir bildirimle görünür, verify geçer.
 
-https://github.com/user-attachments/assets/c4c51d57-4a15-4a79-87e3-f37c1c987c34
+https://github.com/user-attachments/assets/144fdca0-309b-47f1-a6e6-9d85b09e6b0f
 
 ## Güncelleme
 
