@@ -7,6 +7,14 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [7.5.1] — 2026-10-19
+
+### Değişti
+
+- **Claude'un worker'a verdiği cevabın bildiriminde soru da var.** Önce yalnız cevap görünüyordu
+  (`Claude answered the cx worker — 3`); artık `… — Q: How many decimal places…? · A: 3` yazıyor, soru da
+  cevap gibi maskelenip kısaltılıyor.
+
 ## [7.5.0] — 2026-10-19
 
 ### Eklendi
