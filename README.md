@@ -61,6 +61,10 @@ A band above the prompt lists this session's workers (`▶ cx 2m05s`, then `■ 
 
 Questions and messages work for runs started by the `dispatch` tool, on macOS, Linux and WSL. Details: [Commands](docs/commands.md).
 
+▶️ A worker asks you mid-run ([mp4](videos/worker-question.mp4)): Codex needs a decision only you can make, so it asks; the question opens as a dialog in Claude Code, you answer, the same worker carries on and verify passes. Recorded live in a sandbox container.
+
+https://github.com/user-attachments/assets/d3d047f6-2452-463b-bfd9-1c2081840502
+
 ## Update
 
 ```text
