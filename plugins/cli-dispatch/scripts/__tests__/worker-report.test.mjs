@@ -195,3 +195,11 @@ test('buildVerdict surfaces claimedButMissing from the measured file list', () =
   })
   assert.deepEqual(verdict.workerReport.claimedButMissing, ['page.test.tsx'])
 }))
+
+test('both runner twins tell the worker the caller checkout is off-limits', () => {
+  for (const f of ['cli-dispatch-run', 'cli-dispatch-run.ps1']) {
+    const src = readFileSync(path.join(scriptsDir, f), 'utf8')
+    assert.match(src, /worktree list --porcelain/, `${f} does not look up the main checkout`)
+    assert.match(src, /relative to your worktree root/, `${f} does not give the relative-path rule`)
+  }
+})

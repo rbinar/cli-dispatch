@@ -7,6 +7,18 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [7.5.3] — 2026-10-19
+
+### Düzeltildi
+
+- **Senin checkout'unu adıyla anan bir brief, worker'ı artık oraya göndermiyor.** Görev "In /path/to/repo: …"
+  diye başlayınca worker worktree'si yerine senin checkout'una yazabiliyordu (leak guard yakalayıp run'ı
+  düşürüyordu). Brief artık worker'a ayrı bir worktree'de çalıştığını söylüyor, checkout'unu yasak olarak
+  adıyla anıyor ve onun altındaki bir yolun worktree'de aynı yol demek olduğunu belirtiyor (bash ve
+  PowerShell runner'ları). `dispatch` aracı da görevde dosya adlarının repo-göreli yazılmasını istiyor.
+- **Kararsız bir test artık yük altında kalmıyor.** AC24, soru sunucusunun çoktan tüketmiş olabileceği bir
+  cevap dosyasını geri okuyordu; kaydedilen `by` alanı artık sunucu çalışmadan denetleniyor.
+
 ## [7.5.2] — 2026-10-19
 
 ### Düzeltildi

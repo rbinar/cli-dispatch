@@ -428,6 +428,9 @@ try {
 - Your self-reported results are not the gate: the caller re-runs the verification chain
   independently, and only that run counts.
 '@
+      # A brief naming the caller's checkout ("In /repo: ...") sends the worker out of its worktree (leak, exit 7).
+      $mainTop = ((& git -C $Cwd worktree list --porcelain 2>$null | Select-Object -First 1) -replace '^worktree ', '')
+      if ($mainTop) { $briefText += "- You work in a separate git worktree, NOT in $mainTop (the caller's checkout): never write there.`n  Any path under it in this task means the same path relative to your worktree root.`n" }
     }
     if ($env:CLI_DISPATCH_NO_WORKER_REPORT -ne "1") {
       # The evidence record. Machine-readable proof of what the worker actually checked —

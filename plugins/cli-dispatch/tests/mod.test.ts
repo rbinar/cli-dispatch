@@ -173,6 +173,12 @@ describe('dispatch tool', () => {
     expect(h.specs[0].description).toMatch(/ask the user mid-run/)
   })
 
+  test('the task description tells the orchestrator to name files repo-relative', async ($, on) => {
+    const h = stubDispatch(on)
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    expect(h.specs[0].inputSchema.properties.task.description).toMatch(/repo-relative/)
+  })
+
   test('runs the runner detached with the brief, verify and session id, waits through a timeout, returns the summary', async ($, on) => {
     const h = stubDispatch(on, { waits: [124, 0] })
     await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)

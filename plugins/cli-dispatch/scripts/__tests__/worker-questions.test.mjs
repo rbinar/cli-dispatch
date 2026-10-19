@@ -5,6 +5,7 @@
 // is never the code under test. (AC14 and AC22 are in tests/mod.test.ts; AC15-AC17 are shell gates.)
 import assert from 'node:assert/strict'
 import { execSync, spawn, spawnSync } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -922,24 +923,36 @@ test('AC24: ask_user takes to: "orchestrator"; the q file carries it only for th
     assert.equal(asked[0].q.to, 'orchestrator')
     assert.ok(!('to' in asked[1].q))
     assert.ok(!('to' in asked[2].q), 'an unknown to is not written')
-    // by: "orchestrator" changes the reply and is stored; anything else reads as the user.
+    // by: "orchestrator" changes the reply; anything else reads as the user. (The stored file is checked
+    // with no server polling, in the next test: here the server may consume it before a read-back.)
     const ans = (a, payload) => {
       const r = helper('answer', [dir, a.q.id], JSON.stringify(payload))
       assert.equal(r.status, 0, r.stderr)
-      return JSON.parse(readFileSync(path.join(dir, `${a.q.id}.a.json`), 'utf8'))
     }
-    const a0 = ans(asked[0], { v: 1, answer: '8123', by: 'orchestrator' })
-    assert.equal(a0.by, 'orchestrator')
+    ans(asked[0], { v: 1, answer: '8123', by: 'orchestrator' })
     assert.equal(await c.text(asked[0].call), 'The orchestrator answered: 8123')
-    const a1 = ans(asked[1], { v: 1, answer: '8123', by: 'user' })
-    assert.ok(!('by' in a1))
+    ans(asked[1], { v: 1, answer: '8123', by: 'user' })
     assert.equal(await c.text(asked[1].call), 'The user answered: 8123')
-    const a2 = ans(asked[2], { v: 1, answer: '8123' })
-    assert.ok(!('by' in a2))
+    ans(asked[2], { v: 1, answer: '8123' })
     assert.equal(await c.text(asked[2].call), 'The user answered: 8123')
     const logText = readFileSync(path.join(dir, 'log.jsonl'), 'utf8')
     assert.ok(!logText.includes('8123') && !logText.includes('"by"'), 'log.jsonl has neither the answer nor by')
   } finally { await c.close(); rmrf(root) }
+})
+
+test('AC24: the answer helper stores by only for "orchestrator" (no server polling, so nothing consumes the file)', () => {
+  const { root, dir } = askRoot()
+  try {
+    const stored = (id, payload) => {
+      writeFileSync(path.join(dir, `${id}.q.json`), JSON.stringify({ v: 1, id, question: 'Q?', options: [] }))
+      const r = helper('answer', [dir, id], JSON.stringify(payload))
+      assert.equal(r.status, 0, r.stderr)
+      return JSON.parse(readFileSync(path.join(dir, `${id}.a.json`), 'utf8'))
+    }
+    assert.equal(stored(randomUUID(), { v: 1, answer: '8123', by: 'orchestrator' }).by, 'orchestrator')
+    assert.ok(!('by' in stored(randomUUID(), { v: 1, answer: '8123', by: 'user' })))
+    assert.ok(!('by' in stored(randomUUID(), { v: 1, answer: '8123' })))
+  } finally { rmrf(root) }
 })
 
 test('AC25: a detached run writes runId into context.json and the brief names to: "orchestrator"; a plain run writes none', async () => {

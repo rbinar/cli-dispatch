@@ -158,7 +158,7 @@ const DISPATCH = {
     properties: {
       backend: { type: 'string', enum: ['ds', 'ag', 'cx', 'oc', 'cp', 'ol'] },
       cwd: { type: 'string', description: 'Absolute path of the git repo to work in.' },
-      task: { type: 'string', description: 'The full, self-contained brief for the worker.' },
+      task: { type: 'string', description: 'The full, self-contained brief for the worker. Name files repo-relative: the worker runs in a worktree elsewhere, and an absolute path under cwd sends its writes back into your checkout.' },
       verify: { type: 'array', items: { type: 'string' }, description: 'Shell commands run in the worktree after the worker; all must exit 0.' },
       model: { type: 'string', description: "The worker's model slug; omit for the backend default." },
       scope: {
