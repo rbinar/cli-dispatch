@@ -79,6 +79,8 @@ done
 printf '%s' "$CWD" > "${out}/cwd.txt"
 printf '%s' "$BRIEF" > "${out}/brief.txt"
 [ -n "\${STUB_WRITE_TO:-}" ] && printf 'touched\\n' > "\${STUB_WRITE_TO}/stub-artifact.txt"
+[ -n "\${STUB_RM:-}" ] && rm -f "\${STUB_RM}"
+[ -n "\${STUB_COMMIT_IN:-}" ] && git -C "\${STUB_COMMIT_IN}" commit -q --allow-empty -m stub
 # Lay down the session dir the real *-stream parsers write, so a cli-dispatch-run-driven
 # test gets past session discovery and actually reaches the cleanup stage.
 if [ -n "\${CLI_DISPATCH_SESSIONS_DIR:-}" ]; then
@@ -580,4 +582,92 @@ test('the leak guard block is byte-identical across the five worktree runners', 
     return src.slice(a, b)
   })
   for (let i = 1; i < blocks.length; i++) assert.equal(blocks[i], blocks[0], `${ALL_RUNNERS[i][1]} drifted`)
+})
+
+// ------------------------------------------------------------ leak guard blind spots
+// Status lines alone could not see a write whose status line does not change: a further edit
+// to an already-modified file, a new file inside an already-untracked directory (`?? dir/`),
+// an edit to an already-untracked file. The snapshot now fingerprints content too.
+const commitFile = (repo, rel, body) => {
+  fs.writeFileSync(path.join(repo, rel), body)
+  execSync(`git add "${rel}" && git commit -q -m add`, { cwd: repo, env: { ...process.env, ...GIT_ENV } })
+}
+const leakedPaths = (r) => {
+  const m = r.output.match(/>>> leaked paths: (\S+)/)
+  assert.ok(m, `no leaked paths reported\n${r.output}`)
+  TRASH.push(m[1], m[1].replace(/\.paths$/, ''))
+  return fs.readFileSync(m[1], 'utf8').split('\n').filter(Boolean)
+}
+for (const [backend, script] of ALL_RUNNERS) {
+  test(`[${backend}] a further edit to an already-modified file is a leak, and the caller's earlier edit is named`, () => {
+    const repo = mkRepo()
+    commitFile(repo, 'stub-artifact.txt', 'base\n')
+    fs.writeFileSync(path.join(repo, 'stub-artifact.txt'), 'user edit\n')
+    const r = runRunner(script, { repo, env: { STUB_WRITE_TO: repo } })
+    assert.equal(r.status, 7, `${backend}:\n${r.output}`)
+    assert.deepEqual(leakedPaths(r), ['stub-artifact.txt'])
+    assert.match(r.output, /already dirty before the run.*: stub-artifact\.txt/, r.output)
+  })
+  test(`[${backend}] a new file inside an already-untracked directory is a leak`, () => {
+    const repo = mkRepo()
+    fs.mkdirSync(path.join(repo, 'scratch'))
+    fs.writeFileSync(path.join(repo, 'scratch', 'mine.txt'), 'mine\n')
+    const r = runRunner(script, { repo, env: { STUB_WRITE_TO: path.join(repo, 'scratch') } })
+    assert.equal(r.status, 7, `${backend}:\n${r.output}`)
+    assert.deepEqual(leakedPaths(r), ['scratch/stub-artifact.txt'])
+    assert.doesNotMatch(r.output, /already dirty before the run/)
+  })
+  test(`[${backend}] an edit to an already-untracked file is a leak`, () => {
+    const repo = mkRepo()
+    fs.writeFileSync(path.join(repo, 'stub-artifact.txt'), 'mine\n')
+    const r = runRunner(script, { repo, env: { STUB_WRITE_TO: repo } })
+    assert.equal(r.status, 7, `${backend}:\n${r.output}`)
+    assert.deepEqual(leakedPaths(r), ['stub-artifact.txt'])
+  })
+  test(`[${backend}] rewriting pre-existing dirt with identical bytes, or writing an ignored path, is not a leak`, () => {
+    const repo = mkRepo()
+    commitFile(repo, '.gitignore', 'ign/\n')
+    fs.writeFileSync(path.join(repo, 'stub-artifact.txt'), 'touched\n') // what the stub writes
+    fs.writeFileSync(path.join(repo, 'note.txt'), 'user edit\n')
+    fs.mkdirSync(path.join(repo, 'ign'))
+    for (const [i, to] of [repo, path.join(repo, 'ign')].entries()) {
+      const r = runRunner(script, { repo, branch: `t-${i}`, env: { STUB_WRITE_TO: to } })
+      assert.equal(r.status, 0, `${backend} (${to}):\n${r.output}`)
+      assert.ok(r.output.includes('post-check OK'), r.output)
+    }
+  })
+}
+test('the leak guard snapshot (_snap) is byte-identical across the five worktree runners', () => {
+  const fns = ALL_RUNNERS.map(([, script]) => {
+    const src = fs.readFileSync(path.join(SCRIPTS_DIR, script), 'utf8')
+    const a = src.indexOf('\n_snap() {'); const b = src.indexOf('\n}\n', a)
+    assert.ok(a > 0 && b > a, `${script}: _snap not found`)
+    return src.slice(a, b)
+  })
+  for (let i = 1; i < fns.length; i++) assert.equal(fns[i], fns[0], `${ALL_RUNNERS[i][1]} drifted`)
+})
+for (const [backend, script] of ALL_RUNNERS) {
+  test(`[${backend}] a commit in the guarded repo (HEAD moved) is a leak`, () => {
+    const repo = mkRepo()
+    const r = runRunner(script, { repo, env: { STUB_COMMIT_IN: repo } })
+    assert.equal(r.status, 7, `${backend}:\n${r.output}`)
+    assert.match(r.output, />>> HEAD moved: [0-9a-f]{7,} -> [0-9a-f]{7,}/, r.output)
+  })
+  test(`[${backend}] deleting an already-untracked file is a leak, and the patch still builds`, () => {
+    const repo = mkRepo()
+    fs.writeFileSync(path.join(repo, 'mine.txt'), 'mine\n')
+    const r = runRunner(script, { repo, env: { STUB_RM: path.join(repo, 'mine.txt') } })
+    assert.equal(r.status, 7, `${backend}:\n${r.output}`)
+    assert.deepEqual(leakedPaths(r), ['mine.txt'])
+    assert.match(r.output, />>> patch saved: /, r.output)
+  })
+}
+test('a leaked non-ASCII path is listed raw, not git-quoted, and lands in the patch', () => {
+  const repo = mkRepo()
+  fs.mkdirSync(path.join(repo, 'çıktı'))
+  const r = runRunner('cx-worktree-run.sh', { repo, env: { STUB_WRITE_TO: path.join(repo, 'çıktı') } })
+  assert.equal(r.status, 7, r.output)
+  assert.deepEqual(leakedPaths(r), ['çıktı/', 'çıktı/stub-artifact.txt'])
+  const patch = r.output.match(/>>> patch saved: (\S+)/)[1]
+  assert.match(fs.readFileSync(patch, 'utf8'), /stub-artifact\.txt/)
 })

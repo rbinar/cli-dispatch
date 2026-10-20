@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [7.5.6] — 2026-10-20
+
+### Fixed
+
+- **The leak guard catches writes whose status line does not change.** It compared `git status`
+  lines before and after the run, so it missed a further edit to a file that was already modified,
+  a new file inside a directory that was already untracked, and an edit to an untracked file. The
+  snapshot now also hashes the content of every modified or untracked file. A commit in your
+  checkout (`>>> HEAD moved: <old> -> <new>`) and a deleted untracked file now count as a leak too.
+  Paths that were dirty before the run are named (`>>> already dirty before the run…`), because the
+  saved patch holds your earlier edits there as well. Non-ASCII file names are listed as-is instead
+  of git-quoted. Gitignored paths stay out of scope.
+
 ## [7.5.5] — 2026-10-19
 
 ### Fixed

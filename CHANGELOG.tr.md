@@ -7,6 +7,20 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [7.5.6] — 2026-10-20
+
+### Düzeltildi
+
+- **Leak guard, status satırını değiştirmeyen yazımları da yakalıyor.** Run öncesi ve sonrası
+  `git status` satırlarını karşılaştırdığı için zaten değişmiş bir dosyanın yeniden düzenlenmesini,
+  zaten izlenmeyen bir klasöre eklenen yeni dosyayı ve izlenmeyen bir dosyanın düzenlenmesini
+  kaçırıyordu. Anlık görüntü artık değişmiş ya da izlenmeyen her dosyanın içerik özetini de alıyor.
+  Checkout'unda atılan bir commit (`>>> HEAD moved: <eski> -> <yeni>`) ve silinen izlenmeyen bir dosya
+  da artık leak sayılıyor. Run öncesi zaten kirli olan yollar ayrıca yazılıyor
+  (`>>> already dirty before the run…`), çünkü kaydedilen yama oradaki önceki düzenlemelerini de
+  içeriyor. ASCII dışı dosya adları git'in tırnaklı biçimiyle değil olduğu gibi listeleniyor.
+  Gitignore'lu yollar kapsam dışında kalıyor.
+
 ## [7.5.5] — 2026-10-19
 
 ### Düzeltildi
