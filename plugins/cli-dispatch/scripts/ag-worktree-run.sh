@@ -181,11 +181,28 @@ else
   # workspaces put .bin/vitest) was never linked, and --verify died with exit 127 (#158).
   _link_node_modules
 fi
+# Status lines alone miss a further edit to an already-dirty file, a new file inside an
+# already-untracked directory (status shows only `?? dir/`) and an edit to an untracked file:
+# their line does not change. So the snapshot also fingerprints the CONTENT of every modified
+# or untracked file (each file, not its directory) as "~<blob> <path>"; a changed hash is then
+# a NEW line too. Gitignored paths stay out of scope: node_modules is symlinked from this very
+# checkout into the worktree on purpose. --no-filters hashes raw bytes (no LFS/clean process);
+# [ -f ] drops deleted files and nested-repo dirs, which would abort hash-object. The "@HEAD"
+# line catches a commit in the guarded repo, which leaves status unchanged or only shrinks it.
+_snap() {
+  git -C "$1" -c core.quotePath=false status --short 2>/dev/null || true
+  printf '@HEAD %s\n' "$(git -C "$1" rev-parse HEAD 2>/dev/null || true)"
+  local l; l="$(mktemp -t wt-fp-XXXXXX)"
+  git -C "$1" ls-files -z -m -o --exclude-standard 2>/dev/null \
+    | (cd "$1" && xargs -0 sh -c 'for f; do [ -f "$f" ] && printf "%s\n" "$f"; done' sh) > "$l"
+  [ -s "$l" ] && git -C "$1" hash-object --no-filters --stdin-paths < "$l" 2>/dev/null | paste -d' ' - "$l" | sed 's/^/~/'
+  rm -f "$l"
+}
 # Snapshot the guarded repo's dirt BEFORE the worker runs: the post-check below must fail
 # only on NEW entries, or any pre-existing untracked file (a stray CLAUDE.md, editor
 # droppings) fails every perfectly good run — this false-positived in production.
 PRE_STATUS=""
-[ -n "$GUARD_REPO" ] && PRE_STATUS="$(git -C "$GUARD_REPO" status --short 2>/dev/null || true)"
+[ -n "$GUARD_REPO" ] && PRE_STATUS="$(_snap "$GUARD_REPO")"
 echo ">>> Running ag-stream (Antigravity/Gemini, session-tracked) in $WT ..."
 # --cwd is registered as agy's active workspace (via --add-dir) so files land here.
 "$STREAM" --cwd "$WT" --prompt-file "$BRIEF"
@@ -207,15 +224,21 @@ if [ -z "$GUARD_REPO" ]; then
   echo ">>> post-check skipped: no main checkout to guard"
   exit 0
 fi
-POST_STATUS="$(git -C "$GUARD_REPO" status --short 2>/dev/null || true)"
+POST_STATUS="$(_snap "$GUARD_REPO")"
 # comm needs two files; temp files (not <(...) process substitution, which needs /dev/fd and
 # is forbidden in managed sandboxes, #171).
 _PRE_F="$(mktemp -t wt-pre-XXXXXX)"; _POST_F="$(mktemp -t wt-post-XXXXXX)"
 printf '%s\n' "$PRE_STATUS" | sort > "$_PRE_F"
 printf '%s\n' "$POST_STATUS" | sort > "$_POST_F"
-NEW_DIRT="$(comm -13 "$_PRE_F" "$_POST_F" | grep -v '^$' || true)"
+NEW_DIRT="$(comm -13 "$_PRE_F" "$_POST_F" | grep -v '^$' | grep -v '^@HEAD ' || true)"
+# A line that VANISHED (an untracked file deleted, a change reverted or committed) is a write
+# to the guarded repo too; so is a moved HEAD.
+GONE_DIRT="$(comm -23 "$_PRE_F" "$_POST_F" | grep -v '^$' | grep -v '^@HEAD ' || true)"
 rm -f "$_PRE_F" "$_POST_F"
-if [ -z "$NEW_DIRT" ]; then
+_PRE_HEAD="$(printf '%s\n' "$PRE_STATUS" | sed -n 's/^@HEAD //p')"
+_POST_HEAD="$(printf '%s\n' "$POST_STATUS" | sed -n 's/^@HEAD //p')"
+HEAD_MOVED=0; [ "$_PRE_HEAD" = "$_POST_HEAD" ] || HEAD_MOVED=1
+if [ -z "$NEW_DIRT" ] && [ -z "$GONE_DIRT" ] && [ "$HEAD_MOVED" -eq 0 ]; then
   echo ">>> post-check OK: no new changes in $GUARD_REPO"
   exit 0
 fi
@@ -226,27 +249,43 @@ fi
 # good run should not be thrown away over edits the caller made themselves.
 if [ -n "${CLI_DISPATCH_ALLOW_CONCURRENT_EDITS:-}" ]; then
   echo ">>> post-check WARNING: NEW changes in $GUARD_REPO, allowed by CLI_DISPATCH_ALLOW_CONCURRENT_EDITS" >&2
-  printf '%s\n' "$NEW_DIRT" >&2
+  [ "$HEAD_MOVED" -eq 0 ] || echo ">>> HEAD moved: $_PRE_HEAD -> $_POST_HEAD" >&2
+  printf '%s\n' "$NEW_DIRT" "$GONE_DIRT" | grep -v '^$' >&2 || true
   exit 0
 fi
 PATCH_FILE="$(mktemp "${TMPDIR:-/tmp}/cli-dispatch-leaked-changes-XXXXXX")"
 # Only the NEW entries, binary-safe, against HEAD: untracked/staged/binary included (plain
 # `git diff` saw only unstaged tracked edits). Throwaway index: the user's index is untouched.
 _LEAK_PATHS="$PATCH_FILE.paths"
-printf '%s\n' "$NEW_DIRT" | awk '{ s=substr($0,4); n=index(s," -> "); if (n) { print substr(s,1,n-1); print substr(s,n+4) } else print s }' > "$_LEAK_PATHS"
+printf '%s\n' "$NEW_DIRT" "$GONE_DIRT" | { grep -v '^$' || true; } | awk '/^~/ { print substr($0,index($0," ")+1); next } { s=substr($0,4); n=index(s," -> "); if (n) { print substr(s,1,n-1); print substr(s,n+4) } else print s }' | sort -u > "$_LEAK_PATHS"
+# A deleted untracked file is in neither the worktree nor HEAD: `add` would abort on it, so only
+# paths that still exist or are in HEAD go to the throwaway index. The paths file keeps them all.
+_ADD_PATHS="$PATCH_FILE.add"; : > "$_ADD_PATHS"
+while IFS= read -r _p; do
+  if [ -e "$GUARD_REPO/$_p" ] || [ -L "$GUARD_REPO/$_p" ] || git -C "$GUARD_REPO" cat-file -e "HEAD:$_p" 2>/dev/null; then
+    printf '%s\n' "$_p" >> "$_ADD_PATHS"
+  fi
+done < "$_LEAK_PATHS"
 _LEAK_IDX="$(mktemp -t wt-leak-idx-XXXXXX)"; rm -f "$_LEAK_IDX"
-if ! { GIT_INDEX_FILE="$_LEAK_IDX" git -C "$GUARD_REPO" read-tree HEAD \
-    && GIT_LITERAL_PATHSPECS=1 GIT_INDEX_FILE="$_LEAK_IDX" git -C "$GUARD_REPO" add -A --pathspec-from-file="$_LEAK_PATHS" \
+if [ ! -s "$_ADD_PATHS" ]; then
+  : > "$PATCH_FILE"
+elif ! { GIT_INDEX_FILE="$_LEAK_IDX" git -C "$GUARD_REPO" read-tree HEAD \
+    && GIT_LITERAL_PATHSPECS=1 GIT_INDEX_FILE="$_LEAK_IDX" git -C "$GUARD_REPO" add -A --pathspec-from-file="$_ADD_PATHS" \
     && GIT_INDEX_FILE="$_LEAK_IDX" git -C "$GUARD_REPO" diff --cached --binary HEAD > "$PATCH_FILE"; } 2>/dev/null; then
   git -C "$GUARD_REPO" diff > "$PATCH_FILE" 2>/dev/null || true   # old behaviour as fallback
 fi
-rm -f "$_LEAK_IDX"
+rm -f "$_LEAK_IDX" "$_ADD_PATHS"
 echo ">>> post-check FAIL: NEW changes appeared in $GUARD_REPO, outside the worktree" >&2
 echo ">>>   Either the worker resolved a path outside the tree it was given, or something" >&2
 echo ">>>   else wrote to the repo while the run was in flight (you, an editor, an agent)." >&2
 echo ">>>   If those changes are yours, re-run with CLI_DISPATCH_ALLOW_CONCURRENT_EDITS=1" >&2
 echo ">>> patch saved: $PATCH_FILE" >&2
 echo ">>> leaked paths: $_LEAK_PATHS" >&2
+[ "$HEAD_MOVED" -eq 0 ] || echo ">>> HEAD moved: $_PRE_HEAD -> $_POST_HEAD" >&2
+# A path that was already dirty before the run is patched against HEAD, so the patch holds
+# the caller's earlier edits there too, not only the worker's. Name those paths.
+_PRE_DIRTY="$(printf '%s\n' "$PRE_STATUS" | awk '/^~/ { print substr($0,index($0," ")+1) }' | sort -u | comm -12 - "$_LEAK_PATHS")"
+[ -z "$_PRE_DIRTY" ] || printf '%s\n' "$_PRE_DIRTY" | sed 's/^/>>> already dirty before the run, the patch holds your earlier edits too: /' >&2
 echo ">>> the worker's own output is UNAFFECTED and still in the worktree: $WT" >&2
-printf '%s\n' "$NEW_DIRT" >&2
+printf '%s\n' "$NEW_DIRT" "$GONE_DIRT" | grep -v '^$' >&2 || true
 exit 7  # 7 = "leak": the worker wrote outside its worktree (cli-dispatch-run reads it)
