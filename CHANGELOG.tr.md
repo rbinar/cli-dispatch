@@ -7,6 +7,17 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [7.5.7] — 2026-11-16
+
+### Düzeltildi
+
+- **Codex bir plugin'in `hooks.json` dosyasını ayrıştıramadığında Codex run'ı artık düşmüyor.**
+  cli-dispatch Codex'e de plugin olarak kuruluysa Codex, `hooks.json` içindeki `modules` alanını
+  reddediyor (`failed to parse plugin hooks config … unknown field modules`), o plugin'in hook'larını
+  atlıyor ve turn'ü yine tamamlıyor. Codex parser'ı bu mesajı başarısız turn sayıyordu; `cx-agent`
+  cevap elindeyken 1 ile çıkıyordu. Artık model uyuşmazlığı uyarısı gibi ele alınıyor: Codex temiz
+  çıktıysa ve nihai cevap varsa ölümcül değil, aksi halde yine hata.
+
 ## [7.5.6] — 2026-10-20
 
 ### Düzeltildi

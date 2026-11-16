@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [7.5.7] — 2026-11-16
+
+### Fixed
+
+- **A Codex run no longer fails because Codex cannot parse a plugin's `hooks.json`.** With
+  cli-dispatch also installed as a plugin in Codex, Codex rejects the `modules` field of its
+  `hooks.json` (`failed to parse plugin hooks config … unknown field modules`), skips that plugin's
+  hooks and still completes the turn. The Codex parser read that message as a failed turn, so
+  `cx-agent` exited 1 with the answer in hand. It is now treated like the model-mismatch advisory:
+  not fatal when Codex exits cleanly and a final answer exists, still an error otherwise.
+
 ## [7.5.6] — 2026-10-20
 
 ### Fixed

@@ -108,6 +108,11 @@ function isModelMismatchAdvisory(text) {
     && /resuming with/i.test(text)
     && (/may affect/i.test(text) || /performance/i.test(text))
 }
+// Codex reports a plugin whose hooks.json it cannot parse (e.g. a Claude Code-only field such as
+// `modules`) as item.type:"error", skips that plugin's hooks and still completes the turn.
+function isPluginHooksConfigAdvisory(text) {
+  return typeof text === 'string' && /failed to parse plugin hooks config/i.test(text)
+}
 
 // Bump the tool counter + record lastTool for a named tool/item kind.
 const countTool = (name) => {
@@ -270,7 +275,7 @@ function finalize(code) {
   const hasFinalOutput = out.trim().length > 0
   const cleanExit = code == null || code === 0
   const onlyModelMismatchAdvisory = errorText
-    && isModelMismatchAdvisory(errorText)
+    && (isModelMismatchAdvisory(errorText) || isPluginHooksConfigAdvisory(errorText))
     && cleanExit
     && hasFinalOutput
   // Reconcile-race guard (see cp-stream-parse.mjs finalize for the full rationale). On a

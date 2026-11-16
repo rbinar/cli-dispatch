@@ -15,6 +15,7 @@ const parserScript = path.join(SELF_DIR, '..', 'cx-stream-parse.mjs')
 // a junk directory behind in the working tree.
 const testDir = mkdtempSync(path.join(os.tmpdir(), 'cli-dispatch-test-cx-session-'))
 const modelMismatchAdvisory = 'This session was recorded with model `gpt-5.5` but is resuming with `gpt-5.3-codex-spark`. Consider switching back to `gpt-5.5` as it may affect Codex performance.'
+const pluginHooksConfigError = 'failed to parse plugin hooks config /home/u/.codex/plugins/cache/cli-dispatch/cli-dispatch/7.5.6/hooks/hooks.json: unknown field `modules`, expected `description` or `hooks` at line 2 column 11'
 
 function runParser(events, envOverrides = {}, { preserveDir = false } = {}) {
   return new Promise((resolve, reject) => {
@@ -233,6 +234,47 @@ test('cx-stream-parse: model mismatch advisory without final output is still err
   const status = JSON.parse(readFileSync(statusPath, 'utf8'))
   assert.equal(status.state, 'error')
   assert.equal(status.error, modelMismatchAdvisory)
+
+  rmSync(testDir, { recursive: true, force: true })
+})
+
+test('cx-stream-parse: plugin hooks config parse error with final output is done, not error', async () => {
+  const events = [
+    {
+      type: 'item.completed',
+      item: { id: '0', type: 'error', message: pluginHooksConfigError }
+    },
+    {
+      type: 'item.completed',
+      item: { id: '1', type: 'agent_message', text: 'Here is the completed answer.' }
+    }
+  ]
+
+  const result = await runParser(events)
+  assert.equal(result.code, 0)
+
+  const status = JSON.parse(readFileSync(path.join(testDir, 'status.json'), 'utf8'))
+  assert.equal(status.state, 'done')
+  assert.equal(status.error, undefined)
+  assert.equal(status.finalResultPreview, 'Here is the completed answer.')
+
+  rmSync(testDir, { recursive: true, force: true })
+})
+
+test('cx-stream-parse: plugin hooks config parse error without final output is still error', async () => {
+  const events = [
+    {
+      type: 'item.completed',
+      item: { id: '0', type: 'error', message: pluginHooksConfigError }
+    }
+  ]
+
+  const result = await runParser(events)
+  assert.equal(result.code, 0)
+
+  const status = JSON.parse(readFileSync(path.join(testDir, 'status.json'), 'utf8'))
+  assert.equal(status.state, 'error')
+  assert.equal(status.error, pluginHooksConfigError)
 
   rmSync(testDir, { recursive: true, force: true })
 })
