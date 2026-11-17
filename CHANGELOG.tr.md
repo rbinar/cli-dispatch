@@ -7,6 +7,23 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [7.5.8] — 2026-11-17
+
+### Eklendi
+
+- **Runs paneli worker'ın modelini gösteriyor.** `/cli-dispatch-runs` içinde bir run'ın canlı
+  `▍ cx running…` satırı artık run'ın kaydettiği modeli (örneğin `gpt-6.1-sol (high)`) sağ ucunda
+  taşıyor. Önceden yalnız Info altında görünüyordu. Model kaydetmemiş bir run'da satır eskisi gibi
+  çiziliyor.
+
+### Düzeltildi
+
+- **Codex bir plugin marketplace'ini yenileyemediğinde Codex run'ı artık `error` ile bitmiyor.**
+  Bir marketplace'in git remote'una ulaşılamadığında Codex başlangıçta `Codex could not update
+  marketplace …` bildiriyor ve turn'ü yine çalıştırıyor. Codex parser'ı bunu başarısız turn
+  sayıyordu. Artık 7.5.7'deki plugin `hooks.json` uyarısı gibi ele alınıyor: Codex temiz çıktıysa
+  ve nihai cevap varsa ölümcül değil, aksi halde yine hata.
+
 ## [7.5.7] — 2026-11-16
 
 ### Düzeltildi

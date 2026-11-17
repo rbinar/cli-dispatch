@@ -1302,7 +1302,7 @@ describe('run monitor pane', () => {
       '✻ THINK-3 check',
       '▾ Running · 1 step / ⌘ npm test  ✓',
       'FINAL-TEXT done',
-      '▍ ds running…',
+      '▍ ds running… | gpt-x',
     ])
     for (const i of [12, 9, 1]) expect(((await ui.find({ key: `note:${at(i)}` }))?.children as any[]).at(-1).props.dimColor).toBe(true)
     const t = await drawnText(ui)
@@ -1379,7 +1379,7 @@ describe('run monitor pane', () => {
       '▾ Done · 4 steps / ▤ calc.py  ✓ / ⌕ def add  ✓ / ✎ calc.py  ✓ / ⚙ TodoWrite todos[0].content: fix add  ✓',
       'Now testing',
       '▾ Running · 1 step / ⌘ python3 test_calc.py',
-      '▍ ds running…',
+      '▍ ds running… | gpt-x',
     ])
     expect(((await ui.find({ type: 'Button', key: 'line:900' }))?.children as any[])[1].props.dimColor).toBe(true) // still running
     expect(await bodyOf(ui, '0')).toContain('file_path: /w/src/calc.py\ndef add(a, b): return a - b')
@@ -1426,7 +1426,7 @@ describe('run monitor pane', () => {
     const ui = await open($)
     await ui.press({ key: 'run:a' })
     await expandAll(ui)
-    expect(await shapeOf(ui)).toEqual(['Looking', '▾ Running · 3 steps / ▤ a.ts  ✓ / ⌘ npm test  ✗ / ⌕ **/*.ts', '▍ oc running…'])
+    expect(await shapeOf(ui)).toEqual(['Looking', '▾ Running · 3 steps / ▤ a.ts  ✓ / ⌘ npm test  ✗ / ⌕ **/*.ts', '▍ oc running… | gpt-x'])
     await ui.unmount()
   })
 
@@ -1590,6 +1590,7 @@ describe('run monitor pane', () => {
     expect(said.color).toBeUndefined()
     const stream = await ui.find({ type: 'Text', text: '▍ cx running…' })
     expect(stream?.props.color).toBe('yellow')
+    expect(strings(await ui.find({ key: 'streaming' }))).toEqual(['▍ cx running…', 'gpt-x']) // the worker's model beside it
     const t = await drawnText(ui)
     expect(t.indexOf('▍ cx running…')).toBeGreaterThan(t.indexOf('said it')) // the newest end is at the bottom
     await ui.unmount()
