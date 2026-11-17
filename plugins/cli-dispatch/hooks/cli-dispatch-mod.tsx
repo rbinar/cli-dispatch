@@ -149,9 +149,11 @@ const DISPATCH = {
   // In front, not behind ToolSearch: the model must read that the worker can ask before it decides to ask the user itself.
   isDeferred: false,
   description:
-    "Delegate a coding task to an external worker CLI through cli-dispatch's deterministic runner and wait for its verdict. " +
+    "Delegate a coding task to an external worker CLI through cli-dispatch's deterministic runner. " +
     'The worker runs in a git worktree of `cwd`; your `verify` commands decide pass/fail; a failing verify is retried once. ' +
-    'Returns the runner summary verbatim (session id, verify result, diff, stranded worktree, patch path). It does not apply the patch. ' +
+    'The call starts the run and returns at once with its run id; the run goes on in the background. When it ends, the runner summary ' +
+    '(session id, verify result, diff, stranded worktree, patch path) reaches you as a message from cli-dispatch that starts a turn of its own. ' +
+    'Do not wait, poll or sleep for it: go on with work that does not write into `cwd`, or end your turn. It does not apply the patch. ' +
     "The worker can ask the user mid-run (its ask_user tool opens a dialog here) and reads messages the user sends from /cli-dispatch-runs, so leave a decision that is the user's to the worker; do not ask it yourself first.",
   inputSchema: {
     type: 'object',
@@ -182,25 +184,14 @@ async function runner($: EngineInterface, args: string[], init: { env: Record<st
   }
 }
 
-async function dispatch($: EngineInterface, input: DispatchInput, signal: AbortSignal, options: PluginOptions): Promise<string> {
+// (7.6.0) The call returns once the run has started, so the session stays free for the person's
+// messages; `deliverFinished`, on the session's tick, hands the summary over when the run ends.
+async function dispatch($: EngineInterface, input: DispatchInput, options: PluginOptions): Promise<string> {
   if (!['ds', 'ag', 'cx', 'oc', 'cp', 'ol'].includes(input.backend)) return `dispatch: backend must be one of ds, ag, cx, oc, cp, ol (got ${input.backend})`
   if (!input.cwd?.startsWith('/')) return 'dispatch: cwd must be an absolute path'
   const tmp = ((await $.env.get('TMPDIR')) || '/tmp').replace(/\/$/, '')
   const brief = `${tmp}/cli-dispatch-brief-${await $.clock.now()}-${Math.random().toString(36).slice(2, 8)}.txt`
   await $.fs.write(brief, input.task)
-  try {
-    return await dispatchRun($, input, brief, signal, options)
-  } finally {
-    // The detached child reads the brief once, at its start; the run is over (or waiting on its own) by here.
-    try {
-      await $.process.run(['rm', '-f', brief])
-    } catch {
-      /* a brief left behind is not a failed run */
-    }
-  }
-}
-
-async function dispatchRun($: EngineInterface, input: DispatchInput, brief: string, signal: AbortSignal, options: PluginOptions): Promise<string> {
   const argv = ['cli-dispatch-run', '--detach', '--backend', input.backend, '--cwd', input.cwd, '--prompt-file', brief, '--fix-attempts', '1']
   for (const v of input.verify ?? []) argv.push('--verify', v)
   for (const g of input.scope ?? []) argv.push('--scope', g)
@@ -216,22 +207,52 @@ async function dispatchRun($: EngineInterface, input: DispatchInput, brief: stri
   const runEnv = { ...env, CLI_DISPATCH_ASK: '1', ...(typeof key === 'string' && key !== '' ? { CLI_DISPATCH_RUN_KEY: key } : {}) }
   const started = await runner($, argv, { env: runEnv, timeoutMs: 60_000 })
   const runId = /^run: (\S+)/m.exec(started.stdout)?.[1]
-  if (!runId) return `cli-dispatch-run did not start (exit ${started.exitCode}):\n${started.stdout}${started.stderr}`
-  // While this call is blocked below, the tick can answer the worker's to: "orchestrator" questions from this brief.
-  const entry: Inflight = { brief: input.task, qa: [] }
-  inflight.set(runId, entry)
+  if (!runId) {
+    await removeBrief($, brief)
+    return `cli-dispatch-run did not start (exit ${started.exitCode}):\n${started.stdout}${started.stderr}`
+  }
+  // Until the run ends, the tick can answer the worker's to: "orchestrator" questions from this brief.
+  inflight.set(runId, { brief: input.task, qa: [], backend: input.backend, cwd: input.cwd, briefFile: brief, env })
+  await refresh($).catch(() => {}) // the run has started: a band refresh must never turn into a deny
+  return (
+    `run ${runId} started (${input.backend}, ${input.cwd}) and goes on in the background. ` +
+    'Its summary reaches you as a message from cli-dispatch when it ends: do not wait, poll or sleep for it. ' +
+    `Edit and Write into ${input.cwd} are refused while it runs. If no message comes, read it with: cli-dispatch-wait --run ${runId}`
+  )
+}
+
+// The detached child reads the brief once, at its start; by the run's end it is no longer needed.
+async function removeBrief($: EngineInterface, brief: string) {
   try {
-    await refresh($).catch(() => {}) // the run has started: a band refresh must never turn into a deny
-    let last = started
-    for (let i = 0; i < 6 && !signal.aborted; i++) {
-      last = await runner($, ['cli-dispatch-wait', '--run', runId, '--timeout', '570'], { env, timeoutMs: 600_000 })
-      if (last.exitCode !== 124) break
+    await $.process.run(['rm', '-f', brief])
+  } catch {
+    /* a brief left behind is not a failed run */
+  }
+}
+
+// One short wait per started run each tick: 124 is "still going"; anything else is its end (a
+// runner that died included), and its summary becomes a prompt of its own once the session is idle.
+let delivering = false
+async function deliverFinished($: EngineInterface) {
+  if (delivering || inflight.size === 0) return
+  delivering = true
+  try {
+    for (const [runId, entry] of [...inflight]) {
+      let last: { exitCode: number; stdout: string; stderr: string }
+      try {
+        last = await runner($, ['cli-dispatch-wait', '--run', runId, '--timeout', '1'], { env: entry.env, timeoutMs: 60_000 })
+      } catch {
+        continue
+      }
+      if (last.exitCode === 124) continue
+      inflight.delete(runId)
+      await removeBrief($, entry.briefFile)
+      await refresh($).catch(() => {})
+      const text = `[cli-dispatch] run ${runId} (${entry.backend}, ${entry.cwd}) has ended. Its summary:\n${last.stdout || last.stderr}${qaBlock(entry)}`
+      void $.prompt.submit({ text }).catch(() => {})
     }
-    await refresh($).catch(() => {})
-    if (signal.aborted || last.exitCode === 124) return `run ${runId} is still running — wait with: cli-dispatch-wait --run ${runId}` + qaBlock(entry)
-    return (last.stdout || last.stderr) + qaBlock(entry)
   } finally {
-    inflight.delete(runId)
+    delivering = false
   }
 }
 
@@ -1099,10 +1120,10 @@ async function readText($: EngineInterface, path: string): Promise<string | null
 // the engine's AskUserQuestion dialog and hands the answer back through the helper (text on stdin, never argv).
 // "Chat about this" cannot be told from an answer by the types: a rejection or an empty answer is a skip.
 
-// (7.5.0) A question with to: "orchestrator" is answered by one $.model.fork of this conversation while the run's
-// dispatch call is still blocked (an `inflight` entry); anything else, or any failure, is the dialog below.
-type Inflight = { brief: string; qa: { q: string; a: string }[] }
-const inflight = new Map<string, Inflight>() // run id -> its blocked dispatch call
+// (7.5.0) A question with to: "orchestrator" is answered by one $.model.fork of this conversation while the run
+// its dispatch call started is still going (an `inflight` entry); anything else, or any failure, is the dialog below.
+type Inflight = { brief: string; qa: { q: string; a: string }[]; backend: string; cwd: string; briefFile: string; env: Record<string, string> }
+const inflight = new Map<string, Inflight>() // run id -> the run a dispatch call started, until its summary is handed over
 let forkCount = 0 // forks awaited or still running after the timeout; the guard stays up until they settle
 const ANSWER_MAX = 2000
 const FORK_BRIEF_MAX = 8000
@@ -1788,7 +1809,7 @@ export const register: Register = (on, options) => {
     // A worker can itself be a Claude Code session with this plugin (DeepSeek runs claude):
     // it must do its task, not delegate it again, and has no one to ask.
     const inWorker = (await $.env.get('CLI_DISPATCH_WORKER')) === '1'
-    $.clock.every(TICK_MS, () => Promise.all([refresh($), inWorker ? undefined : checkQuestions($)]))
+    $.clock.every(TICK_MS, () => Promise.all([refresh($), inWorker ? undefined : checkQuestions($), inWorker ? undefined : deliverFinished($)]))
     if (!inWorker) await $.tool.register(DISPATCH)
     // The run monitor drives no worker and holds no key, but a worker has no use for it.
     if (!inWorker) {
@@ -1851,7 +1872,7 @@ export const register: Register = (on, options) => {
 
   on('tool.call', { tool: 'mcp__cli-dispatch__dispatch' }, async ($, e, next) => {
     const deny = forkGuard({ forking: forkCount > 0, agentId: e.agentId })
-    return deny ? { deny } : { result: await dispatch($, e as unknown as DispatchInput, next.signal, options) }
+    return deny ? { deny } : { result: await dispatch($, e as unknown as DispatchInput, options) }
   }).catch(($, e, next) => (next.called ? next(e) : { deny: 'cli-dispatch: the dispatch tool failed before it could start a run.' }))
 
   on('tool.call', async ($, e, next) => {

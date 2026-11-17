@@ -23,7 +23,7 @@ Requires Claude Code 2.1.287 or newer. Setup asks which backends you want and in
 
 ## Use
 
-**Just ask.** Claude hands the job to the plugin's `dispatch` tool, which runs the worker in a git worktree, runs your verify command and returns the verdict and a patch for review (on Claude Code older than 2.1.287 the `cli-dispatch:runner` agent does the same):
+**Just ask.** Claude hands the job to the plugin's `dispatch` tool, which runs the worker in a git worktree, runs your verify command and, when the run ends, hands Claude the verdict and a patch for review; Claude stays free for your messages meanwhile (on Claude Code older than 2.1.287 the `cli-dispatch:runner` agent does the same):
 
 ```text
 add() in math.mjs is broken. Delegate the fix to DeepSeek, verify with node --test.

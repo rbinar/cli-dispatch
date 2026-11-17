@@ -23,7 +23,7 @@ Claude Code 2.1.287 veya daha yenisi gerekir. Setup hangi backend'leri istediği
 
 ## Kullanım
 
-**Sadece iste.** Claude işi plugin'in `dispatch` aracına verir; araç worker'ı bir git worktree'de çalıştırır, verify komutunu çalıştırır ve sonucu, incelemen için bir yamayla birlikte döndürür (2.1.287'den eski Claude Code'da aynı işi `cli-dispatch:runner` agent'ı yapar):
+**Sadece iste.** Claude işi plugin'in `dispatch` aracına verir; araç worker'ı bir git worktree'de çalıştırır, verify komutunu çalıştırır ve koşu bitince sonucu, incelemen için bir yamayla birlikte Claude'a iletir; Claude bu sırada mesajlarına açık kalır (2.1.287'den eski Claude Code'da aynı işi `cli-dispatch:runner` agent'ı yapar):
 
 ```text
 add() in math.mjs is broken. Delegate the fix to DeepSeek, verify with node --test.
