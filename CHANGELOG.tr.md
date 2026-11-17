@@ -7,6 +7,19 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kurallar�
 
 > Not: `README.md` bilinçli olarak Türkçe'dir; bu değişiklik günlüğü ve diğer tüm dökümanlar İngilizce'dir.
 
+## [7.6.0] — 2026-11-17
+
+### Değişti
+
+- **`dispatch` aracı worker çalışırken oturumu artık bloklamıyor.** Önceden run'ı başlatıp tek bir
+  araç çağrısının içinde bitmesini bekliyordu; Claude'a yazdığın mesaj run bitene kadar kuyrukta
+  kalıyordu. Artık run id'siyle hemen dönüyor. Run bitince mod, runner özetini oturum boşaldığında
+  kendi turunu başlatan bir mesaj olarak Claude'a iletiyor. Run sürerken repo'suna Edit ve Write
+  yine reddediliyor, worker soruları eskisi gibi cevaplanıyor. Run sürerken mod yeniden yüklenirse
+  özet iletilmez; `cli-dispatch-wait --run <id>` ile okunur. Araç açıklaması Claude'a verdict
+  için beklememesini ve yoklamamasını söylüyor; oturum-başı politika verdict'in sonra geldiğini
+  belirtiyor.
+
 ## [7.5.8] — 2026-11-17
 
 ### Eklendi

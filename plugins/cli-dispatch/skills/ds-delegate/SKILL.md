@@ -68,7 +68,7 @@ Delegation runs through `cli-dispatch-run`: it launches the worker, isolates rep
 worktree, blocks until it finishes, runs `--verify` itself and writes a compact verdict. All of
 that is plain shell. An LLM *watching* a worker is what measured ~9x the worker's own output in
 Anthropic tokens (issue #114, ~62 turns per run), so the default path is a **thin forwarder**, not
-a babysitter. For mechanical work with a machine-checkable verify command, if the `mcp__cli-dispatch__dispatch` tool is available (Claude Code 2.1.287+), call it first — it runs the detached runner and blocks on it itself, with no subagent:
+a babysitter. For mechanical work with a machine-checkable verify command, if the `mcp__cli-dispatch__dispatch` tool is available (Claude Code 2.1.287+), call it first — it starts the detached runner and returns at once, with no subagent; the verdict reaches you as a message when the run ends, so do not wait or poll for it:
 ```
 mcp__cli-dispatch__dispatch({"backend": "ds", "cwd": "/abs/path", "task": "<self-contained brief>", "verify": ["<cmd>"]})
 ```

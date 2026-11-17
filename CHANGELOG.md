@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [7.6.0] — 2026-11-17
+
+### Changed
+
+- **The `dispatch` tool no longer blocks the session while the worker runs.** It used to start the
+  run and wait for it inside one tool call, so a message you typed to Claude sat in the queue until
+  the run ended. It now returns at once with the run id. When the run ends, the mod hands Claude
+  the runner summary as a message that starts a turn of its own once the session is idle. Edit and
+  Write into the run's repo are still refused while it is going, and worker questions are answered
+  as before. If the mod reloads during a run, the summary is not handed over; read it with
+  `cli-dispatch-wait --run <id>`. The tool description tells Claude not to wait or poll for the
+  verdict, and the session-start policy says it comes later.
+
 ## [7.5.8] — 2026-11-17
 
 ### Added

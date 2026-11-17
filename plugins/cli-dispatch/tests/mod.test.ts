@@ -133,13 +133,17 @@ function stubDispatch(on: any, opts: { worker?: boolean; noPath?: boolean; waits
   const specs: any[] = []
   const written: Record<string, string> = {}
   const waits = [...(opts.waits ?? [0])]
+  const submitted: string[] = [] // what the mod handed Claude as a prompt of its own
+  const clock = mock.clock(on, { now: NOW })
   on('session.start', ($: any, e: any) => ({ cwd: e.cwd }))
   on('env.get', ($: any, e: any) => ({
     value: e.name === 'CLI_DISPATCH_SESSIONS_DIR' ? ROOT : e.name === 'TMPDIR' ? '/tmp/' : e.name === 'CLI_DISPATCH_WORKER' && opts.worker ? '1' : undefined,
   }))
   on('session.id', () => ({ value: SID }))
-  on('clock.now', () => ({ value: NOW }))
-  on('clock.every', () => ({ value: undefined }))
+  on('prompt.submit', ($: any, e: any) => {
+    submitted.push(e.text)
+    return { text: e.text }
+  })
   on('tool.register', ($: any, e: any) => {
     registered.push(e.name)
     specs.push(e)
@@ -162,7 +166,7 @@ function stubDispatch(on: any, opts: { worker?: boolean; noPath?: boolean; waits
     }
     return { value: { exitCode: 1, stdout: '', stderr: '' } }
   })
-  return { calls, registered, specs, written }
+  return { calls, registered, specs, written, submitted, tick: async (ms = 4000) => { await clock.advance(ms); await clock.settle() } }
 }
 
 describe('dispatch tool', () => {
@@ -179,12 +183,14 @@ describe('dispatch tool', () => {
     expect(h.specs[0].inputSchema.properties.task.description).toMatch(/repo-relative/)
   })
 
-  test('runs the runner detached with the brief, verify and session id, waits through a timeout, returns the summary', async ($, on) => {
+  test('runs the runner detached with the brief, verify and session id, returns at once; the tick hands the summary over as a prompt of its own', async ($, on) => {
     const h = stubDispatch(on, { waits: [124, 0] })
     await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
     expect(h.registered).toEqual(['dispatch'])
     const r: any = await $.tool.call({ tool: 'mcp__cli-dispatch__dispatch', backend: 'cx', cwd: '/repo', task: 'fix it', verify: ['node --test', "echo 'a b'"], scope: ['src/**', 'package.json'] } as any)
-    expect(String(r.result ?? r.text)).toMatch(/verify: pass/)
+    expect(String(r.result ?? r.text)).toMatch(/^run run-7 started \(cx, \/repo\) and goes on in the background/)
+    expect(String(r.result ?? r.text)).not.toMatch(/verify: pass/)
+    expect(h.calls.filter(c => c.argv[0] === 'cli-dispatch-wait').length).toBe(0) // the call did not wait
     const run = h.calls[0]!
     expect(run.argv.slice(0, 6)).toEqual(['cli-dispatch-run', '--detach', '--backend', 'cx', '--cwd', '/repo'])
     expect(run.argv).toContain('--fix-attempts')
@@ -193,7 +199,18 @@ describe('dispatch tool', () => {
     expect(run.env?.CLAUDE_CODE_SESSION_ID).toBe(SID)
     const briefPath = run.argv[run.argv.indexOf('--prompt-file') + 1]!
     expect(h.written[briefPath]).toBe('fix it')
+    await h.tick() // still going (124): nothing handed over
+    expect(h.submitted).toEqual([])
+    await h.tick() // ended
+    expect(h.submitted.length).toBe(1)
+    expect(h.submitted[0]).toMatch(/^\[cli-dispatch\] run run-7 \(cx, \/repo\) has ended\./)
+    expect(h.submitted[0]).toMatch(/verify: pass/)
+    const waits = h.calls.filter(c => c.argv[0] === 'cli-dispatch-wait')
+    expect(waits.length).toBe(2)
+    expect(waits[0]!.argv).toEqual(['cli-dispatch-wait', '--run', 'run-7', '--timeout', '1'])
+    await h.tick() // handed over once: no further wait, no second prompt
     expect(h.calls.filter(c => c.argv[0] === 'cli-dispatch-wait').length).toBe(2)
+    expect(h.submitted.length).toBe(1)
   })
 
   test('the brief file is removed once the run is over (#214)', async ($, on) => {
@@ -201,6 +218,8 @@ describe('dispatch tool', () => {
     await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
     await $.tool.call({ tool: 'mcp__cli-dispatch__dispatch', backend: 'cx', cwd: '/repo', task: 'fix it' } as any)
     const brief = h.calls[0]!.argv[h.calls[0]!.argv.indexOf('--prompt-file') + 1]!
+    expect(h.calls.some(c => c.argv[0] === 'rm')).toBe(false) // not while the run is going
+    await h.tick()
     const last = h.calls[h.calls.length - 1]!
     expect(last.argv).toEqual(['rm', '-f', brief])
     expect(h.calls.findIndex(c => c.argv[0] === 'rm')).toBeGreaterThan(h.calls.findIndex(c => c.argv[0] === 'cli-dispatch-wait')) // after the wait, not before
@@ -210,7 +229,9 @@ describe('dispatch tool', () => {
     const h = stubDispatch(on, { noPath: true })
     await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
     const r: any = await $.tool.call({ tool: 'mcp__cli-dispatch__dispatch', backend: 'ds', cwd: '/repo', task: 't' } as any)
-    expect(String(r.result ?? r.text)).toMatch(/verify: pass/)
+    expect(String(r.result ?? r.text)).toMatch(/run run-7 started/)
+    await h.tick()
+    expect(h.submitted[0]).toMatch(/verify: pass/)
     const viaBash = h.calls.filter(c => c.argv[0] === 'bash').map(c => c.argv[1])
     expect(viaBash.some(p => /\/scripts\/cli-dispatch-run$/.test(p!))).toBe(true)
     expect(viaBash.some(p => /\/scripts\/cli-dispatch-wait$/.test(p!))).toBe(true)
@@ -243,6 +264,8 @@ describe('dispatch key hand-off', () => {
     const h = stubDispatch(on, { waits: [124, 0] })
     await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
     const r: any = await $.tool.call({ tool: 'mcp__cli-dispatch__dispatch', backend: 'cx', cwd: '/repo', task: 'fix it', verify: ['true'] } as any)
+    await h.tick()
+    await h.tick()
     const run = h.calls.find(c => c.argv[0] === 'cli-dispatch-run')!
     expect(run.env?.CLI_DISPATCH_RUN_KEY).toBe('cx-S')
     expect(run.env?.CLAUDE_CODE_SESSION_ID).toBe(SID)
@@ -255,6 +278,7 @@ describe('dispatch key hand-off', () => {
     expect(JSON.stringify(h.calls.map(c => c.argv))).not.toContain('cx-S')
     expect(JSON.stringify(h.written)).not.toContain('cx-S')
     expect(JSON.stringify(r)).not.toContain('cx-S')
+    expect(JSON.stringify(h.submitted)).not.toContain('cx-S')
   })
 
   test('the plugin-copy fallback keeps the same scope', { options: KEYS }, async ($, on) => {
@@ -2201,7 +2225,7 @@ describe('review fixes', () => {
     await ui.unmount()
   })
 
-  test('dispatch still returns the run summary when kill -0 cannot be run during the band refresh', async ($, on) => {
+  test('dispatch still starts the run when kill -0 cannot be run during the band refresh', async ($, on) => {
     const written: Record<string, string> = {}
     on('session.start', ($: any, e: any) => ({ cwd: e.cwd }))
     on('env.get', ($: any, e: any) => ({ value: e.name === 'CLI_DISPATCH_SESSIONS_DIR' ? ROOT : e.name === 'TMPDIR' ? '/tmp/' : undefined }))
@@ -2232,7 +2256,7 @@ describe('review fixes', () => {
     })
     await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
     const r: any = await $.tool.call({ tool: 'mcp__cli-dispatch__dispatch', backend: 'cx', cwd: '/repo', task: 'fix it' } as any)
-    expect(String(r.result ?? r.text)).toMatch(/verify: pass/)
+    expect(String(r.result ?? r.text)).toMatch(/run run-7 started/)
     expect(r.isError).toBeUndefined()
   })
 })
@@ -2244,7 +2268,7 @@ describe('ollama backend', () => {
     const h = stubDispatch(on)
     await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
     const r: any = await $.tool.call({ tool: 'mcp__cli-dispatch__dispatch', backend: 'ol', cwd: '/repo', task: 'fix it', model: 'qwen3.8:27b' } as any)
-    expect(String(r.result ?? r.text)).toMatch(/verify: pass/)
+    expect(String(r.result ?? r.text)).toMatch(/run run-7 started \(ol, \/repo\)/)
     const run = h.calls.find(c => c.argv[0] === 'cli-dispatch-run')!
     expect(run.argv.slice(0, 4)).toEqual(['cli-dispatch-run', '--detach', '--backend', 'ol'])
     expect(run.argv.filter((a, i) => run.argv[i - 1] === '--model')).toEqual(['qwen3.8:27b'])
@@ -2356,6 +2380,8 @@ describe('dispatch turns questions on', () => {
     const h = stubDispatch(on, { waits: [124, 0] })
     await startSession($)
     await $.tool.call({ tool: 'mcp__cli-dispatch__dispatch', backend: 'cx', cwd: '/repo', task: 't' } as any)
+    await h.tick()
+    await h.tick()
     expect(h.calls.find(c => c.argv[0] === 'cli-dispatch-run')!.env?.CLI_DISPATCH_ASK).toBe('1')
     const waits = h.calls.filter(c => c.argv[0] === 'cli-dispatch-wait')
     expect(waits.length).toBe(2)
@@ -2706,10 +2732,14 @@ import { forkGuard } from '../hooks/cli-dispatch-mod'
 type ForkResult = { isAnswered: true; text: string; usage?: object } | { isAnswered: false; reason: string }
 type ForkBehaviour = ForkResult | Error | Promise<ForkResult>
 
-// A dispatch call whose wait the test holds open, plus the ask dirs of stubAsk, plus a stubbed model.fork.
+// A dispatch call whose run the test keeps going (its wait is held open), plus the ask dirs of stubAsk, plus a stubbed model.fork.
 function stubOrch(on: any, dirs: Record<string, AskDir>, opts: { fork?: ForkBehaviour; answers?: AskAnswer[] } = {}) {
-  const rec = { asks: [] as any[], runs: [] as { argv: string[]; init: any }[], toasts: [] as string[], forks: [] as string[], written: {} as Record<string, string> }
+  const rec = { asks: [] as any[], runs: [] as { argv: string[]; init: any }[], toasts: [] as string[], forks: [] as string[], written: {} as Record<string, string>, submitted: [] as string[] }
   const answers = [...(opts.answers ?? [])]
+  on('prompt.submit', ($: any, e: any) => {
+    rec.submitted.push(e.text)
+    return { text: e.text }
+  })
   const releases: Record<string, () => void> = {}
   let runN = 6
   const clock = mock.clock(on, { now: NOW })
@@ -2803,9 +2833,11 @@ describe('orchestrator answers: the fork answers', () => {
     const toast = h.rec.toasts.filter(t => t.includes('Claude answered the cx worker'))
     expect(toast.length).toBe(1) // (d)
     expect(toast[0]).toContain('8123')
-    h.release() // (e)
-    const r: any = await d
-    const out = String(r.result ?? r.text)
+    expect(String(((await d) as any).result)).toMatch(/run run-7 started/)
+    h.release() // (e) the run ends: its summary, with the Q/A block, is handed over
+    await h.tick(0)
+    expect(h.rec.submitted.length).toBe(1)
+    const out = h.rec.submitted[0]!
     expect(out).toMatch(/verify: pass/)
     expect(out).toContain('[cli-dispatch] Worker questions you answered during this run')
     expect(out.endsWith('Q: Which port?\nA: 8123')).toBe(true)
@@ -2932,13 +2964,16 @@ describe('orchestrator answers: fallback, no retry', () => {
     })
   }
 
-  test('after its dispatch call returned, run-7 is no longer forked for', async ($, on) => {
-    const h = stubOrch(on, orcDir(), { answers: ['8080'] })
+  test('after its run ended and the summary was handed over, run-7 is no longer forked for', async ($, on) => {
+    const dirs: Record<string, AskDir> = {}
+    const h = stubOrch(on, dirs, { answers: ['8080'] })
     await startSession($)
-    const d = h.dispatch($)
-    await h.tick(0)
+    await h.dispatch($)
+    await h.tick() // the tick's wait on run-7 is held open
     h.release()
-    await d
+    await h.tick(0)
+    expect(h.rec.submitted.length).toBe(1)
+    Object.assign(dirs, orcDir()) // a question that turns up afterwards
     await h.tick()
     expect(h.rec.forks.length).toBe(0)
     expect(h.rec.asks.length).toBe(1)
@@ -2964,7 +2999,7 @@ describe('orchestrator answers: the guard', () => {
     expect(h.rec.forks.length).toBe(1)
     const before = h.rec.runs.filter(r => r.argv[0] === 'cli-dispatch-run').length
     const r2: any = await h.dispatch($) // no agentId (the kit drops it, E13): not refused
-    expect(String(r2.result)).toMatch(/verify: pass/)
+    expect(String(r2.result)).toMatch(/run run-8 started/)
     expect(h.rec.runs.filter(r => r.argv[0] === 'cli-dispatch-run').length).toBe(before + 1)
     settle({ isAnswered: true, text: 'ASK_USER' })
     h.release()
