@@ -1537,7 +1537,13 @@ async function renderRuns($: EngineInterface, e: any) {
   const sent = (sentMessages.get(r) ?? [])
     .filter(m => !(m.state === 'delivered' && readSay.includes(m.text.replace(/\s+/g, ' ').trim())))
     .map(m => <Text key={`sent:${m.id}`} dimColor>{`→ ${m.text.replace(/\s+/g, ' ').slice(0, 80)}  ${m.state}`}</Text>)
-  const streaming = running && r.alive ? <Text color="yellow">{clean(`▍ ${r.label} running…`)}</Text> : null
+  // The worker's model at the right end of the line, when the run recorded one.
+  const streaming = running && r.alive ? (
+    <Box key="streaming" flexDirection="row" justifyContent="space-between">
+      <Text color="yellow">{clean(`▍ ${r.label} running…`)}</Text>
+      {r.model ? <Text dimColor>{clean(r.model)}</Text> : null}
+    </Box>
+  ) : null
   // A click expands a step's full text under it, a second click collapses it; one at a time.
   const openStep = (s: Step) => go(() => (event?.at === s.at ? void (event = null) : s.big ? openBig($, r, s) : setEvent(s.at, s.body, s.n)))
   // A step's Buttons carry a short label: by default it repeats the children, and a drawing holds

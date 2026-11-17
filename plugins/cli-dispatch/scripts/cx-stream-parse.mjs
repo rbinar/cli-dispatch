@@ -113,6 +113,11 @@ function isModelMismatchAdvisory(text) {
 function isPluginHooksConfigAdvisory(text) {
   return typeof text === 'string' && /failed to parse plugin hooks config/i.test(text)
 }
+// Codex also reports a plugin marketplace it could not refresh at startup (e.g. an unreachable git
+// remote) as item.type:"error"; the turn still runs.
+function isMarketplaceUpdateAdvisory(text) {
+  return typeof text === 'string' && /could not update marketplace/i.test(text)
+}
 
 // Bump the tool counter + record lastTool for a named tool/item kind.
 const countTool = (name) => {
@@ -275,7 +280,7 @@ function finalize(code) {
   const hasFinalOutput = out.trim().length > 0
   const cleanExit = code == null || code === 0
   const onlyModelMismatchAdvisory = errorText
-    && (isModelMismatchAdvisory(errorText) || isPluginHooksConfigAdvisory(errorText))
+    && (isModelMismatchAdvisory(errorText) || isPluginHooksConfigAdvisory(errorText) || isMarketplaceUpdateAdvisory(errorText))
     && cleanExit
     && hasFinalOutput
   // Reconcile-race guard (see cp-stream-parse.mjs finalize for the full rationale). On a

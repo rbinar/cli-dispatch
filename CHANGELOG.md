@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Note: the `README.md` is in Turkish by design; this changelog and all other docs are in English.
 
+## [7.5.8] — 2026-11-17
+
+### Added
+
+- **The runs pane shows the worker's model.** In `/cli-dispatch-runs`, the live `▍ cx running…`
+  line of a run now carries the model the run recorded (for example `gpt-6.1-sol (high)`) at its
+  right end. It was shown only under Info before. A run that recorded no model draws the line as
+  before.
+
+### Fixed
+
+- **A Codex run no longer ends in `error` because Codex could not refresh a plugin marketplace.**
+  When a marketplace's git remote is unreachable, Codex reports `Codex could not update marketplace
+  …` at startup and still runs the turn. The Codex parser read it as a failed turn. It is now
+  treated like the plugin `hooks.json` advisory of 7.5.7: not fatal when Codex exits cleanly and a
+  final answer exists, still an error otherwise.
+
 ## [7.5.7] — 2026-11-16
 
 ### Fixed
